@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.36] - 2026-09-17
+
+> **Highlight:** Pin chats globally, copy commands and diffs, and keep Shared session data.
+>
+> **中文 · 亮点：** 置顶对话到列表最上，可复制命令和 diff，共享会话数据会记住。
+
 ### Added
 - Project rules list this project, ~/.agents, and the live agent home. Missing files stay faded at the bottom.
 - Shell commands show the full command, with one-click copy of command and output.
