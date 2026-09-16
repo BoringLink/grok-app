@@ -67,7 +67,7 @@ export const ptBRSettings = {
   "settings.cliSessionsSearchFallback": "Busca da CLI indisponível — filtrando a lista local",
   "settings.cliSessionsDeleteRemoteOnly": "Nenhuma pasta no disco em GROK_HOME para este resultado (só remoto)",
   "settings.cliSessionsSource": "Analisando {path}",
-  "settings.cliSessionsIndependentNote": "O modo independente usa o agent-home do app (~/.grok-app/agent-home), que pode diferir das sessões da CLI do terminal em ~/.grok. Importar ainda copia o histórico do chat para o app; a retomada do agente pode não encontrar a mesma sessão no disco a menos que você mude para o modo compartilhado.",
+  "settings.cliSessionsIndependentNote": "O modo independente usa o agent-home do app (app data folder, not always ~/.grok-app), que pode diferir das sessões da CLI do terminal em ~/.grok. Importar ainda copia o histórico do chat para o app; a retomada do agente pode não encontrar a mesma sessão no disco a menos que você mude para o modo compartilhado.",
   "settings.cliSessionsDelete": "Excluir",
   "settings.cliSessionsDeleting": "Excluindo…",
   "settings.cliSessionsDeleted": "“{title}” excluída do disco",

@@ -90,7 +90,7 @@ export const zhSettings = {
   "settings.cliSessionsSearchFallback": "CLI 搜索不可用 — 正在筛选本地列表",
   "settings.cliSessionsDeleteRemoteOnly": "此结果在 GROK_HOME 下没有本地目录（仅远程）",
   "settings.cliSessionsSource": "扫描路径 {path}",
-  "settings.cliSessionsIndependentNote": "独立模式使用应用 agent-home（~/.grok-app/agent-home），可能与终端 CLI 的 ~/.grok 会话不一致。仍可导入聊天记录到应用；若需与终端同一 on-disk 会话继续，请切换到共享模式。",
+  "settings.cliSessionsIndependentNote": "独立模式使用应用 agent-home（应用数据目录，不一定是 ~/.grok-app），可能与终端 CLI 的 ~/.grok 会话不一致。仍可导入聊天记录到应用；若需与终端同一 on-disk 会话继续，请切换到共享模式。",
   "settings.cliSessionsDelete": "删除",
   "settings.cliSessionsDeleting": "删除中…",
   "settings.cliSessionsDeleted": "已从磁盘删除「{title}」",

@@ -40,7 +40,7 @@ See `docs/llm-wiki/release.md`.
 ### Fixed
 - Shared session data mode is remembered, unless a custom provider needs independent. Independent still uses the app data folder, not always ~/.grok-app (#1228).
 - You can pin a generating chat, and pinned chats sit at the top of the list. The pin control stays next to the spinner (#1229).
-- The left project list stays smoother when many folders are open. Crowded sidebars start collapsed, and long lists virtualize earlier (#1230).
+- The left project list stays smoother when many folders are open. Crowded sidebars collapse once; expanding every folder is remembered (#1230).
 - Project rules no longer list the same AGENTS.md three times on macOS.
 - Sending or finishing a chat moves it to the top of that project's list. Pinned chats stay first.
 - Esc in an image preview closes the preview instead of stopping the turn.
@@ -56,7 +56,7 @@ See `docs/llm-wiki/release.md`.
 **中文 · 修复**
 - 选共享后会记住；只有自定义渠道必须独立时才保持独立。独立模式用应用数据目录，不一定是 ~/.grok-app（#1228）。
 - 生成中仍可置顶，置顶对话会出现在列表最上方。图钉不再被转圈挡住（#1229）。
-- 左侧项目很多且都展开时，滚动会更顺。项目多时默认收起，长列表更早虚拟滚动（#1230）。
+- 左侧项目很多且都展开时，滚动会更顺。拥挤侧栏只自动收起一次；全部展开后会记住（#1230）。
 - 项目规则在 macOS 上不再把同一份 AGENTS.md 列成三条。
 - 发送或完成一轮对话后，该会话会排到所属项目列表顶部。置顶会话仍在最前。
 - 图片预览打开时按 Esc 会关掉预览，而不会停止当前生成。

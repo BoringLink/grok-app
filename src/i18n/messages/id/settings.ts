@@ -67,7 +67,7 @@ export const idSettings = {
   "settings.cliSessionsSearchFallback": "Pencarian CLI tidak tersedia — memfilter daftar lokal",
   "settings.cliSessionsDeleteRemoteOnly": "Tidak ada folder di disk di bawah GROK_HOME untuk hasil ini (hanya-jarak jauh)",
   "settings.cliSessionsSource": "Memindai {path}",
-  "settings.cliSessionsIndependentNote": "Mode mandiri memakai agent-home aplikasi (~/.grok-app/agent-home), yang mungkin berbeda dari sesi CLI terminal di bawah ~/.grok. Impor tetap menyalin riwayat obrolan ke aplikasi; lanjutkan agen mungkin tidak menemukan sesi di disk yang sama kecuali Anda beralih ke mode bersama.",
+  "settings.cliSessionsIndependentNote": "Mode mandiri memakai agent-home aplikasi (app data folder, not always ~/.grok-app), yang mungkin berbeda dari sesi CLI terminal di bawah ~/.grok. Impor tetap menyalin riwayat obrolan ke aplikasi; lanjutkan agen mungkin tidak menemukan sesi di disk yang sama kecuali Anda beralih ke mode bersama.",
   "settings.cliSessionsDelete": "Hapus",
   "settings.cliSessionsDeleting": "Menghapus…",
   "settings.cliSessionsDeleted": "“{title}” dihapus dari disk",

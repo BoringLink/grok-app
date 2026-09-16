@@ -67,7 +67,7 @@ export const ukSettings = {
   "settings.cliSessionsSearchFallback": "CLI пошук недоступний — фільтрація локального списку",
   "settings.cliSessionsDeleteRemoteOnly": "Немає теки на диску в GROK_HOME для цього звернення (тільки віддалений)",
   "settings.cliSessionsSource": "Сканування {path}",
-  "settings.cliSessionsIndependentNote": "Незалежний режим використовує програму agent-home (~/.grok-app/agent-home), яка може відрізнятися від сесіїв терміналу CLI у розділі ~/.grok. Імпорт копіює історію чату в програму; резюме агента може не знайти того самого сесії на диску, якщо ви не перейдете в спільний режим.",
+  "settings.cliSessionsIndependentNote": "Незалежний режим використовує програму agent-home (app data folder, not always ~/.grok-app), яка може відрізнятися від сесіїв терміналу CLI у розділі ~/.grok. Імпорт копіює історію чату в програму; резюме агента може не знайти того самого сесії на диску, якщо ви не перейдете в спільний режим.",
   "settings.cliSessionsDelete": "Видалити",
   "settings.cliSessionsDeleting": "Видалення…",
   "settings.cliSessionsDeleted": "Видалено «{title}» з диска",

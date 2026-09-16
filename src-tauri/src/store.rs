@@ -500,6 +500,10 @@ pub struct AppSettings {
     /// Sidebar project folders the user collapsed (ids). Missing id ⇒ expanded.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sidebar_collapsed_project_ids: Vec<String>,
+    /// One-shot: crowded trees auto-collapsed once (#1230). After this, an
+    /// empty collapsed list means the user expanded every folder.
+    #[serde(default)]
+    pub sidebar_collapse_default_migrated: bool,
     /// Sidebar Default workspace (orphan) section expanded. Default **true**
     /// (matches historical cold-start behavior). Missing field ⇒ open.
     #[serde(default = "default_true")]
@@ -882,6 +886,7 @@ impl Default for AppSettings {
             last_session_id: None,
             last_project_id: None,
             sidebar_collapsed_project_ids: Vec::new(),
+            sidebar_collapse_default_migrated: false,
             sidebar_other_sessions_open: true,
             project_spaces: Vec::new(),
             active_project_space_id: None,

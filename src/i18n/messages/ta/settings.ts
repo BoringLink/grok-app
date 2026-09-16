@@ -67,7 +67,7 @@ export const taSettings = {
   "settings.cliSessionsSearchFallback": "CLI தேடல் கிடைக்கவில்லை — உள்ளகப் பட்டியலை வடிகட்டுகிறது",
   "settings.cliSessionsDeleteRemoteOnly": "இந்த முடிவுக்கு GROK_HOME கீழ் வட்டுக் கோப்புறை இல்லை (ரிமோட் மட்டும்)",
   "settings.cliSessionsSource": "{path} ஐ ஸ்கேன் செய்கிறது",
-  "settings.cliSessionsIndependentNote": "தனிப் பயன்முறை செயலியின் agent-home (~/.grok-app/agent-home) ஐப் பயன்படுத்துகிறது; இது ~/.grok கீழ் உள்ள முனைய CLI அமர்வுகளிலிருந்து வேறுபடலாம். இறக்குமதி உரையாடல் வரலாற்றைச் செயலிக்கு நகலெடுக்கும்; பகிர்வுப் பயன்முறைக்கு மாறாவிட்டால் முகவர் தொடர்ச்சி அதே வட்டு அமர்வைக் காணாமல் போகலாம்.",
+  "settings.cliSessionsIndependentNote": "தனிப் பயன்முறை செயலியின் agent-home (app data folder, not always ~/.grok-app) ஐப் பயன்படுத்துகிறது; இது ~/.grok கீழ் உள்ள முனைய CLI அமர்வுகளிலிருந்து வேறுபடலாம். இறக்குமதி உரையாடல் வரலாற்றைச் செயலிக்கு நகலெடுக்கும்; பகிர்வுப் பயன்முறைக்கு மாறாவிட்டால் முகவர் தொடர்ச்சி அதே வட்டு அமர்வைக் காணாமல் போகலாம்.",
   "settings.cliSessionsDelete": "நீக்கு",
   "settings.cliSessionsDeleting": "நீக்குகிறது…",
   "settings.cliSessionsDeleted": "வட்டிலிருந்து “{title}” நீக்கப்பட்டது",

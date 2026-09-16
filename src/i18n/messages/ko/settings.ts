@@ -67,7 +67,7 @@ export const koSettings = {
   "settings.cliSessionsSearchFallback": "CLI 검색을 사용할 수 없음 — 로컬 목록 필터",
   "settings.cliSessionsDeleteRemoteOnly": "이 히트에 GROK_HOME 아래 디스크 폴더가 없습니다(원격 전용)",
   "settings.cliSessionsSource": "{path} 스캔 중",
-  "settings.cliSessionsIndependentNote": "독립 모드는 앱 agent-home(~/.grok-app/agent-home)을 사용하며 ~/.grok 아래 터미널 CLI 세션과 다를 수 있습니다. 가져오기는 채팅 기록을 앱으로 복사하지만, 공유 모드로 전환하지 않으면 에이전트 재개가 같은 디스크 세션을 찾지 못할 수 있습니다.",
+  "settings.cliSessionsIndependentNote": "독립 모드는 앱 agent-home(app data folder, not always ~/.grok-app)을 사용하며 ~/.grok 아래 터미널 CLI 세션과 다를 수 있습니다. 가져오기는 채팅 기록을 앱으로 복사하지만, 공유 모드로 전환하지 않으면 에이전트 재개가 같은 디스크 세션을 찾지 못할 수 있습니다.",
   "settings.cliSessionsDelete": "삭제",
   "settings.cliSessionsDeleting": "삭제 중…",
   "settings.cliSessionsDeleted": "디스크에서 “{title}”을(를) 삭제했습니다",

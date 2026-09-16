@@ -67,7 +67,7 @@ export const jaSettings = {
   "settings.cliSessionsSearchFallback": "CLI 検索を利用できません — ローカル一覧を絞り込みます",
   "settings.cliSessionsDeleteRemoteOnly": "このヒットの GROK_HOME 配下にディスク上フォルダーがありません（リモートのみ）",
   "settings.cliSessionsSource": "{path} を走査中",
-  "settings.cliSessionsIndependentNote": "独立モードはアプリのエージェントホーム（~/.grok-app/agent-home）を使い、~/.grok 配下のターミナル CLI セッションと違うことがあります。取り込みはチャット履歴をアプリにコピーします。共有モードに切り替えない限り、エージェント再開は同じディスク上セッションを見つけられないことがあります。",
+  "settings.cliSessionsIndependentNote": "独立モードはアプリのエージェントホーム（应用数据目录，不一定是 ~/.grok-app）を使い、~/.grok 配下のターミナル CLI セッションと違うことがあります。取り込みはチャット履歴をアプリにコピーします。共有モードに切り替えない限り、エージェント再開は同じディスク上セッションを見つけられないことがあります。",
   "settings.cliSessionsDelete": "削除",
   "settings.cliSessionsDeleting": "削除中…",
   "settings.cliSessionsDeleted": "ディスクから「{title}」を削除しました",

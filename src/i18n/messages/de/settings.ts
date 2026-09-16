@@ -67,7 +67,7 @@ export const deSettings = {
   "settings.cliSessionsSearchFallback": "CLI-Suche nicht verfügbar — lokale Liste wird gefiltert",
   "settings.cliSessionsDeleteRemoteOnly": "Kein Ordner auf der Festplatte unter GROK_HOME für diesen Treffer (nur remote)",
   "settings.cliSessionsSource": "Scannen {path}",
-  "settings.cliSessionsIndependentNote": "Independent-Modus nutzt das App-agent-home (~/.grok-app/agent-home), das sich von Terminal-CLI-Sitzungen unter ~/.grok unterscheiden kann. Import kopiert Chatverlauf trotzdem in die App; Agent-Resume findet dieselbe On-Disk-Sitzung möglicherweise nicht, außer du wechselst zu Shared.",
+  "settings.cliSessionsIndependentNote": "Independent-Modus nutzt das App-agent-home (app data folder, not always ~/.grok-app), das sich von Terminal-CLI-Sitzungen unter ~/.grok unterscheiden kann. Import kopiert Chatverlauf trotzdem in die App; Agent-Resume findet dieselbe On-Disk-Sitzung möglicherweise nicht, außer du wechselst zu Shared.",
   "settings.cliSessionsDelete": "Löschen",
   "settings.cliSessionsDeleting": "Löschen…",
   "settings.cliSessionsDeleted": "„{title}“ von der Festplatte gelöscht",

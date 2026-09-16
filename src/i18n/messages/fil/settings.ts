@@ -67,7 +67,7 @@ export const filSettings = {
   "settings.cliSessionsSearchFallback": "Hindi available ang paghahanap ng CLI — fini-filter ang lokal na listahan",
   "settings.cliSessionsDeleteRemoteOnly": "Walang on-disk na folder sa ilalim ng GROK_HOME para sa hit na ito (remote lang)",
   "settings.cliSessionsSource": "Sini-scan ang {path}",
-  "settings.cliSessionsIndependentNote": "Gumagamit ang independent mode ng app agent-home (~/.grok-app/agent-home), na maaaring naiiba sa mga session ng terminal CLI sa ilalim ng ~/.grok. Kinokopya pa rin ng import ang kasaysayan ng chat sa app; maaaring hindi mahanap ng resume ng agent ang parehong on-disk na session maliban kung lumipat ka sa shared mode.",
+  "settings.cliSessionsIndependentNote": "Gumagamit ang independent mode ng app agent-home (app data folder, not always ~/.grok-app), na maaaring naiiba sa mga session ng terminal CLI sa ilalim ng ~/.grok. Kinokopya pa rin ng import ang kasaysayan ng chat sa app; maaaring hindi mahanap ng resume ng agent ang parehong on-disk na session maliban kung lumipat ka sa shared mode.",
   "settings.cliSessionsDelete": "Burahin",
   "settings.cliSessionsDeleting": "Binubura…",
   "settings.cliSessionsDeleted": "Nabura ang “{title}” mula sa disk",

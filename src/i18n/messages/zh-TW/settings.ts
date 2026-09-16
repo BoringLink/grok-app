@@ -90,7 +90,7 @@ export const zhTWSettings = {
   "settings.cliSessionsSearchFallback": "CLI 搜尋不可用 — 正在篩選本機列表",
   "settings.cliSessionsDeleteRemoteOnly": "此結果在 GROK_HOME 下沒有本機目錄（僅遠端）",
   "settings.cliSessionsSource": "掃描路徑 {path}",
-  "settings.cliSessionsIndependentNote": "獨立模式使用應用程式 agent-home（~/.grok-app/agent-home），可能與終端機 CLI 的 ~/.grok 工作階段不一致。仍可匯入聊天紀錄到應用程式；若需與終端機同一 on-disk 工作階段繼續，請切換到共用模式。",
+  "settings.cliSessionsIndependentNote": "獨立模式使用應用程式 agent-home（應用資料目錄，不一定是 ~/.grok-app），可能與終端機 CLI 的 ~/.grok 工作階段不一致。仍可匯入聊天紀錄到應用程式；若需與終端機同一 on-disk 工作階段繼續，請切換到共用模式。",
   "settings.cliSessionsDelete": "刪除",
   "settings.cliSessionsDeleting": "刪除中…",
   "settings.cliSessionsDeleted": "已從磁碟刪除「{title}」",

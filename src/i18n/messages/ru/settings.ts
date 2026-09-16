@@ -67,7 +67,7 @@ export const ruSettings = {
   "settings.cliSessionsSearchFallback": "Поиск CLI недоступен — фильтруется локальный список",
   "settings.cliSessionsDeleteRemoteOnly": "Нет папки на диске в GROK_HOME для этого попадания (только удалённая)",
   "settings.cliSessionsSource": "Сканирование {path}",
-  "settings.cliSessionsIndependentNote": "Независимый режим использует agent-home приложения (~/.grok-app/agent-home), который может отличаться от сессий терминального CLI в ~/.grok. Импорт всё равно копирует историю чата в приложение; возобновление агента может не найти ту же сессию на диске, пока не переключитесь на общий режим.",
+  "settings.cliSessionsIndependentNote": "Независимый режим использует agent-home приложения (app data folder, not always ~/.grok-app), который может отличаться от сессий терминального CLI в ~/.grok. Импорт всё равно копирует историю чата в приложение; возобновление агента может не найти ту же сессию на диске, пока не переключитесь на общий режим.",
   "settings.cliSessionsDelete": "Удалить",
   "settings.cliSessionsDeleting": "Удаление…",
   "settings.cliSessionsDeleted": "«{title}» удалена с диска",

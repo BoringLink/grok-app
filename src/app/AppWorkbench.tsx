@@ -186,7 +186,7 @@ import {
 } from "@/lib/sessionArchiveAge";
 import {
   collapsedIdsFromExpandMap,
-  expandMapFromCollapsedIds,
+  hydrateSidebarExpandMap,
   sameCollapsedIdSet,
 } from "@/lib/sidebarExpand";
 import {
@@ -2684,14 +2684,28 @@ export function AppWorkbench() {
         }
         return null;
       });
-      // Restore sidebar project collapse (missing id ⇒ expanded).
-      setExpandedProjects(
-        expandMapFromCollapsedIds(
-          (p as Project[]).map((proj) => proj.id),
-          settings.sidebarCollapsedProjectIds,
-        ),
-      );
-      expandedProjectsHydratedRef.current = true;
+      // Restore sidebar project collapse once (missing id ⇒ expanded).
+      if (!expandedProjectsHydratedRef.current) {
+        const hyd = hydrateSidebarExpandMap({
+          projectIds: (p as Project[]).map((proj) => proj.id),
+          collapsedIds: settings.sidebarCollapsedProjectIds,
+          migrated: settings.sidebarCollapseDefaultMigrated === true,
+        });
+        setExpandedProjects(hyd.map);
+        expandedProjectsHydratedRef.current = true;
+        if (hyd.shouldPersistMigration) {
+          void api
+            .settingsGet()
+            .then((s) =>
+              api.settingsSet({
+                ...s,
+                sidebarCollapseDefaultMigrated: true,
+                sidebarCollapsedProjectIds: collapsedIdsFromExpandMap(hyd.map),
+              }),
+            )
+            .catch(() => {});
+        }
+      }
       // Restore Default workspace section (missing / undefined ⇒ open).
       // Only hydrate once so later refreshLists does not clobber in-session toggles.
       if (!historyOpenHydratedRef.current) {
