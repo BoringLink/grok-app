@@ -60,7 +60,7 @@
 
 ## ✨ Key Highlights
 
-- ⚡ **Native Build Sessions** — Deep integration with `grok agent stdio` via the ACP protocol. Granular permission tiers (Ask, Allow Once, Allow for Session, and YOLO mode) with Grok 4.6 Extra High (`xhigh`) enabled by default.
+- ⚡ **Native Build Sessions** — Deep integration with `grok agent stdio` via the ACP protocol. Granular permission tiers (Ask, Allow Once, Allow for Session, and YOLO mode) with Grok 4.7 Extra High (`xhigh`) enabled by default. Grok 4.7 Fast is also selectable.
 - 🗂️ **Multi-Project Workbench** — Isolated project workspaces, agent status Kanban, one-click Git Worktree switching, session forking from any assistant reply, and cross-session context attachment.
 - 📝 **Files & Creation Loop** — Embedded CodeMirror 6 editor with instant disk synchronization, visual Git Diff review, comprehensive media preview (images, video, audio, PDF, Office documents), and AI image/video generation via Imagine.
 - 📲 **Omnichannel Remote IM** — Unified bridge connecting your local agent to Feishu/Lark, Telegram, Discord, Slack, DingTalk, WeCom, WeChat personal, QQ, Matrix, LINE, and Weibo; token-gated mobile web mirror and loopback REST session API.

@@ -262,7 +262,7 @@ pub fn input_references_official(input: &ModelsAuxSetInput) -> bool {
     })
 }
 
-/// Write a **complete** `[model.grok-4.6]` so aux calls do not inherit the
+/// Write a **complete** `[model.grok-4.7]` so aux calls do not inherit the
 /// active custom relay's `base_url` (the bug that sent official Grok to DeepSeek).
 ///
 /// Fields always upserted: `model`, `name`, `base_url`, `api_backend`.
@@ -271,7 +271,7 @@ pub fn ensure_official_aux_model_section(text: &str, api_key: Option<&str>) -> S
     let table = format!("model.{OFFICIAL_CATALOG_MODEL}");
     let mut out = text.to_string();
     out = set_table_string(&out, &table, "model", OFFICIAL_CATALOG_MODEL);
-    out = set_table_string(&out, &table, "name", "Grok 4.6");
+    out = set_table_string(&out, &table, "name", "Grok 4.7");
     out = set_table_string(&out, &table, "base_url", OFFICIAL_GROK_BASE_URL);
     out = set_table_string(&out, &table, "api_backend", OFFICIAL_GROK_API_BACKEND);
     if let Some(key) = api_key.map(str::trim).filter(|k| !k.is_empty()) {
@@ -540,7 +540,7 @@ pub fn apply_save_grok() -> Result<ModelsAuxState, String> {
     let path = resolve_writable_config_path(&settings.session_data_mode)?;
     let mut existing = std::fs::read_to_string(&path).unwrap_or_default();
 
-    // Official catalog id as aux requires a full [model.grok-4.6] section with
+    // Official catalog id as aux requires a full [model.grok-4.7] section with
     // the Grok base_url — never inherit DeepSeek/Amux/etc. base_url.
     if is_official_catalog_model(&target) {
         existing = ensure_official_reachable(&existing, &list.active_source)?;

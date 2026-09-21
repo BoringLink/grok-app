@@ -9294,7 +9294,7 @@ export function AppWorkbench() {
 
   /**
    * Active effort catalog for the composer: custom channel efforts, else the
-   * selected official model (grok-4.6 is 4-tier with xhigh).
+   * selected official model (Grok 4.7 / Fast / 4.6 are 4-tier with xhigh).
    */
   const officialEffortCatalog = useMemo(
     () =>

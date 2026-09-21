@@ -26,7 +26,7 @@ the later progressive-search implementation.
 
 The X picker exposes a persisted route setting. Missing or unknown settings use
 CLI. Only `responses_preview` enables the fixed Build compatibility endpoint
-`https://cli-chat-proxy.grok.com/v1/responses`, model `grok-4.6`, effort `low`, and
+`https://cli-chat-proxy.grok.com/v1/responses`, model `grok-4.7`, effort `low`, and
 the read-only `x_search` tool. Requests set `store: false`; no endpoint/model/tool
 or bearer is accepted from the frontend, and bearer redirects are disabled.
 
@@ -173,7 +173,7 @@ tests do not claim live provider availability or account validation.
 Web discovery is an independent source and never enters or augments X results.
 The renderer supplies only a bounded query and request ID. The Host reads the
 existing Grok Build OAuth credential and calls the fixed
-`https://cli-chat-proxy.grok.com/v1/responses` endpoint with `grok-4.6`, low
+`https://cli-chat-proxy.grok.com/v1/responses` endpoint with `grok-4.7`, low
 effort, `store: false`, a strict source-page JSON schema, and only the hosted
 `web_search` tool. Endpoint, model, tool limits, bearer token and headers are
 not configurable from IPC, and redirects never receive the bearer token.

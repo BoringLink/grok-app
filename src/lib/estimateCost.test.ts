@@ -21,6 +21,10 @@ describe("resolveModelRates", () => {
   it("matches exact and prefix families", () => {
     expect(resolveModelRates("grok-4.5")?.key).toBe("grok-4.5");
     expect(resolveModelRates("grok-4.6")?.key).toBe("grok-4.6");
+    expect(resolveModelRates("grok-4.7")?.key).toBe("grok-4.7");
+    expect(resolveModelRates("grok-4.7-build-fast")?.key).toBe(
+      "grok-4.7-build-fast",
+    );
     expect(resolveModelRates("grok-3-mini-fast")?.key).toBe("grok-3-mini");
     expect(resolveModelRates("provider/grok-2-vision-1212")?.key).toBe(
       "grok-2-vision",
@@ -60,6 +64,23 @@ describe("estimateCostUsd", () => {
     expect(r.inputUsd).toBeCloseTo(2, 6);
     expect(r.outputUsd).toBeCloseTo(6, 6);
     expect(r.totalUsd).toBeCloseTo(8, 6);
+  });
+
+  it("prices Grok 4.7 like 4.6 and Fast at twice that", () => {
+    const standard = estimateCostUsd(
+      { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+      "grok-4.7",
+    );
+    expect(standard.modelKey).toBe("grok-4.7");
+    expect(standard.totalUsd).toBeCloseTo(8, 6);
+    const fast = estimateCostUsd(
+      { inputTokens: 1_000_000, outputTokens: 1_000_000 },
+      "grok-4.7-build-fast",
+    );
+    expect(fast.modelKey).toBe("grok-4.7-build-fast");
+    expect(fast.inputUsd).toBeCloseTo(4, 6);
+    expect(fast.outputUsd).toBeCloseTo(12, 6);
+    expect(fast.totalUsd).toBeCloseTo(16, 6);
   });
 
   it("accepts a bare total and blends rates", () => {

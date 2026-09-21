@@ -23,7 +23,7 @@ use crate::wallpaper_source::{
 };
 
 pub(crate) const RESPONSES_ENDPOINT: &str = "https://cli-chat-proxy.grok.com/v1/responses";
-pub(crate) const RESPONSES_MODEL: &str = "grok-4.6";
+pub(crate) const RESPONSES_MODEL: &str = "grok-4.7";
 pub(crate) const RESPONSES_EFFORT: &str = "low";
 pub(crate) const RESPONSES_LANE_COUNT: usize = 3;
 pub(crate) const RESPONSES_LANE_TARGET_COUNT: usize = 8;

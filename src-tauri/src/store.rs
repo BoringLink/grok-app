@@ -58,8 +58,8 @@ pub struct ComposerPrefs {
 impl Default for ComposerPrefs {
     fn default() -> Self {
         Self {
-            model_id: "grok-4.6".into(),
-            // Grok 4.6 product default (Extra High).
+            model_id: DEFAULT_OFFICIAL_MODEL_ID.into(),
+            // Official product default effort stays Extra High on 4.7 / 4.6.
             effort: "xhigh".into(),
             mode: "agent".into(),
             permission_policy: "ask".into(),
@@ -530,6 +530,11 @@ pub struct AppSettings {
     /// Missing field deserializes as false so existing installs migrate once.
     #[serde(default)]
     pub official_model_default_migrated: bool,
+    /// One-shot: product official default grok-4.6 → grok-4.7.
+    /// Stays false until a CLI `models_cache.json` actually lists `grok-4.7`,
+    /// so an older CLI is not asked to spawn an unknown id.
+    #[serde(default)]
+    pub official_model_47_migrated: bool,
     /// One-shot: official grok-4.6 product effort high → xhigh.
     #[serde(default)]
     pub official_effort_xhigh_migrated: bool,
@@ -845,7 +850,7 @@ impl Default for AppSettings {
             wsl_distro: None,
             wsl_cli_path: None,
             permission_policy: "ask".into(),
-            model_id: Some("grok-4.6".into()),
+            model_id: Some(DEFAULT_OFFICIAL_MODEL_ID.into()),
             effort: Some("xhigh".into()),
             mode: "agent".into(),
             onboarding_done: false,
@@ -896,6 +901,7 @@ impl Default for AppSettings {
             // Fresh installs already use 1.0-aligned effort / workflows defaults.
             effort_default_migrated: true,
             official_model_default_migrated: true,
+            official_model_47_migrated: true,
             official_effort_xhigh_migrated: true,
             official_effort_xhigh_rows_migrated: true,
             workflows_default_migrated: true,
@@ -1151,6 +1157,26 @@ pub fn load_settings() -> AppSettings {
         s.official_model_default_migrated = true;
         let _ = write_json(&settings_file(), &s);
     }
+    // One-time: official catalog default grok-4.6 → grok-4.7. Unset / empty /
+    // the previous product default grok-4.6 lift. Explicit grok-4.5, Fast,
+    // and custom ids stay. Skip until the CLI cache lists grok-4.7.
+    if !s.official_model_47_migrated
+        && crate::models_catalog::official_caches_have_model(
+            &s.session_data_mode,
+            DEFAULT_OFFICIAL_MODEL_ID,
+        )
+    {
+        if let Some(next) = migrate_official_model_46_to_47(s.model_id.as_deref()) {
+            tracing::info!(
+                "settings migration: modelId {:?} → {} (Grok 4.7 default)",
+                s.model_id,
+                next
+            );
+            s.model_id = Some(next);
+        }
+        s.official_model_47_migrated = true;
+        let _ = write_json(&settings_file(), &s);
+    }
     // One-time: official 4.6 product effort high → xhigh. Unset / empty / the
     // previous product default high lift; deliberate low/medium/max stay.
     // Skip custom-provider route ids (not grok-* / empty).
@@ -1218,15 +1244,29 @@ pub fn migrate_legacy_effort_default(stored: Option<&str>) -> Option<String> {
     }
 }
 
-/// Product default official catalog model (Grok 4.6, 2026-08).
-pub const DEFAULT_OFFICIAL_MODEL_ID: &str = "grok-4.6";
+/// Previous product default. The 4.5 → 4.6 one-shot still lands here; a later
+/// one-shot lifts this id to [`DEFAULT_OFFICIAL_MODEL_ID`].
+const PREVIOUS_OFFICIAL_MODEL_ID: &str = "grok-4.6";
+
+/// Product default official catalog model (Grok 4.7, 2026-09).
+pub const DEFAULT_OFFICIAL_MODEL_ID: &str = "grok-4.7";
 
 /// One-shot official-model migration: lift unset / empty / legacy `"grok-4.5"`
-/// product default to [`DEFAULT_OFFICIAL_MODEL_ID`]. Explicit other ids stay.
+/// product default to [`PREVIOUS_OFFICIAL_MODEL_ID`]. Explicit other ids stay.
 pub fn migrate_legacy_official_model_default(stored: Option<&str>) -> Option<String> {
     match stored.map(str::trim).filter(|s| !s.is_empty()) {
+        None => Some(PREVIOUS_OFFICIAL_MODEL_ID.into()),
+        Some("grok-4.5") => Some(PREVIOUS_OFFICIAL_MODEL_ID.into()),
+        Some(_) => None,
+    }
+}
+
+/// One-shot: lift unset / empty / previous product default `"grok-4.6"` to
+/// [`DEFAULT_OFFICIAL_MODEL_ID`]. Explicit 4.5, Fast, and custom ids stay.
+pub fn migrate_official_model_46_to_47(stored: Option<&str>) -> Option<String> {
+    match stored.map(str::trim).filter(|s| !s.is_empty()) {
         None => Some(DEFAULT_OFFICIAL_MODEL_ID.into()),
-        Some("grok-4.5") => Some(DEFAULT_OFFICIAL_MODEL_ID.into()),
+        Some(PREVIOUS_OFFICIAL_MODEL_ID) => Some(DEFAULT_OFFICIAL_MODEL_ID.into()),
         Some(_) => None,
     }
 }
@@ -3081,7 +3121,7 @@ fn global_prefs(settings: &AppSettings) -> (String, String, String, String) {
             .model_id
             .clone()
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or_else(|| "grok-4.6".into()),
+            .unwrap_or_else(|| DEFAULT_OFFICIAL_MODEL_ID.into()),
         settings
             .effort
             .clone()
@@ -3714,7 +3754,8 @@ mod tests {
         assert!(s.official_model_default_migrated);
         assert!(s.workflows_default_migrated);
         assert_eq!(s.effort.as_deref(), Some("xhigh"));
-        assert_eq!(s.model_id.as_deref(), Some("grok-4.6"));
+        assert_eq!(s.model_id.as_deref(), Some("grok-4.7"));
+        assert!(s.official_model_47_migrated);
         assert!(s.official_effort_xhigh_migrated);
         assert!(s.official_effort_xhigh_rows_migrated);
         assert_eq!(s.preferred_agent, "");
@@ -3761,6 +3802,29 @@ mod tests {
             migrate_legacy_official_model_default(Some("custom-relay")),
             None
         );
+    }
+
+    #[test]
+    fn migrate_official_model_46_lifts_only_previous_default() {
+        assert_eq!(
+            migrate_official_model_46_to_47(None).as_deref(),
+            Some("grok-4.7")
+        );
+        assert_eq!(
+            migrate_official_model_46_to_47(Some("")).as_deref(),
+            Some("grok-4.7")
+        );
+        assert_eq!(
+            migrate_official_model_46_to_47(Some("  grok-4.6  ")).as_deref(),
+            Some("grok-4.7")
+        );
+        assert_eq!(migrate_official_model_46_to_47(Some("grok-4.7")), None);
+        assert_eq!(
+            migrate_official_model_46_to_47(Some("grok-4.7-build-fast")),
+            None
+        );
+        assert_eq!(migrate_official_model_46_to_47(Some("grok-4.5")), None);
+        assert_eq!(migrate_official_model_46_to_47(Some("custom-relay")), None);
     }
 
     #[test]
@@ -3811,6 +3875,11 @@ mod tests {
     fn clamp_effort_drops_xhigh_on_4_5() {
         assert_eq!(clamp_effort_for_model("grok-4.5", "xhigh"), "high");
         assert_eq!(clamp_effort_for_model("grok-4.6", "xhigh"), "xhigh");
+        assert_eq!(clamp_effort_for_model("grok-4.7", "xhigh"), "xhigh");
+        assert_eq!(
+            clamp_effort_for_model("grok-4.7-build-fast", "xhigh"),
+            "xhigh"
+        );
         assert_eq!(clamp_effort_for_model("custom-relay", "xhigh"), "xhigh");
     }
 

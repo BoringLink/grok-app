@@ -13,33 +13,45 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.37] - 2026-09-22
+
+> **Highlight:** New chats can use Grok 4.7, and the live reply stays pinned.
+>
+> **中文 · 亮点：** 新对话可用 Grok 4.7，生成中的回复会继续贴底。
+
+### Added
+- Composer lists Grok 4.7 and Grok 4.7 Fast. New chats start on 4.7 once the CLI lists it. Fast costs twice the token price.
+
+**中文 · 新增**
+- 模型菜单可选 Grok 4.7 和 Grok 4.7 Fast。CLI 列出 4.7 后，新对话默认用它。Fast 的 token 价格是两倍。
+
 ### Changed
-- README explains Windows antivirus false positives on unsigned builds (#1240).
+- README explains antivirus false positives on unsigned Windows builds.
 
 **中文 · 变更**
-- README 说明未签名 Windows 包可能被杀毒误报（#1240）。
+- README 说明未签名的 Windows 包可能被杀毒软件误报。
 
 ### Fixed
-- Auto-collapsed thinking no longer drops follow of the live reply (#1246).
-- A chat with a bad stored message no longer blanks the whole thread (#1242).
-- New chats reuse the project's extra folders, so extra-root write still works (#1233).
-- Detaching extra folders from a chat stays detached after reconnect (#1233).
-- Deleting a chat also removes its CLI session, so Import will not resurrect it (#1236).
-- Archive notes that only the App sidebar hides; the CLI list still has the chat (#1236).
-- Approve-for-me remembers that tool for the rest of the session, not one command (#1241).
-- Chat LaTeX renders `\[…\]` and one-line `[ formula ]` again (#1238).
-- Reaching the chat tail on macOS no longer jumps back into history (#1239).
+- New chats keep the project's extra folders.
+- Removing extra folders from a chat stays removed after reconnect.
+- Deleting a chat also removes its CLI session, so Import cannot bring it back.
+- Archive explains it only hides the chat in the app sidebar.
+- Approve-for-me remembers a tool for the rest of the session.
+- Math formulas render again, including one-line bracket formulas.
+- Scrolling to the latest message on macOS stays there.
+- Thinking collapse keeps following the latest reply.
+- A broken stored message no longer blanks the whole chat.
 
 **中文 · 修复**
-- 思考块自动折叠后，对话会继续贴着最新回复（#1246）。
-- 某条消息字段异常时，不再把整场聊天渲染打成空白（#1242）。
-- 同一项目的新对话会带上已配置的附加根，跨目录写入不再只对第一场聊天生效（#1233）。
-- 从本会话解除附加根后，重连不会再自动绑回去（#1233）。
-- 删除对话时会去掉对应的 CLI 会话，批量导入不会再把已删对话救回来（#1236）。
-- 归档会说明只藏 App 侧栏，终端 CLI 列表里仍在（#1236）。
-- 「替我审批」会记住本会话已允许的工具，不必每条命令再点一次（#1241）。
-- 对话里的 `\[…\]` 和一行 `[ 公式 ]` 会再渲染成公式（#1238）。
-- 在 Mac 上滚到聊天底部后，不再弹回某条历史消息（#1239）。
+- 同一项目的新对话会带上已添加的附加文件夹。
+- 从本场对话移除附加文件夹后，重连不会再加回去。
+- 删除对话也会删掉对应的 CLI 会话，导入不会再把它找回来。
+- 归档会说明只是在应用侧栏里隐藏这场对话。
+- 「替我审批」会记住本场对话已允许的工具。
+- 数学公式会再渲染，包括单独一行的方括号公式。
+- 在 Mac 上滚到最新消息后会停在那里。
+- 思考块折叠后，对话仍会跟着最新回复。
+- 某条已保存消息异常时，不再把整场对话打成空白。
 
 ## [0.2.36] - 2026-09-17
 

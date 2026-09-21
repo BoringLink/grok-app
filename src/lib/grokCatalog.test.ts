@@ -81,6 +81,14 @@ describe("effortsForModel", () => {
     expect(list.find((e) => e.isDefault)?.id).toBe("xhigh");
   });
 
+  it("falls back to 4-tier xhigh for grok-4.7 and Fast", () => {
+    for (const id of ["grok-4.7", "grok-4.7-build-fast"]) {
+      const list = effortsForModel({ id, label: id });
+      expect(list.map((e) => e.id)).toEqual(["low", "medium", "high", "xhigh"]);
+      expect(list.find((e) => e.isDefault)?.id).toBe("xhigh");
+    }
+  });
+
   it("prefers explicit catalogEfforts arg over model", () => {
     const override = [{ id: "only" }];
     expect(effortsForModel(modelWithEfforts, override)).toEqual(override);
@@ -158,10 +166,18 @@ describe("effortCatalogForRoute", () => {
 });
 
 describe("official catalog fallback", () => {
-  it("defaults to grok-4.6 and keeps grok-4.5 selectable", () => {
-    expect(DEFAULT_MODEL_ID).toBe("grok-4.6");
-    expect(GROK_BUILD_MODELS.map((m) => m.id)).toEqual(["grok-4.6", "grok-4.5"]);
-    expect(GROK_BUILD_MODELS.find((m) => m.isDefault)?.id).toBe("grok-4.6");
+  it("defaults to grok-4.7 and keeps Fast, 4.6, and 4.5 selectable", () => {
+    expect(DEFAULT_MODEL_ID).toBe("grok-4.7");
+    expect(GROK_BUILD_MODELS.map((m) => m.id)).toEqual([
+      "grok-4.7",
+      "grok-4.7-build-fast",
+      "grok-4.6",
+      "grok-4.5",
+    ]);
+    expect(GROK_BUILD_MODELS.find((m) => m.isDefault)?.id).toBe("grok-4.7");
+    expect(
+      GROK_BUILD_MODELS.find((m) => m.id === "grok-4.7-build-fast")?.label,
+    ).toBe("Grok 4.7 Fast");
   });
 });
 

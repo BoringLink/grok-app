@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
@@ -81,9 +81,108 @@ fn user_grok_home() -> PathBuf {
 }
 
 /// Newest official catalog id used as the empty-cache / preferred default.
-pub const OFFICIAL_FALLBACK_MODEL_ID: &str = "grok-4.6";
-const OFFICIAL_FALLBACK_MODEL_LABEL: &str = "Grok 4.6";
-const OFFICIAL_PREFERRED_IDS: &[&str] = &["grok-4.6", "grok-4.5"];
+pub const OFFICIAL_FALLBACK_MODEL_ID: &str = "grok-4.7";
+const OFFICIAL_FALLBACK_MODEL_LABEL: &str = "Grok 4.7";
+const OFFICIAL_FAST_MODEL_ID: &str = "grok-4.7-build-fast";
+const OFFICIAL_FAST_MODEL_LABEL: &str = "Grok 4.7 Fast";
+/// Prefer standard 4.7 over Fast (2× price, not in the free tier), then older ids.
+const OFFICIAL_PREFERRED_IDS: &[&str] =
+    &["grok-4.7", "grok-4.7-build-fast", "grok-4.6", "grok-4.5"];
+
+fn grok_45_fallback_efforts() -> Vec<ReasoningEffort> {
+    vec![
+        ReasoningEffort {
+            id: "low".into(),
+            value: "low".into(),
+            label: "Low Effort".into(),
+            description: "Quick, fast implementations".into(),
+            is_default: false,
+        },
+        ReasoningEffort {
+            id: "medium".into(),
+            value: "medium".into(),
+            label: "Medium Effort".into(),
+            description: "Balanced effort with standard implementation and testing".into(),
+            is_default: false,
+        },
+        ReasoningEffort {
+            id: "high".into(),
+            value: "high".into(),
+            label: "High Effort".into(),
+            description: "Higher implementation quality with extensive reasoning".into(),
+            is_default: true,
+        },
+    ]
+}
+
+fn insert_fallback_model(
+    by_id: &mut BTreeMap<String, AvailableModel>,
+    id: &str,
+    label: &str,
+    efforts: Vec<ReasoningEffort>,
+) {
+    by_id.insert(
+        id.into(),
+        AvailableModel {
+            id: id.into(),
+            label: label.into(),
+            source: "official".into(),
+            is_default: false,
+            reasoning_efforts: efforts,
+            context_window: Some(500_000),
+        },
+    );
+}
+
+fn insert_static_fallback(by_id: &mut BTreeMap<String, AvailableModel>) {
+    insert_fallback_model(
+        by_id,
+        OFFICIAL_FALLBACK_MODEL_ID,
+        OFFICIAL_FALLBACK_MODEL_LABEL,
+        official_fallback_efforts(),
+    );
+    insert_fallback_model(
+        by_id,
+        OFFICIAL_FAST_MODEL_ID,
+        OFFICIAL_FAST_MODEL_LABEL,
+        official_fallback_efforts(),
+    );
+    insert_fallback_model(by_id, "grok-4.6", "Grok 4.6", official_fallback_efforts());
+    insert_fallback_model(by_id, "grok-4.5", "Grok 4.5", grok_45_fallback_efforts());
+}
+
+/// True when a models cache file lists `model_id` and it is not hidden.
+pub fn cache_file_has_model(path: &Path, model_id: &str) -> bool {
+    let id = model_id.trim();
+    if id.is_empty() {
+        return false;
+    }
+    let Ok(raw) = fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return false;
+    };
+    let Some(body) = v.get("models").and_then(|m| m.get(id)) else {
+        return false;
+    };
+    let hidden = body
+        .pointer("/info/hidden")
+        .and_then(|x| x.as_bool())
+        .unwrap_or(false);
+    !hidden
+}
+
+/// True when the agent home for this session mode, or `~/.grok`, lists `model_id`.
+/// Does not call [`crate::store::load_settings`] (that migration calls this).
+pub fn official_caches_have_model(session_data_mode: &str, model_id: &str) -> bool {
+    let agent_cache =
+        crate::paths::resolve_agent_grok_home(session_data_mode).join("models_cache.json");
+    if cache_file_has_model(&agent_cache, model_id) {
+        return true;
+    }
+    cache_file_has_model(&user_grok_home().join("models_cache.json"), model_id)
+}
 
 fn official_fallback_efforts() -> Vec<ReasoningEffort> {
     vec![
@@ -315,19 +414,10 @@ pub fn list_available_models() -> AvailableModelsResult {
         }
     }
 
-    // Hard fallback — known-good official default when cache is empty / offline.
+    // Hard fallback — known official ids when cache is empty / offline.
+    // Live CLI cache replaces this list, including Fast when the CLI ships it.
     if by_id.is_empty() {
-        by_id.insert(
-            OFFICIAL_FALLBACK_MODEL_ID.into(),
-            AvailableModel {
-                id: OFFICIAL_FALLBACK_MODEL_ID.into(),
-                label: OFFICIAL_FALLBACK_MODEL_LABEL.into(),
-                source: "official".into(),
-                is_default: true,
-                reasoning_efforts: official_fallback_efforts(),
-                context_window: Some(500_000),
-            },
-        );
+        insert_static_fallback(&mut by_id);
     }
 
     // Overlay live windows discovered during `initialize` (ClaudeCode).
@@ -596,5 +686,65 @@ mod tests {
 
         let guard = LIVE_CONTEXT_WINDOWS.lock().expect("not poisoned");
         assert_eq!(guard.get(&unique), Some(&999999));
+    }
+
+    fn stub_model(id: &str) -> AvailableModel {
+        AvailableModel {
+            id: id.into(),
+            label: id.into(),
+            source: "official".into(),
+            is_default: false,
+            reasoning_efforts: Vec::new(),
+            context_window: Some(500_000),
+        }
+    }
+
+    #[test]
+    fn preferred_official_picks_47_before_fast() {
+        let mut by_id = BTreeMap::new();
+        for id in ["grok-4.5", "grok-4.6", "grok-4.7", "grok-4.7-build-fast"] {
+            by_id.insert(id.to_string(), stub_model(id));
+        }
+        assert_eq!(preferred_official_model_id(&by_id, None), "grok-4.7");
+        assert_eq!(
+            preferred_official_model_id(&by_id, Some("grok-4.7-build-fast")),
+            "grok-4.7-build-fast"
+        );
+        assert_eq!(
+            preferred_official_model_id(&by_id, Some("grok-4.6")),
+            "grok-4.6"
+        );
+        assert_eq!(
+            preferred_official_model_id(&by_id, Some("not-in-cache")),
+            "grok-4.7"
+        );
+    }
+
+    #[test]
+    fn cache_file_has_model_skips_hidden() {
+        let dir = std::env::temp_dir().join(format!(
+            "grok-app-models-has-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join("models_cache.json");
+        fs::write(
+            &path,
+            r#"{
+              "models": {
+                "grok-4.7": { "info": { "hidden": false } },
+                "grok-4.7-build-fast": { "info": { "hidden": true } }
+              }
+            }"#,
+        )
+        .unwrap();
+        assert!(cache_file_has_model(&path, "grok-4.7"));
+        assert!(!cache_file_has_model(&path, "grok-4.7-build-fast"));
+        assert!(!cache_file_has_model(&path, "grok-4.6"));
+        let _ = fs::remove_dir_all(&dir);
     }
 }

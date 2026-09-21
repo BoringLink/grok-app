@@ -75,7 +75,7 @@ export const GROK_CHANNEL_EFFORTS: ProviderEffortEntry[] = [
 ];
 
 /**
- * Official Grok 4.6 effort enum (ids, display names, default).
+ * Official Grok 4.7 / 4.6 effort enum (ids, display names, default).
  * Grok relay presets (Amux / Yun / AI98PRO) use this instead of
  * `GROK_CHANNEL_EFFORTS`.
  */
@@ -208,23 +208,30 @@ export const ORCAROUTER_MODELS: ProviderModelEntry[] = [
   },
 ];
 
-/** Amux OpenAI-compatible relay (official Grok catalog ids). */
-export const AMUX_MODELS: ProviderModelEntry[] = [
+/**
+ * Public xAI API ids for Grok relays. Fast (`grok-4.7-build-fast`) is Grok
+ * Build / Cursor only and is not listed here.
+ */
+const GROK_RELAY_MODELS: ProviderModelEntry[] = [
+  { id: "grok-4.7", name: "Grok 4.7", supportsVision: true },
   { id: "grok-4.6", name: "Grok 4.6", supportsVision: true },
   { id: "grok-4.5", name: "Grok 4.5", supportsVision: true },
 ];
+
+/** Amux OpenAI-compatible relay (official Grok catalog ids). */
+export const AMUX_MODELS: ProviderModelEntry[] = GROK_RELAY_MODELS.map((m) => ({
+  ...m,
+}));
 
 /** Yun API (云驿 yunyi) OpenAI-compatible relay. */
-export const YUN_API_MODELS: ProviderModelEntry[] = [
-  { id: "grok-4.6", name: "Grok 4.6", supportsVision: true },
-  { id: "grok-4.5", name: "Grok 4.5", supportsVision: true },
-];
+export const YUN_API_MODELS: ProviderModelEntry[] = GROK_RELAY_MODELS.map(
+  (m) => ({ ...m }),
+);
 
 /** AI98PRO OpenAI-compatible Grok relay. */
-export const AI98PRO_MODELS: ProviderModelEntry[] = [
-  { id: "grok-4.6", name: "Grok 4.6", supportsVision: true },
-  { id: "grok-4.5", name: "Grok 4.5", supportsVision: true },
-];
+export const AI98PRO_MODELS: ProviderModelEntry[] = GROK_RELAY_MODELS.map(
+  (m) => ({ ...m }),
+);
 
 /**
  * Volcengine Ark (火山方舟) Coding Plan — OpenAI-compatible chat_completions

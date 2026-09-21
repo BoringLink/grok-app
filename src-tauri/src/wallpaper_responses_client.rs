@@ -12,7 +12,7 @@ use crate::account::{
 use crate::wallpaper_source::WallpaperSearchCancellation;
 
 pub(crate) const ENDPOINT: &str = "https://cli-chat-proxy.grok.com/v1/responses";
-pub(crate) const MODEL: &str = "grok-4.6";
+pub(crate) const MODEL: &str = "grok-4.7";
 pub(crate) const EFFORT: &str = "low";
 const CLIENT_MODE: &str = "cli";
 const CLIENT_IDENTIFIER: &str = "grok-shell";

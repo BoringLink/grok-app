@@ -51,6 +51,7 @@ describe("providerPresets", () => {
     expect(amux!.baseUrl).toBe("https://api.amux.ai/v1");
     expect(amux!.apiBackend).toBe("responses");
     expect(AMUX_MODELS).toEqual([
+      { id: "grok-4.7", name: "Grok 4.7", supportsVision: true },
       { id: "grok-4.6", name: "Grok 4.6", supportsVision: true },
       { id: "grok-4.5", name: "Grok 4.5", supportsVision: true },
     ]);
@@ -85,6 +86,7 @@ describe("providerPresets", () => {
     expect(yun).toBeDefined();
     expect(yun!.baseUrl).toBe("https://api.yunyi.ai/v1");
     expect(YUN_API_MODELS).toEqual([
+      { id: "grok-4.7", name: "Grok 4.7", supportsVision: true },
       { id: "grok-4.6", name: "Grok 4.6", supportsVision: true },
       { id: "grok-4.5", name: "Grok 4.5", supportsVision: true },
     ]);
@@ -217,7 +219,7 @@ describe("providerPresets", () => {
     expect(ark!.efforts.find((e) => e.isDefault)?.id).toBe("medium");
   });
 
-  it("ships AI98PRO with short id, Grok 4.6/4.5, Responses, and vision", () => {
+  it("ships AI98PRO with short id, Grok 4.7/4.6/4.5, Responses, and vision", () => {
     const p = findProviderPreset("ai98pro");
     expect(p).toBeDefined();
     expect(findProviderPreset("AI98PRO")?.id).toBe("ai98pro");
@@ -228,6 +230,7 @@ describe("providerPresets", () => {
     expect(p!.supportsVision).toBe(true);
     expect(p!.brandId).toBeUndefined();
     expect(AI98PRO_MODELS).toEqual([
+      { id: "grok-4.7", name: "Grok 4.7", supportsVision: true },
       { id: "grok-4.6", name: "Grok 4.6", supportsVision: true },
       { id: "grok-4.5", name: "Grok 4.5", supportsVision: true },
     ]);

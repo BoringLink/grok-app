@@ -9,7 +9,7 @@
 | 来源 | 说明 |
 |------|------|
 | `models_cache.json` | CLI 官方目录 |
-| 静态兜底 | `grok-4.6`（默认）+ `grok-4.5` |
+| 静态兜底 | `grok-4.7`（默认）+ `grok-4.7-build-fast` + `grok-4.6` + `grok-4.5` |
 
 探测：`scripts/probe-models.sh`。Host：`models_list_available`。
 
@@ -26,10 +26,10 @@ Flags **必须在** `stdio` 之前。连接后 `session/set_model` 再对齐一�
 CLI `models_cache.json` 每模型可带 `info.reasoning_efforts: [{id,value,label,description,default}]`。Host 经 `AvailableModel.reasoningEfforts`（`isDefault`）下发。
 
 Composer **UI 阶梯**统一为 4 档（低 → 高）：**低 / 中 / 高 / 极高**。  
-3 档模型（Grok 4.5）不展示「极高」；4 档官方模型（Grok 4.6）展示极高并 spawn `xhigh`。选中后映射为该模型真实 spawn / `reasoning_effort` 值。  
+3 档模型（Grok 4.5）不展示「极高」；4 档官方模型（Grok 4.7、Grok 4.7 Fast、Grok 4.6）展示极高并 spawn `xhigh`。选中后映射为该模型真实 spawn / `reasoning_effort` 值。  
 自定义通道若只配了部分 id（如 `low` / `high` / `max`，没有 `medium`）：**按 id 对号入座，缺档不展示**。不要当成 DeepSeek（DeepSeek 才把 `high` 映射到「中」）。同一 spawn id 不得同时勾选两档。
 
-| UI 阶梯 | Grok 4.5 spawn | Grok 4.6 spawn | Grok 自定义(4档) | DeepSeek spawn |
+| UI 阶梯 | Grok 4.5 spawn | Grok 4.7 / Fast / 4.6 spawn | Grok 自定义(4档) | DeepSeek spawn |
 |---------|----------------|----------------|------------------|----------------|
 | 低 | `low` | `low` | `low` | `low` |
 | 中 | `medium` | `medium` | `medium` | `high` |
@@ -40,15 +40,15 @@ Composer **UI 阶梯**统一为 4 档（低 → 高）：**低 / 中 / 高 / 极
 
 1. **自定义通道 active** → 该提供商的 `efforts`（`app_efforts`）
 2. 否则官方 catalog 的 `reasoningEfforts`（**以 CLI `models_cache` / `isDefault` 为准**）
-3. 再回退：`grok-4.6` → `GROK_4_6_EFFORTS`（`low` · `medium` · `high` · `xhigh`，默认 **xhigh**）；其余 → `GROK_BUILD_EFFORTS`（`low` · `medium` · `high`，默认 **high**）
+3. 再回退：`grok-4.7` / `grok-4.7-build-fast` / `grok-4.6` → `GROK_4_6_EFFORTS`（`low` · `medium` · `high` · `xhigh`，默认 **xhigh**）；其余 → `GROK_BUILD_EFFORTS`（`low` · `medium` · `high`，默认 **high**）
 
-自定义通道默认档（`GROK_CHANNEL_EFFORTS`，空白自定义点「恢复 Grok 默认」得到）：`low` · `medium` · `high` · `max`——4 档，`max` 映射极高 UI 槽（catalog kind `tier4`）。**Grok 中转预设**（Amux / 云驿）与官方 4.6 对齐：`low` · `medium` · `high` · `xhigh`（默认 **xhigh**；显示名 Low / Medium / High / Extra high）。官方 `GROK_BUILD_EFFORTS` 仍为 3 档。
+自定义通道默认档（`GROK_CHANNEL_EFFORTS`，空白自定义点「恢复 Grok 默认」得到）：`low` · `medium` · `high` · `max`——4 档，`max` 映射极高 UI 槽（catalog kind `tier4`）。**Grok 中转预设**（Amux / 云驿 / AI98PRO）列出公开 API 的 `grok-4.7`、`grok-4.6`、`grok-4.5`（不含 Fast），思考档 `low` · `medium` · `high` · `xhigh`（默认 **xhigh**；显示名 Low / Medium / High / Extra high）。官方 `GROK_BUILD_EFFORTS` 仍为 3 档。
 
 展示标签走 UI 阶梯 i18n（`effort.low|medium|high|xhigh`），不直接用上游 id 文案。
 
 Spawn：`--reasoning-effort <spawnId>`。Host **透传** catalog / 通道 id（含 `max` 等），不硬白名单仅 low/medium/high。切换通道时按阶梯对齐（极高在 3 档上钳到「高」）。中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
 
-**产品默认（4.6）：** 官方冷启动与未设 prefs 时 model = **grok-4.6**、effort = **xhigh**。CLI cache 可能同时把 `xhigh` 和 `high` 标成 default，Host/前端归一为 **xhigh**。用户可在 Composer 降为 high/medium/low 以缩短 TTFT。旧安装若全局 model 仍为历史产品默认 `grok-4.5`，`load_settings` 一次性抬到 `grok-4.6`；官方路由上旧 effort `high` 一次性抬到 `xhigh`（显式 low/medium/max 不动）。**存量会话 / 项目行**同样在 `official_effort_xhigh_rows_migrated` 下把 `effort: high` 且 model 为空（继承官方 4.6）或 `grok-4.6` 的行抬到 `xhigh`；`grok-4.5` 与自定义 id 不动。切到无 xhigh 的 catalog 时 resolve 层钳到该模型最高档。旧 effort `medium` 仍一次性抬到 high（3 档兜底）。
+**产品默认（4.7）：** 官方冷启动与未设 prefs 时 model = **grok-4.7**、effort = **xhigh**。`grok-4.7-build-fast`（Grok 4.7 Fast）在官方菜单里可选，价格约为标准 4.7 的两倍，不进中转预设。CLI cache 可能同时把 `xhigh` 和 `high` 标成 default，Host/前端归一为 **xhigh**。用户可在 Composer 降为 high/medium/low 以缩短 TTFT。旧安装若全局 model 仍为历史产品默认 `grok-4.5`，先一次性抬到 `grok-4.6`；若 CLI `models_cache` 已列出 `grok-4.7`，再把空值或 `grok-4.6` 抬到 `grok-4.7`（显式 `grok-4.5`、Fast、自定义 id 不动；缓存还没有 4.7 时不抬，下次启动再试）。官方路由上旧 effort `high` 一次性抬到 `xhigh`（显式 low/medium/max 不动）。**存量会话 / 项目行**在 `official_effort_xhigh_rows_migrated` 下把 `effort: high` 且 model 为空或 `grok-4.6` 的行抬到 `xhigh`；`grok-4.5` 与自定义 id 不动。切到无 xhigh 的 catalog 时 resolve 层钳到该模型最高档。旧 effort `medium` 仍一次性抬到 high（3 档兜底）。
 
 **Apply honesty（UI）**：纯 helper `src/lib/modelEffortApply.ts`。Composer 改模型 / 推理后 toast + 菜单 footer 说明生效路径：
 

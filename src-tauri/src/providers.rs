@@ -191,13 +191,23 @@ pub struct ProvidersListResult {
 pub const OFFICIAL_DEFAULT_MODEL: &str = "grok";
 
 /// Catalog model preferred for composer / official spawn when none is set.
-pub const OFFICIAL_CATALOG_MODEL: &str = "grok-4.6";
+pub const OFFICIAL_CATALOG_MODEL: &str = "grok-4.7";
+/// Same model on faster Grok Build infrastructure. Twice the token price.
+/// Not on the public xAI API — official catalog / spawn only, never relay presets.
+pub const OFFICIAL_CATALOG_MODEL_FAST: &str = "grok-4.7-build-fast";
 /// Previous official catalog id — still a valid official aux / spawn target.
+pub const OFFICIAL_CATALOG_MODEL_46: &str = "grok-4.6";
+/// Older official catalog id — still a valid official aux / spawn target.
 pub const OFFICIAL_CATALOG_MODEL_LEGACY: &str = "grok-4.5";
 
 pub fn is_official_catalog_model(id: &str) -> bool {
-    let t = id.trim();
-    t == OFFICIAL_CATALOG_MODEL || t == OFFICIAL_CATALOG_MODEL_LEGACY
+    matches!(
+        id.trim(),
+        OFFICIAL_CATALOG_MODEL
+            | OFFICIAL_CATALOG_MODEL_FAST
+            | OFFICIAL_CATALOG_MODEL_46
+            | OFFICIAL_CATALOG_MODEL_LEGACY
+    )
 }
 
 /// Which inference channel the agent should use.
@@ -1369,7 +1379,7 @@ pub fn active_provider_append_prompt() -> Option<String> {
 /// Used when the App picker stores the request-body id (e.g. `qwen3.8-27b`)
 /// while Grok Build `--model` only understands the TOML table name
 /// (`qwen38-local`). Official catalog ids are never remapped, even when a
-/// relay also lists `grok-4.6` in `app_models`. Section ids themselves are
+/// relay also lists `grok-4.7` in `app_models`. Section ids themselves are
 /// excluded — callers use `is_custom_provider_id` for those.
 pub fn custom_provider_id_for_catalog_model(catalog_id: &str) -> Option<String> {
     let catalog_id = catalog_id.trim();
@@ -1395,7 +1405,7 @@ pub fn custom_provider_id_for_catalog_model(catalog_id: &str) -> Option<String> 
 ///   do not keep OIDC `auth.json` in GROK_HOME.
 /// - Explicit Grok Build proxy route: `AcpClient::spawn` replaces this alias
 ///   with the selected real catalog model after binding the native endpoint.
-/// - Official route: pass a catalog id (`grok-4.6`); needs `auth.json`.
+/// - Official route: pass a catalog id (`grok-4.7`); needs `auth.json`.
 /// - Official route + stale custom `app_models[].id` (#1000): map back to the
 ///   owning section id so spawn `--model` and later `session/set_model` agree.
 ///   CLI `--model` does not resolve App-only `app_models` ids; ACP set_model can,
@@ -3653,10 +3663,12 @@ context_window = "1000000"
             provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
             set_as_default: Some(false),
             create_only: Some(true),
-            models: Some(vec![ProviderModelEntry::named(
-                "qwen3.8-27b",
-                "Qwen3.8 27B",
-            )]),
+            models: Some(vec![
+                ProviderModelEntry::named("qwen3.8-27b", "Qwen3.8 27B"),
+                ProviderModelEntry::named("grok-4.7", "Grok 4.7"),
+                ProviderModelEntry::named("grok-4.7-build-fast", "Grok 4.7 Fast"),
+                ProviderModelEntry::named("grok-4.6", "Grok 4.6"),
+            ]),
             efforts: None,
             context_window: None,
             base_url_full_path: None,
@@ -3674,6 +3686,11 @@ context_window = "1000000"
         assert_eq!(agent_spawn_model_id("qwen3.8-27b"), "qwen38-local");
         // Official catalog ids must not remap through a relay that also lists them.
         assert_eq!(agent_spawn_model_id("grok-4.6"), "grok-4.6");
+        assert_eq!(agent_spawn_model_id("grok-4.7"), "grok-4.7");
+        assert_eq!(
+            agent_spawn_model_id("grok-4.7-build-fast"),
+            "grok-4.7-build-fast"
+        );
         // Bare section id on official route still falls back to catalog (legacy).
         assert_eq!(agent_spawn_model_id("qwen38-local"), OFFICIAL_CATALOG_MODEL);
 

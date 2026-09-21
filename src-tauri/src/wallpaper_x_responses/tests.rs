@@ -334,7 +334,7 @@ async fn wallpaper_x_responses_success_parses_gallery_and_fixed_contract() {
     assert_eq!(result.candidate_count, 1);
     assert_eq!(result.valid_count, 1);
     assert_eq!(result.search_calls, 2);
-    assert_eq!(result.model, "grok-4.6");
+    assert_eq!(result.model, RESPONSES_MODEL);
     assert_eq!(result.effort, "low");
     assert!(result.items[0].full_url.contains("name=orig"));
     assert_eq!(state.requests.load(Ordering::SeqCst), 1);
@@ -346,7 +346,7 @@ async fn wallpaper_x_responses_success_parses_gallery_and_fixed_contract() {
         .expect("request body lock")
         .clone()
         .expect("captured request");
-    assert_eq!(request.get("model"), Some(&json!("grok-4.6")));
+    assert_eq!(request.get("model"), Some(&json!(RESPONSES_MODEL)));
     assert_eq!(request.pointer("/reasoning/effort"), Some(&json!("low")));
     assert_eq!(request.get("store"), Some(&json!(false)));
     assert_eq!(request.get("max_tool_calls"), Some(&json!(2)));

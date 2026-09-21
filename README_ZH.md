@@ -60,7 +60,7 @@
 
 ## ✨ 核心亮点
 
-- ⚡ **原生 Build 会话** — 通过 ACP 协议直接托管 `grok agent stdio`，支持 Ask（默认确认）、单次允许、本会话允许与 YOLO（完全自主）权限分级，默认启用 Grok 4.6 极高推理（`xhigh`）。
+- ⚡ **原生 Build 会话** — 通过 ACP 协议直接托管 `grok agent stdio`，支持 Ask（默认确认）、单次允许、本会话允许与 YOLO（完全自主）权限分级，默认启用 Grok 4.7 极高推理（`xhigh`），也可选 Grok 4.7 Fast。
 - 🗂️ **多项目工作台** — 独立项目空间、智能体看板、Git 工作树（Worktree）一键无缝切换、从任意助手回复分叉（Fork）会话、将历史对话作为上下文一键引用。
 - 📝 **文件与创作闭环** — 内置 CodeMirror 代码与文本编辑器（支持实时保存与磁盘双向同步）、Git Diff 变更对比、图片/音视频/PDF/Office 丰富媒体预览，以及 Imagine 图像与视频生成。
 - 📲 **全渠道远程 IM 连接** — 内置远程控制桥接，支持飞书 (Lark)、Telegram、Discord、Slack、钉钉、企业微信、微信个人、QQ、Matrix、LINE 与微博；支持手机 Web 镜像及本地 REST API。
