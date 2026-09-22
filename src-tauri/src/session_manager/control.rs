@@ -396,6 +396,103 @@ impl SessionManager {
         Self::emit_state(app, &self.snapshot());
     }
 
+    /// 路由级回收（provider_route / models_aux）：与 [`Self::recycle_all_agents`]
+    /// 的差异是**不杀运行中的会话**。每个 App 会话持有独立子进程后，路由/凭据
+    /// 变更只影响下一次 spawn：忙碌会话保留进程并登记 `pending_soft_respawn`，
+    /// 本轮结束后由 `flush_pending_soft_respawn` 换到新路由；空闲 live shell、
+    /// parked 与 prewarm 进程立即回收。忙碌会话不写 hard-end journal，因此
+    /// 「已停止 — 模型或供应商路由已切换」chip 只出现在真正被终止的会话上
+    /// （BOR-50）。
+    pub async fn recycle_agents_for_route_change(&self, app: &AppHandle, reason: &str) {
+        // 已完成的 background turn 先转入 parked，纳入本次空闲回收。
+        self.sweep_finished_background_to_parked();
+        // 空闲 live shell：soft_respawn 换进程；若 live 恰好忙碌，内部 defer 到
+        // pending_soft_respawn，不会杀进程。
+        self.soft_respawn_with_reason(app, reason).await;
+        // 保留忙碌会话放在 soft_respawn 之后：soft_respawn 的无进程分支会清掉
+        // live sid 的 pending，最后写入的标记必须属于保留集合。
+        let preserved = self.preserve_busy_sessions_for_route_change(reason);
+        // 空闲 parked：整体回收；仍被忙碌会话共享的进程只丢句柄、跳过 kill。
+        let parked: Vec<ParkedAgent> = {
+            let mut p = self.parked.lock();
+            std::mem::take(&mut *p).into_values().collect()
+        };
+        let parked_count = parked.len();
+        let mut acps: Vec<Arc<AcpClient>> = Vec::new();
+        for p in parked {
+            if self.has_other_process_tenant(&p.process_id, &p.app_session_id) {
+                tracing::info!(
+                    session = %p.app_session_id,
+                    process = %p.process_id,
+                    "route recycle: dropped parked entry, skip kill (busy co-tenant)"
+                );
+                continue;
+            }
+            acps.push(p.acp);
+        }
+        // Prewarm 是 ownerless 进程，旧路由/旧凭据不能留给下一次 connect。
+        self.invalidate_prewarm_epoch();
+        let prewarm_count = {
+            let mut pw = self.prewarm.lock();
+            match std::mem::replace(&mut *pw, PrewarmState::None) {
+                PrewarmState::Ready(p) => {
+                    acps.push(p.acp);
+                    1
+                }
+                PrewarmState::Spawning { .. } | PrewarmState::None => 0,
+            }
+        };
+        let killed = acps.len();
+        for acp in acps {
+            Self::kill_acp_bounded(&acp).await;
+        }
+        tracing::info!(
+            "recycle_agents_for_route_change reason={reason} killed={killed} parked={parked_count} prewarm={prewarm_count} preserved_busy={}",
+            preserved.len()
+        );
+        let _ = app.emit(
+            "session://agents_recycled",
+            serde_json::json!({
+                "reason": reason,
+                "killed": killed,
+                "background": 0,
+                "parked": parked_count,
+                "prewarm": prewarm_count,
+                "preservedBusy": preserved,
+            }),
+        );
+        Self::emit_state(app, &self.snapshot());
+    }
+
+    /// 登记所有运行中会话（live busy + background busy）的软重启并返回会话 id。
+    /// 进程与事件泵保持原样；本轮结束后 `flush_pending_soft_respawn` 换新路由。
+    pub(super) fn preserve_busy_sessions_for_route_change(&self, reason: &str) -> Vec<String> {
+        let mut preserved = Vec::new();
+        {
+            let guard = self.inner.lock();
+            if let Some(s) = guard.as_ref() {
+                if Self::live_session_is_busy(s) {
+                    preserved.push(s.app_session_id.clone());
+                }
+            }
+        }
+        {
+            let bg = self.background.lock();
+            for s in bg.values() {
+                if Self::live_session_is_busy(s) {
+                    preserved.push(s.app_session_id.clone());
+                }
+            }
+        }
+        if !preserved.is_empty() {
+            let mut pending = self.pending_soft_respawn.lock();
+            for sid in &preserved {
+                pending.insert(sid.clone(), reason.to_string());
+            }
+        }
+        preserved
+    }
+
     /// Snapshot app session ids that still hold a pending human gate so the
     /// frontend can clear stale permission / plan / ask_user UI after kill.
     pub(super) fn collect_pending_gate_invalidations(&self) -> Vec<serde_json::Value> {
