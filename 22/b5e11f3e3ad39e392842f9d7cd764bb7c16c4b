@@ -1,0 +1,19 @@
+docs/plans/GOAL-composer-wysiwyg-and-session-model-isolation.md
+  s_0ccca564747d43::t_3634c8fcc94b60 1-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "22b5e11f3e3ad39e392842f9d7cd764bb7c16c4b",
+  "prompts": {},
+  "sessions": {
+    "s_0ccca564747d43": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0c870-519b-7030-8f85-80b5721e4933",
+        "model": "claude-glm-5.3-flash[1M]"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
