@@ -566,3 +566,71 @@ fn rewind_busy_check_allows_idle_background_session() {
         "an unknown chat has no running turn to protect"
     );
 }
+
+// ── BOR-50：路由级回收保留忙碌会话 ─────────────────────────────────────────
+
+fn busy_live_session(id: &str, process_id: &str) -> LiveSession {
+    let mut s = bare_live_session(id, process_id);
+    // prompt_in_flight 是权威忙碌信号（turn 未结束前必须保留进程）。
+    s.prompt_in_flight = true;
+    s
+}
+
+/// 忙碌的 live + background 会话必须被保留并登记 pending_soft_respawn，
+/// 进程条目不得从映射中移除（否则会被误杀 / 丢失事件路由）。
+#[test]
+fn route_change_preserves_busy_sessions_and_queues_respawn() {
+    let mgr = SessionManager::new();
+    *mgr.inner.lock() = Some(busy_live_session("s-live", "p-live"));
+    mgr.background
+        .lock()
+        .insert("s-bg".into(), busy_live_session("s-bg", "p-bg"));
+
+    let preserved = mgr.preserve_busy_sessions_for_route_change("provider_route");
+
+    assert_eq!(preserved.len(), 2, "live + background busy must both survive");
+    assert!(preserved.contains(&"s-live".to_string()));
+    assert!(preserved.contains(&"s-bg".to_string()));
+    let pending = mgr.pending_soft_respawn.lock();
+    assert_eq!(pending.get("s-live").map(String::as_str), Some("provider_route"));
+    assert_eq!(pending.get("s-bg").map(String::as_str), Some("provider_route"));
+    drop(pending);
+    // 条目仍在：保留 ≠ 逐出。
+    assert!(mgr.inner.lock().as_ref().unwrap().app_session_id == "s-live");
+    assert!(mgr.background.lock().contains_key("s-bg"));
+}
+
+/// 空闲会话不进入保留集合，也不登记 pending（它们的进程由
+/// recycle_agents_for_route_change 直接回收）。
+#[test]
+fn route_change_skips_idle_sessions() {
+    let mgr = SessionManager::new();
+    *mgr.inner.lock() = Some(bare_live_session("s-idle-live", "p-1"));
+    mgr.background
+        .lock()
+        .insert("s-idle-bg".into(), bare_live_session("s-idle-bg", "p-2"));
+
+    let preserved = mgr.preserve_busy_sessions_for_route_change("provider_route");
+
+    assert!(preserved.is_empty(), "idle sessions have nothing to preserve");
+    assert!(mgr.pending_soft_respawn.lock().is_empty());
+}
+
+/// 已完成的 background turn 先落入 parked 后，忙碌后台会话仍保留在
+/// background 中——sweep 只搬走结束的 turn，不触碰忙碌的。
+#[test]
+fn route_change_preservation_survives_parked_sweep() {
+    let mgr = SessionManager::new();
+    mgr.background
+        .lock()
+        .insert("s-bg-busy".into(), busy_live_session("s-bg-busy", "p-busy"));
+
+    mgr.sweep_finished_background_to_parked();
+
+    assert!(
+        mgr.background.lock().contains_key("s-bg-busy"),
+        "sweep must not evict a busy background turn"
+    );
+    let preserved = mgr.preserve_busy_sessions_for_route_change("models_aux");
+    assert_eq!(preserved, vec!["s-bg-busy".to_string()]);
+}
