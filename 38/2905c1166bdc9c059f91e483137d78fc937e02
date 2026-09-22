@@ -1,0 +1,31 @@
+src/lib/composerMarkdown.test.ts
+  s_e38eb76bc01306::t_949bfa7f8bc103 5,79
+  s_e38eb76bc01306::t_7825f6bc345567 1-4,6-34,40-78,80-103,106-129,136-141,144-187
+  s_e38eb76bc01306::t_f190e4d6ec6d12 104-105,130-135,142-143
+  s_e38eb76bc01306::t_f6a03f0c3e6085 35-39
+src/lib/composerMarkdown.ts
+  s_e38eb76bc01306::t_196cc5e0d594ba 110,113
+  s_e38eb76bc01306::t_e8c02ce4766d88 1-109,114-128,133-145,149,151-177,187,192-198
+  s_e38eb76bc01306::t_5f5180bc89ecf9 111-112,182-184,188-191
+  s_e38eb76bc01306::t_1a12d2a19e665e 129-132,146-148,150,178-181,185-186
+src/components/composerSkillNode.ts
+  s_e38eb76bc01306::t_3f0d1352af47ff 1-7,9-11,17-100,115-159,161-176
+  s_e38eb76bc01306::t_1ec40a60c04bee 8,12-16,160
+  s_e38eb76bc01306::t_90ebfd92431859 101-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "382905c1166bdc9c059f91e483137d78fc937e02",
+  "prompts": {},
+  "sessions": {
+    "s_e38eb76bc01306": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0c89a-7734-74b1-b730-2daf2301a775",
+        "model": "ada-anthropic"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
