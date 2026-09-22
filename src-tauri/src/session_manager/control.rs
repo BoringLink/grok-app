@@ -466,7 +466,7 @@ impl SessionManager {
 
     /// 登记所有运行中会话（live busy + background busy）的软重启并返回会话 id。
     /// 进程与事件泵保持原样；本轮结束后 `flush_pending_soft_respawn` 换新路由。
-    fn preserve_busy_sessions_for_route_change(&self, reason: &str) -> Vec<String> {
+    pub(super) fn preserve_busy_sessions_for_route_change(&self, reason: &str) -> Vec<String> {
         let mut preserved = Vec::new();
         {
             let guard = self.inner.lock();
