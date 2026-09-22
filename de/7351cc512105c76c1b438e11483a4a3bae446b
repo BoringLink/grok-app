@@ -1,0 +1,25 @@
+src/components/ComposerEditor.tsx
+  s_e38eb76bc01306::t_e9cbc3fb38e5b7 61-65
+  s_e38eb76bc01306::t_534266c7d0c032 2,4-9,22-25,46-53,55-56,58-59,74-75,79-81,83,85-87,90-93,97-99,101-104,106,109-116,120-121,133,138,145,156,190-223,239-247,250-354,356-362,364,366-373,375-379,381,386-389,400-404,407-411,413-414,420-423,425-430,432,437-441
+  s_e38eb76bc01306::t_91c20a95c9c780 391-399
+  s_e38eb76bc01306::t_e198bac806cba6 225-231,233-234,236
+  s_e38eb76bc01306::t_58b1f23984886f 67-68,70
+src/styles/modals.part1.css
+  s_e38eb76bc01306::t_376c20b0e6e8e4 230,235-244,247-282,285-298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "de7351cc512105c76c1b438e11483a4a3bae446b",
+  "prompts": {},
+  "sessions": {
+    "s_e38eb76bc01306": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0c89a-7734-74b1-b730-2daf2301a775",
+        "model": "ada-anthropic"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
