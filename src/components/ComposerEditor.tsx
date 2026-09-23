@@ -115,6 +115,19 @@ export function getComposerCaretOffset(
 }
 
 /**
+ * 整篇草稿的编辑器文本（token 按存储形式等长，Markdown 语法字符不计入）。
+ * 供调用方把 Markdown 源码偏移换算到编辑器文本空间，见
+ * {@link import("@/lib/composerMarkdown").refCaretInEditorText}。
+ */
+export function getComposerEditorText(
+  el: HTMLElement | null | undefined,
+): string | null {
+  const editor = el ? editorsByDom.get(el) : undefined;
+  if (!editor || editor.isDestroyed) return null;
+  return editorTextBeforePos(editor.state.doc, editor.state.doc.content.size);
+}
+
+/**
  * Keep the contenteditable caret inside the editor scrollport and auto-grow
  * the input up to max lines (same constraints as the previous editor).
  */
@@ -242,7 +255,11 @@ export const ComposerEditor = memo(function ComposerEditor({
       pending === "end"
         ? size
         : docPosForEditorTextOffset(ed.state.doc, pending);
-    ed.commands.setTextSelection(Math.max(0, Math.min(pos, size)));
+    // 用 `focus` 而非 `setTextSelection`：外部的 focus（尤其是把选区塌到末尾的那种）
+    // 会把光标从落点挤走，这里让落点自己负责聚焦与 DOM 选区同步。
+    ed.commands.focus(Math.max(0, Math.min(pos, size)), {
+      scrollIntoView: false,
+    });
   }, []);
 
   const createdEditor = useEditor({

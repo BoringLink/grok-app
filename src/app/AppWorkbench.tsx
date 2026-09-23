@@ -344,7 +344,10 @@ import {
   rankAtFileHits,
   removeAtTokenFromDraft,
 } from "@/lib/atFileQuery";
-import { locateAtRangeInMarkdown } from "@/lib/composerMarkdown";
+import {
+  refCaretInEditorText,
+  locateAtRangeInMarkdown,
+} from "@/lib/composerMarkdown";
 import {
   isTokenizableRefValue,
   refTokenText,
@@ -466,6 +469,7 @@ import {
 } from "@/lib/setupGatePro";
 import { mapProbeToCliInfo } from "@/lib/cliVersionStatus";
 import {
+  getComposerEditorText,
   requestComposerStoredCaret,
   resizeComposerInput,
   serializeDom,
@@ -6549,9 +6553,20 @@ export function AppWorkbench() {
       // 读 `getDraft()` 而非渲染期的值：这里需要同步算出 chip 后的光标偏移，
       // 函数式更新做不到（更新器在下次渲染才执行）。
       const inserted = insertAtTokenAsRef(draftNow, range, token);
+      // `insertAtTokenAsRef` 的 caret 是 Markdown 源码偏移，而
+      // `requestComposerStoredCaret` 收编辑器文本空间偏移（列表 / 标题 / 引用里
+      // 两者相差块语法前缀），见 `refCaretInEditorText`。
+      const caretAt = refCaretInEditorText({
+        editorText: getComposerEditorText(composerInputRef.current),
+        query: live.query,
+        range,
+        token,
+        storedCaret: inserted.caret,
+      });
       setDraft(inserted.draft);
-      requestComposerStoredCaret(inserted.caret);
-      requestComposerFocus();
+      // 落点由 ComposerEditor 的 placePendingCaret 负责定位与聚焦——不能用
+      // requestComposerFocus：它会把选区塌到文档末尾，覆盖上面算好的落点。
+      requestComposerStoredCaret(caretAt);
     },
     [getDraft, requestComposerFocus],
   );

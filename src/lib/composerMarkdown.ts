@@ -220,6 +220,39 @@ export function locateAtRangeInMarkdown(
 }
 
 /**
+ * `@` 文件引用插入后，chip 之后的光标在**编辑器文本空间**的偏移。
+ *
+ * `insertAtTokenAsRef` 返回的 caret 是 Markdown 源码（存储空间）偏移，而
+ * `requestComposerStoredCaret` 收的是编辑器文本空间偏移。两个空间只差块语法
+ * 前缀——列表项在 Markdown 里是 `- 第一个文件`、编辑器文本里只有 `第一个文件`，
+ * 标题、引用同理。直接套用存储空间偏移会在这些块里整体右移若干个字符。
+ *
+ * 换算方式：在编辑器文本里重新定位 `@query`，用它的下标当作 chip 起点，再加 token
+ * 的长度（token 在两个空间等长）。插入时补的分隔空格不必另外计入——它总落在
+ * 所在块的末尾，被 ProseMirror 当作尾部空白丢弃；`locateAtRangeInMarkdown` 的
+ * 边界规则也保证 `@query` 后面只可能是空白或结尾。
+ *
+ * `editorText` 为 null（编辑器未挂载）或定位失败时退回存储空间 caret，由调用方的
+ * 落点逻辑夹到文档范围内。
+ */
+export function refCaretInEditorText(params: {
+  /** 整篇草稿的编辑器文本（见 `getComposerEditorText`）；null = 编辑器不可用。 */
+  editorText: string | null;
+  /** 用户输入中的 `@` 查询（不含 `@`）。 */
+  query: string;
+  /** `insertAtTokenAsRef` 在 Markdown 源码里定位到的 `@query` 区间。 */
+  range: { start: number; end: number } | null;
+  /** 插入的 token 文本（`[[file:…]]`）。 */
+  token: string;
+  /** `insertAtTokenAsRef` 返回的存储空间 caret。 */
+  storedCaret: number;
+}): number {
+  if (!params.range || params.editorText == null) return params.storedCaret;
+  const at = locateAtRangeInMarkdown(params.editorText, params.query);
+  return at ? at.start + params.token.length : params.storedCaret;
+}
+
+/**
  * 归一化 tiptap-markdown 序列化输出：
  * - hard break 被序列化为 `\\\n`（Markdown 转义换行），还原为普通 `\n`
  *   （`breaks: true` 下 `\n` 反解析回硬换行，draft 保持旧格式的纯换行约定）；
