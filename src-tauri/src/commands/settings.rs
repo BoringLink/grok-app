@@ -383,7 +383,7 @@ pub async fn composer_prefs_set(
         }
     }
     if let Some(mid) = model_id {
-        if let Err(e) = mgr.set_model(mid).await {
+        if let Err(e) = mgr.set_model(&app, mid).await {
             tracing::warn!("composer_prefs_set set_model soft-fail: {e}");
         }
     }
@@ -433,6 +433,7 @@ pub async fn session_set_policy(
 
 #[tauri::command]
 pub async fn session_set_model(
+    app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
     model_id: String,
     project_id: Option<String>,
@@ -447,7 +448,7 @@ pub async fn session_set_model(
         None,
         None,
     )?;
-    if let Err(e) = mgr.set_model(model_id).await {
+    if let Err(e) = mgr.set_model(&app, model_id).await {
         tracing::warn!("session_set_model soft-fail: {e}");
     }
     Ok(prefs)
