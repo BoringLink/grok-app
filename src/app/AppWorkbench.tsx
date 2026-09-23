@@ -9508,6 +9508,12 @@ export function AppWorkbench() {
             channelEffortOptions ?? officialEffortCatalog,
           );
           setEffort(clampedCustom);
+          // 自定义路由下也必须写本地 modelId —— 芯片的显示取自
+          // `resolveActiveCustomModel({provider, modelId})`，它以**会话的 modelId**
+          // 为准。这里不设，显示就会一直用旧值（或 provider 的全局 `model =`），
+          // 直到切会话触发一次重新解析才更新；模型本身早已生效，于是表现为
+          // 「点了没反应、实际已切换」。
+          setModelId(pick.modelId);
           void composerPrefsFreshnessRef.current
             .trackLocalWrite(() =>
               api.composerPrefsSet({
