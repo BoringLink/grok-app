@@ -172,6 +172,7 @@ import {
 } from "@/lib/goalOrch";
 import * as api from "@/lib/api";
 import { queueComposerPreferenceApply } from "@/lib/composerPrefsBarrier";
+import { ComposerPrefsFreshness } from "@/lib/composerPrefsFreshness";
 import {
   isDangerousSandboxProfile,
   normalizeSandboxProfile,
@@ -2341,6 +2342,10 @@ export function AppWorkbench() {
   // 用 ref 镜像其可选模型 id，供更早定义的 applyComposerPrefs 校验。
   const customModelIdsRef = useRef<string[]>([]);
 
+  // 作废「更早发起 / 写入未落盘时发起」的 composerPrefsResolve 结果，
+  // 避免异步解析把界面盖回用户刚切走的模型。
+  const composerPrefsFreshnessRef = useRef(new ComposerPrefsFreshness());
+
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
       const models = catalog.length > 0 ? catalog : GROK_BUILD_MODELS;
@@ -2768,15 +2773,22 @@ export function AppWorkbench() {
   useEffect(() => {
     if (!api.isTauri()) return;
     let cancelled = false;
-    void api
-      .composerPrefsResolve({
-        projectId: activeProject?.id ?? null,
-        sessionId: session.sessionId ?? null,
-      })
-      .then((prefs) => {
-        if (!cancelled) applyComposerPrefs(prefs, availableModels);
-      })
-      .catch(() => {});
+    const freshness = composerPrefsFreshnessRef.current;
+    void (async () => {
+      // 先等本地写入落盘，否则解析会读回旧值；再取版本号，解析期间若用户又
+      // 切了模型（版本号变化），丢弃这次结果，避免把界面盖回旧模型。
+      await freshness.settled();
+      if (cancelled) return;
+      const issuedVersion = freshness.beginResolve();
+      const prefs = await api
+        .composerPrefsResolve({
+          projectId: activeProject?.id ?? null,
+          sessionId: session.sessionId ?? null,
+        })
+        .catch(() => null);
+      if (!prefs || cancelled || !freshness.isFresh(issuedVersion)) return;
+      applyComposerPrefs(prefs, availableModels);
+    })();
     return () => {
       cancelled = true;
     };
@@ -9346,15 +9358,20 @@ export function AppWorkbench() {
     (nextEffort: string) => {
       if (!isValidEffort(nextEffort, activeEffortCatalog)) return;
       setEffort(nextEffort);
-      effortApplyRef.current = queueComposerPreferenceApply(
-        effortApplyRef.current,
+      // 写入在队列中排队执行，用 trackLocalWrite 从「点击」起就标记在途，
+      // 直到落盘为止都不允许解析结果覆盖这次选择。
+      effortApplyRef.current = composerPrefsFreshnessRef.current.trackLocalWrite(
         () =>
-          api.composerPrefsSet({
-            projectId: activeProject?.id ?? null,
-            sessionId: session.sessionId ?? null,
-            effort: nextEffort,
-          }),
-        (error) => showToast(String(error), 4000),
+          queueComposerPreferenceApply(
+            effortApplyRef.current,
+            () =>
+              api.composerPrefsSet({
+                projectId: activeProject?.id ?? null,
+                sessionId: session.sessionId ?? null,
+                effort: nextEffort,
+              }),
+            (error) => showToast(String(error), 4000),
+          ),
       );
     },
     [activeEffortCatalog, activeProject?.id, session.sessionId, showToast],
@@ -9381,13 +9398,15 @@ export function AppWorkbench() {
             channelEffortOptions ?? officialEffortCatalog,
           );
           setEffort(clampedOfficial);
-          void api
-            .composerPrefsSet({
-              projectId: activeProject?.id ?? null,
-              sessionId: session.sessionId ?? null,
-              modelId: pick.modelId,
-              effort: clampedOfficial,
-            })
+          void composerPrefsFreshnessRef.current
+            .trackLocalWrite(() =>
+              api.composerPrefsSet({
+                projectId: activeProject?.id ?? null,
+                sessionId: session.sessionId ?? null,
+                modelId: pick.modelId,
+                effort: clampedOfficial,
+              }),
+            )
             .catch((e) => showToast(String(e), 4000));
         } else {
           if (!api.isTauri()) return;
@@ -9430,13 +9449,15 @@ export function AppWorkbench() {
             channelEffortOptions ?? officialEffortCatalog,
           );
           setEffort(clampedCustom);
-          void api
-            .composerPrefsSet({
-              projectId: activeProject?.id ?? null,
-              sessionId: session.sessionId ?? null,
-              modelId: pick.modelId,
-              effort: clampedCustom,
-            })
+          void composerPrefsFreshnessRef.current
+            .trackLocalWrite(() =>
+              api.composerPrefsSet({
+                projectId: activeProject?.id ?? null,
+                sessionId: session.sessionId ?? null,
+                modelId: pick.modelId,
+                effort: clampedCustom,
+              }),
+            )
             .catch((e) => showToast(String(e), 4000));
         }
       } catch (e) {
