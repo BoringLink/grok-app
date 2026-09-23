@@ -599,6 +599,10 @@ function subagentStatusLabelKey(status: SubagentDisplayStatus): MessageKey {
       return "tasks.subagentCompleted";
     case "failed":
       return "tasks.subagentFailed";
+    case "cancelled":
+      return "tasks.subagentCancelled";
+    case "finished":
+      return "tasks.subagentFinished";
     default:
       return "tasks.subagentRunning";
   }
@@ -633,27 +637,50 @@ function SubagentRow({ run, t }: { run: SubagentRun; t: TFn }) {
     >
       <div className="agent-tasks__row-line">
         <div className="agent-tasks__row-main agent-tasks__row-main--flat">
-          <button
-            type="button"
-            className="agent-tasks__row-toggle"
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-            aria-label={open ? t("tasks.collapse") : t("tasks.expand")}
-          >
-            <span
-              className={`agent-tasks__dot agent-tasks__dot--${status}`}
-              aria-hidden
-            />
-            <span className="agent-tasks__name" title={label}>
-              {label}
+          {hasOutput ? (
+            <button
+              type="button"
+              className="agent-tasks__row-toggle"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+              aria-label={open ? t("tasks.collapse") : t("tasks.expand")}
+            >
+              <span
+                className={`agent-tasks__dot agent-tasks__dot--${status}`}
+                aria-hidden
+              />
+              <span className="agent-tasks__name" title={label}>
+                {label}
+              </span>
+            </button>
+          ) : (
+            // No answer to reveal — keep it a static row rather than a toggle
+            // that expands to nothing.
+            <span className="agent-tasks__row-toggle is-static">
+              <span
+                className={`agent-tasks__dot agent-tasks__dot--${status}`}
+                aria-hidden
+              />
+              <span className="agent-tasks__name" title={label}>
+                {label}
+              </span>
             </span>
-          </button>
+          )}
           {run.subagentType ? (
             <span className="agent-tasks__status">{run.subagentType}</span>
           ) : null}
           <span className="agent-tasks__status">
             {t(subagentStatusLabelKey(status))}
           </span>
+          {hasOutput ? (
+            <span className="agent-tasks__row-chev" aria-hidden>
+              {open ? (
+                <IconChevronDown size={14} />
+              ) : (
+                <IconChevronRight size={14} />
+              )}
+            </span>
+          ) : null}
         </div>
       </div>
       {hasMeta ? (

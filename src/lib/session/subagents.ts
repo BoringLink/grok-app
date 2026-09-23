@@ -71,7 +71,12 @@ export type SubagentRun = {
 };
 
 /** Coarse status the panel renders; derived from `phase` + `status`. */
-export type SubagentDisplayStatus = "running" | "completed" | "failed";
+export type SubagentDisplayStatus =
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "finished";
 
 function asText(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
@@ -183,12 +188,30 @@ export function applySubagentEvent(
   return next;
 }
 
-/** Coarse panel status: running until finished, then completed vs failed. */
+/**
+ * Coarse panel status. Anything other than a recognised terminal status stays
+ * `finished` — a cancelled run is not a failure, and an outcome the CLI never
+ * reported must not be invented.
+ */
 export function subagentDisplayStatus(
   run: SubagentRun,
 ): SubagentDisplayStatus {
   if (!run.finished) return "running";
-  return run.status === "completed" ? "completed" : "failed";
+  switch (run.status) {
+    case "completed":
+    case "complete":
+    case "success":
+      return "completed";
+    case "failed":
+    case "error":
+      return "failed";
+    case "cancelled":
+    case "canceled":
+    case "killed":
+      return "cancelled";
+    default:
+      return "finished";
+  }
 }
 
 /**

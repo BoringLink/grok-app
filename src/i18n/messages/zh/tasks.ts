@@ -248,6 +248,8 @@ export const zhTasks = {
   "tasks.subagentRunning": "运行中",
   "tasks.subagentCompleted": "已完成",
   "tasks.subagentFailed": "失败",
+  "tasks.subagentCancelled": "已取消",
+  "tasks.subagentFinished": "已结束",
   "tasks.subagentMeta": "{turns} 轮 · {tools} 次工具 · {tokens} tokens · {duration}",
   "tasks.subagentOutput": "输出",
 };

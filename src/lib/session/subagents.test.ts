@@ -183,9 +183,41 @@ describe("applySubagentEvent", () => {
     // Assert
     expect(stale[0]!.phase).toBe("finished");
     expect(stale[0]!.finished).toBe(true);
-    // A non-terminal status is reported as failed (running/completed/failed only).
+    // A stale progress push must not reopen the terminal row.
     expect(subagentDisplayStatus(stale[0]!)).toBe("completed");
     expect(stale[0]!.turnCount).toBe(9);
+  });
+});
+
+describe("subagentDisplayStatus", () => {
+  const finished = (status: string | null) =>
+    applySubagentEvent([], {
+      sessionId: "s1",
+      phase: "finished",
+      subagentId: "a1",
+      status,
+    })[0]!;
+
+  it("reports running until a finished frame arrives", () => {
+    // Arrange
+    const running = applySubagentEvent([], {
+      sessionId: "s1",
+      phase: "progress",
+      subagentId: "a1",
+    })[0]!;
+
+    // Assert
+    expect(subagentDisplayStatus(running)).toBe("running");
+  });
+
+  it("maps the CLI's terminal statuses without inventing an outcome", () => {
+    expect(subagentDisplayStatus(finished("completed"))).toBe("completed");
+    expect(subagentDisplayStatus(finished("failed"))).toBe("failed");
+    expect(subagentDisplayStatus(finished("error"))).toBe("failed");
+    expect(subagentDisplayStatus(finished("cancelled"))).toBe("cancelled");
+    // Finished but the CLI never said how — not a failure.
+    expect(subagentDisplayStatus(finished(null))).toBe("finished");
+    expect(subagentDisplayStatus(finished("something_new"))).toBe("finished");
   });
 });
 
