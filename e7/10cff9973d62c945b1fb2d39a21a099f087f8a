@@ -1,0 +1,33 @@
+src-tauri/src/providers.rs
+  s_72db73f5d2fe1d::t_a185376306483c 1019-1040,1043-1048,1050-1051,1058-1062,1079-1082,1088,1090-1094,1096-1097,1101-1120,1127-1128,1130-1202
+  s_72db73f5d2fe1d::t_7916a8e1844ddb 4102-4166
+  s_72db73f5d2fe1d::t_96a3ce3e74d28a 4330-4383
+  s_72db73f5d2fe1d::t_537d6633a20617 2154-2166,2168-2170
+  s_72db73f5d2fe1d::t_f854eac72ddfa6 1722-1736
+  s_72db73f5d2fe1d::t_07adec70e8a94d 2146-2153,2167,2171-2184
+  s_72db73f5d2fe1d::t_3c5493e20cb5da 1581-1582
+  s_72db73f5d2fe1d::t_b72f20f8a7b3b2 1041-1042,1049,1052-1057,1075-1078
+  s_72db73f5d2fe1d::t_7f9df7901055b8 1063-1074,1083-1087,1089,1095,1098-1100
+  s_72db73f5d2fe1d::t_906a4492f9ce1f 1121-1126,1129
+  s_72db73f5d2fe1d::t_9ec579988dc1cc 4167-4225
+  s_72db73f5d2fe1d::t_3c648022259154 2085
+  s_72db73f5d2fe1d::t_8f9bdf7ebf2b6b 4061-4101,4226-4329
+docs/llm-wiki/providers.md
+  s_72db73f5d2fe1d::t_47105863db6459 113-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "e710cff9973d62c945b1fb2d39a21a099f087f8a",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
