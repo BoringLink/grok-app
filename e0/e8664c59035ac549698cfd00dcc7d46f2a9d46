@@ -1,0 +1,28 @@
+src-tauri/src/commands/settings.rs
+  s_1ed624be4f7b23::t_6f73b73e6a7ae3 386
+  s_1ed624be4f7b23::t_54d19832d1e590 436,451
+src-tauri/src/session_manager/routing_tests_p2.rs
+  s_1ed624be4f7b23::t_6fec20e30e7efe 637-722
+src-tauri/src/session_manager/control.rs
+  s_1ed624be4f7b23::t_d0e566a844542e 234-237
+  s_1ed624be4f7b23::t_bdfeffb8f375dd 806-811,838-839
+  s_1ed624be4f7b23::t_94a30a12aedcdc 191-196,204,206-231
+  s_1ed624be4f7b23::t_f68ad342bf26a4 287-290
+  s_1ed624be4f7b23::t_b4bfa609993c04 829-837
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "e0e8664c59035ac549698cfd00dcc7d46f2a9d46",
+  "prompts": {},
+  "sessions": {
+    "s_1ed624be4f7b23": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0ca66-184a-75a0-ba8e-c4531e2f8c8a",
+        "model": "ada-anthropic"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
