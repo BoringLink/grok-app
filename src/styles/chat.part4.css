@@ -574,6 +574,15 @@
   white-space: nowrap;
 }
 
+/*
+ * 没有目录描述的行：标题是整行唯一内容，放开 70% 上限。
+ * 否则一个能完整显示的文件名会被硬裁（且因缺少 __title-text 而没有省略号，
+ * 看起来像文件名少了几个字符）。
+ */
+.composer-plus__title--solo {
+  max-width: 100%;
+}
+
 .composer-plus__desc {
   flex: 1 1 0;
   min-width: 0;

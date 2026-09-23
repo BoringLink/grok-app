@@ -132,9 +132,16 @@ describe("ref agent form and label", () => {
     expect(refDisplayLabel("file", "/repo/src/a.ts")).toBe("a.ts");
     expect(refDisplayLabel("dir", "/repo/src/components")).toBe("components");
     expect(refDisplayLabel("dir", "/repo/src/")).toBe("src");
+    // URL 显示「主机 + 路径」：只留主机名几乎等于没信息，带上 query/hash 又太宽。
     expect(refDisplayLabel("url", "https://example.com/a/b")).toBe(
-      "example.com",
+      "example.com/a/b",
     );
+    expect(
+      refDisplayLabel("url", "https://github.com/RongleCat/grok-app/#/test"),
+    ).toBe("github.com/RongleCat/grok-app");
+    expect(refDisplayLabel("url", "https://x.y/a?b=1#c")).toBe("x.y/a");
+    expect(refDisplayLabel("url", "https://x.y/")).toBe("x.y");
+    expect(refDisplayLabel("url", "https://x.y")).toBe("x.y");
   });
 });
 
