@@ -80,12 +80,20 @@ export function refAgentText(kind: RefKind, value: string): string {
   return kind === "url" ? value : `@${value}`;
 }
 
-/** 路径的最后一段（chip 显示的短标签）。 */
+/**
+ * 路径的最后一段（chip 显示的短标签）。
+ *
+ * URL 显示「主机 + 路径、去掉参数与锚点」——`github.com/RongleCat/grok-app` 能认出
+ * 是哪个仓库，而只留主机名（`github.com`）几乎等于没信息；带上 `?query#frag` 又会
+ * 在输入框里撑得很宽。
+ */
 export function refDisplayLabel(kind: RefKind, value: string): string {
   if (kind === "url") {
-    // 只取主机名：完整 URL 会在输入框里撑得很宽。
-    const host = value.replace(/^https?:\/\//i, "").split(/[/?#]/)[0];
-    return host || value;
+    const withoutScheme = value.replace(/^https?:\/\//i, "");
+    // 先切掉 query / hash，再去掉尾斜杠
+    const pathOnly = withoutScheme.split(/[?#]/)[0] ?? "";
+    const trimmed = pathOnly.replace(/\/+$/, "");
+    return trimmed || withoutScheme || value;
   }
   const trimmed = value.replace(/[/\\]+$/, "");
   const last = trimmed.split(/[/\\]/).pop();
