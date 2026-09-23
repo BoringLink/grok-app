@@ -343,6 +343,7 @@ import {
   rankAtFileHits,
   removeAtTokenFromDraft,
 } from "@/lib/atFileQuery";
+import { locateAtRangeInMarkdown } from "@/lib/composerMarkdown";
 import {
   isTokenizableRefValue,
   refTokenText,
@@ -6505,12 +6506,19 @@ export function AppWorkbench() {
       setAtEntries([]);
       setAtSoftFail(null);
 
+      // 一律在 Markdown 源码里重新定位 `@query`：`live` 的偏移来自 DOM 文本空间，
+      // 在列表/引用/标题里与 draft 不一致（见 locateAtRangeInMarkdown 的说明）。
+      const draftNow = getDraft();
+      const range = live.present
+        ? locateAtRangeInMarkdown(draftNow, live.query)
+        : null;
+
       if (!isTokenizableRefValue(entry.path)) {
         // 路径含换行等无法安全写进 token 的字符：退回附件，而不是写出一个
         // 解析不回来的 token（那会让引用在下次加载时变成乱码文本）。
         // `@query` 仍要从正文里删掉，否则它会以字面文本留在输入框里。
-        if (live.present) {
-          setDraft((d) => removeAtTokenFromDraft(d, live.start, live.end));
+        if (range) {
+          setDraft((d) => removeAtTokenFromDraft(d, range.start, range.end));
         }
         setAttachments((prev) =>
           mergeAttachments(prev, [
@@ -6527,11 +6535,9 @@ export function AppWorkbench() {
       }
 
       const token = refTokenText(kind, entry.path);
-      const range = live.present ? { start: live.start, end: live.end } : null;
-      // 在 `@query` 原本的位置插入 chip，而不是塞进输入框下方的附件区。
       // 读 `getDraft()` 而非渲染期的值：这里需要同步算出 chip 后的光标偏移，
       // 函数式更新做不到（更新器在下次渲染才执行）。
-      const inserted = insertAtTokenAsRef(getDraft(), range, token);
+      const inserted = insertAtTokenAsRef(draftNow, range, token);
       setDraft(inserted.draft);
       requestComposerStoredCaret(inserted.caret);
       requestComposerFocus();

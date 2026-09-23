@@ -4,11 +4,13 @@
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { Editor } from "@tiptap/react";
 import { buildComposerExtensions } from "@/components/composerExtensions";
+import { insertAtTokenAsRef } from "./atFileQuery";
 import {
   docPosForEditorTextOffset,
   editorTextBeforePos,
   editorTextOffsetForDocPos,
   isStoredMarkdownEmpty,
+  locateAtRangeInMarkdown,
   locateSlashRangeInMarkdown,
   normalizeSerializedMarkdown,
 } from "./composerMarkdown";
@@ -302,5 +304,153 @@ describe("reference chip deletion (BOR-53)", () => {
     // Assert — chip 整块消失，两侧文本原样保留
     expect(markdownOf(editor)).toBe("在  中");
     expect(firstRefPos(editor)).toBe(-1);
+  });
+});
+
+// ── 回归：列表内的 @ 引用插入（手工验证反馈）────────────────────────────────
+//
+// 症状：在列表项里用 @ 插入文件引用会「替换掉最后一个字符并多出一个 @」。
+// 根因：`@` 检测走 DOM 文本空间，而 DOM walk 不产出 Markdown 语法——列表项
+// 在 Markdown 里是 `- 第一项`，DOM 文本里只有 `第一项`，偏移整体短 2 个字符。
+
+describe("locateAtRangeInMarkdown", () => {
+  it("locates the @query in a list item at markdown offsets", () => {
+    // Arrange — DOM 文本空间会给 6，Markdown 里真实位置是 8（多了 "- "）
+    const md = "- 第一个文件 @";
+
+    // Act
+    const range = locateAtRangeInMarkdown(md, "");
+
+    // Assert
+    expect(range).toEqual({ start: 8, end: 9 });
+  });
+
+  it("locates a query that follows the @", () => {
+    // Arrange / Act / Assert
+    expect(locateAtRangeInMarkdown("- 看 @atF 这里", "atF")).toEqual({
+      start: 4,
+      end: 8,
+    });
+  });
+
+  it("requires the @ to sit at a boundary", () => {
+    // Arrange / Act / Assert — 邮箱里的 @ 不是引用触发
+    expect(locateAtRangeInMarkdown("- mail me@example.com", "example.com")).toBeNull();
+    expect(locateAtRangeInMarkdown("裸@query", "query")).toBeNull();
+  });
+
+  it("prefers the last legal occurrence", () => {
+    // Arrange — `@ 早期 @`：最后一个 `@` 在索引 5
+    // Act / Assert — 用户刚敲的是最后一个
+    expect(locateAtRangeInMarkdown("@ 早期 @", "")).toEqual({
+      start: 5,
+      end: 6,
+    });
+  });
+});
+
+describe("at-reference insert in a list item", () => {
+  it("replaces only the @query span and keeps the item text intact", () => {
+    // Arrange — 列表项里的 Markdown 源码
+    const md = "- 第一个文件 @";
+
+    // Act
+    const range = locateAtRangeInMarkdown(md, "");
+    expect(range).not.toBeNull();
+    const out = insertAtTokenAsRef(md, range, "[[file:/repo/a.ts]]");
+
+    // Assert — 正文一个字符都不能少，chip 落在 @ 原来的位置
+    expect(out.draft).toBe("- 第一个文件 [[file:/repo/a.ts]] ");
+    expect(out.draft.startsWith("- 第一个文件 ")).toBe(true);
+    expect(out.draft.includes("@")).toBe(false);
+  });
+
+  it("keeps the whole item when the reference lands mid-sentence", () => {
+    // Arrange
+    const md = "- 在 @atFileQuery 里找引用";
+
+    // Act
+    const out = insertAtTokenAsRef(
+      md,
+      locateAtRangeInMarkdown(md, "atFileQuery"),
+      "[[file:/repo/src/lib/atFileQuery.ts]]",
+    );
+
+    // Assert
+    expect(out.draft).toBe(
+      "- 在 [[file:/repo/src/lib/atFileQuery.ts]] 里找引用",
+    );
+  });
+});
+
+// ── 回归：列表项内的换行（手工验证反馈）──────────────────────────────────────
+//
+// 症状：在列表里按 Shift+Enter 只插入了软换行，第二项没有编号。
+// 根因：Enter 被应用绑定为「发送」，列表项里唯一可用的换行手势就是 Shift+Enter，
+// 而它由 StarterKit 的 HardBreak 处理，光标仍留在同一项里。
+
+describe("Shift+Enter inside a list item", () => {
+  let editor: Editor | null = null;
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+  });
+
+  function listItemsOf(ed: Editor): number {
+    let n = 0;
+    ed.state.doc.descendants((node) => {
+      if (node.type.name === "listItem") n += 1;
+      return true;
+    });
+    return n;
+  }
+
+  function caretToEnd(ed: Editor): void {
+    ed.commands.setTextSelection(ed.state.doc.content.size);
+  }
+
+  it("starts a new ordered item instead of a soft break", () => {
+    // Arrange
+    editor = makeEditor("1. 第一项");
+
+    // Act
+    caretToEnd(editor);
+    const handled = editor.commands.keyboardShortcut("Shift-Enter");
+
+    // Assert — 第二项要真的存在，否则用户永远写不出第二条
+    expect(handled).toBe(true);
+    expect(listItemsOf(editor)).toBe(2);
+    expect(markdownOf(editor).startsWith("1. 第一项")).toBe(true);
+  });
+
+  it("starts a new bullet item too", () => {
+    // Arrange
+    editor = makeEditor("- 第一项");
+
+    // Act
+    caretToEnd(editor);
+    editor.commands.keyboardShortcut("Shift-Enter");
+
+    // Assert
+    expect(listItemsOf(editor)).toBe(2);
+  });
+
+  it("keeps the hard break outside a list", () => {
+    // Arrange — 列表外 Shift+Enter 仍是软换行，行为不变
+    editor = makeEditor("普通段落");
+
+    // Act
+    caretToEnd(editor);
+    editor.commands.keyboardShortcut("Shift-Enter");
+
+    // Assert — 段内多出一个 hardBreak，而不是新列表项
+    let hardBreaks = 0;
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === "hardBreak") hardBreaks += 1;
+      return true;
+    });
+    expect(listItemsOf(editor)).toBe(0);
+    expect(hardBreaks).toBe(1);
   });
 });
