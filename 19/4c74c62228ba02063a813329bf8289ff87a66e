@@ -1,0 +1,39 @@
+src/components/AgentTasksPanel.tsx
+  s_72db73f5d2fe1d::t_7d54422e40f581 675-683
+  s_72db73f5d2fe1d::t_b1131201699d4f 602-605
+  s_72db73f5d2fe1d::t_22522bb9b5555d 640-666,668
+src/lib/subagentStore.test.ts
+  s_72db73f5d2fe1d::t_0d86d9f75b4647 1-89
+src/hooks/useSessionHostEvents.ts
+  s_72db73f5d2fe1d::t_879a279a565285 33
+  s_72db73f5d2fe1d::t_ce943d81f072da 1431-1439
+  s_72db73f5d2fe1d::t_c83724a4c12adc 30-32
+src/lib/subagentStore.ts
+  s_72db73f5d2fe1d::t_6eef889fee7208 1-19,22-86
+  s_72db73f5d2fe1d::t_8c8e840e3bb65b 20-21
+src/styles/phone.part4.css
+  s_72db73f5d2fe1d::t_4d755409e8c42c 133-144
+src/lib/session/subagents.ts
+  s_72db73f5d2fe1d::t_0538142b1ac576 74-79
+  s_72db73f5d2fe1d::t_0fcf41eedf2563 191-195,200-214
+src/hooks/useSubagents.ts
+  s_72db73f5d2fe1d::t_a68167d5bf3640 4-6,8-10
+src/lib/session/subagents.test.ts
+  s_72db73f5d2fe1d::t_f24613fa57267e 186,192-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "194c74c62228ba02063a813329bf8289ff87a66e",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
