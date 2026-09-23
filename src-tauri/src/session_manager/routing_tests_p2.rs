@@ -720,3 +720,75 @@ async fn flush_after_turn_end_drops_old_agent_for_new_route() {
         "old background agent must not be promoted by the ready fast-path"
     );
 }
+
+// ── 手工验收反馈：切模型必须落在**目标会话**上 ─────────────────────────────
+//
+// 症状：切模型没中断任务（BOR-52 已修），但不同会话的模型仍被统一。
+// 其中一半原因在 store 的 scope（已修）；另一半在这里 —— `set_model` 写的是
+// 「当前 live 槽位」而不是调用方指定的会话，所以改后台会话的模型会污染屏幕上
+// 那个会话的 meta。
+
+#[test]
+fn model_change_targets_the_requested_chat_not_the_live_slot() {
+    // Arrange — live 槽位是 s-a，但调用方要改的是 s-b
+    let mgr = SessionManager::new();
+    *mgr.inner.lock() = Some(bare_live_session("s-a", "p-a"));
+
+    // Act
+    let applied = mgr.apply_model_to_session_slots("s-b", "model-x");
+
+    // Assert — live 槽位不认领，s-a 的 meta 一个字节都不能动
+    assert!(!applied.applies_live);
+    assert!(applied.acp.is_none());
+    let guard = mgr.inner.lock();
+    let live = guard.as_ref().expect("live slot preserved");
+    assert_eq!(live.app_session_id, "s-a");
+    assert_eq!(
+        live.meta.model_id, None,
+        "changing another chat must not re-model the live one"
+    );
+}
+
+#[test]
+fn model_change_claims_the_live_slot_when_it_is_the_target() {
+    // Arrange
+    let mgr = SessionManager::new();
+    *mgr.inner.lock() = Some(bare_live_session("s-a", "p-a"));
+
+    // Act
+    let applied = mgr.apply_model_to_session_slots("s-a", "model-x");
+
+    // Assert
+    assert!(applied.applies_live);
+    let guard = mgr.inner.lock();
+    let live = guard.as_ref().expect("live slot");
+    assert_eq!(live.meta.model_id.as_deref(), Some("model-x"));
+}
+
+#[test]
+fn model_change_on_a_background_chat_writes_its_own_meta() {
+    // Arrange — s-b 已后台化，s-a 仍是 live
+    let mgr = SessionManager::new();
+    *mgr.inner.lock() = Some(bare_live_session("s-a", "p-a"));
+    mgr.background
+        .lock()
+        .insert("s-b".into(), bare_live_session("s-b", "p-b"));
+
+    // Act
+    let applied = mgr.apply_model_to_session_slots("s-b", "model-x");
+
+    // Assert — 只有 s-b 被改；s-b 没有 ACP，所以不需要换路由
+    assert!(!applied.applies_live);
+    assert!(!applied.background_needs_respawn);
+    let bg = mgr.background.lock();
+    assert_eq!(
+        bg.get("s-b").and_then(|s| s.meta.model_id.as_deref()),
+        Some("model-x")
+    );
+    let guard = mgr.inner.lock();
+    assert_eq!(
+        guard.as_ref().and_then(|s| s.meta.model_id.clone()),
+        None,
+        "background model change must not leak into the live chat"
+    );
+}
