@@ -21,15 +21,26 @@ Run after implementation. Every item is pass/fail.
 | S2 | Plus menu Skills section lists real skills (or empty state) | Open + menu |
 | S3 | Skills filter by name/description | Type `/aih` → aihot-like skills; `/rc` and `/review-` highlight `review-commit` |
 
-## C. Contenteditable + chips
+## C. Editor + inline references
+
+编辑器是 TipTap / ProseMirror（BOR-51 起），不再是自研 contenteditable。
 
 | # | Check | How |
 |---|--------|-----|
-| C1 | Composer is contenteditable (not textarea) | Inspect DOM |
-| C2 | Selecting a skill inserts **inline** chip at caret | Type text, `/skill`, Enter mid-sentence |
-| C3 | Backspace deletes whole chip | Caret after chip, Backspace |
+| C1 | Composer root is a ProseMirror-managed `div.composer__input[contenteditable=true]`（不是 textarea，也不是自研 contenteditable） | Inspect DOM |
+| C2 | Selecting a skill inserts an **inline** chip at the caret | Type text, `/skill`, Enter mid-sentence |
+| C3 | Backspace deletes a whole chip, leaving the surrounding text intact | Caret after chip, Backspace |
 | C4 | IME Enter does not send | Chinese IME compose + Enter |
-| C5 | Shift+Enter newline; Enter sends when palette closed | |
+| C5 | Enter sends while the palette is closed; Shift+Enter inserts a newline | |
+| C6 | **列表项内** Shift+Enter 新起一个同级列表项（Enter 被绑定为发送，这是列表里唯一可用的换行手势） | 输入 `1. ` 后 Shift+Enter |
+| C7 | `@` 补全选中文件 → 文件名 chip **内联**落在光标处（不再进下方附件区）；目录同理，带文件夹图标 | 在句子中间输入 `@` 选文件 |
+| C8 | 引用 chip 整块删除；悬停显示完整路径 | Backspace / hover |
+| C9 | `@` 匹配到 0 个目标时补全面板自动关闭；`@` 后接空格即终止补全，普通 `@文本` 不被转换 | 输入 `@某人` / `@/goal` |
+| C10 | 粘贴或输入 http(s) 链接自动成为 URL chip；chip 显示「主机 + 路径」（去掉 query/hash）；普通点击只定位光标，⌘/Ctrl+点击才打开浏览器 | 粘贴链接；点击 chip |
+| C11 | 非 http(s) 协议（`javascript:` / `data:` / `file:` / `mailto:` 等）不得成为 chip 或可点击链接 | 粘贴这些链接 |
+| C12 | 输入框内可创建的每一种 Markdown 结构，其渲染与聊天消息里的同一结构一致 | 列表 / 分割线 / 代码块 / 行内代码 / 标题 / 粗体斜体 |
+| C13 | 发送后正文里的引用序列化为 `@绝对路径`；URL 即链接本身 | 观察 agent 收到的内容或日志 |
+| C14 | 用户气泡里的引用用聊天侧同一套 chip 渲染；重新编辑已发送消息时引用回填成 chip | 发送后查看气泡 / 点编辑 |
 
 ## D. Slash palette UX
 

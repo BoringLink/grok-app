@@ -28,6 +28,12 @@ gaps:
 
 # Acceptance Verification · Slash / Skills / Goal / Doctor
 
+> **已过时（2026-07-23 的快照，保留作历史记录）。**
+> C 段（编辑器与 chip）此后被多次改动：BOR-51 把 composer 从自研 contenteditable
+> 换成 TipTap/ProseMirror；BOR-53/57 引入内联文件与 URL 引用 chip；BOR-56 对齐了
+> Markdown 渲染；BOR-58/59 改了列表内换行与 `@` 插入的坐标空间。
+> **现行验收标准以 [ACCEPTANCE-slash-composer.md](./ACCEPTANCE-slash-composer.md) 的 C 段为准。**
+
 **Source:** [ACCEPTANCE-slash-composer.md](./ACCEPTANCE-slash-composer.md)  
 **Verified:** 2026-07-23  
 **Method:** Static code review + existing unit-test source review.  
