@@ -1,0 +1,40 @@
+src/components/lobe-chat/lobe-chat.part1b.css
+  s_72db73f5d2fe1d::t_f2e8d8e4f7cbbc 28-29
+src/styles/tokens.css
+  s_72db73f5d2fe1d::t_c6560421b662c4 222-228,231,236
+src/styles/modals.part1.css
+  s_72db73f5d2fe1d::t_510c9b47bfd862 355
+  s_72db73f5d2fe1d::t_786a10c4987d8f 354
+  s_72db73f5d2fe1d::t_7fd8e256d99bf2 253-265,270,272,278,287,299,308,310,312-314,316-318,323-336
+  s_72db73f5d2fe1d::t_a0f89fe89f98d4 295-296,301,306,309,319
+  s_72db73f5d2fe1d::t_23f670016d9a56 341-342,345-350
+  s_72db73f5d2fe1d::t_8dd50cb648a7c3 297-298,300,305,307,311,320-321
+src/styles/settings.part6.css
+  s_72db73f5d2fe1d::t_f347ce53abeaee 32,34,42,44-47,49-52,54-57,59-62,64-67,69-72,76-77
+  s_72db73f5d2fe1d::t_cd6455a72738ab 33,35-41,43,48,53,58,63,68,73-75
+src/lib/composerMarkdownStyles.guard.test.ts
+  s_72db73f5d2fe1d::t_78d280b51530fe 46-48,52-54
+  s_72db73f5d2fe1d::t_fe7cec853f143f 1,3,9,11,13-25,31-32,34,36-42,55-56,63,71-73,82-83,85,118-119,121,128-129
+  s_72db73f5d2fe1d::t_09bc6461777e01 2,4-8,10,12,26-30,33,35,43-45,49-51,57-62,64-70,74-81,84,86-87,92,95-96,99,105,120,122-127
+  s_72db73f5d2fe1d::t_0409ca8f067206 88-91,93-94,97-98,100-104,106-117
+src/components/lobe-chat/lobe-chat.part1.css
+  s_72db73f5d2fe1d::t_1bae9906de8f8d 83-84,94
+src/styles/chat.part3.css
+  s_72db73f5d2fe1d::t_efb8311125e13d 737-749
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "d2e538b155022b6b379ecea3bc937b65c09c8c8e",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
