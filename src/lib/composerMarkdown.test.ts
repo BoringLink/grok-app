@@ -13,6 +13,7 @@ import {
   locateAtRangeInMarkdown,
   locateSlashRangeInMarkdown,
   normalizeSerializedMarkdown,
+  refCaretInEditorText,
 } from "./composerMarkdown";
 
 /**
@@ -452,5 +453,117 @@ describe("Shift+Enter inside a list item", () => {
     });
     expect(listItemsOf(editor)).toBe(0);
     expect(hardBreaks).toBe(1);
+  });
+});
+
+// ── 回归：@ 引用落点在编辑器文本空间（手工验证反馈）──────────────────────────
+//
+// 症状：在列表项里插入文件引用后，光标跳到行尾 / 文档末尾，而不是停在 chip 之后。
+// 原因：`insertAtTokenAsRef` 的 caret 是 Markdown 源码偏移，而落点走的是编辑器
+// 文本空间；列表项多出的 `- ` 让偏移整体右移，plain / list 差异由此而来。
+
+describe("editor-text offset around a reference chip", () => {
+  let editor: Editor | null = null;
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+  });
+
+  it("round-trips offsets before and after the chip in a list item", () => {
+    // Arrange — 列表项 Markdown：编辑器文本里没有 `- `，也没有末尾空格
+    editor = makeEditor("- 第一个文件 [[file:/repo/a.ts]] ");
+    const doc = editor.state.doc;
+    const chipEnd = "第一个文件 [[file:/repo/a.ts]]".length; // 25
+
+    // Act
+    const posAtChipEnd = docPosForEditorTextOffset(doc, chipEnd);
+    const posBeforeChip = docPosForEditorTextOffset(doc, 6);
+
+    // Assert — chip 之后确实落在 chip 后，而不是文档开头或末尾
+    expect(editorTextBeforePos(doc, posAtChipEnd)).toBe(
+      "第一个文件 [[file:/repo/a.ts]]",
+    );
+    expect(editorTextOffsetForDocPos(doc, posAtChipEnd)).toBe(chipEnd);
+    expect(posAtChipEnd).not.toBe(doc.content.size);
+    // chip 之前的文本偏移往返一致
+    expect(editorTextOffsetForDocPos(doc, posBeforeChip)).toBe(6);
+    // 超过文本长度收敛到文档末端，反推得整篇编辑器文本长度
+    expect(docPosForEditorTextOffset(doc, 999)).toBe(doc.content.size);
+    expect(editorTextOffsetForDocPos(doc, doc.content.size)).toBe(chipEnd);
+  });
+
+  it("round-trips the chip end when the chip sits mid-sentence", () => {
+    // Arrange
+    editor = makeEditor("- 在 [[file:/repo/a.ts]] 里找");
+    const doc = editor.state.doc;
+    const chipEnd = "在 [[file:/repo/a.ts]]".length; // 21
+
+    // Act
+    const pos = docPosForEditorTextOffset(doc, chipEnd);
+
+    // Assert — 落点在 chip 之后、后面的正文之前
+    expect(editorTextBeforePos(doc, pos)).toBe("在 [[file:/repo/a.ts]]");
+    expect(editorTextOffsetForDocPos(doc, pos)).toBe(chipEnd);
+  });
+});
+
+describe("refCaretInEditorText", () => {
+  const token = "[[file:/repo/a.ts]]";
+
+  /** 复刻 applyAtFile：在 Markdown 里定位后插入，再换算到编辑器文本空间。 */
+  function caretFor(md: string, query: string, editorText: string): number {
+    const range = locateAtRangeInMarkdown(md, query);
+    const inserted = insertAtTokenAsRef(md, range, token);
+    return refCaretInEditorText({
+      editorText,
+      query,
+      range,
+      token,
+      storedCaret: inserted.caret,
+    });
+  }
+
+  it("drops the list marker when the chip ends the item", () => {
+    // Arrange — 存储空间 caret 是 28，编辑器文本空间里 chip 之后是 25
+    // Act / Assert
+    expect(caretFor("- 第一个文件 @", "", "第一个文件 @")).toBe(25);
+  });
+
+  it("drops the list marker when the chip sits mid-sentence", () => {
+    // Arrange — 存储空间 caret 是 23，编辑器文本空间里是 21
+    // Act / Assert
+    expect(caretFor("- 在 @atF 里找", "atF", "在 @atF 里找")).toBe(21);
+  });
+
+  it("keeps a plain-paragraph caret right after the chip", () => {
+    // Arrange — 普通段落两个空间一致
+    // Act / Assert
+    expect(caretFor("看 @", "", "看 @")).toBe(21);
+    expect(caretFor("在 @atF 里找", "atF", "在 @atF 里找")).toBe(21);
+  });
+
+  it("falls back to the stored caret without an editor text", () => {
+    // Arrange
+    const range = locateAtRangeInMarkdown("- 第一个文件 @", "");
+    const inserted = insertAtTokenAsRef("- 第一个文件 @", range, token);
+    // Act / Assert
+    expect(
+      refCaretInEditorText({
+        editorText: null,
+        query: "",
+        range,
+        token,
+        storedCaret: inserted.caret,
+      }),
+    ).toBe(inserted.caret);
+    expect(
+      refCaretInEditorText({
+        editorText: "第一个文件 @",
+        query: "",
+        range: null,
+        token,
+        storedCaret: 99,
+      }),
+    ).toBe(99);
   });
 });
