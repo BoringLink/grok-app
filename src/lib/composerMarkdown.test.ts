@@ -3,9 +3,7 @@
  */
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { Editor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { Markdown } from "tiptap-markdown";
-import { SkillTokenNode } from "@/components/composerSkillNode";
+import { buildComposerExtensions } from "@/components/composerExtensions";
 import {
   docPosForEditorTextOffset,
   editorTextBeforePos,
@@ -15,18 +13,13 @@ import {
   normalizeSerializedMarkdown,
 } from "./composerMarkdown";
 
-/** 构建与 ComposerEditor 相同扩展集的 headless 编辑器（AAA 的 Arrange）。 */
+/**
+ * 与 ComposerEditor 共用同一份扩展清单（`buildComposerExtensions`）。
+ * 之前这里另抄了一份，新增原子节点时两边会静默漂移。
+ */
 function makeEditor(content: string): Editor {
   return new Editor({
-    extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
-      SkillTokenNode,
-      Markdown.configure({
-        html: false,
-        breaks: true,
-        linkify: false,
-      }),
-    ],
+    extensions: buildComposerExtensions({ showPlaceholderWhenEditable: false }),
     content,
     editable: false,
   });
@@ -183,5 +176,131 @@ describe("isStoredMarkdownEmpty", () => {
     expect(isStoredMarkdownEmpty(" \n \n")).toBe(true);
     expect(isStoredMarkdownEmpty("[[skill:a]]")).toBe(false);
     expect(isStoredMarkdownEmpty("hi")).toBe(false);
+  });
+});
+
+// ── BOR-53：内联引用 token 的往返与坐标 ─────────────────────────────────────
+
+describe("reference tokens (BOR-53)", () => {
+  let editor: Editor | null = null;
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+  });
+
+  it("round-trips a file token unchanged", () => {
+    // Arrange
+    const stored = "在 [[file:/repo/src/a.ts]] 中找到 xxx 逻辑";
+
+    // Act
+    editor = makeEditor(stored);
+
+    // Assert
+    expect(markdownOf(editor)).toBe(stored);
+  });
+
+  it("round-trips directory and url references", () => {
+    // Arrange / Act / Assert
+    editor = makeEditor("[[dir:/repo/src/components]] and [[url:https://example.com/x]]");
+    expect(markdownOf(editor)).toBe(
+      "[[dir:/repo/src/components]] and [[url:https://example.com/x]]",
+    );
+  });
+
+  it("round-trips a path containing spaces and brackets", () => {
+    // Arrange — 空格与 `]` 是最容易破坏 `[[kind:value]]` 语法的两种字符
+    const stored = "[[file:/repo/my dir/a]b.ts]]";
+
+    // Act
+    editor = makeEditor(stored);
+
+    // Assert
+    expect(markdownOf(editor)).toBe(stored);
+  });
+
+  it("keeps a malformed reference as literal text", () => {
+    // Arrange — 换行会跨段落，无法构成 token，必须原样保留而不是解析成节点
+    const stored = "[[file:/repo/a.ts";
+
+    // Act
+    editor = makeEditor(stored);
+
+    // Assert
+    expect(markdownOf(editor)).toBe(stored);
+  });
+
+  it("counts the token at its stored length in editor-text space", () => {
+    // Arrange — caret 换算依赖 atom 与存储文本等长，换算错会让 slash / @ 检测漂移
+    const stored = "ab [[file:/x.ts]] cd";
+    editor = makeEditor(stored);
+
+    // Act
+    const beforeToken = editorTextBeforePos(editor.state.doc, 1);
+    const endOfText = editorTextOffsetForDocPos(
+      editor.state.doc,
+      editor.state.doc.content.size,
+    );
+    // 往返：文本末端偏移 → PM position → 文本偏移，必须回到同一个偏移
+    const docPosAtEnd = docPosForEditorTextOffset(editor.state.doc, stored.length);
+    const backAgain = editorTextOffsetForDocPos(editor.state.doc, docPosAtEnd);
+
+    // Assert
+    expect(beforeToken).toBe("");
+    // token 按存储形式计入（14 字符），否则末端偏移会短一截
+    expect(endOfText).toBe(stored.length);
+    expect(backAgain).toBe(stored.length);
+  });
+
+  it("treats a reference-only draft as non-empty", () => {
+    // Arrange / Act / Assert
+    expect(isStoredMarkdownEmpty("[[file:/x.ts]]")).toBe(false);
+    expect(isStoredMarkdownEmpty("[[dir:/x]]")).toBe(false);
+    expect(isStoredMarkdownEmpty("[[url:https://a.b]]")).toBe(false);
+    expect(isStoredMarkdownEmpty("\n  \n")).toBe(true);
+  });
+});
+
+describe("reference chip deletion (BOR-53)", () => {
+  let editor: Editor | null = null;
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+  });
+
+  /** 找到第一个 refToken 节点的 PM position。 */
+  function firstRefPos(ed: Editor): number {
+    let found = -1;
+    ed.state.doc.descendants((node, pos) => {
+      if (found === -1 && node.type.name === "refToken") found = pos;
+      return found === -1;
+    });
+    return found;
+  }
+
+  it("is an atomic, selectable inline node", () => {
+    // Arrange — 退格整块删除依赖这两个配置；缺一就会退化成逐字编辑
+    editor = makeEditor("[[file:/a.ts]]");
+    const node = editor.schema.nodes.refToken;
+
+    // Assert
+    expect(node.isAtom).toBe(true);
+    expect(node.spec.selectable).toBe(true);
+    expect(node.isInline).toBe(true);
+  });
+
+  it("deletes the whole chip without touching the surrounding text", () => {
+    // Arrange
+    editor = makeEditor("在 [[file:/repo/a.ts]] 中");
+    const pos = firstRefPos(editor);
+    expect(pos).toBeGreaterThan(0);
+
+    // Act
+    editor.chain().setNodeSelection(pos).deleteSelection().run();
+
+    // Assert — chip 整块消失，两侧文本原样保留
+    expect(markdownOf(editor)).toBe("在  中");
+    expect(firstRefPos(editor)).toBe(-1);
   });
 });

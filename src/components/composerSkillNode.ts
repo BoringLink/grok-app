@@ -80,13 +80,17 @@ export function skillTokenText(kind: string, name: string): string {
   return `[[${kind === "plugin" ? "plugin" : "skill"}:${name}]]`;
 }
 
-/** 编辑器文本空间内 token 的长度（与存储形式等长，用于 caret 换算）。 */
-export function editorTokenLength(node: ProseMirrorNode): number | null {
+/**
+ * 该节点在编辑器文本空间 / 存储空间里的 token 文本；不是 skill token 时返回
+ * `null`。两个空间逐字符等价，因此这一个函数同时供 caret 换算与 DOM 序列化
+ * 使用（BOR-53 起由 `composerMarkdown` 汇总多种 atom 类型）。
+ */
+export function skillTokenStoredText(node: ProseMirrorNode): string | null {
   if (node.type.name !== "skillToken") return null;
   return skillTokenText(
     String(node.attrs.kind ?? "skill"),
     String(node.attrs.name ?? ""),
-  ).length;
+  );
 }
 
 export const SkillTokenNode = Node.create({

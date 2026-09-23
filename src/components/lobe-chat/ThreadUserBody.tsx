@@ -3,11 +3,12 @@
  * → label, not raw brackets). Extracted from ConversationThread.tsx — the
  * row consumes only {@link UserMessageBody}. */
 
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { createT, type Locale } from "@/i18n";
 import { useAttachedChatLookup } from "@/components/AttachedChatLookup";
 import { ChatRefChip } from "@/components/ChatRefChip";
 import { UserQuoteCards } from "@/components/ComposerQuoteCards";
+import { FilePathCard } from "@/components/FilePathCard";
 import { HighlightedText } from "@/components/HighlightedText";
 import { IconChat, IconClock } from "@/components/icons";
 import { SkillChip } from "@/components/SkillChip";
@@ -20,6 +21,7 @@ import {
   parseAttachmentsFromContent,
 } from "@/lib/attachments";
 import { hydrateDisplayContent, parseStoredContent } from "@/lib/draftDoc";
+import { getFilePathCardLabels } from "@/lib/filePathCardPref";
 import {
   parseRemoteImUserContent,
   remoteImChannelLabel,
@@ -33,19 +35,26 @@ const UserBodyText = memo(function UserBodyText({
   content,
   findQuery,
   findActiveOccurrence,
+  locale,
 }: {
   content: string;
   findQuery?: string;
   findActiveOccurrence?: number | null;
+  locale: Locale;
 }) {
   const chatLookup = useAttachedChatLookup();
+  const fileLabels = useMemo(() => getFilePathCardLabels(locale), [locale]);
   const hydrated = hydrateDisplayContent(
     parseAttachmentsFromContent(content).text,
   );
   const segs = parseStoredContent(hydrated);
   if (
     !segs.some(
-      (s) => s.type === "skill" || s.type === "plugin" || s.type === "chat",
+      (s) =>
+        s.type === "skill" ||
+        s.type === "plugin" ||
+        s.type === "chat" ||
+        s.type === "ref",
     )
   ) {
     if (findQuery?.trim()) {
@@ -90,6 +99,17 @@ const UserBodyText = memo(function UserBodyText({
                   ? () => chatLookup.onOpen?.(s.sessionId)
                   : undefined
               }
+            />
+          );
+        }
+        if (s.type === "ref") {
+          // 引用取值来自 @ 补全，恒为绝对路径，因此不需要 projectPath 解析。
+          return (
+            <FilePathCard
+              key={`rf-${i}-${s.value}`}
+              path={s.value}
+              kind={s.kind}
+              labels={fileLabels}
             />
           );
         }
@@ -176,6 +196,7 @@ const UserPlainOrSkills = memo(function UserPlainOrSkills({
             content={displayText}
             findQuery={findQuery}
             findActiveOccurrence={findActiveOccurrence}
+            locale={locale}
           />
           {canFold ? (
             <div className="lobe-chat-user-fold-cue" aria-hidden>

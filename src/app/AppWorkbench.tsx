@@ -339,9 +339,15 @@ import {
 import { useAttachChat } from "@/hooks/useAttachChat";
 import { mapStoredMessagesToChat } from "@/lib/mapStoredMessages";
 import {
+  insertAtTokenAsRef,
   rankAtFileHits,
   removeAtTokenFromDraft,
 } from "@/lib/atFileQuery";
+import {
+  isTokenizableRefValue,
+  refTokenText,
+  type RefKind,
+} from "@/lib/composerRefToken";
 import {
   type ComposerAtFileEntry,
 } from "@/components/ComposerAtPanel";
@@ -6463,7 +6469,19 @@ export function AppWorkbench() {
     openSkills,
   ]);
 
-  const atMenuOpen = liveAt.present && !composerMenuOpen;
+  /**
+   * `@` 查询是否处于活动状态——驱动搜索，不驱动渲染。
+   * 必须与下面的 `atMenuOpen` 分开：若搜索也依赖「面板是否可见」，
+   * 一旦匹配到 0 个目标面板关闭，搜索就会停摆、候选再也回不来。
+   */
+  const atQueryActive = liveAt.present && !composerMenuOpen;
+  /**
+   * 补全面板是否可见。匹配到 0 个目标时自动关闭——用户想把 `@` 当普通文本
+   * 写（`@某人`、`@/goal`）时不需要额外的逃逸出口。
+   */
+  const atMenuOpen =
+    atQueryActive &&
+    (atLoading || atEntries.length > 0 || atSoftFail != null);
   const closeAtMenu = useCallback(() => {
     const live = liveAtRef.current;
     if (live.present) {
@@ -6480,31 +6498,51 @@ export function AppWorkbench() {
   const applyAtFile = useCallback(
     (entry: ComposerAtFileEntry) => {
       const live = liveAtRef.current;
-      if (live.present) {
-        setDraft((d) => removeAtTokenFromDraft(d, live.start, live.end));
-      }
+      const kind: RefKind = entry.isDir ? "dir" : "file";
       const cleared = { present: false, query: "", start: 0, end: 0 };
       liveAtRef.current = cleared;
       setLiveAt(cleared);
       setAtEntries([]);
       setAtSoftFail(null);
-      setAttachments((prev) =>
-        mergeAttachments(prev, [
-          {
-            path: entry.path,
-            name: entry.name || entry.path.split(/[/\\]/).pop() || entry.path,
-            isDir: !!entry.isDir,
-          },
-        ]),
-      );
+
+      if (!isTokenizableRefValue(entry.path)) {
+        // 路径含换行等无法安全写进 token 的字符：退回附件，而不是写出一个
+        // 解析不回来的 token（那会让引用在下次加载时变成乱码文本）。
+        // `@query` 仍要从正文里删掉，否则它会以字面文本留在输入框里。
+        if (live.present) {
+          setDraft((d) => removeAtTokenFromDraft(d, live.start, live.end));
+        }
+        setAttachments((prev) =>
+          mergeAttachments(prev, [
+            {
+              path: entry.path,
+              name:
+                entry.name || entry.path.split(/[/\\]/).pop() || entry.path,
+              isDir: !!entry.isDir,
+            },
+          ]),
+        );
+        requestComposerFocus();
+        return;
+      }
+
+      const token = refTokenText(kind, entry.path);
+      const range = live.present ? { start: live.start, end: live.end } : null;
+      // 在 `@query` 原本的位置插入 chip，而不是塞进输入框下方的附件区。
+      // 读 `getDraft()` 而非渲染期的值：这里需要同步算出 chip 后的光标偏移，
+      // 函数式更新做不到（更新器在下次渲染才执行）。
+      const inserted = insertAtTokenAsRef(getDraft(), range, token);
+      setDraft(inserted.draft);
+      requestComposerStoredCaret(inserted.caret);
       requestComposerFocus();
     },
-    [requestComposerFocus],
+    [getDraft, requestComposerFocus],
   );
 
-  // Debounced project file search for @ panel.
+  // Debounced project file search for @ panel. Keyed on `atQueryActive`（而非
+  // 面板可见性），这样 0 匹配自动收起的面板能随输入继续搜索、重新出现。
   useEffect(() => {
-    if (!atMenuOpen) return;
+    if (!atQueryActive) return;
     const projectPath = activeProject?.path?.trim() || "";
     if (!projectPath) {
       setAtEntries([]);
@@ -6559,7 +6597,7 @@ export function AppWorkbench() {
     return () => {
       window.clearTimeout(t);
     };
-  }, [atMenuOpen, liveAt.query, activeProject?.path]);
+  }, [atQueryActive, liveAt.query, activeProject?.path]);
 
   const { pos: composerAtPos, style: composerAtStyle } = useFloatingMenu({
     open: atMenuOpen,

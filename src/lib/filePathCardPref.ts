@@ -7,6 +7,9 @@
  */
 
 import { pathBasename } from "@/lib/attachments";
+import { revealInOsLabel } from "@/lib/appPlatform";
+import { createT, type Locale } from "@/i18n";
+import type { FilePathCardLabels } from "@/components/FilePathCard";
 import { isHttpUrl, isRealLocalAbsolutePath } from "@/lib/pathRefs";
 import { parsePathLineCitation } from "@/lib/pathLineCitation";
 
@@ -142,4 +145,47 @@ export function filePathCardHoverLabel(
   resolvedAbs?: string | null,
 ): string {
   return (resolvedAbs && resolvedAbs.trim()) || path;
+}
+
+/**
+ * FilePathCard 的文案表（按 locale 缓存）。
+ *
+ * 原本在 `MarkdownChat` 里，仅供助手气泡使用；BOR-53 起用户气泡的文件引用
+ * chip 也要用同一套文案，因此下沉到 lib，由两处共享。
+ */
+const FILE_LABELS_CACHE = new Map<Locale, FilePathCardLabels>();
+
+export function getFilePathCardLabels(locale: Locale): FilePathCardLabels {
+  const cached = FILE_LABELS_CACHE.get(locale);
+  if (cached) return cached;
+  const tr = createT(locale);
+  const labels: FilePathCardLabels = {
+    open: tr("attach.open"),
+    reveal: revealInOsLabel(tr),
+    copyPath: tr("attach.copyPath"),
+    openInPanel: tr("resources.openInPanel"),
+    openExternal: tr("resources.openExternal"),
+    details: tr("attach.details"),
+    detailsTitle: tr("attach.detailsTitle"),
+    detailsName: tr("attach.detailsName"),
+    detailsType: tr("attach.detailsType"),
+    detailsPath: tr("attach.detailsPath"),
+    detailsResolved: tr("attach.detailsResolved"),
+    detailsStatus: tr("attach.detailsStatus"),
+    detailsMissing: tr("attach.detailsMissing"),
+    detailsOk: tr("attach.detailsOk"),
+    detailsClose: tr("attach.detailsClose"),
+    typeFile: tr("attach.typeFile"),
+    typeUrl: tr("attach.typeUrl"),
+    typeDir: tr("attach.typeDir"),
+    errNotFound: tr("resources.openErr.notFound"),
+    errPathDenied: tr("resources.openErr.pathDenied"),
+    errHostOnly: tr("resources.openErr.hostOnly"),
+    errNoEditor: tr("resources.openErr.noEditor"),
+    errCancelled: tr("resources.openErr.cancelled"),
+    errOther: tr("resources.openErr.other"),
+    errRevealOther: tr("resources.revealErr.other"),
+  };
+  FILE_LABELS_CACHE.set(locale, labels);
+  return labels;
 }
