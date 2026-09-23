@@ -1,0 +1,65 @@
+src/i18n/messages/pt-BR/tasks.ts
+  s_72db73f5d2fe1d::t_ab3caff38051fa 247-252
+src/i18n/messages/ta/tasks.ts
+  s_72db73f5d2fe1d::t_88edf6f6ea739b 247-252
+src/hooks/useSubagents.ts
+  s_72db73f5d2fe1d::t_63fa79c243da19 1-85
+src/i18n/messages/ja/tasks.ts
+  s_72db73f5d2fe1d::t_d792fb44fc285b 247-252
+src/i18n/messages/ko/tasks.ts
+  s_72db73f5d2fe1d::t_818a022320a517 247-252
+src/i18n/messages/ru/tasks.ts
+  s_72db73f5d2fe1d::t_60bc1fbf4eff1a 247-252
+src/i18n/messages/uk/tasks.ts
+  s_72db73f5d2fe1d::t_ca098eff0eef3d 247-252
+src/i18n/messages/de/tasks.ts
+  s_72db73f5d2fe1d::t_74ab2d7412666c 247-252
+src/i18n/messages/it/tasks.ts
+  s_72db73f5d2fe1d::t_b12663929a30a7 247-252
+src/lib/session/subagents.test.ts
+  s_72db73f5d2fe1d::t_e45da8a29ece02 67-71
+  s_72db73f5d2fe1d::t_999c7f555da315 1-66,72-217
+src/i18n/messages/en/tasks.ts
+  s_72db73f5d2fe1d::t_c0b1c742ab17bc 247-252
+src/components/AgentTasksPanelLive.tsx
+  s_72db73f5d2fe1d::t_047f9d8ef7b2f1 56
+src/styles/phone.part4.css
+  s_72db73f5d2fe1d::t_b0f615aebea57b 132-150
+src/i18n/messages/zh/tasks.ts
+  s_72db73f5d2fe1d::t_6a2dbf30f57c22 247-252
+src/lib/session/subagents.ts
+  s_72db73f5d2fe1d::t_3702b66e9b1c55 135-144,146-154
+  s_72db73f5d2fe1d::t_12c35ff5ff3155 1-134,145,155-221
+src/i18n/messages/zh-TW/tasks.ts
+  s_72db73f5d2fe1d::t_be84f1322b35fe 247-252
+src/i18n/messages/fil/tasks.ts
+  s_72db73f5d2fe1d::t_e2258f46aa89fc 247-252
+src/i18n/messages/es/tasks.ts
+  s_72db73f5d2fe1d::t_0d5da7eff00605 247-252
+src/components/AgentTasksPanel.tsx
+  s_72db73f5d2fe1d::t_ed77eae6a316da 704-705
+  s_72db73f5d2fe1d::t_c05366168c3c4f 694
+  s_72db73f5d2fe1d::t_0bf87de2d79ba7 596-682
+  s_72db73f5d2fe1d::t_c504cc05afc694 60-67
+  s_72db73f5d2fe1d::t_245024ef7a3a9c 110-111
+  s_72db73f5d2fe1d::t_51fb40f8120d22 802-805
+  s_72db73f5d2fe1d::t_1ab0c18a77e310 941-952
+src/i18n/messages/fr/tasks.ts
+  s_72db73f5d2fe1d::t_77770fad0b37fb 247-252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "36d307293210ce69a8d4813ec3645fb731975810",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
