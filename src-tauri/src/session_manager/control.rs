@@ -14,6 +14,18 @@ use crate::store::{self};
 
 use super::*;
 
+/// 模型变更在各槽位上的记账结果（见 [`SessionManager::apply_model_to_session_slots`]）。
+pub(super) struct ModelApplyOutcome {
+    /// live 槽位持有的 ACP —— 仅当目标会话就是 live 会话时才有值。
+    pub acp: Option<Arc<AcpClient>>,
+    /// live 槽位的 agent session id（`session/set_model` 的目标）。
+    pub agent_session_id: Option<String>,
+    /// 目标会话是否正占据 live 槽位；否 = 调用方不应再碰 live。
+    pub applies_live: bool,
+    /// background 槽位需要在本轮结束后换路由。
+    pub background_needs_respawn: bool,
+}
+
 impl SessionManager {
     #[allow(dead_code)]
     pub fn set_permission_policy(&self, policy: PermissionPolicy) {
@@ -802,30 +814,45 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Apply model id on the live ACP session (best-effort session/set_model).
+    /// Apply a model id to the **requested** session (best-effort
+    /// `session/set_model` on its live process).
     ///
     /// Queue semantics (BOR-52): a mid-turn session never gets a live
     /// `session/set_model` — the id is stored on the meta (next connect
     /// spawns / aligns with it) and a `pending_soft_respawn` is registered so
     /// the turn-end flush swaps the route. Idle sessions apply immediately.
-    pub async fn set_model(&self, app: &AppHandle, model_id: String) -> Result<(), String> {
+    ///
+    /// `session_id` scopes the write. Without it the previous implementation
+    /// wrote whichever chat happened to occupy the live slot, so changing a
+    /// parked chat's model re-modelled the chat on screen. `None` now means
+    /// "no target" and changes nothing: guessing the live slot is exactly the
+    /// bug being fixed (a draft chat sends `None` and never touches another
+    /// chat's meta).
+    pub async fn set_model(
+        &self,
+        app: &AppHandle,
+        model_id: String,
+        session_id: Option<&str>,
+    ) -> Result<(), String> {
         let model_id = model_id.trim().to_string();
         if model_id.is_empty() {
             return Err("model id empty".into());
         }
+        let Some(target) = session_id.filter(|id| !id.is_empty()) else {
+            return Ok(());
+        };
         // Store composer preference; agent receives channel-resolved id.
         let agent_model = crate::providers::agent_spawn_model_id(&model_id);
-        let (acp, sid) = {
-            let mut guard = self.inner.lock();
-            if let Some(s) = guard.as_mut() {
-                s.model_id = Some(model_id.clone());
-                s.meta.model_id = Some(model_id.clone());
-                let _ = store::update_session_meta(&s.meta);
-                (s.acp.clone(), s.meta.agent_session_id.clone())
-            } else {
-                (None, None)
-            }
-        };
+        let applied = self.apply_model_to_session_slots(target, &model_id);
+        if applied.background_needs_respawn {
+            let _ = app.emit(
+                "session://model_switch_pending",
+                serde_json::json!({ "sessionId": target, "pending": true }),
+            );
+        }
+        if !applied.applies_live {
+            return Ok(());
+        }
         if let Some(app_session_id) = self.queue_model_change_for_busy() {
             tracing::info!(
                 session = %app_session_id,
@@ -838,10 +865,76 @@ impl SessionManager {
             return Ok(());
         }
         // Target the live session explicitly (shared process safety).
-        if let (Some(acp), Some(sid)) = (acp, sid) {
+        if let (Some(acp), Some(sid)) = (applied.acp, applied.agent_session_id) {
             acp.set_model_for(&sid, &agent_model).await?;
         }
         Ok(())
+    }
+
+    /// 把模型写进目标会话的 meta，覆盖 live / background / parked 三个槽位。
+    ///
+    /// 抽成不依赖 `AppHandle` 的方法（BOR-52 的同一手法），这样槽位记账能被单测
+    /// 覆盖：此前只写 live 槽位，于是改后台会话的模型会落到「当前屏幕上那个会话」
+    /// 的 meta 上。
+    pub(super) fn apply_model_to_session_slots(
+        &self,
+        target: &str,
+        model_id: &str,
+    ) -> ModelApplyOutcome {
+        let (acp, agent_session_id, applies_live) = {
+            let mut guard = self.inner.lock();
+            match guard.as_mut() {
+                Some(s) if s.app_session_id == target => {
+                    s.model_id = Some(model_id.to_string());
+                    s.meta.model_id = Some(model_id.to_string());
+                    let _ = store::update_session_meta(&s.meta);
+                    (s.acp.clone(), s.meta.agent_session_id.clone(), true)
+                }
+                _ => (None, None, false),
+            }
+        };
+        // Parked / background chats own their own process and meta (#598 for
+        // effort, same shape here).
+        let background_needs_respawn = if let Some(s) = self.background.lock().get_mut(target) {
+            let same = s.model_id.as_deref() == Some(model_id);
+            s.model_id = Some(model_id.to_string());
+            s.meta.model_id = Some(model_id.to_string());
+            let _ = store::update_session_meta(&s.meta);
+            !same && s.acp.is_some()
+        } else {
+            false
+        };
+        if background_needs_respawn {
+            self.pending_soft_respawn
+                .lock()
+                .insert(target.to_string(), "model".into());
+        }
+        // Let-binding so the parking_lot guard drops before the if-let body
+        // (edition 2021 keeps if-let temps alive through else — re-lock deadlock).
+        let removed = self.parked.lock().remove(target);
+        if let Some(p) = removed {
+            if p.model_id.as_deref() != Some(model_id) {
+                if !self.has_other_process_tenant(&p.process_id, target) {
+                    tokio::spawn(async move {
+                        SessionManager::kill_acp_bounded(&p.acp).await;
+                    });
+                } else {
+                    tracing::info!(
+                        session = %target,
+                        process = %p.process_id,
+                        "model change: removed parked entry, skip kill (mid-turn cohabitant)"
+                    );
+                }
+            } else {
+                self.parked.lock().insert(target.to_string(), p);
+            }
+        }
+        ModelApplyOutcome {
+            acp,
+            agent_session_id,
+            applies_live,
+            background_needs_respawn,
+        }
     }
 
     /// Apply product mode via session/set_mode; soft-respawn if agent rejects.
