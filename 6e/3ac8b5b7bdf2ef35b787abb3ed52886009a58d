@@ -1,0 +1,21 @@
+docs/ACCEPTANCE-slash-composer.md
+  s_72db73f5d2fe1d::t_0e840774dfee83 24-26,30-32,34-43
+docs/ACCEPTANCE-slash-composer-VERIFICATION.md
+  s_72db73f5d2fe1d::t_e9ab40ca6f4462 31-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "6e3ac8b5b7bdf2ef35b787abb3ed52886009a58d",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
