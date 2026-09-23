@@ -219,12 +219,21 @@
   --titlebar-safe-left: 96px;
 }
 
+/*
+ * Markdown 行内代码的底色（BOR-56）。
+ *
+ * 聊天侧（`.chat-md__inline-code`）与输入框（`.composer__input code`）必须
+ * 是同一种浮层底色，所以定义一次、两边引用；否则同一段 `` `code` `` 在两个
+ * 位置会呈现不同的观感（聊天是半透明浮层，输入框曾用 --bg-code 的近黑实心）。
+ */
 [data-theme="dark"] {
   color-scheme: dark;
+  --md-inline-code-bg: rgba(255, 255, 255, 0.14);
 }
 
 [data-theme="light"] {
   color-scheme: light;
+  --md-inline-code-bg: rgba(0, 0, 0, 0.09);
 
   --bg-app: #f4f4f6;
   /*
