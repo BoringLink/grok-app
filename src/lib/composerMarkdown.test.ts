@@ -567,3 +567,95 @@ describe("refCaretInEditorText", () => {
     ).toBe(99);
   });
 });
+
+// ── 回归：空白列表项换行应回到普通文本行 ────────────────────────────────────
+//
+// 用户反馈：新建列表项后立刻再换行，缩进还在却没有新行；再按一次才出现新项。
+// 根因是空项上 splitListItem 返回 false，按键落到 HardBreak，于是该项里多了个
+// 软换行；第二次按不再为空才裂出新项。
+
+describe("Shift+Enter on an empty list item", () => {
+  let editor: Editor | null = null;
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+  });
+
+  function structure(ed: Editor) {
+    const counts = { listItem: 0, bulletList: 0, orderedList: 0, paragraph: 0, hardBreak: 0 };
+    ed.state.doc.descendants((node) => {
+      if (node.type.name === "listItem") counts.listItem += 1;
+      if (node.type.name === "bulletList") counts.bulletList += 1;
+      if (node.type.name === "orderedList") counts.orderedList += 1;
+      if (node.type.name === "paragraph") counts.paragraph += 1;
+      if (node.type.name === "hardBreak") counts.hardBreak += 1;
+      return true;
+    });
+    return counts;
+  }
+
+  function caretToEnd(ed: Editor): void {
+    ed.commands.setTextSelection(ed.state.doc.content.size);
+  }
+
+  it("leaves the list instead of inserting a soft break", () => {
+    // Arrange — 空的无序列表项
+    editor = makeEditor("- ");
+    caretToEnd(editor);
+
+    // Act
+    const handled = editor.commands.keyboardShortcut("Shift-Enter");
+
+    // Assert — 不该留下一个缩进的空项 + 软换行
+    expect(handled).toBe(true);
+    const s = structure(editor);
+    expect(s.hardBreak).toBe(0);
+    expect(s.listItem).toBe(0);
+    expect(s.bulletList).toBe(0);
+  });
+
+  it("exits an ordered list the same way", () => {
+    // Arrange
+    editor = makeEditor("1. ");
+    caretToEnd(editor);
+
+    // Act
+    editor.commands.keyboardShortcut("Shift-Enter");
+
+    // Assert
+    const s = structure(editor);
+    expect(s.orderedList).toBe(0);
+    expect(s.listItem).toBe(0);
+  });
+
+  it("creates a real second item when the current item has text", () => {
+    // Arrange — 非空项仍应裂出下一项（既有行为）
+    editor = makeEditor("- 第一项");
+    caretToEnd(editor);
+
+    // Act
+    editor.commands.keyboardShortcut("Shift-Enter");
+
+    // Assert
+    expect(structure(editor).listItem).toBe(2);
+  });
+
+  it("walks the reported flow: new item, then newline on the empty item", () => {
+    // Arrange — 第一项 → 换行出新项（空）
+    editor = makeEditor("- 第一项");
+    caretToEnd(editor);
+    editor.commands.keyboardShortcut("Shift-Enter");
+    expect(structure(editor).listItem).toBe(2);
+
+    // Act — 在空白的新项上再换行
+    editor.commands.keyboardShortcut("Shift-Enter");
+
+    // Assert — 回到普通文本行：列表只剩一项，且存在列表之外的段落
+    const s = structure(editor);
+    expect(s.listItem).toBe(1);
+    expect(s.hardBreak).toBe(0);
+    expect(s.paragraph).toBeGreaterThanOrEqual(2);
+    expect(markdownOf(editor)).toContain("- 第一项");
+  });
+});

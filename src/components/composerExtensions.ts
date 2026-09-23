@@ -23,6 +23,22 @@ import { RefTokenNode } from "@/components/composerRefNode";
  * 因此在列表项内部把 Shift+Enter 改成「新起一个同级列表项」；列表外保持原有的
  * 硬换行。代价是列表项内做不出「同一项内的软换行」，这是 Enter 发送前提下的取舍。
  */
+
+/**
+ * 光标所在块是否是一个**空白**列表项。
+ *
+ * 「空白」= 该项只有一个空文本块（`listItem > paragraph`，段落内容为空）。
+ * 不能拿 `listItem.content.size` 判空——里面那个空段落本身也有 nodeSize。
+ */
+function isEmptyListItem(node: { childCount: number; firstChild: { content: { size: number }; isTextblock: boolean } | null }): boolean {
+  return (
+    node.childCount === 1 &&
+    !!node.firstChild &&
+    node.firstChild.isTextblock &&
+    node.firstChild.content.size === 0
+  );
+}
+
 const ListLineBreak = Extension.create({
   name: "listLineBreak",
   addKeyboardShortcuts() {
@@ -30,11 +46,16 @@ const ListLineBreak = Extension.create({
       "Shift-Enter": () => {
         const { $from } = this.editor.state.selection;
         for (let depth = $from.depth; depth > 0; depth -= 1) {
-          if ($from.node(depth).type.name === "listItem") {
-            // 空项时 splitListItem 会返回 false —— 让它落到 HardBreak，
-            // 不要在这里吞掉按键。
-            return this.editor.commands.splitListItem("listItem");
+          const node = $from.node(depth);
+          if (node.type.name !== "listItem") continue;
+          // 空白列表项再换行 = 离开列表、回到普通文本行（Word/Notion 同款）。
+          // 若在这里调 splitListItem：它对空项返回 false，按键会落到 HardBreak，
+          // 结果是「项里多了一个软换行、缩进还在、没有新项」——再按一次才因为该项
+          // 不再为空而裂出新项，正是用户报的那个别扭行为。
+          if (isEmptyListItem(node)) {
+            return this.editor.commands.liftListItem("listItem");
           }
+          return this.editor.commands.splitListItem("listItem");
         }
         return false;
       },
