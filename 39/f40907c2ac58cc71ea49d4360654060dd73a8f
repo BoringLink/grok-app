@@ -1,0 +1,35 @@
+src/lib/effectiveModel.ts
+  s_72db73f5d2fe1d::t_435a6c0d8b7422 47-82
+src/app/AppWorkbench.tsx
+  s_72db73f5d2fe1d::t_5f77b9a49f72bb 9204-9208
+  s_72db73f5d2fe1d::t_55799d2c493139 243
+  s_72db73f5d2fe1d::t_8d5c4ecab0b3f6 2347-2350,2355-2361
+src/components/ComposerModelMenu.tsx
+  s_72db73f5d2fe1d::t_9cd404475d78e5 762-764,767-769
+  s_72db73f5d2fe1d::t_34b8cbc6ec3c95 39-42
+  s_72db73f5d2fe1d::t_51ca3796965f79 757-760
+src/lib/grokCatalog.test.ts
+  s_72db73f5d2fe1d::t_20890b1d802578 16
+  s_72db73f5d2fe1d::t_728c88f1db3e41 554-588
+src/lib/effectiveModel.test.ts
+  s_72db73f5d2fe1d::t_cb328f574280e2 5
+  s_72db73f5d2fe1d::t_a0bfcd040b53e2 61-102
+src/lib/grokCatalog.ts
+  s_72db73f5d2fe1d::t_d4aed96a44bdeb 220-240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "39f40907c2ac58cc71ea49d4360654060dd73a8f",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
