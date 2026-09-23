@@ -11,7 +11,19 @@
  */
 
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { editorTokenLength } from "@/components/composerSkillNode";
+import { skillTokenStoredText } from "@/components/composerSkillNode";
+import { refTokenStoredText } from "@/components/composerRefNode";
+
+/**
+ * 内联原子节点的 token 文本（存储空间 = 编辑器文本空间）。
+ *
+ * 每种 token 节点都要在这里被认出来：未被识别的 leaf atom 会在
+ * {@link collectSegments} 里被整段跳过，导致 caret 换算系统性偏移、slash / `@`
+ * 检测丢掉 token 文本。新增原子节点时**必须**在此登记。
+ */
+export function atomTokenStoredText(node: ProseMirrorNode): string | null {
+  return skillTokenStoredText(node) ?? refTokenStoredText(node);
+}
 
 type SegKind = "text" | "atom" | "sep";
 
@@ -46,13 +58,13 @@ function collectSegments(doc: ProseMirrorNode): Seg[] {
         if (text) out.push({ pos: childPos, len: text.length, kind: "text", text });
         return;
       }
-      const tokenLen = editorTokenLength(child);
-      if (tokenLen != null) {
+      const tokenText = atomTokenStoredText(child);
+      if (tokenText != null) {
         out.push({
           pos: childPos,
-          len: tokenLen,
+          len: tokenText.length,
           kind: "atom",
-          text: `[[${child.attrs.kind === "plugin" ? "plugin" : "skill"}:${String(child.attrs.name ?? "")}]]`,
+          text: tokenText,
         });
         return;
       }
@@ -193,6 +205,7 @@ export function normalizeSerializedMarkdown(md: string): string {
 
 /** draft（Markdown 源码 + token）是否为空（仅空白且无 token）。 */
 export function isStoredMarkdownEmpty(stored: string): boolean {
-  if (/\[\[(?:skill|plugin):/.test(stored)) return false;
+  // 只有 token（没有正文字符）不算空——skill 与引用 token 都是可发送内容。
+  if (/\[\[(?:skill|plugin|file|dir|url):/.test(stored)) return false;
   return stored.replace(/\n/g, "").trim() === "";
 }

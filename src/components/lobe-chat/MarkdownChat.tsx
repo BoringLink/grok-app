@@ -23,7 +23,7 @@ import {
 import { createT } from "@/i18n";
 import { ImageUi, imageUiLabels } from "@/components/ImageUi";
 import { VideoUi, videoUiLabels } from "@/components/VideoUi";
-import { FilePathCard, type FilePathCardLabels } from "@/components/FilePathCard";
+import { FilePathCard } from "@/components/FilePathCard";
 import type { ResourceOpenTarget } from "@/components/resource-viewer/types";
 import { HighlightedText } from "@/components/HighlightedText";
 import {
@@ -45,7 +45,10 @@ import {
   resolveFileToken,
 } from "@/lib/pathRefs";
 import { parsePathLineCitation } from "@/lib/pathLineCitation";
-import { filePathCardTokens } from "@/lib/filePathCardPref";
+import {
+  filePathCardTokens,
+  getFilePathCardLabels,
+} from "@/lib/filePathCardPref";
 import { isExternalHttpUrl } from "@/lib/externalLinkPref";
 import {
   createSoftBufferState,
@@ -58,7 +61,6 @@ import {
   resolveStreamMarkdownParseMs,
 } from "@/lib/streamRenderPolicy";
 import { splitStableMarkdownTail } from "@/lib/markdownTail";
-import { revealInOsLabel } from "@/lib/appPlatform";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "./CodeBlock";
 import { MermaidBlock } from "./MermaidBlock";
@@ -248,44 +250,6 @@ function paintedLeaves(
   };
 }
 
-const fileLabelsCache = new Map<Locale, FilePathCardLabels>();
-
-export function getMarkdownFileLabels(locale: Locale): FilePathCardLabels {
-  let cached = fileLabelsCache.get(locale);
-  if (!cached) {
-    const tr = createT(locale);
-    cached = {
-      open: tr("attach.open"),
-      reveal: revealInOsLabel(tr),
-      copyPath: tr("attach.copyPath"),
-      openInPanel: tr("resources.openInPanel"),
-      openExternal: tr("resources.openExternal"),
-      details: tr("attach.details"),
-      detailsTitle: tr("attach.detailsTitle"),
-      detailsName: tr("attach.detailsName"),
-      detailsType: tr("attach.detailsType"),
-      detailsPath: tr("attach.detailsPath"),
-      detailsResolved: tr("attach.detailsResolved"),
-      detailsStatus: tr("attach.detailsStatus"),
-      detailsMissing: tr("attach.detailsMissing"),
-      detailsOk: tr("attach.detailsOk"),
-      detailsClose: tr("attach.detailsClose"),
-      typeFile: tr("attach.typeFile"),
-      typeUrl: tr("attach.typeUrl"),
-      typeDir: tr("attach.typeDir"),
-      errNotFound: tr("resources.openErr.notFound"),
-      errPathDenied: tr("resources.openErr.pathDenied"),
-      errHostOnly: tr("resources.openErr.hostOnly"),
-      errNoEditor: tr("resources.openErr.noEditor"),
-      errCancelled: tr("resources.openErr.cancelled"),
-      errOther: tr("resources.openErr.other"),
-      errRevealOther: tr("resources.revealErr.other"),
-    };
-    fileLabelsCache.set(locale, cached);
-  }
-  return cached;
-}
-
 function isSimplePlainText(text: string): boolean {
   if (!text || text.length > 500) return false;
   // `$` / `\` keep math (`$E=mc^2$`, `\(x\)`) on the ReactMarkdown path.
@@ -343,7 +307,7 @@ export const MarkdownChat = memo(function MarkdownChat({
   const tr = useMemo(() => createT(locale), [locale]);
   const imageLabels = useMemo(() => imageUiLabels(locale), [locale]);
   const videoLabels = useMemo(() => videoUiLabels(locale), [locale]);
-  const fileLabels = useMemo(() => getMarkdownFileLabels(locale), [locale]);
+  const fileLabels = useMemo(() => getFilePathCardLabels(locale), [locale]);
   const gallery = useMemo(() => {
     if (!imagePathMap) return undefined;
     return Array.from(new Set(Object.values(imagePathMap))).filter(isImagePath);

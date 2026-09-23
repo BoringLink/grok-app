@@ -335,6 +335,16 @@
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+/*
+ * 内联引用 chip（BOR-53）：编辑器里复用聊天侧 `.file-path-card` 的视觉，
+ * 只改鼠标语义——输入框里点它应当定位光标，不是打开文件。
+ * 悬停的完整路径走节点自带的 title 属性。
+ */
+.composer__input .file-path-card--editor .file-path-card__main {
+  cursor: text;
+  user-select: none;
+}
+
 .composer__input blockquote {
   margin: 2px 0;
   padding-left: 10px;

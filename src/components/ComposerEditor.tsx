@@ -20,9 +20,7 @@ import {
   type Ref,
 } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Placeholder from "@tiptap/extension-placeholder";
-import { Markdown } from "tiptap-markdown";
+import { buildComposerExtensions } from "@/components/composerExtensions";
 import {
   clipboardLooksLikeMedia,
   clipboardLooksLikeOsFiles,
@@ -43,7 +41,6 @@ import {
   hugePlainTextToFile,
   shouldSpillHugePlainText,
 } from "@/lib/longAssistantSpill";
-import { SkillTokenNode } from "@/components/composerSkillNode";
 import {
   docPosForEditorTextOffset,
   editorTextBeforePos,
@@ -249,25 +246,9 @@ export const ComposerEditor = memo(function ComposerEditor({
 
   const createdEditor = useEditor({
     immediatelyRender: false,
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-        link: { openOnClick: false, autolink: false },
-      }),
-      SkillTokenNode,
-      Placeholder.configure({
-        placeholder: placeholder ?? "",
-        showOnlyWhenEditable: true,
-      }),
-      Markdown.configure({
-        html: false,
-        // breaks: 保证 Shift+Enter 硬换行在 "line1\nline2" 序列化下可回解析。
-        breaks: true,
-        linkify: false,
-        transformPastedText: true,
-        transformCopiedText: false,
-      }),
-    ],
+    extensions: buildComposerExtensions({
+      placeholder: placeholder ?? "",
+    }),
     content: value,
     editable: !disabled,
     editorProps: {

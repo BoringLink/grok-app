@@ -114,6 +114,12 @@ export function rankAtFileHits<T extends AtFileHit>(
  * Replace the active `@query` span in stored draft with empty string
  * (file is attached as a chip instead).
  */
+/**
+ * Replace the active `@query` span in stored draft with empty string.
+ *
+ * 保留给非 token 化路径等的回退场景；文件引用正常走
+ * {@link insertAtTokenAsRef}，它把 `@query` 换成一个内联引用 token。
+ */
 export function removeAtTokenFromDraft(
   draft: string,
   start: number,
@@ -121,4 +127,31 @@ export function removeAtTokenFromDraft(
 ): string {
   if (start < 0 || end < start || end > draft.length) return draft;
   return draft.slice(0, start) + draft.slice(end);
+}
+
+/**
+ * 把 `@query` 区间替换成内联引用 token（BOR-53），并在其后补一个空格。
+ *
+ * 返回替换后的 draft 与 chip 之后的存储态偏移——调用方据此放置光标。
+ * 区间非法时改为追加到末尾（面板可能由别处触发，此时没有 `@query` 区间）。
+ */
+export function insertAtTokenAsRef(
+  draft: string,
+  range: { start: number; end: number } | null,
+  token: string,
+): { draft: string; caret: number } {
+  if (range && range.start >= 0 && range.end >= range.start && range.end <= draft.length) {
+    const after = draft.slice(range.end);
+    // `@query` 后面通常已经跟着一个空格；再补一个会在正文与发给 CLI 的 prompt
+    // 里留下双空格，所以只在后面不是空白时才补。
+    const needsSpace = !/^\s/.test(after);
+    const tail = needsSpace ? ` ${after}` : after;
+    return {
+      draft: draft.slice(0, range.start) + token + tail,
+      caret: range.start + token.length + (needsSpace ? 1 : 0),
+    };
+  }
+  const sep = draft && !/\s$/.test(draft) ? " " : "";
+  const next = `${draft}${sep}${token} `;
+  return { draft: next, caret: next.length };
 }
