@@ -1,0 +1,35 @@
+src-tauri/src/session_manager/connect.rs
+  s_72db73f5d2fe1d::t_218a57f2615d71 1969
+src-tauri/tests/fixtures/acp/README.md
+  s_72db73f5d2fe1d::t_e1773e9e7ff82a 16
+src-tauri/src/acp_client.rs
+  s_72db73f5d2fe1d::t_bea087fcbad487 3707-3714
+  s_72db73f5d2fe1d::t_1eb691a99835b2 3877-3980
+  s_72db73f5d2fe1d::t_e969cbfcdc9199 175-230
+docs/plans/2026-09-23-subagent-monitoring-DESIGN.md
+  s_72db73f5d2fe1d::t_566e1f2f3857e7 1-96
+src-tauri/src/session_manager/events.rs
+  s_72db73f5d2fe1d::t_14594e517b91ef 1106-1117
+src-tauri/src/session_manager/events_bg.rs
+  s_72db73f5d2fe1d::t_9a73193d722a30 558-560
+src-tauri/tests/fixtures/acp/subagent_lifecycle.json
+  s_72db73f5d2fe1d::t_32bbf462cb4bb5 90
+  s_72db73f5d2fe1d::t_82184ba584b11b 1-76,78-89,91-110
+  s_72db73f5d2fe1d::t_1e47aa26cac9c2 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "0bcfd0d4693b2410c928cad4f8e63ae57dacd568",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
