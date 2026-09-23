@@ -573,6 +573,8 @@ fn subagent_payload_matches_fixture_expectations() {
         "phase",
         "status",
         "durationMs",
+        "turnCount",
+        "toolCallCount",
         "tokensUsed",
         "output",
         "willWake",

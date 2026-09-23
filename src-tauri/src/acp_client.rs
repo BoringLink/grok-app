@@ -203,9 +203,9 @@ impl SubagentPhase {
 /// One subagent run as reported by the CLI. Every field beyond `subagent_id`
 /// is optional: the CLI omits what it does not know, and the UI must show an
 /// honest empty state rather than a fabricated value.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SubagentUpdate {
-    pub phase: Option<SubagentPhase>,
+    pub phase: SubagentPhase,
     pub subagent_id: String,
     pub parent_session_id: Option<String>,
     pub child_session_id: Option<String>,
@@ -3908,7 +3908,7 @@ pub fn parse_subagent_update(kind: &str, update: &Value) -> Option<AcpEvent> {
             .and_then(|v| v.as_u64())
     };
     Some(AcpEvent::Subagent(SubagentUpdate {
-        phase: Some(phase),
+        phase,
         subagent_id,
         parent_session_id: str_field(&["parent_session_id", "parentSessionId"]),
         child_session_id: str_field(&["child_session_id", "childSessionId"]),
@@ -3919,8 +3919,11 @@ pub fn parse_subagent_update(kind: &str, update: &Value) -> Option<AcpEvent> {
         model: str_field(&["model", "model_id", "modelId"]),
         status: str_field(&["status"]),
         duration_ms: num_field(&["duration_ms", "durationMs"]),
-        turn_count: num_field(&["turn_count", "turnCount"]),
-        tool_call_count: num_field(&["tool_call_count", "toolCallCount"]),
+        // `subagent_finished` reports the counters as `turns` / `tool_calls`;
+        // `subagent_progress` uses the longer names. Accept both so a run whose
+        // progress frames were throttled away still shows its totals.
+        turn_count: num_field(&["turn_count", "turnCount", "turns"]),
+        tool_call_count: num_field(&["tool_call_count", "toolCallCount", "tool_calls"]),
         tokens_used: num_field(&["tokens_used", "tokensUsed"]),
         context_window_tokens: num_field(&["context_window_tokens", "contextWindowTokens"]),
         context_usage_pct: update
@@ -3953,7 +3956,7 @@ impl SubagentUpdate {
     pub fn to_payload(&self, app_session_id: &str) -> Value {
         json!({
             "sessionId": app_session_id,
-            "phase": self.phase.map(SubagentPhase::as_str).unwrap_or("progress"),
+            "phase": self.phase.as_str(),
             "subagentId": self.subagent_id,
             "parentSessionId": self.parent_session_id,
             "childSessionId": self.child_session_id,
@@ -3976,7 +3979,6 @@ impl SubagentUpdate {
         })
     }
 }
-
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
