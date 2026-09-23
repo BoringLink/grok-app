@@ -110,6 +110,23 @@ describe("composer column matches chat width", () => {
     );
   });
 
+  it("renders the pending model switch as a readable notice, not a tooltip", () => {
+    // 提示文字即 chip 自身内容，再包 Tip 只会重复且被用户排斥。
+    expect(column).not.toMatch(
+      /<Tip[^>]*label=\{tr\("composer\.modelPendingApply"\)\}/s,
+    );
+    expect(column).toContain(
+      'className="chip chip--goal composer__model-pending"',
+    );
+    // 完整显示：chip 不设 max-width，label 换行而非省略号。
+    expect(chat2).toMatch(
+      /\.composer__model-bar \.composer__model-pending\s*\{[^}]*max-width:\s*none/s,
+    );
+    expect(chat2).toMatch(
+      /\.composer__model-bar \.composer__model-pending \.chip__label\s*\{[^}]*display:\s*inline[^}]*white-space:\s*normal/s,
+    );
+  });
+
   it("keeps composer chip pops as compact dropdowns", () => {
     expect(composer1).not.toMatch(/max-width:\s*min\(720px/);
     expect(composer1).toMatch(

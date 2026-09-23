@@ -939,21 +939,16 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                 aria-label={tr("composer.model")}
               >
                 {modelSwitchPending ? (
-                  <Tip
-                    label={tr("composer.modelPendingApply")}
-                    className="ui-tip--wrap"
+                  <span
+                    className="chip chip--goal composer__model-pending"
+                    data-testid="model-pending-chip"
+                    role="status"
+                    aria-label={tr("composer.modelPendingApply")}
                   >
-                    <span
-                      className="chip chip--goal composer__model-pending"
-                      data-testid="model-pending-chip"
-                      role="status"
-                      aria-label={tr("composer.modelPendingApply")}
-                    >
-                      <span className="chip__label">
-                        {tr("composer.modelPendingApply")}
-                      </span>
+                    <span className="chip__label">
+                      {tr("composer.modelPendingApply")}
                     </span>
-                  </Tip>
+                  </span>
                 ) : null}
                 <ComposerModelMenu
                   locale={locale}
