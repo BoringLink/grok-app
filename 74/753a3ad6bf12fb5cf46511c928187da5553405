@@ -1,0 +1,19 @@
+src/components/composerExtensions.ts
+  s_72db73f5d2fe1d::t_ef98040172cfc7 26-41,49-56,58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "74753a3ad6bf12fb5cf46511c928187da5553405",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
