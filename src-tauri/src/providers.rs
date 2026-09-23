@@ -1029,12 +1029,6 @@ fn ensure_app_model_sections() -> Result<bool, String> {
     }
     let text = read_text(&path);
     let sections = parse_model_sections(&text);
-    let provider_ids: std::collections::HashSet<String> = sections
-        .iter()
-        .filter(|s| is_custom(&s.fields))
-        .map(|s| s.id.clone())
-        .collect();
-
     let mut out = text.clone();
     let mut changed = false;
 
@@ -1077,8 +1071,18 @@ fn ensure_app_model_sections() -> Result<bool, String> {
         .filter(|s| is_custom(&s.fields) && !is_grok_build_proxy_section(s))
     {
         for m in provider_catalog(provider) {
-            // Never let an alias shadow a real provider section.
-            if provider_ids.contains(&m.id) {
+            // 已经存在同名 section 时**一律不动**。
+            //
+            // 用户的 config.toml 里常有一份 CLI 原生目录（`[model.auto(free)]`、
+            // `[model."gpt-5.6-…"]` …），它们的 id 与 App 的上游 id 是同一套。
+            // 早先只排除了「属于某个自定义 provider 的表名」，于是这些原生目录项被
+            // 别名整张覆盖——`model_provider` / `supports_backend_search` 等字段被
+            // 换成了别名的 `base_url` / `api_key`，等于毁掉用户手写的目录。
+            //
+            // 而且覆盖本来就没有必要：原生 section 带着 `model_provider`，本身就能
+            // 被 `--model <id>` 寻址。所以要做的只是「不要碰它」，寻址照旧走该 id。
+            if sections.iter().any(|x| x.id == m.id) {
+                alias_owner.insert(m.id.clone(), provider.id.clone());
                 continue;
             }
             match alias_owner.get(&m.id) {
@@ -1088,19 +1092,6 @@ fn ensure_app_model_sections() -> Result<bool, String> {
             }
             alias_owner.insert(m.id.clone(), provider.id.clone());
             let desired = provider_alias_fields(provider, &m);
-            if let Some(existing) = sections
-                .iter()
-                .find(|x| is_app_model_child(&x.fields) && x.id == m.id)
-            {
-                let owner_matches = existing
-                    .fields
-                    .get(APP_MODEL_FOR_KEY)
-                    .map(|v| v.trim() == provider.id)
-                    .unwrap_or(false);
-                if owner_matches && alias_fields_match(&existing.fields, &desired) {
-                    continue;
-                }
-            }
             out = remove_section(&out, &m.id);
             out = append_section(&out, &m.id, &desired);
             changed = true;
@@ -1183,22 +1174,7 @@ fn provider_alias_fields(section: &Section, model: &ProviderModelEntry) -> Vec<(
     )
 }
 
-/// Whether an on-disk alias section already holds exactly `desired` (ignoring
-/// fields `append_section` would drop because their value is empty).
-fn alias_fields_match(
-    fields: &std::collections::HashMap<String, String>,
-    desired: &[(String, String)],
-) -> bool {
-    let want: std::collections::HashMap<&str, &str> = desired
-        .iter()
-        .filter(|(_, v)| !v.is_empty())
-        .map(|(k, v)| (k.as_str(), v.as_str()))
-        .collect();
-    fields.len() == want.len()
-        && fields
-            .iter()
-            .all(|(k, v)| want.get(k.as_str()) == Some(&v.as_str()))
-}
+
 
 fn encode_app_models(models: &[ProviderModelEntry]) -> String {
     serde_json::to_string(models).unwrap_or_else(|_| "[]".into())
@@ -4504,4 +4480,86 @@ app_models = "[{\"id\":\"claude-sonnet-4-6\",\"name\":\"Sonnet\"},{\"id\":\"gpt-
             "empty list must drop extra_headers, not copy the old table:\n{config}"
         );
     }
+
+    /// 已存在的同名 section **一律不被别名覆盖**。
+    ///
+    /// 用户的 config.toml 里常有一份 CLI 原生目录（`[model.auto(free)]`、
+    /// `[model."gpt-5.6-…"]` …），它们的 id 与 App 的上游 id 是同一套。早先只排除
+    /// 「属于某个自定义 provider 的表名」，于是原生目录项被别名整张覆盖，丢掉了
+    /// `model_provider` / `supports_backend_search`。回归护栏：已有同名表必须原样保留。
+    #[test]
+    fn existing_section_is_never_overwritten_by_an_alias() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-alias-no-clobber-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = ensure_agent_home();
+
+        // 原生目录项：没有 base_url，因此永远不是 provider，但名字与上游 id 相同。
+        let native = "[model.\"collide-1\"]\nmodel = \"collide-1\"\nmodel_provider = \"ada-anthropic\"\ndescription = \"native catalog row\"\nsupports_backend_search = true\n";
+        std::fs::write(agent_config_toml(), native).expect("seed native section");
+
+        upsert_custom_provider(UpsertProviderInput {
+            id: "ada-anthropic".into(),
+            model: "collide-1".into(),
+            base_url: "https://relay.example/v1".into(),
+            name: Some("Ada".into()),
+            api_key: Some("sk-test".into()),
+            api_backend: Some("messages".into()),
+            provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+            set_as_default: Some(false),
+            create_only: None,
+            models: Some(vec![
+                ProviderModelEntry::named("collide-1", "Collide"),
+                ProviderModelEntry::named("fresh-1", "Fresh"),
+            ]),
+            efforts: None,
+            context_window: None,
+            base_url_full_path: None,
+            append_prompt: None,
+            supports_vision: None,
+            extra_headers: None,
+        })
+        .expect("upsert provider");
+        list_custom_providers().expect("list heals aliases");
+
+        let text = std::fs::read_to_string(agent_config_toml()).unwrap();
+        let collide = parse_model_sections(&text)
+            .into_iter()
+            .find(|s| s.id == "collide-1")
+            .expect("collide-1 exists");
+        assert!(
+            collide.fields.contains_key("model_provider"),
+            "原生目录项被别名覆盖了:\n{text}"
+        );
+        assert!(collide.fields.contains_key("supports_backend_search"));
+        assert!(
+            !collide.fields.contains_key("app_model_for"),
+            "写入端不该往已有表里塞别名标记:\n{text}"
+        );
+        // 没有同名表的模型照常补别名
+        let fresh = parse_model_sections(&text)
+            .into_iter()
+            .find(|s| s.id == "fresh-1")
+            .expect("fresh-1 alias written");
+        assert_eq!(
+            fresh.fields.get("app_model_for").map(String::as_str),
+            Some("ada-anthropic")
+        );
+        // 再跑一次不得产生重复键
+        let (dups, examples) = crate::agent_home_config::count_duplicate_assignments(&text);
+        assert_eq!(dups, 0, "别名写入引入了重复键: {examples:?}");
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
 }
