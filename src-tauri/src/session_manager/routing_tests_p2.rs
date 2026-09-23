@@ -727,68 +727,102 @@ async fn flush_after_turn_end_drops_old_agent_for_new_route() {
 // 其中一半原因在 store 的 scope（已修）；另一半在这里 —— `set_model` 写的是
 // 「当前 live 槽位」而不是调用方指定的会话，所以改后台会话的模型会污染屏幕上
 // 那个会话的 meta。
+//
+// 这些用例会经 `update_session_meta` 落盘，因此**必须在隔离的 APP_HOME 里跑**：
+// 否则会往开发者真实的 sessions_index.json 里写进 `s-a` / `s-b` 这类测试会话
+// （这个坑已经踩过一次，真实索引里被写进了两行标题为 "Lock test" 的假会话）。
+
+/// 在临时 `GROK_APP_HOME` 下运行 `f`。`update_session_meta` 只写这里，
+/// 不会碰开发者的真实应用数据。
+fn with_isolated_app_home(label: &str, f: impl FnOnce()) {
+    let _lock = crate::paths::APP_HOME_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let dir = std::env::temp_dir().join(format!(
+        "grok-app-{label}-{}-{}",
+        std::process::id(),
+        uuid::Uuid::new_v4()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("create isolated app home");
+    let previous = std::env::var_os("GROK_APP_HOME");
+    std::env::set_var("GROK_APP_HOME", &dir);
+    let _ = crate::paths::ensure_app_dirs();
+    f();
+    match previous {
+        Some(v) => std::env::set_var("GROK_APP_HOME", v),
+        None => std::env::remove_var("GROK_APP_HOME"),
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
 
 #[test]
 fn model_change_targets_the_requested_chat_not_the_live_slot() {
-    // Arrange — live 槽位是 s-a，但调用方要改的是 s-b
-    let mgr = SessionManager::new();
-    *mgr.inner.lock() = Some(bare_live_session("s-a", "p-a"));
+    with_isolated_app_home("model-target", || {
+        // Arrange — live 槽位是 s-a，但调用方要改的是 s-b
+        let mgr = SessionManager::new();
+        *mgr.inner.lock() = Some(bare_live_session("s-a", "p-a"));
 
-    // Act
-    let applied = mgr.apply_model_to_session_slots("s-b", "model-x");
+        // Act
+        let applied = mgr.apply_model_to_session_slots("s-b", "model-x");
 
-    // Assert — live 槽位不认领，s-a 的 meta 一个字节都不能动
-    assert!(!applied.applies_live);
-    assert!(applied.acp.is_none());
-    let guard = mgr.inner.lock();
-    let live = guard.as_ref().expect("live slot preserved");
-    assert_eq!(live.app_session_id, "s-a");
-    assert_eq!(
-        live.meta.model_id, None,
-        "changing another chat must not re-model the live one"
-    );
+        // Assert — live 槽位不认领，s-a 的 meta 一个字节都不能动
+        assert!(!applied.applies_live);
+        assert!(applied.acp.is_none());
+        let guard = mgr.inner.lock();
+        let live = guard.as_ref().expect("live slot preserved");
+        assert_eq!(live.app_session_id, "s-a");
+        assert_eq!(
+            live.meta.model_id, None,
+            "changing another chat must not re-model the live one"
+        );
+    });
 }
 
 #[test]
 fn model_change_claims_the_live_slot_when_it_is_the_target() {
-    // Arrange
-    let mgr = SessionManager::new();
-    *mgr.inner.lock() = Some(bare_live_session("s-a", "p-a"));
+    with_isolated_app_home("model-claim", || {
+        // Arrange
+        let mgr = SessionManager::new();
+        *mgr.inner.lock() = Some(bare_live_session("s-a", "p-a"));
 
-    // Act
-    let applied = mgr.apply_model_to_session_slots("s-a", "model-x");
+        // Act
+        let applied = mgr.apply_model_to_session_slots("s-a", "model-x");
 
-    // Assert
-    assert!(applied.applies_live);
-    let guard = mgr.inner.lock();
-    let live = guard.as_ref().expect("live slot");
-    assert_eq!(live.meta.model_id.as_deref(), Some("model-x"));
+        // Assert
+        assert!(applied.applies_live);
+        let guard = mgr.inner.lock();
+        let live = guard.as_ref().expect("live slot");
+        assert_eq!(live.meta.model_id.as_deref(), Some("model-x"));
+    });
 }
 
 #[test]
 fn model_change_on_a_background_chat_writes_its_own_meta() {
-    // Arrange — s-b 已后台化，s-a 仍是 live
-    let mgr = SessionManager::new();
-    *mgr.inner.lock() = Some(bare_live_session("s-a", "p-a"));
-    mgr.background
-        .lock()
-        .insert("s-b".into(), bare_live_session("s-b", "p-b"));
+    with_isolated_app_home("model-background", || {
+        // Arrange — s-b 已后台化，s-a 仍是 live
+        let mgr = SessionManager::new();
+        *mgr.inner.lock() = Some(bare_live_session("s-a", "p-a"));
+        mgr.background
+            .lock()
+            .insert("s-b".into(), bare_live_session("s-b", "p-b"));
 
-    // Act
-    let applied = mgr.apply_model_to_session_slots("s-b", "model-x");
+        // Act
+        let applied = mgr.apply_model_to_session_slots("s-b", "model-x");
 
-    // Assert — 只有 s-b 被改；s-b 没有 ACP，所以不需要换路由
-    assert!(!applied.applies_live);
-    assert!(!applied.background_needs_respawn);
-    let bg = mgr.background.lock();
-    assert_eq!(
-        bg.get("s-b").and_then(|s| s.meta.model_id.as_deref()),
-        Some("model-x")
-    );
-    let guard = mgr.inner.lock();
-    assert_eq!(
-        guard.as_ref().and_then(|s| s.meta.model_id.clone()),
-        None,
-        "background model change must not leak into the live chat"
-    );
+        // Assert — 只有 s-b 被改；s-b 没有 ACP，所以不需要换路由
+        assert!(!applied.applies_live);
+        assert!(!applied.background_needs_respawn);
+        let bg = mgr.background.lock();
+        assert_eq!(
+            bg.get("s-b").and_then(|s| s.meta.model_id.as_deref()),
+            Some("model-x")
+        );
+        let guard = mgr.inner.lock();
+        assert_eq!(
+            guard.as_ref().and_then(|s| s.meta.model_id.clone()),
+            None,
+            "background model change must not leak into the live chat"
+        );
+    });
 }
