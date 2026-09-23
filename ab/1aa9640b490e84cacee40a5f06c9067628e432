@@ -1,0 +1,33 @@
+src/components/ComposerEditor.tsx
+  s_72db73f5d2fe1d::t_cac6063d3eebf6 24
+  s_72db73f5d2fe1d::t_789d4c4a2fa22e 334-348
+src/lib/composerRefToken.test.ts
+  s_72db73f5d2fe1d::t_28366bf7c75099 190-199
+src/lib/composerRefToken.ts
+  s_72db73f5d2fe1d::t_5864162cdcc3e8 99-115,118-119,121-123
+  s_72db73f5d2fe1d::t_02d5bf34771771 116-117,120
+  s_72db73f5d2fe1d::t_f167626432d15c 152-153
+src/components/composerRefNode.ts
+  s_72db73f5d2fe1d::t_93eca3623e1b9f 12,14,16
+  s_72db73f5d2fe1d::t_13487e5c798101 230-232
+  s_72db73f5d2fe1d::t_b94d7909ca4c41 18
+  s_72db73f5d2fe1d::t_46dd96f848aeef 167-173,175,177,179-189
+  s_72db73f5d2fe1d::t_e0711f1e4b6551 174,176,178
+  s_72db73f5d2fe1d::t_60ea96bb5a74a8 124-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "ab1aa9640b490e84cacee40a5f06c9067628e432",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
