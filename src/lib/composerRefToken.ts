@@ -91,3 +91,80 @@ export function refDisplayLabel(kind: RefKind, value: string): string {
   const last = trimmed.split(/[/\\]/).pop();
   return last || value;
 }
+
+/**
+ * 尾随标点：URL 紧邻句末标点时，标点属于句子而不是链接。
+ * 覆盖中英文常见句读与右括号族。
+ */
+const TRAILING_URL_PUNCT_CHAR = /[.,;:!?)\]}>'"`，。；：！？）】》」』、…]/;
+
+/**
+ * 去掉 URL 末尾的句读标点。
+ *
+ * `)` 有例外：维基类链接常以 `(bar)` 结尾，只在**没有配对的 `(`** 时才把右括号
+ * 当作句读剥掉——无脑剥离会把 `.../Foo_(bar)` 截断成 `.../Foo_(bar`。
+ *
+ * 逐字符剥而不是一次正则吃掉整段尾标点：`Foo_(bar).` 里 `)` 与 `.` 属于两类，
+ * 一起吃掉就会把 URL 的右括号也带走。
+ */
+export function stripTrailingUrlPunctuation(url: string): string {
+  let out = url;
+  while (out.length > 0) {
+    const last = out[out.length - 1]!;
+    if (!TRAILING_URL_PUNCT_CHAR.test(last)) break;
+    if (last === ")") {
+      const opens = (out.match(/\(/g) ?? []).length;
+      const closes = (out.match(/\)/g) ?? []).length;
+      // 括号配对 → 这个 `)` 是 URL 的一部分，停手。
+      if (closes <= opens) break;
+    }
+    out = out.slice(0, -1);
+  }
+  return out;
+}
+
+/**
+ * 粘贴整段文本时的 URL 候选：整段（去空白后）就是一个 http(s) 链接才转换。
+ *
+ * 只要包含空白就说明是普通文本/多行内容，不能整体变成 chip。
+ */
+export function matchPastedUrl(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed || /\s/.test(trimmed)) return null;
+  const url = stripTrailingUrlPunctuation(trimmed);
+  return isExternalHttpUrl(url) ? url : null;
+}
+
+/**
+ * 输入过程中的 URL 候选：`beforeCaret` 是光标前的文本，且刚敲下一个空白。
+ *
+ * 返回待替换的 URL 与它在 `beforeCaret` 中的起点；`null` 表示不转换。
+ * 只在「URL 前是空白或行首」时成立，避免把 `xhttp://y` 里的片段切出来。
+ */
+export function matchTypedUrl(
+  beforeCaret: string,
+): { url: string; start: number } | null {
+  const m = /(?:^|\s)(\S+)\s$/.exec(beforeCaret);
+  if (!m) return null;
+  const raw = m[1] ?? "";
+  const url = stripTrailingUrlPunctuation(raw);
+  if (!isExternalHttpUrl(url)) return null;
+  // `raw` 紧跟在结尾空白之前；句读在 raw 的**尾部**被剥掉，不影响起点。
+  const start = beforeCaret.length - 1 - raw.length;
+  return { url, start };
+}
+
+/**
+ * 只有 http(s) 才能成为 URL chip 或可点击链接。
+ *
+ * 在 `composerRefToken` 里做这个判定是为了让节点/粘贴/输入规则共用一条规则；
+ * 与 `externalLinkPref.isExternalHttpUrl` 的结论一致（拒绝 `javascript:` /
+ * `data:` / `mailto:` / 相对路径等）。
+ */
+export function isExternalHttpUrl(url: string): boolean {
+  const t = url.trim();
+  if (!t) return false;
+  if (/^(javascript|data|blob|vbscript|file|mailto):/i.test(t)) return false;
+  if (t.startsWith("//") || t.startsWith("/") || t.startsWith("#")) return false;
+  return /^https?:\/\/[^\s/]+/i.test(t);
+}
