@@ -57,6 +57,14 @@ import {
   type TasksPanelStatusFilter,
 } from "@/lib/tasksPanelPro";
 import { resolveAgentsRailEmptyState } from "@/lib/agentsRail";
+import { useSubagents } from "@/hooks/useSubagents";
+import {
+  formatSubagentDuration,
+  subagentDisplayLabel,
+  subagentDisplayStatus,
+  type SubagentDisplayStatus,
+  type SubagentRun,
+} from "@/lib/session/subagents";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -99,6 +107,8 @@ export type AgentTasksPanelProps = {
   ) => void | TasksBindCwdResult | Promise<void | TasksBindCwdResult>;
   /** Current chat project path — used to mark cwd as already active. */
   activeCwd?: string | null;
+  /** Current chat session id — scopes the subagent telemetry section. */
+  currentSessionId?: string | null;
   /**
    * When true, CLI subagent worktree snapshot mode is on
    * (`subagent_worktree_snapshot_enabled`, CLI 0.2.117+). Shows a short note.
@@ -583,6 +593,93 @@ function ActivityRow({
   );
 }
 
+function subagentStatusLabelKey(status: SubagentDisplayStatus): MessageKey {
+  switch (status) {
+    case "completed":
+      return "tasks.subagentCompleted";
+    case "failed":
+      return "tasks.subagentFailed";
+    default:
+      return "tasks.subagentRunning";
+  }
+}
+
+/** Counts render as-is; a genuinely absent counter stays an honest unknown. */
+function formatSubagentCount(n: number | undefined): string {
+  return n === undefined ? "—" : String(n);
+}
+
+/**
+ * One subagent telemetry row. Shows description / type / status and the
+ * progress counters the CLI reported; a finished run with output expands to
+ * reveal it. Never draws a counter the payload did not carry.
+ */
+function SubagentRow({ run, t }: { run: SubagentRun; t: TFn }) {
+  const [open, setOpen] = useState(false);
+  const status = subagentDisplayStatus(run);
+  const label = subagentDisplayLabel(run);
+  const hasOutput = run.finished && !!run.output;
+  const hasMeta =
+    run.turnCount !== undefined ||
+    run.toolCallCount !== undefined ||
+    run.tokensUsed !== undefined ||
+    run.durationMs !== undefined;
+
+  return (
+    <li
+      className={
+        "agent-tasks__row" + (status === "running" ? " is-running" : "")
+      }
+    >
+      <div className="agent-tasks__row-line">
+        <div className="agent-tasks__row-main agent-tasks__row-main--flat">
+          <button
+            type="button"
+            className="agent-tasks__row-toggle"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-label={open ? t("tasks.collapse") : t("tasks.expand")}
+          >
+            <span
+              className={`agent-tasks__dot agent-tasks__dot--${status}`}
+              aria-hidden
+            />
+            <span className="agent-tasks__name" title={label}>
+              {label}
+            </span>
+          </button>
+          {run.subagentType ? (
+            <span className="agent-tasks__status">{run.subagentType}</span>
+          ) : null}
+          <span className="agent-tasks__status">
+            {t(subagentStatusLabelKey(status))}
+          </span>
+        </div>
+      </div>
+      {hasMeta ? (
+        <p className="agent-tasks__subagent-meta">
+          {t("tasks.subagentMeta", {
+            turns: formatSubagentCount(run.turnCount),
+            tools: formatSubagentCount(run.toolCallCount),
+            tokens: formatSubagentCount(run.tokensUsed),
+            duration: formatSubagentDuration(run.durationMs),
+          })}
+        </p>
+      ) : null}
+      {open && hasOutput ? (
+        <div className="agent-tasks__detail">
+          <div className="agent-tasks__meta">
+            <span className="agent-tasks__meta-k">
+              {t("tasks.subagentOutput")}
+            </span>
+          </div>
+          <pre className="agent-tasks__subagent-output">{run.output}</pre>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
 export function AgentTasksPanel({
   messages,
   t,
@@ -594,6 +691,7 @@ export function AgentTasksPanel({
   onOpenDashboard,
   onOpenCwd,
   activeCwd = null,
+  currentSessionId = null,
   subagentWorktreeSnapshotEnabled = false,
   variant = "default",
   sessionBusy = false,
@@ -602,6 +700,8 @@ export function AgentTasksPanel({
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<TasksPanelStatusFilter>("all");
+
+  const subagentRuns = useSubagents(currentSessionId);
 
   const tasks = useMemo(() => {
     const act = buildTurnActivity(messages);
@@ -699,7 +799,10 @@ export function AgentTasksPanel({
   }, []);
 
   const showFullEmpty =
-    !!emptyState && otherSessions.length === 0 && !hasTaskRows;
+    !!emptyState &&
+    otherSessions.length === 0 &&
+    !hasTaskRows &&
+    subagentRuns.length === 0;
   const showFilterEmptyInBody =
     !!emptyState &&
     emptyState.kind === "filter_empty" &&
@@ -835,6 +938,18 @@ export function AgentTasksPanel({
         </div>
       ) : (
         <div className="agent-tasks__body">
+          {subagentRuns.length > 0 ? (
+            <div className="agent-tasks__section">
+              <h3 className="agent-tasks__section-title">
+                {t("tasks.subagentsTitle")}
+              </h3>
+              <ul className="agent-tasks__list">
+                {subagentRuns.map((run) => (
+                  <SubagentRow key={run.subagentId} run={run} t={t} />
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {otherSessions.length > 0 ? (
             <div className="agent-tasks__section">
               <h3 className="agent-tasks__section-title">

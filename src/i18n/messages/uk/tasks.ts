@@ -244,4 +244,10 @@ export const ukTasks = {
   "batchAgents.eligibilityNone": "У поточному виборі немає придатних проєктів.",
   "batchAgents.status.okEmpty": "OK (без деталей)",
   "batchAgents.status.partial": "Частково",
+  "tasks.subagentsTitle": "Subagents",
+  "tasks.subagentRunning": "Running",
+  "tasks.subagentCompleted": "Completed",
+  "tasks.subagentFailed": "Failed",
+  "tasks.subagentMeta": "{turns} turns · {tools} tools · {tokens} tokens · {duration}",
+  "tasks.subagentOutput": "Output",
 };

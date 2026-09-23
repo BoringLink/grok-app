@@ -244,4 +244,10 @@ export const filTasks = {
   "batchAgents.eligibilityNone": "Walang karapat-dapat na proyekto sa kasalukuyang pagpili.",
   "batchAgents.status.okEmpty": "OK (walang detalye)",
   "batchAgents.status.partial": "Bahagya",
+  "tasks.subagentsTitle": "Subagents",
+  "tasks.subagentRunning": "Running",
+  "tasks.subagentCompleted": "Completed",
+  "tasks.subagentFailed": "Failed",
+  "tasks.subagentMeta": "{turns} turns · {tools} tools · {tokens} tokens · {duration}",
+  "tasks.subagentOutput": "Output",
 };
