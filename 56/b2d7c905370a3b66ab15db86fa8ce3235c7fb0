@@ -1,0 +1,28 @@
+src-tauri/src/store.rs
+  s_72db73f5d2fe1d::t_20b9cb1fff704c 3321-3344,3370-3378
+  s_72db73f5d2fe1d::t_1c092d9688f87b 3190-3206,3209,3219,3233,3253,3262
+src-tauri/src/session_manager/control.rs
+  s_72db73f5d2fe1d::t_cf501a02da3de1 817-818,824-826,831-836,886,890-895,897,921,927,930
+  s_72db73f5d2fe1d::t_529e49484893b4 827-830,841-843,887,898,902-915,917-920,922-926,928-929
+  s_72db73f5d2fe1d::t_922dea9b659690 17-28
+  s_72db73f5d2fe1d::t_47d2d8faa155bd 846-855,868,874-884,888-889,896,899-901,916,932-936
+src-tauri/src/commands/settings.rs
+  s_72db73f5d2fe1d::t_1cd43ec6d8fd2c 358-363,387-389
+  s_72db73f5d2fe1d::t_edf32d96d0e0f4 446,449,455
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "56b2d7c905370a3b66ab15db86fa8ce3235c7fb0",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
