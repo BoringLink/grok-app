@@ -1,0 +1,80 @@
+src/lib/composerMarkdown.ts
+  s_72db73f5d2fe1d::t_420732d2a59b17 61-62,65,67
+  s_72db73f5d2fe1d::t_9bbc52fc65a60a 14-26
+  s_72db73f5d2fe1d::t_7657816481d02b 208-209
+src/lib/draftDoc.ref.test.ts
+  s_72db73f5d2fe1d::t_5b7602d63a696e 1-33,36-123
+  s_72db73f5d2fe1d::t_a19105924ffed1 34-35
+src/styles/modals.part1.css
+  s_72db73f5d2fe1d::t_34f4f16ea7871f 338-347
+src/lib/composerRefToken.ts
+  s_72db73f5d2fe1d::t_5d4af406484d11 1-93
+src/components/composerRefNode.ts
+  s_72db73f5d2fe1d::t_4ca0e2982f7d02 177
+  s_72db73f5d2fe1d::t_e81161693858eb 1-19,40-105,111-112,114-115,119-176,178-206
+  s_72db73f5d2fe1d::t_f97ed8f2d1b751 20-39
+  s_72db73f5d2fe1d::t_519ca07c1a34f4 106-110,113
+  s_72db73f5d2fe1d::t_e02897060dee60 116-118
+src/lib/atFileQuery.ts
+  s_72db73f5d2fe1d::t_f7207e43263fec 117-122,131-143,153-156
+  s_72db73f5d2fe1d::t_91b009b12930fd 144-152
+src/components/lobe-chat/ThreadUserBody.tsx
+  s_72db73f5d2fe1d::t_22c9e85acdc033 199
+  s_72db73f5d2fe1d::t_4c26fee66886be 6,11,24
+  s_72db73f5d2fe1d::t_469bf026683774 38,43,46,53-57
+  s_72db73f5d2fe1d::t_b3369effce6795 105,107-115
+  s_72db73f5d2fe1d::t_8124b2bfbdcefe 106
+src/lib/composerMarkdown.test.ts
+  s_72db73f5d2fe1d::t_fcc17a4e6d8160 240-252
+  s_72db73f5d2fe1d::t_8524167e2cf6a9 6,16-19,22
+src/components/ComposerEditor.tsx
+  s_72db73f5d2fe1d::t_e4b466e37be752 249-251
+src/lib/composerRefToken.test.ts
+  s_72db73f5d2fe1d::t_d6123e821fda77 1-135
+src/components/composerSkillNode.ts
+  s_72db73f5d2fe1d::t_a8257cbe87ab4a 83-88,93
+src/app/AppWorkbench.tsx
+  s_72db73f5d2fe1d::t_0fe51c30cf4d2d 6472-6484
+  s_72db73f5d2fe1d::t_f3c2cf20c1bfd7 6530-6531
+  s_72db73f5d2fe1d::t_9da207344c565e 347-350
+  s_72db73f5d2fe1d::t_6e307ace81b22b 6600
+  s_72db73f5d2fe1d::t_e70d34ac79837c 342
+  s_72db73f5d2fe1d::t_9367e4220dee61 6501,6507-6510,6515-6529
+  s_72db73f5d2fe1d::t_80d35c23a5a28d 6535-6536
+  s_72db73f5d2fe1d::t_c1d541c81261e2 6532-6534,6539
+  s_72db73f5d2fe1d::t_4d54cfba1fc0ca 6542-6543,6545
+  s_72db73f5d2fe1d::t_16b385f7ba0305 6511-6514
+src/lib/atFileQuery.test.ts
+  s_72db73f5d2fe1d::t_63226274131af9 5
+  s_72db73f5d2fe1d::t_0c1687dc8efc01 87-107
+src/lib/draftDoc.ts
+  s_72db73f5d2fe1d::t_a7229dcf054263 32-33
+  s_72db73f5d2fe1d::t_ac038657eccf47 217-222
+  s_72db73f5d2fe1d::t_e16e45d2d82ef1 144-147,173-178,188,195
+  s_72db73f5d2fe1d::t_d4935bb817afff 242-248
+  s_72db73f5d2fe1d::t_491d110c932d37 2-4,7-12
+  s_72db73f5d2fe1d::t_2654390b07b254 18-23,31,34,36
+  s_72db73f5d2fe1d::t_74a59c528a6273 289-292
+  s_72db73f5d2fe1d::t_15a8237dc7cec0 556-557
+  s_72db73f5d2fe1d::t_0c79ccee6c02ed 400-405
+src/lib/filePathCardPref.ts
+  s_72db73f5d2fe1d::t_9af8c047680ad8 10-12
+src/components/composerExtensions.ts
+  s_72db73f5d2fe1d::t_0c737c4d9491b4 1-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "06ab9cdab7444f62225613072f765c80a08820ed",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
