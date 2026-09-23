@@ -1,0 +1,29 @@
+src-tauri/src/session_manager/events_bg.rs
+  s_72db73f5d2fe1d::t_9eade2a1b3b1d1 559-569
+src-tauri/src/acp_golden_test.rs
+  s_72db73f5d2fe1d::t_f968c741b103aa 576-577
+src-tauri/tests/fixtures/acp/subagent_lifecycle.json
+  s_72db73f5d2fe1d::t_6090f226fcf576 93-94
+  s_72db73f5d2fe1d::t_600c4b61ea0707 110-130
+src-tauri/src/acp_client.rs
+  s_72db73f5d2fe1d::t_8a2b31dee5df8e 3922-3926
+  s_72db73f5d2fe1d::t_33d54c7a094dd7 206,208
+  s_72db73f5d2fe1d::t_1f2dd90aafe543 3911
+  s_72db73f5d2fe1d::t_8370760fe90a24 3959
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "ba310a9019509046e82a208b274c0d55fef8bf75",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
