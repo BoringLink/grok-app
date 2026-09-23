@@ -240,6 +240,7 @@ import {
   effortCatalogForRoute,
   effortOptionsFromProvider,
   isValidEffort,
+  isKnownComposerModelId,
   isValidModelId,
   isValidPolicy,
   isValidPrefsScope,
@@ -2336,11 +2337,21 @@ export function AppWorkbench() {
     };
   }, []);
 
+  // customProviders 声明在本组件靠后处（growth freeze 下不能前移 state），
+  // 用 ref 镜像其可选模型 id，供更早定义的 applyComposerPrefs 校验。
+  const customModelIdsRef = useRef<string[]>([]);
+
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
       const models = catalog.length > 0 ? catalog : GROK_BUILD_MODELS;
       let nextModelId: string;
-      if (prefs.modelId && isValidModelId(prefs.modelId, models)) {
+      if (
+        prefs.modelId &&
+        isKnownComposerModelId(prefs.modelId, {
+          officialModels: models,
+          customModelIds: customModelIdsRef.current,
+        })
+      ) {
         nextModelId = prefs.modelId;
       } else {
         nextModelId = pickDefaultModelId(models);
@@ -9146,6 +9157,11 @@ export function AppWorkbench() {
       })),
     [customProviders],
   );
+  // 与 composerProviderInputs 同步；ref 在渲染期写入是幂等的，且 applyComposerPrefs
+  // 只在提交后的 effect 中读取，不需要额外 effect/state。
+  customModelIdsRef.current = composerProviderInputs.flatMap((p) =>
+    p.models.map((m) => m.id),
+  );
   const refreshProviderRoute = useCallback(async () => {
     if (!api.isTauri()) {
       setActiveCustomProvider(null);
@@ -11309,7 +11325,12 @@ export function AppWorkbench() {
       const switchModel =
         !!nextModelId &&
         nextModelId !== modelId &&
-        isValidModelId(nextModelId, availableModels);
+        // 自定义 provider 的模型不在官方 catalog 里；只查官方会让「编辑并用自定义
+        // 模型重发」被静默忽略。
+        isKnownComposerModelId(nextModelId, {
+          officialModels: availableModels,
+          customModelIds: customModelIdsRef.current,
+        });
 
       // Optimistic UI + prefs: live agent model is applied after connect.
       if (switchModel) {
@@ -11531,7 +11552,13 @@ export function AppWorkbench() {
         onlyLastToastKey: "message.regenerateOnlyLast",
         busyToastKey: "message.regenerateBusy",
         modelId:
-          pick && isValidModelId(pick, availableModels) ? pick : undefined,
+          pick &&
+          isKnownComposerModelId(pick, {
+            officialModels: availableModels,
+            customModelIds: customModelIdsRef.current,
+          })
+            ? pick
+            : undefined,
       });
     },
     [
