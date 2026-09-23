@@ -634,3 +634,89 @@ fn route_change_preservation_survives_parked_sweep() {
     let preserved = mgr.preserve_busy_sessions_for_route_change("models_aux");
     assert_eq!(preserved, vec!["s-bg-busy".to_string()]);
 }
+
+// ── BOR-52：会话内模型切换排队（运行中任务不中断）──────────────────────────
+
+/// (a) 忙碌会话：模型切换登记 pending_soft_respawn("model")，live 槽位
+/// 进程原样保留（不 soft-drop、不改 FSM 状态），等待本轮结束 flush。
+#[test]
+fn model_change_on_busy_session_queues_pending_and_keeps_process() {
+    let mgr = SessionManager::new();
+    *mgr.inner.lock() = Some(busy_live_session("s-model-busy", "p-model"));
+
+    let queued = mgr.queue_model_change_for_busy();
+
+    assert_eq!(queued.as_deref(), Some("s-model-busy"));
+    assert_eq!(
+        mgr.pending_soft_respawn
+            .lock()
+            .get("s-model-busy")
+            .map(String::as_str),
+        Some("model")
+    );
+    let guard = mgr.inner.lock();
+    let s = guard.as_ref().expect("live slot preserved");
+    assert_eq!(s.app_session_id, "s-model-busy");
+    assert_eq!(s.process_id, "p-model");
+    // FSM 未被 soft_disconnect —— 进程与事件路由保持原样。
+    assert_eq!(s.fsm.state(), SessionState::Ready);
+}
+
+/// (c) 空闲会话：不进 pending，模型切换立即生效（由调用方直接
+/// `session/set_model`），队列保持为空。
+#[test]
+fn model_change_on_idle_session_applies_immediately_without_pending() {
+    let mgr = SessionManager::new();
+    *mgr.inner.lock() = Some(bare_live_session("s-model-idle", "p-idle"));
+
+    let queued = mgr.queue_model_change_for_busy();
+
+    assert!(queued.is_none(), "idle session must not queue");
+    assert!(mgr.pending_soft_respawn.lock().is_empty());
+}
+
+/// (b) 前置：turn 未结束（仍忙碌）时 flush 不得消费 pending —— 原样
+/// 重新登记，等待真正的 turn 边界。
+#[test]
+fn flush_keeps_pending_while_session_still_busy() {
+    let mgr = SessionManager::new();
+    *mgr.inner.lock() = Some(busy_live_session("s-flush-busy", "p-busy"));
+    mgr.pending_soft_respawn
+        .lock()
+        .insert("s-flush-busy".into(), "model".into());
+
+    let taken = mgr.take_pending_if_idle("s-flush-busy");
+
+    assert!(taken.is_none(), "busy session must not consume pending");
+    assert_eq!(
+        mgr.pending_soft_respawn
+            .lock()
+            .get("s-flush-busy")
+            .map(String::as_str),
+        Some("model")
+    );
+}
+
+/// (b) turn 结束后 flush：pending 被消费，旧后台 ACP 条目被丢弃，
+/// 下次 connect 以新 model（meta.model_id）冷启动 —— 换新路由。
+#[tokio::test]
+async fn flush_after_turn_end_drops_old_agent_for_new_route() {
+    let mgr = SessionManager::new();
+    mgr.pending_soft_respawn
+        .lock()
+        .insert("s-flush-idle".into(), "model".into());
+    mgr.background
+        .lock()
+        .insert("s-flush-idle".into(), bare_live_session("s-flush-idle", "p-old"));
+
+    let taken = mgr.take_pending_if_idle("s-flush-idle");
+
+    assert_eq!(taken.as_deref(), Some("model"));
+    assert!(!mgr.pending_soft_respawn.lock().contains_key("s-flush-idle"));
+    // apply 阶段：丢掉旧 agent 条目，下一次 connect 冷启动读取新 meta。
+    mgr.drop_idle_agent_for_session("s-flush-idle", "model").await;
+    assert!(
+        !mgr.background.lock().contains_key("s-flush-idle"),
+        "old background agent must not be promoted by the ready fast-path"
+    );
+}

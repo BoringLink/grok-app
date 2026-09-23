@@ -188,14 +188,12 @@ impl SessionManager {
         }
     }
 
-    /// If a mid-turn policy/effort/proxy change queued a respawn, run it
-    /// now that the session is idle (or drop a parked process so next
-    /// connect cold-spawns with the new flags).
-    pub async fn flush_pending_soft_respawn(&self, app: &AppHandle, session_id: &str) {
-        let reason = { self.pending_soft_respawn.lock().remove(session_id) };
-        let Some(reason) = reason else {
-            return;
-        };
+    /// Take the pending respawn reason for `session_id` when it is idle;
+    /// re-register and return `None` when the session is still mid-turn.
+    /// Pure queue bookkeeping (no `AppHandle`) so the BOR-52 queue semantics
+    /// stay unit-testable without `tauri::test::mock_app()` (tauri #14580).
+    pub(super) fn take_pending_if_idle(&self, session_id: &str) -> Option<String> {
+        let reason = { self.pending_soft_respawn.lock().remove(session_id)? };
         let busy = self
             .with_session_mut(session_id, |s| Self::live_session_is_busy(s))
             .unwrap_or(false);
@@ -203,10 +201,40 @@ impl SessionManager {
             self.pending_soft_respawn
                 .lock()
                 .insert(session_id.to_string(), reason);
-            return;
+            return None;
         }
+        Some(reason)
+    }
+
+    /// Register a queued model change for a mid-turn live session (BOR-52).
+    /// Returns the app session id when the change was queued instead of
+    /// applied; `None` means the session is idle and the caller applies now.
+    pub(super) fn queue_model_change_for_busy(&self) -> Option<String> {
+        let guard = self.inner.lock();
+        let s = guard.as_ref()?;
+        if !Self::live_session_is_busy(s) {
+            return None;
+        }
+        let app_session_id = s.app_session_id.clone();
+        self.pending_soft_respawn
+            .lock()
+            .insert(app_session_id.clone(), "model".into());
+        Some(app_session_id)
+    }
+
+    /// If a mid-turn policy/effort/proxy change queued a respawn, run it
+    /// now that the session is idle (or drop a parked process so next
+    /// connect cold-spawns with the new flags).
+    pub async fn flush_pending_soft_respawn(&self, app: &AppHandle, session_id: &str) {
+        let Some(reason) = self.take_pending_if_idle(session_id) else {
+            return;
+        };
         if self.is_live_session(session_id) {
             self.soft_respawn_with_reason(app, &reason).await;
+            let _ = app.emit(
+                "session://model_switch_pending",
+                serde_json::json!({ "sessionId": session_id, "pending": false }),
+            );
             return;
         }
         // A background session can be idle after its turn completed. Pending
@@ -256,6 +284,10 @@ impl SessionManager {
                 );
             }
         }
+        let _ = app.emit(
+            "session://model_switch_pending",
+            serde_json::json!({ "sessionId": session_id, "pending": false }),
+        );
     }
 
     /// Counts of tracked live shell / background / parked entries (alive or not).
@@ -771,7 +803,12 @@ impl SessionManager {
     }
 
     /// Apply model id on the live ACP session (best-effort session/set_model).
-    pub async fn set_model(&self, model_id: String) -> Result<(), String> {
+    ///
+    /// Queue semantics (BOR-52): a mid-turn session never gets a live
+    /// `session/set_model` — the id is stored on the meta (next connect
+    /// spawns / aligns with it) and a `pending_soft_respawn` is registered so
+    /// the turn-end flush swaps the route. Idle sessions apply immediately.
+    pub async fn set_model(&self, app: &AppHandle, model_id: String) -> Result<(), String> {
         let model_id = model_id.trim().to_string();
         if model_id.is_empty() {
             return Err("model id empty".into());
@@ -789,6 +826,17 @@ impl SessionManager {
                 (None, None)
             }
         };
+        if let Some(app_session_id) = self.queue_model_change_for_busy() {
+            tracing::info!(
+                session = %app_session_id,
+                "model change queued: session mid-turn, applies after turn end"
+            );
+            let _ = app.emit(
+                "session://model_switch_pending",
+                serde_json::json!({ "sessionId": app_session_id, "pending": true }),
+            );
+            return Ok(());
+        }
         // Target the live session explicitly (shared process safety).
         if let (Some(acp), Some(sid)) = (acp, sid) {
             acp.set_model_for(&sid, &agent_model).await?;
