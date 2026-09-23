@@ -9457,14 +9457,36 @@ export function AppWorkbench() {
             showToast(tr("prov.err.unknownProvider"), 4000);
             return;
           }
-          // Per-session model only: the picker selection is stored on the
-          // session (composerPrefsSet) and mapped to the model's own
-          // `[model.<id>]` section at spawn. Never rewrite the channel's global
-          // `model =` here — that would leak one chat's pick into every chat.
+          // Switch request model on the channel when needed (keeps multi-model catalog).
+          const models =
+            provider.models?.length
+              ? provider.models
+              : [{ id: provider.model, name: provider.model }];
+          const catalog = models.some((m) => m.id === pick.modelId)
+            ? models
+            : [...models, { id: pick.modelId, name: pick.modelId }];
           const appliedLive = materializeActiveModelChannel({
             provider,
             modelId: pick.modelId,
+            models: catalog,
           });
+          if (provider.model.trim() !== pick.modelId.trim()) {
+            await api.providersUpsert({
+              id: provider.id,
+              model: pick.modelId,
+              baseUrl: provider.baseUrl,
+              name: provider.name,
+              apiBackend: provider.apiBackend,
+              models: catalog,
+              efforts: appliedLive.efforts ?? provider.efforts,
+              contextWindow:
+                appliedLive.contextWindow ??
+                provider.contextWindow ??
+                undefined,
+              supportsVision: appliedLive.supportsVision,
+              setAsDefault: false,
+            });
+          }
           if (
             providerActiveSource !== "custom" ||
             providerActiveId !== pick.providerId
