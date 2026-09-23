@@ -7,8 +7,12 @@
 import { describe, expect, it } from "vitest";
 import {
   escapeRefValue,
+  isExternalHttpUrl,
   isTokenizableRefValue,
+  matchPastedUrl,
   matchRefTokenAt,
+  matchTypedUrl,
+  stripTrailingUrlPunctuation,
   refAgentText,
   refDisplayLabel,
   refTokenText,
@@ -131,5 +135,119 @@ describe("ref agent form and label", () => {
     expect(refDisplayLabel("url", "https://example.com/a/b")).toBe(
       "example.com",
     );
+  });
+});
+
+// ── BOR-57：URL 自动识别 ───────────────────────────────────────────────────
+
+describe("url scheme gate (BOR-57)", () => {
+  it("accepts only absolute http(s)", () => {
+    // Arrange / Act / Assert
+    expect(isExternalHttpUrl("https://example.com/a")).toBe(true);
+    expect(isExternalHttpUrl("http://example.com")).toBe(true);
+  });
+
+  it("rejects every non-http scheme and origin-relative form", () => {
+    // Arrange / Act / Assert — chip 与可点击链接共用这一条判定
+    for (const bad of [
+      "javascript:alert(1)",
+      "JavaScript:alert(1)",
+      "data:text/html,<script>x</script>",
+      "blob:https://example.com/abc",
+      "vbscript:msgbox(1)",
+      "file:///etc/passwd",
+      "mailto:a@b.c",
+      "//example.com/x",
+      "/repo/src/a.ts",
+      "#fragment",
+      "example.com",
+      "",
+    ]) {
+      expect(isExternalHttpUrl(bad)).toBe(false);
+    }
+  });
+});
+
+describe("stripTrailingUrlPunctuation (BOR-57)", () => {
+  it("drops sentence punctuation in both scripts", () => {
+    // Arrange / Act / Assert
+    expect(stripTrailingUrlPunctuation("https://x.y/z.")).toBe("https://x.y/z");
+    expect(stripTrailingUrlPunctuation("https://x.y/z,")).toBe("https://x.y/z");
+    expect(stripTrailingUrlPunctuation("https://x.y/z。")).toBe("https://x.y/z");
+    expect(stripTrailingUrlPunctuation("https://x.y/z！？")).toBe("https://x.y/z");
+    expect(stripTrailingUrlPunctuation("https://x.y/z…")).toBe("https://x.y/z");
+  });
+
+  it("keeps a closing paren that belongs to the URL", () => {
+    // Arrange — 维基类链接的 `(bar)` 是路径的一部分，剥掉会截断
+    const url = "https://en.wikipedia.org/wiki/Foo_(bar)";
+
+    // Act / Assert
+    expect(stripTrailingUrlPunctuation(url)).toBe(url);
+    expect(stripTrailingUrlPunctuation(`${url}.`)).toBe(url);
+  });
+
+  it("drops a trailing paren that is sentence punctuation", () => {
+    // Arrange — 句子的 `)` 不配对，属于正文
+    expect(stripTrailingUrlPunctuation("https://x.y/z)")).toBe("https://x.y/z");
+  });
+
+  it("drops a wrapping paren only on the trailing side", () => {
+    // Arrange — 句首的 `(` 不归本函数管；因此 `(https://x.y)` 不是「整段即链接」，
+    // 调用方会因它不以 http 开头而拒绝转换（不会产生错误 chip）。
+    expect(stripTrailingUrlPunctuation("(https://x.y)")).toBe("(https://x.y)");
+    expect(matchPastedUrl("(https://x.y)")).toBeNull();
+  });
+});
+
+describe("matchPastedUrl (BOR-57)", () => {
+  it("accepts a clipboard that is exactly one link", () => {
+    // Arrange / Act / Assert
+    expect(matchPastedUrl("https://example.com/a")).toBe(
+      "https://example.com/a",
+    );
+    expect(matchPastedUrl("  https://example.com/a\n")).toBe(
+      "https://example.com/a",
+    );
+    expect(matchPastedUrl("https://example.com/a。")).toBe(
+      "https://example.com/a",
+    );
+  });
+
+  it("refuses anything that is not a single bare link", () => {
+    // Arrange / Act / Assert — 含空白或不是 http(s) 的粘贴照旧走 Markdown
+    expect(matchPastedUrl("see https://example.com")).toBeNull();
+    expect(matchPastedUrl("https://a.b\nhttps://c.d")).toBeNull();
+    expect(matchPastedUrl("plain text")).toBeNull();
+    expect(matchPastedUrl("javascript:alert(1)")).toBeNull();
+    expect(matchPastedUrl("")).toBeNull();
+  });
+});
+
+describe("matchTypedUrl (BOR-57)", () => {
+  it("converts a link the user just typed at end of a word boundary", () => {
+    // Arrange / Act / Assert
+    expect(matchTypedUrl("https://x.y ")).toEqual({
+      url: "https://x.y",
+      start: 0,
+    });
+    expect(matchTypedUrl("看 https://x.y ")).toEqual({
+      url: "https://x.y",
+      start: 2,
+    });
+  });
+
+  it("does not fire mid-word or without a trailing space", () => {
+    // Arrange / Act / Assert — `xhttps://y` 里的片段不是链接
+    expect(matchTypedUrl("xhttps://x.y ")).toBeNull();
+    expect(matchTypedUrl("https://x.y")).toBeNull();
+  });
+
+  it("points start at the stripped url, not the raw token", () => {
+    // Arrange / Act
+    const hit = matchTypedUrl("看 https://x.y/z。 ");
+
+    // Assert — 句读不属于链接，替换区间必须只覆盖 URL 本身
+    expect(hit).toEqual({ url: "https://x.y/z", start: 2 });
   });
 });

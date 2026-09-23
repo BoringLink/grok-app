@@ -9,10 +9,13 @@
  * 输入中与发送后长得一样。
  */
 
-import { Node, mergeAttributes } from "@tiptap/react";
+import { InputRule, Node, mergeAttributes } from "@tiptap/react";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { openExternalHttpUrl } from "@/lib/externalLinkPref";
 import {
+  isExternalHttpUrl,
   matchRefTokenAt,
+  matchTypedUrl,
   refDisplayLabel,
   refTokenText,
   type RefKind,
@@ -118,6 +121,23 @@ function refIconSvg(kind: RefKind): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 }
 
+/**
+ * URL chip 的打开方式（BOR-57）：编辑态下**普通点击只定位光标**——点进去改字
+ * 是这个区域最常见的手势，直接跳浏览器会很烦人。用 ⌘/Ctrl + 点击显式打开。
+ *
+ * 只有 http(s) 会被打开：`isExternalHttpUrl` 拒绝 `javascript:` / `data:` 等，
+ * 非 http(s) 的 chip 干脆不挂这个监听。
+ */
+function addUrlOpenAffordance(dom: HTMLElement, url: string): void {
+  if (!isExternalHttpUrl(url)) return;
+  dom.addEventListener("click", (event) => {
+    if (!event.metaKey && !event.ctrlKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openExternalHttpUrl(url);
+  });
+}
+
 export const RefTokenNode = Node.create({
   name: REF_TOKEN_NODE,
   group: "inline",
@@ -142,6 +162,29 @@ export const RefTokenNode = Node.create({
 
   parseHTML() {
     return [{ tag: "span[data-ref-token]" }];
+  },
+
+  /**
+   * 敲下一个空白时，把光标前刚写完的 http(s) 链接就地变成 URL chip（BOR-57）。
+   * 用 `matchTypedUrl` 的同一套边界规则，保证「输入」与「粘贴」判定一致。
+   */
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /(?:^|\s)(\S+)\s$/,
+        handler: ({ state, range, match }) => {
+          const hit = matchTypedUrl(match[0] ?? "");
+          if (!hit) return null;
+          const start = range.from + hit.start;
+          state.tr.replaceWith(
+            start,
+            start + hit.url.length,
+            this.type.create({ kind: "url", value: hit.url }),
+          );
+          return;
+        },
+      }),
+    ];
   },
 
   renderHTML({ node, HTMLAttributes }) {
@@ -184,6 +227,9 @@ export const RefTokenNode = Node.create({
       main.appendChild(icon);
       main.appendChild(meta);
       wrap.appendChild(main);
+      if (kind === "url") {
+        addUrlOpenAffordance(wrap, value);
+      }
       return { dom: wrap };
     };
   },

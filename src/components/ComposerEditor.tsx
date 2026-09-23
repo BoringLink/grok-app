@@ -21,6 +21,7 @@ import {
 } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import { buildComposerExtensions } from "@/components/composerExtensions";
+import { matchPastedUrl } from "@/lib/composerRefToken";
 import {
   clipboardLooksLikeMedia,
   clipboardLooksLikeOsFiles,
@@ -327,6 +328,21 @@ export const ComposerEditor = memo(function ComposerEditor({
           event.preventDefault();
           view.dispatch(
             view.state.tr.insertText(plain, view.state.selection.from),
+          );
+          return true;
+        }
+        // 粘贴一整条 http(s) 链接 → 直接成为内联 URL chip（BOR-57）。
+        // 只在整段内容就是一个链接时成立；含空白的普通文本照旧走 Markdown。
+        const pastedUrl = plain ? matchPastedUrl(plain) : null;
+        if (pastedUrl) {
+          event.preventDefault();
+          view.dispatch(
+            view.state.tr.replaceSelectionWith(
+              view.state.schema.nodes.refToken.create({
+                kind: "url",
+                value: pastedUrl,
+              }),
+            ),
           );
           return true;
         }
