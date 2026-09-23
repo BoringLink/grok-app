@@ -1,0 +1,19 @@
+src/app/AppWorkbench.tsx
+  s_72db73f5d2fe1d::t_34f1c1e2fc50a5 9511-9516
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "9db98aeeb30b6157c6b096925ea4fbd4bfe03b72",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
