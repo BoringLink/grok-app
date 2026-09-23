@@ -1,0 +1,26 @@
+src/app/WorkbenchComposerColumn.tsx
+  s_72db73f5d2fe1d::t_2d590993c17c1e 942-946,948-949,951
+src/lib/composerColumn.guard.test.ts
+  s_72db73f5d2fe1d::t_e569bba53880bd 113-129
+src/styles/chat.part2.css
+  s_72db73f5d2fe1d::t_e073d99bfb7ea8 100,102,104-110,112-115,117-122
+  s_72db73f5d2fe1d::t_548cf751bcdc99 116
+  s_72db73f5d2fe1d::t_5adf354b05ba2e 96-99
+  s_72db73f5d2fe1d::t_7a42d7c681dc07 101,103,111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "d299405a236da8de501f5357c8fbc901d3bc3796",
+  "prompts": {},
+  "sessions": {
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
