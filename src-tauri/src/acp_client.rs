@@ -172,6 +172,62 @@ pub enum AcpEvent {
     ProcessExited {
         code: Option<i32>,
     },
+    /// Subagent lifecycle from `_x.ai/session_notification` (BOR-55).
+    ///
+    /// CLI 1.0.x emits `subagent_spawned` / `subagent_progress` /
+    /// `subagent_finished` on the xAI extension notification channel; before
+    /// this the client dropped them and the Tasks panel could only *guess*
+    /// parent-child links from spawn-tool stream order.
+    Subagent(SubagentUpdate),
+}
+
+/// Lifecycle phase of a CLI subagent run (`spawn_subagent` / Task tool).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubagentPhase {
+    Spawned,
+    Progress,
+    Finished,
+}
+
+impl SubagentPhase {
+    /// Wire-stable token used in the `session://subagent` payload.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SubagentPhase::Spawned => "spawned",
+            SubagentPhase::Progress => "progress",
+            SubagentPhase::Finished => "finished",
+        }
+    }
+}
+
+/// One subagent run as reported by the CLI. Every field beyond `subagent_id`
+/// is optional: the CLI omits what it does not know, and the UI must show an
+/// honest empty state rather than a fabricated value.
+#[derive(Debug, Clone, Default)]
+pub struct SubagentUpdate {
+    pub phase: Option<SubagentPhase>,
+    pub subagent_id: String,
+    pub parent_session_id: Option<String>,
+    pub child_session_id: Option<String>,
+    pub parent_prompt_id: Option<String>,
+    pub attempt_id: Option<String>,
+    pub subagent_type: Option<String>,
+    pub description: Option<String>,
+    pub model: Option<String>,
+    /// Terminal status on `subagent_finished` (`completed` / `failed` / …).
+    pub status: Option<String>,
+    pub duration_ms: Option<u64>,
+    pub turn_count: Option<u64>,
+    pub tool_call_count: Option<u64>,
+    pub tokens_used: Option<u64>,
+    pub context_window_tokens: Option<u64>,
+    pub context_usage_pct: Option<f64>,
+    pub tools_used: Vec<String>,
+    pub error_count: Option<u64>,
+    /// Final subagent answer (only on `subagent_finished`).
+    pub output: Option<String>,
+    /// True when the finished subagent can still be resumed / woken.
+    pub will_wake: Option<bool>,
 }
 
 /// Host circuit-breaker: after this many provider retries, cancel the turn.
@@ -3648,6 +3704,14 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                 out.push(AcpEvent::ToolOpenReleased { tool_call_id });
             }
         }
+        // Subagent lifecycle (BOR-55). CLI 1.0.x reports these on the xAI
+        // extension notification channel with a *stable* subagent id, so the
+        // Tasks panel no longer has to infer parent links from stream order.
+        "subagent_spawned" | "subagent_progress" | "subagent_finished" => {
+            if let Some(ev) = parse_subagent_update(kind, update) {
+                out.push(ev);
+            }
+        }
         "retry_state" => {
             let attempt = update.get("attempt").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
             let max_retries = update
@@ -3810,7 +3874,110 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
     out
 }
 
-/// One choice inside an ask-user question.
+/// Decode one `subagent_spawned` / `subagent_progress` / `subagent_finished`
+/// notification. Returns `None` when the update carries no subagent id — an
+/// id-less row cannot be tracked or de-duplicated, so it is not surfaced.
+pub fn parse_subagent_update(kind: &str, update: &Value) -> Option<AcpEvent> {
+    let subagent_id = update
+        .get("subagent_id")
+        .or_else(|| update.get("subagentId"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if subagent_id.is_empty() {
+        return None;
+    }
+    let phase = match kind {
+        "subagent_spawned" => SubagentPhase::Spawned,
+        "subagent_progress" => SubagentPhase::Progress,
+        "subagent_finished" => SubagentPhase::Finished,
+        _ => return None,
+    };
+    let str_field = |keys: &[&str]| -> Option<String> {
+        keys.iter()
+            .find_map(|k| update.get(*k))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+    };
+    let num_field = |keys: &[&str]| -> Option<u64> {
+        keys.iter()
+            .find_map(|k| update.get(*k))
+            .and_then(|v| v.as_u64())
+    };
+    Some(AcpEvent::Subagent(SubagentUpdate {
+        phase: Some(phase),
+        subagent_id,
+        parent_session_id: str_field(&["parent_session_id", "parentSessionId"]),
+        child_session_id: str_field(&["child_session_id", "childSessionId"]),
+        parent_prompt_id: str_field(&["parent_prompt_id", "parentPromptId"]),
+        attempt_id: str_field(&["attempt_id", "attemptId"]),
+        subagent_type: str_field(&["subagent_type", "subagentType"]),
+        description: str_field(&["description", "summary"]),
+        model: str_field(&["model", "model_id", "modelId"]),
+        status: str_field(&["status"]),
+        duration_ms: num_field(&["duration_ms", "durationMs"]),
+        turn_count: num_field(&["turn_count", "turnCount"]),
+        tool_call_count: num_field(&["tool_call_count", "toolCallCount"]),
+        tokens_used: num_field(&["tokens_used", "tokensUsed"]),
+        context_window_tokens: num_field(&["context_window_tokens", "contextWindowTokens"]),
+        context_usage_pct: update
+            .get("context_usage_pct")
+            .or_else(|| update.get("contextUsagePct"))
+            .and_then(|v| v.as_f64()),
+        tools_used: update
+            .get("tools_used")
+            .or_else(|| update.get("toolsUsed"))
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        error_count: num_field(&["error_count", "errorCount"]),
+        output: str_field(&["output", "result"]),
+        will_wake: update
+            .get("will_wake")
+            .or_else(|| update.get("willWake"))
+            .and_then(|v| v.as_bool()),
+    }))
+}
+
+impl SubagentUpdate {
+    /// `session://subagent` payload (snake_case keys are flattened to camelCase
+    /// for the frontend). Absent values stay `null` — the UI must not invent them.
+    pub fn to_payload(&self, app_session_id: &str) -> Value {
+        json!({
+            "sessionId": app_session_id,
+            "phase": self.phase.map(SubagentPhase::as_str).unwrap_or("progress"),
+            "subagentId": self.subagent_id,
+            "parentSessionId": self.parent_session_id,
+            "childSessionId": self.child_session_id,
+            "parentPromptId": self.parent_prompt_id,
+            "attemptId": self.attempt_id,
+            "subagentType": self.subagent_type,
+            "description": self.description,
+            "model": self.model,
+            "status": self.status,
+            "durationMs": self.duration_ms,
+            "turnCount": self.turn_count,
+            "toolCallCount": self.tool_call_count,
+            "tokensUsed": self.tokens_used,
+            "contextWindowTokens": self.context_window_tokens,
+            "contextUsagePct": self.context_usage_pct,
+            "toolsUsed": self.tools_used,
+            "errorCount": self.error_count,
+            "output": self.output,
+            "willWake": self.will_wake,
+        })
+    }
+}
+
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AskUserOption {

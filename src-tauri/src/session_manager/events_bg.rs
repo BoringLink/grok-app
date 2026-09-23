@@ -555,6 +555,9 @@ impl SessionManager {
                     );
                 }
             }
+            AcpEvent::Subagent(sub) => {
+                let _ = app.emit("session://subagent", sub.to_payload(app_session_id));
+            }
             AcpEvent::ToolOpenReleased { tool_call_id } => {
                 let mut pending_emits = Vec::new();
                 let mut pending_persists = Vec::new();
