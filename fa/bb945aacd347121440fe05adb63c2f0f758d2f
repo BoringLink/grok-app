@@ -1,0 +1,66 @@
+src/i18n/messages/pt-BR/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 279
+src/i18n/messages/fil/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 279
+src/lib/pendingModelSwitchStore.test.ts
+  s_72db73f5d2fe1d::t_ba179203886c51 1-75
+src/i18n/messages/id/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 279
+src/i18n/messages/fr/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 279
+src/app/WorkbenchComposerColumn.tsx
+  s_1ed624be4f7b23::t_998a34a54b1572 363,941-957
+  s_1ed624be4f7b23::t_db34ae5ab04be9 46
+src/i18n/messages/en/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 282
+src/i18n/messages/zh/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 281
+src/i18n/messages/ko/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 279
+src/i18n/messages/it/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 279
+src/i18n/messages/ja/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 279
+docs/plans/GOAL-composer-wysiwyg-and-session-model-isolation.md
+  s_72db73f5d2fe1d::t_6bb6285c267274 5-8
+src/i18n/messages/ru/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 279
+src/lib/pendingModelSwitchStore.ts
+  s_1ed624be4f7b23::t_0c7bdb94d2dec1 1-59
+src/i18n/messages/de/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 279
+src/i18n/messages/uk/composer.ts
+  s_1ed624be4f7b23::t_75ea86739e2e42 279
+src/hooks/usePendingModelSwitch.ts
+  s_1ed624be4f7b23::t_60f595aee0cf08 1-42
+src/i18n/messages/zh-TW/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 281
+src/i18n/messages/ta/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 279
+src/i18n/messages/es/composer.ts
+  s_1ed624be4f7b23::t_5d20368e5b2c40 279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "fabb945aacd347121440fe05adb63c2f0f758d2f",
+  "prompts": {},
+  "sessions": {
+    "s_1ed624be4f7b23": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0ca66-184a-75a0-ba8e-c4531e2f8c8a",
+        "model": "ada-anthropic"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    },
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
