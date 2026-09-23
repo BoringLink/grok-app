@@ -188,6 +188,38 @@ export function locateSlashRangeInMarkdown(
 }
 
 /**
+ * 在 Markdown 源码中定位 `@query` 的范围（存储空间坐标）。
+ *
+ * 为什么必须在这里重新定位，而不是直接用 `@` 检测给出的偏移：
+ * `detectAtQueryFromEditor` 走的是 **DOM 文本**（`getStoredTextBeforeCaret` 把
+ * 光标前的 DOM 片段交给手写的 walk），而那个 walk **不产出 Markdown 语法**——
+ * 列表项在 Markdown 里是 `- 第一项`，DOM 文本里只有 `第一项`。把 DOM 偏移套到
+ * draft 上，在列表/引用/标题里就会整体左移若干个字符，替换掉光标前的正文并
+ * 把 `@query` 留在原地。
+ *
+ * 边界与 `detectAtQuery` 一致：`@` 必须位于行首或空白之后，query 内不含空白。
+ * 取文档中最后一个合法出现（用户刚敲下的那个）。
+ */
+export function locateAtRangeInMarkdown(
+  md: string,
+  query: string,
+): { start: number; end: number } | null {
+  const needle = `@${query}`;
+  const isBoundary = (c: string | undefined) =>
+    c === undefined || /\s/.test(c);
+  let idx = md.lastIndexOf(needle);
+  while (idx >= 0) {
+    const before = idx === 0 ? undefined : md[idx - 1];
+    const after = md[idx + needle.length];
+    if (isBoundary(before) && isBoundary(after)) {
+      return { start: idx, end: idx + needle.length };
+    }
+    idx = md.lastIndexOf(needle, idx - 1);
+  }
+  return null;
+}
+
+/**
  * 归一化 tiptap-markdown 序列化输出：
  * - hard break 被序列化为 `\\\n`（Markdown 转义换行），还原为普通 `\n`
  *   （`breaks: true` 下 `\n` 反解析回硬换行，draft 保持旧格式的纯换行约定）；
