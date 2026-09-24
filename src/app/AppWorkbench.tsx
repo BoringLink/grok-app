@@ -171,8 +171,8 @@ import {
   shouldConfirmClearGoalOrch,
 } from "@/lib/goalOrch";
 import * as api from "@/lib/api";
-import { queueComposerPreferenceApply } from "@/lib/composerPrefsBarrier";
 import { ComposerPrefsFreshness } from "@/lib/composerPrefsFreshness";
+import { writeComposerPrefs } from "@/lib/composerPrefsWrite";
 import {
   isDangerousSandboxProfile,
   normalizeSandboxProfile,
@@ -9358,20 +9358,18 @@ export function AppWorkbench() {
     (nextEffort: string) => {
       if (!isValidEffort(nextEffort, activeEffortCatalog)) return;
       setEffort(nextEffort);
-      // 写入在队列中排队执行，用 trackLocalWrite 从「点击」起就标记在途，
-      // 直到落盘为止都不允许解析结果覆盖这次选择。
-      effortApplyRef.current = composerPrefsFreshnessRef.current.trackLocalWrite(
-        () =>
-          queueComposerPreferenceApply(
-            effortApplyRef.current,
-            () =>
-              api.composerPrefsSet({
-                projectId: activeProject?.id ?? null,
-                sessionId: session.sessionId ?? null,
-                effort: nextEffort,
-              }),
-            (error) => showToast(String(error), 4000),
-          ),
+      // 目标会话与项目在点击时定格；写入排队执行，但排队期间切会话不会再把
+      // 这次选择写进另一个会话。
+      // 返回的 promise 同时是发送屏障（`useComposerSend` 发送前 await 它）。
+      effortApplyRef.current = writeComposerPrefs(
+        composerPrefsFreshnessRef.current,
+        {
+          projectId: activeProject?.id ?? null,
+          sessionId: session.sessionId ?? null,
+          effort: nextEffort,
+        },
+        api.composerPrefsSet,
+        (error) => showToast(String(error), 4000),
       );
     },
     [activeEffortCatalog, activeProject?.id, session.sessionId, showToast],
@@ -9381,6 +9379,13 @@ export function AppWorkbench() {
     async (pick: ComposerModelPick) => {
       if (modelPickBusy) return;
       setModelPickBusy(true);
+      // 目标在点击时定格：下面的 provider 激活/路由刷新都有 await，期间用户
+      // 可能切到别的会话，落盘时再读 `session.sessionId` 就会把这次选择写进
+      // 另一个会话（跨会话串模型）。
+      const prefsTarget = {
+        projectId: activeProject?.id ?? null,
+        sessionId: session.sessionId ?? null,
+      };
       try {
         if (pick.kind === "official") {
           if (providerActiveSource === "custom" && api.isTauri()) {
@@ -9398,16 +9403,12 @@ export function AppWorkbench() {
             channelEffortOptions ?? officialEffortCatalog,
           );
           setEffort(clampedOfficial);
-          void composerPrefsFreshnessRef.current
-            .trackLocalWrite(() =>
-              api.composerPrefsSet({
-                projectId: activeProject?.id ?? null,
-                sessionId: session.sessionId ?? null,
-                modelId: pick.modelId,
-                effort: clampedOfficial,
-              }),
-            )
-            .catch((e) => showToast(String(e), 4000));
+          void writeComposerPrefs(
+            composerPrefsFreshnessRef.current,
+            { ...prefsTarget, modelId: pick.modelId, effort: clampedOfficial },
+            api.composerPrefsSet,
+            (e) => showToast(String(e), 4000),
+          );
         } else {
           if (!api.isTauri()) return;
           const provider = customProviders.find(
@@ -9455,16 +9456,12 @@ export function AppWorkbench() {
           // 直到切会话触发一次重新解析才更新；模型本身早已生效，于是表现为
           // 「点了没反应、实际已切换」。
           setModelId(pick.modelId);
-          void composerPrefsFreshnessRef.current
-            .trackLocalWrite(() =>
-              api.composerPrefsSet({
-                projectId: activeProject?.id ?? null,
-                sessionId: session.sessionId ?? null,
-                modelId: pick.modelId,
-                effort: clampedCustom,
-              }),
-            )
-            .catch((e) => showToast(String(e), 4000));
+          void writeComposerPrefs(
+            composerPrefsFreshnessRef.current,
+            { ...prefsTarget, modelId: pick.modelId, effort: clampedCustom },
+            api.composerPrefsSet,
+            (e) => showToast(String(e), 4000),
+          );
         }
       } catch (e) {
         showToast(String(e), 4000);
