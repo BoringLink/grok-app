@@ -1,0 +1,10 @@
+src/app/WorkbenchComposerColumn.tsx
+  s_1ed624be4f7b23::t_db34ae5ab04be9 46
+  s_1ed624be4f7b23::t_998a34a54b1572 363,941-952
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "d2945aed8f0cf2f9bfcb010e5fbc61a69c012ea8",
+  "prompts": {}
+}
