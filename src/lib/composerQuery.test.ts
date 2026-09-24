@@ -127,6 +127,36 @@ describe("queryRangeBeforeCaret", () => {
     ).toBeNull();
   });
 
+  it("软换行（Shift+Enter）后打 @ 仍算触发，位置映射仍是一对一", () => {
+    // Arrange —— `breaks: true` 下 "line1\n@ab" 解析成段落里
+    // text("line1") + hardBreak + text("@ab")；它在 textBetween 里必须算换行
+    // （空白）而不是原子占位符，否则 @ 前不是空白、面板不会出现。
+    editor = makeEditor("line1\n@ab");
+    const doc = editor.state.doc;
+    // 段落内容起点 1 → 'l'=1 … hardBreak=6 → '@'=7, 'a'=8, 'b'=9, 块末=10
+    const { start, end } = firstTextblock(doc);
+    expect(start).toBe(1);
+    expect(end).toBe(10);
+
+    // Act
+    const range = queryRangeBeforeCaret(doc, end, "@");
+
+    // Assert —— from 落在 '@' 上，说明 hardBreak 只占一个位置
+    expect(range).toEqual({ from: 7, to: 10, query: "ab" });
+  });
+
+  it("软换行后刚打出 @ 也算触发（空 query）", () => {
+    // Arrange
+    editor = makeEditor("line1\n@");
+    const doc = editor.state.doc;
+
+    // Act
+    const range = queryRangeBeforeCaret(doc, firstTextblock(doc).end, "@");
+
+    // Assert
+    expect(range?.query).toBe("");
+  });
+
   it("slash 用同一套规则", () => {
     // Arrange
     editor = makeEditor("run /rev");

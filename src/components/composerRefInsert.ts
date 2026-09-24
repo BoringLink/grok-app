@@ -8,14 +8,9 @@
 
 import type { Editor } from "@tiptap/react";
 import { TextSelection } from "@tiptap/pm/state";
+import { composerLeafText } from "@/lib/composerQuery";
 import type { RefKind } from "@/lib/composerRefToken";
 
-/**
- * 原子节点在 `textBetween` 里的占位字符（OBJECT REPLACEMENT CHARACTER）。
- * 与 {@link import("@/lib/composerQuery").queryRangeBeforeCaret} 用的是同一个，
- * 保证「下一个字符是不是空白」的判定与检测阶段一致。
- */
-const ATOM_LEAF = "￼";
 
 export type ComposerRefInsert = {
   /** 目标区间（`@query` 的文档位置）；null / 失效时退回到当前选区。 */
@@ -33,7 +28,7 @@ function nextCharIsTight(editor: Editor, to: number): boolean {
     $to.parentOffset,
     Math.min($to.parentOffset + 1, $to.parent.content.size),
     undefined,
-    ATOM_LEAF,
+    composerLeafText,
   );
   return next === "" || !/^\s/.test(next);
 }

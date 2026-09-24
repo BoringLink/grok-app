@@ -20,6 +20,17 @@ export type ComposerQueryRange = { from: number; to: number; query: string };
 const ATOM_LEAF = "￼";
 
 /**
+ * `textBetween` 的 leaf 文本：**硬换行算换行**，其余叶子用占位字符。
+ *
+ * 软换行（Shift+Enter 产生的 `hardBreak`）是空白，必须能作为 `${trigger}` 的
+ * 边界 —— 否则「软换行后紧接着打 @」会因为前一个字符是占位符而被判成不触发。
+ * 它同样是单个字符，位置映射仍是一对一。
+ */
+export function composerLeafText(leaf: ProseMirrorNode): string {
+  return leaf.type.name === "hardBreak" ? "\n" : ATOM_LEAF;
+}
+
+/**
  * 取光标前同一文本块内、位于光标之前的 `${trigger}query` 区间。
  *
  * 规则（与 slash 同构）：
@@ -43,7 +54,7 @@ export function queryRangeBeforeCaret(
     0,
     $from.parentOffset,
     undefined,
-    ATOM_LEAF,
+    composerLeafText,
   );
   // 独占结尾的锚点保证 query 一直延伸到光标；`[^\s￼]*` 使其在空白或原子
   // 节点处终止。左起首个合法匹配必然是唯一匹配：两个合法 trigger 之间不可能
