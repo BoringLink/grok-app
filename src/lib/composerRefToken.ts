@@ -176,3 +176,38 @@ export function isExternalHttpUrl(url: string): boolean {
   if (t.startsWith("//") || t.startsWith("/") || t.startsWith("#")) return false;
   return /^https?:\/\/[^\s/]+/i.test(t);
 }
+
+/** 引用 token 里"看起来像路径"的最少段数：`/repo/a.ts` 是，`/goal` 不是。 */
+function hasPathShape(path: string): boolean {
+  return path.split("/").filter((s) => s.length > 0).length >= 2;
+}
+
+/**
+ * 把正文里的 `@绝对路径` 还原成引用 token（历史回填用）。
+ *
+ * 这是**读回 App 自己写出去的格式**：`refAgentText` 对 file / dir 就是 `@` + 绝对
+ * 路径，所以从 agent 侧 transcript 重建的 journal 里，引用就是这个形态。只认
+ * `/` 开头且**至少两段**的路径，于是 `@/goal`、`@某人`、`user@host` 都不会被当成
+ * 引用（验收 C9）。尾部句读按 {@link stripTrailingUrlPunctuation} 的规则剥掉，
+ * 配对括号不剥。
+ *
+ * 转换是无损的：认出来的 token 再序列化回 agent 形态与原文逐字相同，所以即使
+ * 误判（用户真的把 `@/etc/hosts` 当普通文本写），往返之后文本也不变。
+ */
+export function refTokensFromAgentText(text: string): string {
+  if (!text.includes("@/")) return text;
+  // 路径体在**中日韩句读**处就断（那些字符不是空白，`[^\s]*` 会把整句话吞进路径）；
+  // 西文句读由 stripTrailingUrlPunctuation 从尾部剥。路径本身仍可含中文。
+  return text.replace(
+    /(^|[\s(])@(\/[^\s，。；：！？、）】》」』]*)/g,
+    (whole, lead: string, raw: string) => {
+      const path = stripTrailingUrlPunctuation(raw);
+      if (!path || !hasPathShape(path) || !isTokenizableRefValue(path)) {
+        return whole;
+      }
+      const tail = raw.slice(path.length);
+      const kind: RefKind = path.endsWith("/") ? "dir" : "file";
+      return `${lead}${refTokenText(kind, path)}${tail}`;
+    },
+  );
+}

@@ -7,6 +7,8 @@
  */
 
 import { Extension } from "@tiptap/react";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
@@ -70,6 +72,45 @@ export type ComposerExtensionOptions = {
   showPlaceholderWhenEditable?: boolean;
 };
 
+/**
+ * 代码块的语言栏数据源：把节点的 `language` 镜像成 DOM 上的 `data-language`。
+ *
+ * 用装饰器加**属性**，而不是自定义 NodeView：编辑器的存储态序列化会遍历 DOM
+ * （`draftDoc.serializeEditorDomWalk`），NodeView 里多出来的语言栏元素会被当成
+ * 正文；装饰器不进文档模型，markdown 往返、光标坐标都不受影响。
+ *
+ * 语言文本本身已由 tiptap 的 codeBlock 渲染成 `<code class="language-js">`，
+ * 这里只是让 CSS 能用 `content: attr(data-language)` 把它显示出来
+ * （对齐聊天侧 `.chat-code__lang`，输入框不提供复制按钮）。
+ */
+const CodeBlockLanguageLabel = Extension.create({
+  name: "codeBlockLanguageLabel",
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey("codeBlockLanguageLabel"),
+        props: {
+          decorations(state) {
+            const decorations: Decoration[] = [];
+            state.doc.descendants((node, pos) => {
+              if (node.type.name !== "codeBlock") return;
+              const language = String(node.attrs.language ?? "").trim();
+              if (!language) return;
+              decorations.push(
+                Decoration.node(pos, pos + node.nodeSize, {
+                  "data-language": language,
+                }),
+              );
+            });
+            return DecorationSet.create(state.doc, decorations);
+          },
+        },
+      }),
+    ];
+  },
+});
+
 /** 构建 composer 使用的扩展数组。 */
 export function buildComposerExtensions(opts: ComposerExtensionOptions = {}) {
   return [
@@ -80,6 +121,7 @@ export function buildComposerExtensions(opts: ComposerExtensionOptions = {}) {
     SkillTokenNode,
     RefTokenNode,
     ListLineBreak,
+    CodeBlockLanguageLabel,
     Placeholder.configure({
       placeholder: opts.placeholder ?? "",
       showOnlyWhenEditable: opts.showPlaceholderWhenEditable ?? true,

@@ -358,3 +358,53 @@ describe("hydrateDisplayContent", () => {
     );
   });
 });
+
+describe("hydrateDisplayContent 还原 agent 形态的引用", () => {
+  it("`@绝对路径` 还原成 file token，供气泡与重新编辑渲染 chip", () => {
+    // Arrange —— agent 侧 transcript 里引用就是这种形态
+    const raw = "在 @/repo/src/a.ts 中找到 xxx";
+
+    // Act / Assert
+    expect(hydrateDisplayContent(raw)).toBe(
+      "在 [[file:/repo/src/a.ts]] 中找到 xxx",
+    );
+  });
+
+  it("目录引用按结尾斜杠还原成 dir token", () => {
+    // Arrange / Act / Assert
+    expect(hydrateDisplayContent("看 @/repo/src/ 下")).toBe(
+      "看 [[dir:/repo/src/]] 下",
+    );
+  });
+
+  it("`@/goal` 这类一段路径不是引用（验收 C9）", () => {
+    // Arrange / Act / Assert
+    expect(hydrateDisplayContent("@/goal 请继续")).toBe("@/goal 请继续");
+  });
+
+  it("普通 `@文本` 与邮箱不受影响", () => {
+    // Arrange / Act / Assert
+    expect(hydrateDisplayContent("@某人 你好")).toBe("@某人 你好");
+    expect(hydrateDisplayContent("mail: user@host.com")).toBe(
+      "mail: user@host.com",
+    );
+  });
+
+  it("尾部句读留在正文，不进路径", () => {
+    // Arrange / Act / Assert
+    expect(hydrateDisplayContent("见 @/repo/a.ts。")).toBe(
+      "见 [[file:/repo/a.ts]]。",
+    );
+  });
+
+  it("路径里的 `]` 被转义，token 不会被提前闭合", () => {
+    // Arrange / Act
+    const hydrated = hydrateDisplayContent("@/repo/a]b.ts");
+
+    // Assert
+    expect(hydrated).toBe("[[file:/repo/a%5Db.ts]]");
+    expect(parseStoredContent(hydrated)).toEqual([
+      { type: "ref", kind: "file", value: "/repo/a]b.ts" },
+    ]);
+  });
+});

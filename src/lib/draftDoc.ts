@@ -7,6 +7,7 @@
 import {
   isExternalHttpUrl,
   refAgentText,
+  refTokensFromAgentText,
   refTokenText,
   unescapeRefValue,
   type RefKind,
@@ -81,35 +82,39 @@ const NON_SKILL_SLASH = new Set(
  */
 export function hydrateDisplayContent(content: string): string {
   if (!content) return content;
-  if (content.includes("[[skill:")) return content;
-  if (!content.startsWith("/") && !content.includes("/goal")) return content;
+  // 引用先还原：从 agent 侧 transcript 重建的 journal 里，file / dir 引用就是
+  // `@绝对路径`（`refAgentText` 的形态），不还原就会在气泡与重新编辑里变成纯文本。
+  const display = refTokensFromAgentText(content);
+  // 已 token 化（本应用写的 journal）直接放行；下面只处理 agent 形态的 skill 行。
+  if (display.includes("[[skill:")) return display;
+  if (!display.startsWith("/") && !display.includes("/goal")) return display;
 
-  let rest = content;
+  let rest = display;
   // Drop goal mode prefix from display hydration (mode is session chrome, not a chip).
   if (rest.startsWith("/goal\n")) {
     rest = rest.slice("/goal\n".length);
   } else if (rest === "/goal") {
-    return content;
+    return display;
   }
 
   const nl = rest.indexOf("\n");
   const firstLine = (nl === -1 ? rest : rest.slice(0, nl)).trim();
   const body = nl === -1 ? "" : rest.slice(nl + 1);
 
-  if (!firstLine) return content;
+  if (!firstLine) return display;
 
   const parts = firstLine.split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return content;
-  if (!parts.every((p) => /^\/[a-zA-Z0-9_.:-]+$/.test(p))) return content;
+  if (parts.length === 0) return display;
+  if (!parts.every((p) => /^\/[a-zA-Z0-9_.:-]+$/.test(p))) return display;
 
   const names = parts.map((p) => p.slice(1));
   // Require at least one invocable skill; skip pure built-in command lines.
   const skillNames = names.filter(
     (n) => !NON_SKILL_SLASH.has(n.toLowerCase()),
   );
-  if (skillNames.length === 0) return content;
+  if (skillNames.length === 0) return display;
   // Only convert when every first-line token is a skill (not mixed with builtins).
-  if (skillNames.length !== names.length) return content;
+  if (skillNames.length !== names.length) return display;
 
   const chips = skillNames.map((n) => `[[skill:${n}]]`).join("");
   if (!body) return chips;

@@ -302,6 +302,27 @@
   line-height: 18px;
   white-space: pre-wrap;
 }
+/* 代码块语言栏：只显示语言，不搬聊天侧的复制按钮（输入框里「复制自己的草稿」
+ * 用处有限，且会把输入框的紧凑密度压掉）。文案来自 codeBlock 节点上的
+ * `data-language` 装饰器（composerExtensions.ts），字体/配色对齐聊天侧
+ * `.chat-code__lang`。 */
+.composer__input pre[data-language]::before {
+  content: attr(data-language);
+  display: block;
+  /* 通栏：抵消 pre 的 padding，顶到圆角边框内侧。 */
+  margin: -6px -8px 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 10px 10px 0 0;
+  background: var(--bg-hover);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  user-select: none;
+}
+
 .composer__input pre code {
   /* 代码块内的 code 不再叠一层行内代码的底色、描边与圆角。 */
   padding: 0;
