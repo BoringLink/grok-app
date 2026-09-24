@@ -348,6 +348,26 @@ describe("locateAtRangeInMarkdown", () => {
     expect(range).toEqual({ start: 8, end: 9 });
   });
 
+  it("在已有引用 token 之前输入的 @query 也能定位", () => {
+    // Arrange —— 用户把光标放在已有 chip 前，再打 @ 选第二个文件：
+    // `@atF` 后面紧跟的是既有 token 的 `[`，不是空白
+    const md = "在 @atF[[file:/repo/x.ts]] 后";
+
+    // Act
+    const range = locateAtRangeInMarkdown(md, "atF");
+
+    // Assert —— 定不到就会退化成「追加到文末」
+    expect(range).toEqual({ start: 2, end: 6 });
+  });
+
+  it("空的 @query 紧跟既有 token 时也能定位", () => {
+    // Arrange / Act
+    const range = locateAtRangeInMarkdown("在 @[[url:https://x.y]] 后", "");
+
+    // Assert
+    expect(range).toEqual({ start: 2, end: 3 });
+  });
+
   it("locates a query that follows the @", () => {
     // Arrange / Act / Assert
     expect(locateAtRangeInMarkdown("- 看 @atF 这里", "atF")).toEqual({

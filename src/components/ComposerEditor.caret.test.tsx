@@ -56,11 +56,11 @@ function Harness({ initial }: { initial: string }) {
 
 afterEach(cleanup);
 
-/** 走一遍 applyAtFile 的顺序，返回 chip 之后的编辑器文本偏移。 */
+/** 走一遍 applyAtFile 的顺序，返回 chip 之后的编辑器文本偏移与编辑器文本。 */
 async function insertRef(
   initial: string,
   query: string,
-): Promise<number | null> {
+): Promise<{ caret: number | null; editorText: string | null }> {
   const range = locateAtRangeInMarkdown(initial, query);
   const inserted = insertAtTokenAsRef(initial, range, TOKEN);
   const { container } = render(
@@ -86,34 +86,51 @@ async function insertRef(
   await waitFor(() => {
     expect(getComposerEditorText(el)).toContain("[[file:/repo/a.ts]]");
   });
-  return getComposerCaretOffset(el);
+  return { caret: getComposerCaretOffset(el), editorText: getComposerEditorText(el) };
 }
 
 describe("caret after an @ reference insert", () => {
   it("stops right after the chip at the end of a list item", async () => {
     // Arrange / Act
-    const caret = await insertRef("- 第一个文件 @", "");
+    const { caret } = await insertRef("- 第一个文件 @", "");
     // Assert — 编辑器文本空间里 chip 之后是 25（Markdown 里是 28）
     expect(caret).toBe(25);
   });
 
   it("stops right after the chip mid-sentence in a list item", async () => {
     // Arrange / Act
-    const caret = await insertRef("- 在 @atF 里找", "atF");
+    const { caret } = await insertRef("- 在 @atF 里找", "atF");
     // Assert — 编辑器文本空间里是 21（Markdown 里是 23）
     expect(caret).toBe(21);
   });
 
   it("stops right after the chip at the end of a plain paragraph", async () => {
     // Arrange / Act
-    const caret = await insertRef("看 @", "");
+    const { caret } = await insertRef("看 @", "");
     // Assert
     expect(caret).toBe(21);
   });
 
+  it("已有 chip 之前插入的引用落在光标处，而不是文末", async () => {
+    // Arrange —— 用户把光标放在已有 chip 前再打 @atF 选第二个文件：
+    // `@atF` 后面紧跟既有 token 的 `[`，不是空白
+    const initial = "在 @atF[[file:/repo/old.ts]] 后";
+
+    // Act
+    const { caret, editorText } = await insertRef(initial, "atF");
+
+    // Assert —— 新 chip 落在 `@atF` 原位置，`@atF` 不再是纯文本，
+    // 且光标紧随新 chip 之后（旧实现会把 chip 追加到文末、光标一起跑到文末）
+    const expected = "在 [[file:/repo/a.ts]] [[file:/repo/old.ts]] 后";
+    expect(editorText).toBe(expected);
+    expect(caret).toBe(
+      expected.indexOf("[[file:/repo/a.ts]]") + "[[file:/repo/a.ts]]".length,
+    );
+  });
+
   it("stops right after the chip mid-sentence in a plain paragraph", async () => {
     // Arrange / Act
-    const caret = await insertRef("在 @atF 里找", "atF");
+    const { caret } = await insertRef("在 @atF 里找", "atF");
     // Assert
     expect(caret).toBe(21);
   });

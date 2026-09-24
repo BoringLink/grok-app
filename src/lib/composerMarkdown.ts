@@ -11,6 +11,7 @@
  */
 
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { startsWithStoredToken } from "@/lib/draftDoc";
 import { skillTokenStoredText } from "@/components/composerSkillNode";
 import { refTokenStoredText } from "@/components/composerRefNode";
 
@@ -207,11 +208,17 @@ export function locateAtRangeInMarkdown(
   const needle = `@${query}`;
   const isBoundary = (c: string | undefined) =>
     c === undefined || /\s/.test(c);
+  /**
+   * `@query` 后面紧跟**已有引用 token** 也算合法收尾：用户把光标放在已有 chip 前
+   * 再打 `@` 选下一个文件时，正文长成 `@atF[[file:…]]`。只看空白边界会把这种情况
+   * 判成「找不到」，调用方于是退化成把新 chip 追加到文末、`@query` 留成纯文本。
+   */
+  const endsAtToken = (rest: string) => startsWithStoredToken(rest);
   let idx = md.lastIndexOf(needle);
   while (idx >= 0) {
     const before = idx === 0 ? undefined : md[idx - 1];
-    const after = md[idx + needle.length];
-    if (isBoundary(before) && isBoundary(after)) {
+    const rest = md.slice(idx + needle.length);
+    if (isBoundary(before) && (isBoundary(rest[0]) || endsAtToken(rest))) {
       return { start: idx, end: idx + needle.length };
     }
     idx = md.lastIndexOf(needle, idx - 1);
@@ -230,7 +237,8 @@ export function locateAtRangeInMarkdown(
  * 换算方式：在编辑器文本里重新定位 `@query`，用它的下标当作 chip 起点，再加 token
  * 的长度（token 在两个空间等长）。插入时补的分隔空格不必另外计入——它总落在
  * 所在块的末尾，被 ProseMirror 当作尾部空白丢弃；`locateAtRangeInMarkdown` 的
- * 边界规则也保证 `@query` 后面只可能是空白或结尾。
+ * 边界规则保证 `@query` 后面只可能是空白、结尾，或一个已有的存储态 token
+ * （光标放在既有 chip 前再插入一个引用时的形态）。
  *
  * `editorText` 为 null（编辑器未挂载）或定位失败时退回存储空间 caret，由调用方的
  * 落点逻辑夹到文档范围内。
