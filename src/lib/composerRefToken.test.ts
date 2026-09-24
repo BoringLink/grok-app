@@ -16,9 +16,11 @@ import {
   refAgentText,
   refDisplayLabel,
   refTokenText,
+  refTokensFromAgentText,
   unescapeRefValue,
   REF_TOKEN_RE,
 } from "./composerRefToken";
+import { parseStoredContent, serializeForAgent } from "./draftDoc";
 
 describe("ref token escaping", () => {
   it("leaves ordinary paths untouched so drafts stay readable", () => {
@@ -256,5 +258,47 @@ describe("matchTypedUrl (BOR-57)", () => {
 
     // Assert — 句读不属于链接，替换区间必须只覆盖 URL 本身
     expect(hit).toEqual({ url: "https://x.y/z", start: 2 });
+  });
+});
+
+describe("refTokensFromAgentText", () => {
+  it("把 `@绝对路径` 换回 token，句读留在外面", () => {
+    expect(refTokensFromAgentText("见 @/repo/a.ts，还有 @/repo/b.md")).toBe(
+      "见 [[file:/repo/a.ts]]，还有 [[file:/repo/b.md]]",
+    );
+  });
+
+  it("一段路径 / 普通 @文本 / 邮箱都不是引用", () => {
+    expect(refTokensFromAgentText("@/goal")).toBe("@/goal");
+    expect(refTokensFromAgentText("@某人")).toBe("@某人");
+    expect(refTokensFromAgentText("user@host.com")).toBe("user@host.com");
+  });
+
+  it("结尾斜杠视为目录", () => {
+    expect(refTokensFromAgentText("@/repo/src/ 下")).toBe(
+      "[[dir:/repo/src/]] 下",
+    );
+  });
+
+  it("配对括号不剥，句末括号剥掉", () => {
+    expect(refTokensFromAgentText("@/repo/Foo_(bar)")).toBe(
+      "[[file:/repo/Foo_(bar)]]",
+    );
+    expect(refTokensFromAgentText("(见 @/repo/a.ts)")).toBe(
+      "(见 [[file:/repo/a.ts]])",
+    );
+  });
+
+  it("与 refAgentText 互为逆运算（逐字相同）", () => {
+    // Arrange —— 误判也不改变文本，这是这条规则安全的前提
+    const raw = "看 @/repo/my dir/a b.ts 和 @/repo/src/";
+    const tokenized = refTokensFromAgentText(raw);
+    const segs = parseStoredContent(tokenized);
+
+    // Act
+    const back = serializeForAgent(segs);
+
+    // Assert
+    expect(back).toBe(raw);
   });
 });

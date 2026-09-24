@@ -81,6 +81,21 @@ describe("BOR-56 composer markdown alignment", () => {
     expect(link).toMatch(/cursor:\s*text/);
   });
 
+  it("代码块有语言栏，且只显示语言（不带复制按钮）", () => {
+    // Arrange / Act
+    const lang = ruleBody(
+      modalsPart1,
+      /\.composer__input pre\[data-language\]::before\s*\{([\s\S]*?)\}/,
+    );
+
+    // Assert —— 文案来自节点属性装饰器，不能写死；样式对齐聊天侧 .chat-code__lang
+    expect(lang).toMatch(/content:\s*attr\(data-language\)/);
+    expect(lang).toMatch(/text-transform:\s*lowercase/);
+    expect(lang).toMatch(/color:\s*var\(--text-tertiary\)/);
+    // 输入框不搬聊天侧的复制按钮
+    expect(modalsPart1).not.toMatch(/\.composer__input[^{]*__btn/);
+  });
+
   it("renders composer code in the chat palette", () => {
     // Arrange / Act
     const pre = ruleBody(modalsPart1, /\.composer__input pre\s*\{([\s\S]*?)\}/);

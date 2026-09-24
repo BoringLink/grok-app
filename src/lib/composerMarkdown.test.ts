@@ -55,6 +55,28 @@ describe("Markdown serialization (TipTap composer)", () => {
     expect(out).toBe(source);
   });
 
+  it("代码块带上语言栏属性，且不影响 markdown 往返", () => {
+    // Arrange
+    const source = "```ts\nconst a = 1;\n```";
+
+    // Act
+    editor = makeEditor(source);
+    const pre = editor.view.dom.querySelector("pre");
+
+    // Assert —— CSS 用 content: attr(data-language) 渲染语言栏
+    expect(pre?.getAttribute("data-language")).toBe("ts");
+    expect(markdownOf(editor)).toBe(source);
+  });
+
+  it("没写语言的围栏不加语言栏属性", () => {
+    // Arrange / Act
+    editor = makeEditor("```\nplain\n```");
+    const pre = editor.view.dom.querySelector("pre");
+
+    // Assert
+    expect(pre?.hasAttribute("data-language")).toBe(false);
+  });
+
   it("keeps soft lines via hard breaks (breaks: true)", () => {
     // Arrange
     const source = "line1\nline2";
