@@ -5759,10 +5759,7 @@ mod composer_prefs_scope_tests {
                 resolve_composer_prefs(None, Some("s-new")).model_id,
                 "model-global"
             );
-            assert_eq!(
-                resolve_composer_prefs(None, None).model_id,
-                "model-global"
-            );
+            assert_eq!(resolve_composer_prefs(None, None).model_id, "model-global");
         });
     }
 
