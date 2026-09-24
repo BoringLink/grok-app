@@ -18,9 +18,9 @@ import type { RefKind } from "@/lib/composerRefToken";
 const ATOM_LEAF = "￼";
 
 export type ComposerRefInsert = {
-  /** 目标区间（`@query` 的文档位置）；失效时退回到当前选区。 */
-  from: number;
-  to: number;
+  /** 目标区间（`@query` 的文档位置）；null / 失效时退回到当前选区。 */
+  from: number | null;
+  to: number | null;
   kind: RefKind;
   value: string;
 };
@@ -51,8 +51,13 @@ export function insertRefAtomInto(
 ): boolean {
   if (editor.isDestroyed) return false;
   const size = editor.state.doc.content.size;
-  let { from, to } = insert;
-  if (!(from >= 0 && to >= from && to <= size)) {
+  let from = insert.from;
+  let to = insert.to;
+  if (
+    from == null ||
+    to == null ||
+    !(from >= 0 && to >= from && to <= size)
+  ) {
     from = Math.min(editor.state.selection.from, size);
     to = from;
   }

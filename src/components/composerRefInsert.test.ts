@@ -146,6 +146,18 @@ describe("insertRefAtomInto", () => {
     expect(markdownOf(editor)).toContain("abc");
     expect(markdownOf(editor)).toContain("[[dir:/x]]");
   });
+
+  it("range 为 null 时同样退回选区，而不是插到文档开头", () => {
+    // Arrange —— 面板在没有可定位区间时触发
+    editor = makeEditor("abc");
+
+    // Act
+    insertRefAtomInto(editor, { from: null, to: null, kind: "file", value: "/x" });
+
+    // Assert —— 插在选区处、正文完整保留
+    expect(markdownOf(editor)).toContain("abc");
+    expect(markdownOf(editor)).toContain("[[file:/x]]");
+  });
 });
 
 describe("removeRangeInto", () => {

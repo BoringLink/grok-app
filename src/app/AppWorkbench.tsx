@@ -6559,8 +6559,8 @@ export function AppWorkbench() {
       // 一次 transaction 完成替换与落点；新 Markdown 由编辑器 onUpdate 上报，
       // 不再手工 splice draft、也不再请求文本偏移光标。
       insertComposerRefAtom(composerInputRef.current, {
-        from: range?.from ?? 0,
-        to: range?.to ?? 0,
+        from: range?.from ?? null,
+        to: range?.to ?? null,
         kind,
         value: entry.path,
       });
