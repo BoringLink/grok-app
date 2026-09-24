@@ -1,0 +1,30 @@
+src/components/lobe-chat/InlineUserEdit.tsx
+  s_45d8babae69c99::t_b430fd3fdbf69a 8,11,13,61-69,71,114-115
+src/lib/draftDoc.ref.test.ts
+  s_45d8babae69c99::t_2bf95ca2a5d4d6 10,15,126-256
+src/lib/atFileQuery.ts
+  s_45d8babae69c99::t_7c4be5b3aa5fe0 45
+  s_45d8babae69c99::t_2e0c9833ff43ae 24-26,29,44
+src/lib/draftDoc.ts
+  s_45d8babae69c99::t_37b2d6d142ddae 8
+  s_45d8babae69c99::t_dc7728d04557dd 175-183
+  s_45d8babae69c99::t_9e6205463665a7 244-288
+src/lib/atFileQuery.test.ts
+  s_45d8babae69c99::t_7904d8f21fce02 28-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "fa26ff441e6aede27717a00738f44e6a35647770",
+  "prompts": {},
+  "sessions": {
+    "s_45d8babae69c99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0677b74-ac92-453a-b6ba-9b663586b75d",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
