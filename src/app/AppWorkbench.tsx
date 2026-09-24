@@ -173,6 +173,7 @@ import {
 import * as api from "@/lib/api";
 import { ComposerPrefsFreshness } from "@/lib/composerPrefsFreshness";
 import { writeComposerPrefs } from "@/lib/composerPrefsWrite";
+import type { ComposerPrefsSetBody } from "@/lib/api/settings";
 import {
   isDangerousSandboxProfile,
   normalizeSandboxProfile,
@@ -2043,8 +2044,12 @@ export function AppWorkbench() {
   /** Queue item currently being steered into the live turn. */
   const [guidingQueueItemId, setGuidingQueueItemId] = useState<string | null>(null);
   /** Queue item open in the edit dialog (`null` when closed). */
-  /** Effort changes respawn the CLI; sends must wait for that write to settle. */
-  const effortApplyRef = useRef<Promise<void>>(Promise.resolve());
+  /**
+   * 最近一次 composer 偏好落盘（模型或思考等级）。两者都可能改变下一轮 agent 的
+   * 启动参数，所以发送前必须 await 它，否则会产生「选择已生效、下一轮却用旧配置
+   * 启动」的空窗。
+   */
+  const prefsApplyRef = useRef<Promise<void>>(Promise.resolve());
   /** Live provider retry progress — store lives outside the shell (Thinking reads it). */
   const setRetryStatus = setProviderRetryStatus;
   /** Epoch ms when the current agent turn became busy (for elapsed UI). */
@@ -5624,7 +5629,7 @@ export function AppWorkbench() {
     sendEpochRef,
     sendEpochBySessionRef,
     turnStartedAtBySessionRef,
-    effortApplyRef,
+    prefsApplyRef,
     promptHistoryIndexRef,
     quotesRef,
     attachmentsRef,
@@ -9413,34 +9418,50 @@ export function AppWorkbench() {
     if (next !== effort) setEffort(next);
   }, [activeEffortCatalog, effort]);
 
-  const handleEffortPick = useCallback(
-    (nextEffort: string) => {
-      if (!isValidEffort(nextEffort, activeEffortCatalog)) return;
-      setEffort(nextEffort);
-      // 目标会话与项目在点击时定格；写入排队执行，但排队期间切会话不会再把
-      // 这次选择写进另一个会话。
-      // 返回的 promise 同时是发送屏障（`useComposerSend` 发送前 await 它）。
-      effortApplyRef.current = writeComposerPrefs(
+  /**
+   * 落盘一次 composer 偏好，并把它登记为发送屏障。
+   *
+   * 绑定 freshness 链、IPC 与错误提示，调用点只提供内容；请求体必须在点击时
+   * 定格（目标会话/项目要稳定）。屏障登记放在这里而不是各调用点，是为了让
+   * 「任何 prefs 选择都挡在发送前」这条约束只在一处维护 —— 漏登记会让本轮
+   * agent 用旧模型/旧 effort 启动，且这一点从调用点看不出来。
+   */
+  const persistComposerPrefs = useCallback(
+    (body: ComposerPrefsSetBody): void => {
+      prefsApplyRef.current = writeComposerPrefs(
         composerPrefsFreshnessRef.current,
-        {
-          projectId: activeProject?.id ?? null,
-          sessionId: session.sessionId ?? null,
-          effort: nextEffort,
-        },
+        body,
         api.composerPrefsSet,
         (error) => showToast(String(error), 4000),
       );
     },
-    [activeEffortCatalog, activeProject?.id, session.sessionId, showToast],
+    [showToast],
+  );
+
+  const handleEffortPick = useCallback(
+    (nextEffort: string) => {
+      if (!isValidEffort(nextEffort, activeEffortCatalog)) return;
+      setEffort(nextEffort);
+      persistComposerPrefs({
+        projectId: activeProject?.id ?? null,
+        sessionId: session.sessionId ?? null,
+        effort: nextEffort,
+      });
+    },
+    [
+      activeEffortCatalog,
+      activeProject?.id,
+      persistComposerPrefs,
+      session.sessionId,
+    ],
   );
 
   const handleModelPick = useCallback(
     async (pick: ComposerModelPick) => {
       if (modelPickBusy) return;
       setModelPickBusy(true);
-      // 目标在点击时定格：下面的 provider 激活/路由刷新都有 await，期间用户
-      // 可能切到别的会话，落盘时再读 `session.sessionId` 就会把这次选择写进
-      // 另一个会话（跨会话串模型）。
+      // 点击时定格目标。`session` 是本次渲染的常量，下面这些 await 结束前用户
+      // 若切走会话，这里捕获的仍是点击那一刻的会话。
       const prefsTarget = {
         projectId: activeProject?.id ?? null,
         sessionId: session.sessionId ?? null,
@@ -9462,12 +9483,11 @@ export function AppWorkbench() {
             channelEffortOptions ?? officialEffortCatalog,
           );
           setEffort(clampedOfficial);
-          void writeComposerPrefs(
-            composerPrefsFreshnessRef.current,
-            { ...prefsTarget, modelId: pick.modelId, effort: clampedOfficial },
-            api.composerPrefsSet,
-            (e) => showToast(String(e), 4000),
-          );
+          persistComposerPrefs({
+            ...prefsTarget,
+            modelId: pick.modelId,
+            effort: clampedOfficial,
+          });
         } else {
           if (!api.isTauri()) return;
           const provider = customProviders.find(
@@ -9515,12 +9535,11 @@ export function AppWorkbench() {
           // 直到切会话触发一次重新解析才更新；模型本身早已生效，于是表现为
           // 「点了没反应、实际已切换」。
           setModelId(pick.modelId);
-          void writeComposerPrefs(
-            composerPrefsFreshnessRef.current,
-            { ...prefsTarget, modelId: pick.modelId, effort: clampedCustom },
-            api.composerPrefsSet,
-            (e) => showToast(String(e), 4000),
-          );
+          persistComposerPrefs({
+            ...prefsTarget,
+            modelId: pick.modelId,
+            effort: clampedCustom,
+          });
         }
       } catch (e) {
         showToast(String(e), 4000);
@@ -9539,11 +9558,10 @@ export function AppWorkbench() {
       effort,
       channelEffortOptions,
       officialEffortCatalog,
+      persistComposerPrefs,
       refreshProviderRoute,
       showToast,
       tr,
-      channelEffortOptions,
-      officialEffortCatalog,
     ],
   );
   const handleContextWindow = useCallback(
