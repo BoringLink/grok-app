@@ -1,0 +1,20 @@
+src/components/lobe-chat/InlineUserEdit.refs.test.tsx
+  s_45d8babae69c99::t_6aa3fcb30735da 1-104,107,109-111
+  s_45d8babae69c99::t_d2b52d96802645 105-106,108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "99ce332911b73f023df2beafc7a5721f8c7993f2",
+  "prompts": {},
+  "sessions": {
+    "s_45d8babae69c99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0677b74-ac92-453a-b6ba-9b663586b75d",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
