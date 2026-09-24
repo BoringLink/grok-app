@@ -49,6 +49,15 @@ import {
   locateSlashRangeInMarkdown,
   normalizeSerializedMarkdown,
 } from "@/lib/composerMarkdown";
+import {
+  queryRangeBeforeCaret,
+  type ComposerQueryRange,
+} from "@/lib/composerQuery";
+import {
+  insertRefAtomInto,
+  removeRangeInto,
+  type ComposerRefInsert,
+} from "@/components/composerRefInsert";
 
 const COMPOSER_LINE_PX = 22;
 const COMPOSER_MAX_LINES = 10;
@@ -115,16 +124,41 @@ export function getComposerCaretOffset(
 }
 
 /**
- * 整篇草稿的编辑器文本（token 按存储形式等长，Markdown 语法字符不计入）。
- * 供调用方把 Markdown 源码偏移换算到编辑器文本空间，见
- * {@link import("@/lib/composerMarkdown").refCaretInEditorText}。
+ * 在光标前定位 `${trigger}query` 的文档位置区间（供 `@` 面板上报）。
  */
-export function getComposerEditorText(
+export function queryRangeAtEditorCaret(
   el: HTMLElement | null | undefined,
-): string | null {
+  trigger: "@" | "/",
+): ComposerQueryRange | null {
   const editor = el ? editorsByDom.get(el) : undefined;
   if (!editor || editor.isDestroyed) return null;
-  return editorTextBeforePos(editor.state.doc, editor.state.doc.content.size);
+  return queryRangeBeforeCaret(editor.state.doc, editor.state.selection.from, trigger);
+}
+
+/**
+ * 在 `[from, to)` 处插入引用 chip（命令式 API，供 `@` 面板调用）。
+ * 返回值表示是否找到了编辑器；区间失效时内部退回当前选区。
+ */
+export function insertComposerRefAtom(
+  el: HTMLElement | null | undefined,
+  insert: ComposerRefInsert,
+): boolean {
+  const editor = el ? editorsByDom.get(el) : undefined;
+  if (!editor || editor.isDestroyed) return false;
+  const ok = insertRefAtomInto(editor, insert);
+  // 用原生 focus 而非 commands.focus()：后者会把选区塌到末尾，丢掉刚设好的落点。
+  if (ok) editor.view.focus();
+  return ok;
+}
+
+/** 删除文档里的 `[from, to)`（回退附件时清掉 `@query` 那段）。 */
+export function removeComposerQueryRange(
+  el: HTMLElement | null | undefined,
+  range: { from: number; to: number },
+): boolean {
+  const editor = el ? editorsByDom.get(el) : undefined;
+  if (!editor || editor.isDestroyed) return false;
+  return removeRangeInto(editor, range.from, range.to);
 }
 
 /**
@@ -171,6 +205,8 @@ export type ComposerEditorProps = {
   onSlashQueryChange?: (
     q: { start: number; query: string; end: number } | null,
   ) => void;
+  /** 光标前的 `@query` 区间（**文档位置**，ADR 0003）；无触发时为 null。 */
+  onAtQueryChange?: (q: ComposerQueryRange | null) => void;
   editorRef?: Ref<HTMLDivElement | null>;
   onPasteFiles?: (files: File[]) => void;
   /**
@@ -194,6 +230,7 @@ export const ComposerEditor = memo(function ComposerEditor({
   onKeyDown,
   onContextMenu,
   onSlashQueryChange,
+  onAtQueryChange,
   editorRef,
   onPasteFiles,
   onPasteMediaFallback,
@@ -204,6 +241,8 @@ export const ComposerEditor = memo(function ComposerEditor({
   onChangeRef.current = onChange;
   const onSlashRef = useRef(onSlashQueryChange);
   onSlashRef.current = onSlashQueryChange;
+  const onAtRef = useRef(onAtQueryChange);
+  onAtRef.current = onAtQueryChange;
   const onKeyDownRef = useRef(onKeyDown);
   onKeyDownRef.current = onKeyDown;
   const pasteProps = useRef({ onPasteFiles, onPasteMediaFallback });
@@ -233,7 +272,16 @@ export const ComposerEditor = memo(function ComposerEditor({
     });
   }, []);
 
-  /** 文档变更：序列化上报 + slash 检测 + 高度自适应。 */
+  /** `@` 查询：读文档位置，不再走 DOM walk。 */
+  const emitAt = useCallback((ed: Editor) => {
+    const report = onAtRef.current;
+    if (!report) return;
+    report(
+      queryRangeBeforeCaret(ed.state.doc, ed.state.selection.from, "@"),
+    );
+  }, []);
+
+  /** 文档变更：序列化上报 + slash 检测 + `@` 检测 + 高度自适应。 */
   const syncFromEditor = useCallback(
     (ed: Editor) => {
       const md = normalizedMarkdown(ed);
@@ -242,9 +290,10 @@ export const ComposerEditor = memo(function ComposerEditor({
         onChangeRef.current(md);
       }
       emitSlash(ed);
+      emitAt(ed);
       resizeComposerInput(ed.view.dom);
     },
-    [emitSlash],
+    [emitSlash, emitAt],
   );
 
   const placePendingCaret = useCallback((ed: Editor) => {
@@ -372,6 +421,7 @@ export const ComposerEditor = memo(function ComposerEditor({
     },
     onSelectionUpdate: ({ editor: ed }) => {
       emitSlash(ed);
+      emitAt(ed);
     },
   });
 

@@ -4,16 +4,13 @@
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
 import { Editor } from "@tiptap/react";
 import { buildComposerExtensions } from "@/components/composerExtensions";
-import { insertAtTokenAsRef } from "./atFileQuery";
 import {
   docPosForEditorTextOffset,
   editorTextBeforePos,
   editorTextOffsetForDocPos,
   isStoredMarkdownEmpty,
-  locateAtRangeInMarkdown,
   locateSlashRangeInMarkdown,
   normalizeSerializedMarkdown,
-  refCaretInEditorText,
 } from "./composerMarkdown";
 
 /**
@@ -330,102 +327,6 @@ describe("reference chip deletion (BOR-53)", () => {
   });
 });
 
-// ── 回归：列表内的 @ 引用插入（手工验证反馈）────────────────────────────────
-//
-// 症状：在列表项里用 @ 插入文件引用会「替换掉最后一个字符并多出一个 @」。
-// 根因：`@` 检测走 DOM 文本空间，而 DOM walk 不产出 Markdown 语法——列表项
-// 在 Markdown 里是 `- 第一项`，DOM 文本里只有 `第一项`，偏移整体短 2 个字符。
-
-describe("locateAtRangeInMarkdown", () => {
-  it("locates the @query in a list item at markdown offsets", () => {
-    // Arrange — DOM 文本空间会给 6，Markdown 里真实位置是 8（多了 "- "）
-    const md = "- 第一个文件 @";
-
-    // Act
-    const range = locateAtRangeInMarkdown(md, "");
-
-    // Assert
-    expect(range).toEqual({ start: 8, end: 9 });
-  });
-
-  it("在已有引用 token 之前输入的 @query 也能定位", () => {
-    // Arrange —— 用户把光标放在已有 chip 前，再打 @ 选第二个文件：
-    // `@atF` 后面紧跟的是既有 token 的 `[`，不是空白
-    const md = "在 @atF[[file:/repo/x.ts]] 后";
-
-    // Act
-    const range = locateAtRangeInMarkdown(md, "atF");
-
-    // Assert —— 定不到就会退化成「追加到文末」
-    expect(range).toEqual({ start: 2, end: 6 });
-  });
-
-  it("空的 @query 紧跟既有 token 时也能定位", () => {
-    // Arrange / Act
-    const range = locateAtRangeInMarkdown("在 @[[url:https://x.y]] 后", "");
-
-    // Assert
-    expect(range).toEqual({ start: 2, end: 3 });
-  });
-
-  it("locates a query that follows the @", () => {
-    // Arrange / Act / Assert
-    expect(locateAtRangeInMarkdown("- 看 @atF 这里", "atF")).toEqual({
-      start: 4,
-      end: 8,
-    });
-  });
-
-  it("requires the @ to sit at a boundary", () => {
-    // Arrange / Act / Assert — 邮箱里的 @ 不是引用触发
-    expect(locateAtRangeInMarkdown("- mail me@example.com", "example.com")).toBeNull();
-    expect(locateAtRangeInMarkdown("裸@query", "query")).toBeNull();
-  });
-
-  it("prefers the last legal occurrence", () => {
-    // Arrange — `@ 早期 @`：最后一个 `@` 在索引 5
-    // Act / Assert — 用户刚敲的是最后一个
-    expect(locateAtRangeInMarkdown("@ 早期 @", "")).toEqual({
-      start: 5,
-      end: 6,
-    });
-  });
-});
-
-describe("at-reference insert in a list item", () => {
-  it("replaces only the @query span and keeps the item text intact", () => {
-    // Arrange — 列表项里的 Markdown 源码
-    const md = "- 第一个文件 @";
-
-    // Act
-    const range = locateAtRangeInMarkdown(md, "");
-    expect(range).not.toBeNull();
-    const out = insertAtTokenAsRef(md, range, "[[file:/repo/a.ts]]");
-
-    // Assert — 正文一个字符都不能少，chip 落在 @ 原来的位置
-    expect(out.draft).toBe("- 第一个文件 [[file:/repo/a.ts]] ");
-    expect(out.draft.startsWith("- 第一个文件 ")).toBe(true);
-    expect(out.draft.includes("@")).toBe(false);
-  });
-
-  it("keeps the whole item when the reference lands mid-sentence", () => {
-    // Arrange
-    const md = "- 在 @atFileQuery 里找引用";
-
-    // Act
-    const out = insertAtTokenAsRef(
-      md,
-      locateAtRangeInMarkdown(md, "atFileQuery"),
-      "[[file:/repo/src/lib/atFileQuery.ts]]",
-    );
-
-    // Assert
-    expect(out.draft).toBe(
-      "- 在 [[file:/repo/src/lib/atFileQuery.ts]] 里找引用",
-    );
-  });
-});
-
 // ── 回归：列表项内的换行（手工验证反馈）──────────────────────────────────────
 //
 // 症状：在列表里按 Shift+Enter 只插入了软换行，第二项没有编号。
@@ -546,67 +447,6 @@ describe("editor-text offset around a reference chip", () => {
     // Assert — 落点在 chip 之后、后面的正文之前
     expect(editorTextBeforePos(doc, pos)).toBe("在 [[file:/repo/a.ts]]");
     expect(editorTextOffsetForDocPos(doc, pos)).toBe(chipEnd);
-  });
-});
-
-describe("refCaretInEditorText", () => {
-  const token = "[[file:/repo/a.ts]]";
-
-  /** 复刻 applyAtFile：在 Markdown 里定位后插入，再换算到编辑器文本空间。 */
-  function caretFor(md: string, query: string, editorText: string): number {
-    const range = locateAtRangeInMarkdown(md, query);
-    const inserted = insertAtTokenAsRef(md, range, token);
-    return refCaretInEditorText({
-      editorText,
-      query,
-      range,
-      token,
-      storedCaret: inserted.caret,
-    });
-  }
-
-  it("drops the list marker when the chip ends the item", () => {
-    // Arrange — 存储空间 caret 是 28，编辑器文本空间里 chip 之后是 25
-    // Act / Assert
-    expect(caretFor("- 第一个文件 @", "", "第一个文件 @")).toBe(25);
-  });
-
-  it("drops the list marker when the chip sits mid-sentence", () => {
-    // Arrange — 存储空间 caret 是 23，编辑器文本空间里是 21
-    // Act / Assert
-    expect(caretFor("- 在 @atF 里找", "atF", "在 @atF 里找")).toBe(21);
-  });
-
-  it("keeps a plain-paragraph caret right after the chip", () => {
-    // Arrange — 普通段落两个空间一致
-    // Act / Assert
-    expect(caretFor("看 @", "", "看 @")).toBe(21);
-    expect(caretFor("在 @atF 里找", "atF", "在 @atF 里找")).toBe(21);
-  });
-
-  it("falls back to the stored caret without an editor text", () => {
-    // Arrange
-    const range = locateAtRangeInMarkdown("- 第一个文件 @", "");
-    const inserted = insertAtTokenAsRef("- 第一个文件 @", range, token);
-    // Act / Assert
-    expect(
-      refCaretInEditorText({
-        editorText: null,
-        query: "",
-        range,
-        token,
-        storedCaret: inserted.caret,
-      }),
-    ).toBe(inserted.caret);
-    expect(
-      refCaretInEditorText({
-        editorText: "第一个文件 @",
-        query: "",
-        range: null,
-        token,
-        storedCaret: 99,
-      }),
-    ).toBe(99);
   });
 });
 

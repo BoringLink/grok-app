@@ -38,17 +38,6 @@ const STORED_TOKEN_RE =
   /\[\[skill:([a-zA-Z0-9_.:-]+)\]\]|\[\[plugin:([a-zA-Z0-9_.:-]+)\]\]|\[\[chat:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?::(recent|user|full))?\]\]|\[\[(file|dir|url):([^\]\r\n]*)\]\]/g;
 
 /**
- * 存储态 token 的起始前缀。非全局正则：全局正则会带 lastIndex 状态，不能用 `test`。
- * kind 列表必须与 {@link STORED_TOKEN_RE} 一致。
- */
-const STORED_TOKEN_PREFIX_RE = /^\[\[(?:skill|plugin|chat|file|dir|url):/;
-
-/** 该位置是否刚好是一个存储态 token 的开头。 */
-export function startsWithStoredToken(text: string): boolean {
-  return STORED_TOKEN_PREFIX_RE.test(text);
-}
-
-/**
  * Slash names that are App/Build commands, not skill chips, when rehydrating
  * agent-form history (`/name` lines saved from session_send).
  */
