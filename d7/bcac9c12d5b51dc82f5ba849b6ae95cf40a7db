@@ -1,0 +1,71 @@
+src/app/AppWorkbench.tsx
+  s_72db73f5d2fe1d::t_8d5c4ecab0b3f6 2340-2343,2348-2354
+  s_72db73f5d2fe1d::t_55799d2c493139 243
+  s_72db73f5d2fe1d::t_1059b06514890e 346
+  s_72db73f5d2fe1d::t_6e307ace81b22b 6573
+  s_72db73f5d2fe1d::t_4d54cfba1fc0ca 6516,6518
+  s_72db73f5d2fe1d::t_c1d541c81261e2 6513
+  s_72db73f5d2fe1d::t_80d35c23a5a28d 6510
+  s_72db73f5d2fe1d::t_9dced6bb3e6153 6511
+  s_72db73f5d2fe1d::t_5f77b9a49f72bb 9160-9164
+  s_72db73f5d2fe1d::t_0fe51c30cf4d2d 6477
+  s_72db73f5d2fe1d::t_9367e4220dee61 6494-6496,6502-6509
+src/lib/effectiveModel.test.ts
+  s_72db73f5d2fe1d::t_cb328f574280e2 5
+  s_72db73f5d2fe1d::t_a0bfcd040b53e2 61-102
+src-tauri/src/store.rs
+  s_72db73f5d2fe1d::t_1c092d9688f87b 3190-3206,3209,3219,3233,3253,3262
+  s_72db73f5d2fe1d::t_20b9cb1fff704c 3321-3344,3370-3378
+src-tauri/src/agent_home_config.rs
+  s_72db73f5d2fe1d::t_1f52170a6ace63 82-112,123,125,127
+src/lib/effectiveModel.ts
+  s_72db73f5d2fe1d::t_435a6c0d8b7422 47-82
+src-tauri/src/commands/settings.rs
+  s_72db73f5d2fe1d::t_edf32d96d0e0f4 446,449,455
+  s_72db73f5d2fe1d::t_1cd43ec6d8fd2c 358-363,387-389
+  s_1ed624be4f7b23::t_54d19832d1e590 439
+src/components/ComposerModelMenu.tsx
+  s_72db73f5d2fe1d::t_51ca3796965f79 757-760
+  s_72db73f5d2fe1d::t_9cd404475d78e5 762-764,767-769
+  s_72db73f5d2fe1d::t_34b8cbc6ec3c95 39-42
+src/lib/grokCatalog.test.ts
+  s_72db73f5d2fe1d::t_20890b1d802578 16
+  s_72db73f5d2fe1d::t_728c88f1db3e41 554-588
+docs/llm-wiki/providers.md
+  s_72db73f5d2fe1d::t_47105863db6459 113-114
+src-tauri/src/providers.rs
+  s_72db73f5d2fe1d::t_f854eac72ddfa6 1698-1712
+  s_72db73f5d2fe1d::t_537d6633a20617 2130-2142,2144-2146
+  s_72db73f5d2fe1d::t_8f9bdf7ebf2b6b 4037-4077,4202-4305
+  s_72db73f5d2fe1d::t_11322be1ddfac5 1074-1085
+  s_72db73f5d2fe1d::t_7916a8e1844ddb 4078-4142
+  s_72db73f5d2fe1d::t_9ec579988dc1cc 4143-4201
+  s_72db73f5d2fe1d::t_3c5493e20cb5da 1557-1558
+  s_72db73f5d2fe1d::t_a185376306483c 1019-1034,1037-1042,1044-1045,1052-1056,1073,1086,1092,1094-1111,1118-1119,1121-1176,1178
+  s_72db73f5d2fe1d::t_b72f20f8a7b3b2 1035-1036,1043,1046-1051,1069-1072
+  s_72db73f5d2fe1d::t_3c648022259154 2061
+  s_72db73f5d2fe1d::t_96a3ce3e74d28a 4306-4359
+  s_72db73f5d2fe1d::t_7f9df7901055b8 1057-1068,1087-1091,1093
+  s_72db73f5d2fe1d::t_07adec70e8a94d 2122-2129,2143,2147-2160
+  s_72db73f5d2fe1d::t_906a4492f9ce1f 1112-1117,1120
+src/lib/grokCatalog.ts
+  s_72db73f5d2fe1d::t_d4aed96a44bdeb 220-240
+src-tauri/src/session_manager/control.rs
+  s_1ed624be4f7b23::t_d0e566a844542e 246-249
+  s_72db73f5d2fe1d::t_47d2d8faa155bd 846-855,868,874-884,888-889,896,899-901,916,932-936
+  s_1ed624be4f7b23::t_f68ad342bf26a4 299-302
+  s_7e75eea3b12982::t_9afcf7bb596199 443-512,514-539
+  s_72db73f5d2fe1d::t_529e49484893b4 827-830,841-843,887,898,902-915,917-920,922-926,928-929
+  s_1ed624be4f7b23::t_b4bfa609993c04 856-864
+  s_72db73f5d2fe1d::t_922dea9b659690 17-28
+  s_8ee45656e8516f::t_1e87313727d4cd 513
+  s_1ed624be4f7b23::t_94a30a12aedcdc 203-208,216,218-243
+  s_72db73f5d2fe1d::t_cf501a02da3de1 817-818,824-826,831-836,886,890-895,897,921,927,930
+  s_1ed624be4f7b23::t_bdfeffb8f375dd 819-823,865-866
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "d7bcac9c12d5b51dc82f5ba849b6ae95cf40a7db",
+  "prompts": {}
+}
