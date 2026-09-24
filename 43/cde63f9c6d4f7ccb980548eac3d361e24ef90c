@@ -1,0 +1,30 @@
+src/lib/composerPrefsWrite.ts
+  s_45d8babae69c99::t_7af88205afcf2d 1-31,34-40
+src/lib/composerPrefsWrite.test.ts
+  s_45d8babae69c99::t_84d9fc8ad5e912 88-94,98
+  s_45d8babae69c99::t_00e8fb9d5f4964 2,4,6-9,11-13,15-25,27-32,35-36,38-44,46,48-66,69-75,80-87,95-97
+  s_45d8babae69c99::t_a3d35a752a5e41 1
+  s_45d8babae69c99::t_b933c363885f6a 3,5,10,14,26,33-34,37,79
+src/app/AppWorkbench.tsx
+  s_45d8babae69c99::t_35fe4acf29b68e 9441-9447
+  s_45d8babae69c99::t_685ae24265f3ea 175
+  s_45d8babae69c99::t_b75aff29b23110 9465-9470
+  s_45d8babae69c99::t_527f318b1aa658 9420-9431
+  s_45d8babae69c99::t_df5d8ed5b7e001 9518-9523
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "43cde63f9c6d4f7ccb980548eac3d361e24ef90c",
+  "prompts": {},
+  "sessions": {
+    "s_45d8babae69c99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0677b74-ac92-453a-b6ba-9b663586b75d",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
