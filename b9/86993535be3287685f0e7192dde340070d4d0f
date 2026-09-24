@@ -1,0 +1,23 @@
+src-tauri/src/acp_golden_test.rs
+  s_45d8babae69c99::t_31bdf0fa817767 550-553
+src-tauri/src/store.rs
+  s_45d8babae69c99::t_31bdf0fa817767 5762
+src-tauri/src/providers.rs
+  s_45d8babae69c99::t_31bdf0fa817767 1114-1119,4097-4098,4147-4148,4265-4268,4272-4275,4284-4288
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "b986993535be3287685f0e7192dde340070d4d0f",
+  "prompts": {},
+  "sessions": {
+    "s_45d8babae69c99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0677b74-ac92-453a-b6ba-9b663586b75d",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
