@@ -1,34 +1,26 @@
+import type { ComposerPrefsSetBody } from "./api/settings";
 import type { ComposerPrefsFreshness } from "./composerPrefsFreshness";
 
-/** 一次 prefs 落盘的目标：项目与**会话**，必须在点击时定格。 */
-export interface ComposerPrefsTarget {
-  projectId: string | null;
-  sessionId: string | null;
-}
-
-/** 落盘请求体：固定目标 + 本次要改的字段。 */
-export type ComposerPrefsWriteBody = ComposerPrefsTarget & {
-  modelId?: string;
-  effort?: string;
-};
-
 /**
- * 把一次 composer prefs 写入排队落盘。
+ * 把一次 composer prefs 写入登记进 {@link ComposerPrefsFreshness} 的串行链并落盘。
  *
- * `body` 以**值**传入而非回调：目标项目/会话必须在点击那一刻定格，因为写入要
- * 排队等前面的落盘完成，排队期间用户可能已经切到别的会话。执行时再去读
- * `session.sessionId`，就会把这次选择写进另一个会话 —— 这正是「一个会话切模型，
- * 另一个会话跟着变」的成因。
+ * `body` 是**已定格的值**（含目标项目/会话）：写入要排队等前面的落盘完成，目标
+ * 在排队期间必须保持稳定，因此这里不接受「执行时再去读当前会话」的回调。
  *
- * 调用方也不得在回调里读回本次写入自身的 promise（例如把返回值先存进 ref，
- * 再在回调里读这个 ref 当作排队前驱）：那样写入会等自己完成，整条串行链永久
- * 卡死，之后所有 prefs 写入（含切模型）都不会再发出。排队与发送屏障由返回的
- * promise 表达，前驱由 {@link ComposerPrefsFreshness} 内部维护。
+ * 排队前驱由 `ComposerPrefsFreshness` 内部维护，调用方拿不到、也不该自备：若把
+ * 「本次写入自己的 promise」当前驱，写入会等自己完成而永不 settle，整条链随之
+ * 卡死，之后所有 prefs 写入（含切模型）都不会再发出 IPC。
+ *
+ * @param freshness 维护串行链与「本地写入版本号」的对象。
+ * @param body 已定格的落盘内容。
+ * @param send 实际发送动作，正常为 `api.composerPrefsSet`。
+ * @param onError 落盘失败的回调；失败不阻断队列，后续写入照常执行。
+ * @returns 本次写入的 promise，resolve 后表示该次选择已落盘，可作为发送屏障。
  */
 export function writeComposerPrefs(
   freshness: ComposerPrefsFreshness,
-  body: ComposerPrefsWriteBody,
-  send: (body: ComposerPrefsWriteBody) => Promise<unknown>,
+  body: ComposerPrefsSetBody,
+  send: (body: ComposerPrefsSetBody) => Promise<unknown>,
   onError: (error: unknown) => void,
 ): Promise<void> {
   return freshness.trackLocalWrite(async () => {

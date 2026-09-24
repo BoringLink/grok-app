@@ -1,38 +1,49 @@
-import { readFile } from "node:fs/promises";
 import { describe, expect, it, vi } from "vitest";
 import { ComposerPrefsFreshness } from "./composerPrefsFreshness";
-import { writeComposerPrefs, type ComposerPrefsWriteBody } from "./composerPrefsWrite";
+import type { ComposerPrefsSetBody } from "./api/settings";
+import { writeComposerPrefs } from "./composerPrefsWrite";
 
-/** 让串行链上的微任务全部排空。 */
-async function flush(times = 4): Promise<void> {
-  for (let i = 0; i < times; i += 1) await Promise.resolve();
+/** 可手动放行的闸门，用来把某次落盘按住在途状态。 */
+function createGate(): { promise: Promise<void>; open: () => void } {
+  let open!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
 }
 
 describe("writeComposerPrefs", () => {
-  it("落盘成功时发出请求并让屏障 promise 结束", async () => {
+  it("落盘成功后返回的 promise resolve，可作为发送屏障", async () => {
     // Arrange
     const freshness = new ComposerPrefsFreshness();
-    const sent: ComposerPrefsWriteBody[] = [];
+    const sent: ComposerPrefsSetBody[] = [];
     const onError = vi.fn();
+    const gate = createGate();
+    const settled = vi.fn();
 
     // Act
-    await writeComposerPrefs(
+    const write = writeComposerPrefs(
       freshness,
       { projectId: "p-1", sessionId: "s-A", effort: "high" },
       async (body) => {
         sent.push(body);
+        await gate.promise;
       },
       onError,
     );
+    void write.then(settled);
 
-    // Assert
-    expect(sent).toEqual([
-      { projectId: "p-1", sessionId: "s-A", effort: "high" },
-    ]);
+    // Assert：发送屏障必须等到真正落盘，而不是登记即放行。
+    await Promise.resolve();
+    expect(sent).toHaveLength(1);
+    expect(settled).not.toHaveBeenCalled();
+    gate.open();
+    await write;
+    expect(settled).toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("落盘失败时上抛给 onError，屏障 promise 仍然结束", async () => {
+  it("落盘失败时上抛给 onError，返回的 promise 仍然 resolve", async () => {
     // Arrange
     const freshness = new ComposerPrefsFreshness();
     const failure = new Error("ipc down");
@@ -52,23 +63,55 @@ describe("writeComposerPrefs", () => {
     expect(onError).toHaveBeenCalledWith(failure);
   });
 
-  it("排队期间切到别的会话，落盘仍写到点击时的那个会话", async () => {
-    // Arrange：先占住串行链，模拟上一次落盘还在途。
+  it("串行落盘：上一次未完成时下一次不发出，放行后按登记顺序执行", async () => {
+    // Arrange
     const freshness = new ComposerPrefsFreshness();
-    const sent: ComposerPrefsWriteBody[] = [];
-    let releaseFirst!: () => void;
-    const firstWrite = writeComposerPrefs(
+    const sent: string[] = [];
+    const gate = createGate();
+    const first = writeComposerPrefs(
       freshness,
       { projectId: null, sessionId: "s-A", effort: "low" },
-      () =>
-        new Promise<void>((resolve) => {
-          releaseFirst = resolve;
-        }),
+      async () => {
+        sent.push("first");
+        await gate.promise;
+      },
+      () => undefined,
+    );
+    const second = writeComposerPrefs(
+      freshness,
+      { projectId: null, sessionId: "s-B", modelId: "m-1" },
+      async () => {
+        sent.push("second");
+      },
       () => undefined,
     );
 
-    // Act：点击时定格 s-B，随后用户切走，落盘才真正执行。
-    const secondWrite = writeComposerPrefs(
+    // Act
+    await Promise.resolve();
+    expect(sent).toEqual(["first"]);
+    gate.open();
+    await Promise.all([first, second]);
+
+    // Assert
+    expect(sent).toEqual(["first", "second"]);
+  });
+
+  it("排队期间切到别的会话，落盘仍写到登记时的那个会话", async () => {
+    // Arrange：body 以值传入，目标在登记那一刻定格。
+    const freshness = new ComposerPrefsFreshness();
+    const sent: ComposerPrefsSetBody[] = [];
+    const gate = createGate();
+    const first = writeComposerPrefs(
+      freshness,
+      { projectId: null, sessionId: "s-A", effort: "low" },
+      async () => {
+        await gate.promise;
+      },
+      () => undefined,
+    );
+
+    // Act
+    const second = writeComposerPrefs(
       freshness,
       { projectId: null, sessionId: "s-B", modelId: "m-1" },
       async (body) => {
@@ -76,25 +119,14 @@ describe("writeComposerPrefs", () => {
       },
       () => undefined,
     );
-    await flush();
-    expect(sent).toEqual([]); // 串行：上一次未完成前不发出
-    releaseFirst();
-    await Promise.all([firstWrite, secondWrite]);
+    await Promise.resolve();
+    expect(sent).toEqual([]); // 上一次还在途
+    gate.open();
+    await Promise.all([first, second]);
 
     // Assert
-    expect(sent).toEqual([{ projectId: null, sessionId: "s-B", modelId: "m-1" }]);
-  });
-
-  it("不再存在自锁的排队前驱实现", async () => {
-    // Arrange / Act：旧的 `queueComposerPreferenceApply` 允许把「本次写入自己的
-    // promise」当排队前驱传进去，写入因此永远等自己，整条链卡死、后续切模型都
-    // 发不出请求。该实现已删除，prefs 写入统一走本模块。
-    const source = await readFile(
-      new URL("../app/AppWorkbench.tsx", import.meta.url),
-      "utf8",
-    );
-
-    // Assert
-    expect(source).not.toContain("queueComposerPreferenceApply");
+    expect(sent).toEqual([
+      { projectId: null, sessionId: "s-B", modelId: "m-1" },
+    ]);
   });
 });
