@@ -1,0 +1,19 @@
+docs/plans/2026-09-24-composer-doc-position-refactor.md
+  s_45d8babae69c99::t_7a1db977e5837f 1-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "d4547c78532cb3e002c8034aebf0a447a28c96bd",
+  "prompts": {},
+  "sessions": {
+    "s_45d8babae69c99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0677b74-ac92-453a-b6ba-9b663586b75d",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
