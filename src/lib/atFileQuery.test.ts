@@ -25,6 +25,20 @@ describe("detectAtQuery", () => {
   it("allows @ after newline", () => {
     expect(detectAtQuery("line1\n@src")).toEqual({ start: 6, query: "src" });
   });
+
+  it("@ 后接空白即终止补全（验收 C9）", () => {
+    // Arrange / Act / Assert —— "今天 @ 某人" 这类普通文本不能常驻补全面板
+    expect(detectAtQuery("@ ")).toBeNull();
+    expect(detectAtQuery("@a ")).toBeNull();
+    expect(detectAtQuery("说 @某人 ")).toBeNull();
+    expect(detectAtQuery("@\u00a0")).toBeNull();
+  });
+
+  it("刚打出的 @ 仍然打开面板", () => {
+    // Arrange / Act / Assert
+    expect(detectAtQuery("@")).toEqual({ start: 0, query: "" });
+    expect(detectAtQuery("说 @")).toEqual({ start: 2, query: "" });
+  });
 });
 
 describe("detectAtQueryOnStored", () => {

@@ -7,10 +7,12 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  editableTextOf,
   isDraftEmpty,
   parseStoredContent,
   previewStoredAsSlash,
   serializeForAgent,
+  segmentsFromEditedText,
   serializeStored,
 } from "./draftDoc";
 
@@ -119,5 +121,138 @@ describe("draft emptiness and previews with references", () => {
       "看 @/repo/a.ts 这里",
     );
     expect(previewStoredAsSlash("[[dir:/repo/src]]")).toBe("@/repo/src");
+  });
+});
+
+describe("editableTextOf / segmentsFromEditedText（行内编辑用户消息）", () => {
+  it("正文里保留引用的 agent 形态且位置不变", () => {
+    // Arrange
+    const segs = parseStoredContent("在 [[file:/repo/src/a.ts]] 中找到 xxx");
+
+    // Act
+    const text = editableTextOf(segs);
+
+    // Assert
+    expect(text).toBe("在 @/repo/src/a.ts 中找到 xxx");
+  });
+
+  it("编辑后原样认回引用，位置不挪", () => {
+    // Arrange
+    const segs = parseStoredContent("在 [[file:/repo/src/a.ts]] 中找到 xxx");
+    const refs = segs.filter((s) => s.type === "ref");
+
+    // Act — 用户只改了尾部措辞
+    const rebuilt = segmentsFromEditedText("在 @/repo/src/a.ts 中找到 yyy", refs);
+
+    // Assert
+    expect(rebuilt).toEqual([
+      { type: "text", text: "在 " },
+      { type: "ref", kind: "file", value: "/repo/src/a.ts" },
+      { type: "text", text: " 中找到 yyy" },
+    ]);
+    expect(serializeStored(rebuilt)).toBe(
+      "在 [[file:/repo/src/a.ts]] 中找到 yyy",
+    );
+  });
+
+  it("用户删掉引用文本后不再造出引用段", () => {
+    // Arrange
+    const refs = parseStoredContent("[[url:https://x.y/z]] 看这个").filter(
+      (s) => s.type === "ref",
+    );
+
+    // Act
+    const rebuilt = segmentsFromEditedText("看这个", refs);
+
+    // Assert
+    expect(rebuilt).toEqual([{ type: "text", text: "看这个" }]);
+  });
+
+  it("用户改写过的路径按普通文本留下，不猜成引用", () => {
+    // Arrange
+    const refs = parseStoredContent("[[file:/repo/a.ts]] 里").filter(
+      (s) => s.type === "ref",
+    );
+    const edited = "@/repo/other.ts 里";
+
+    // Act
+    const rebuilt = segmentsFromEditedText(edited, refs);
+
+    // Assert
+    expect(rebuilt).toEqual([{ type: "text", text: edited }]);
+  });
+
+  it("随手写的 @文本 不会被当成引用（验收 C9）", () => {
+    // Arrange
+    const refs = parseStoredContent("[[file:/repo/a.ts]] 里").filter(
+      (s) => s.type === "ref",
+    );
+
+    // Act
+    const rebuilt = segmentsFromEditedText(
+      "@/repo/a.ts 里 @某人 和 @/goal",
+      refs,
+    );
+
+    // Assert
+    expect(rebuilt).toEqual([
+      { type: "ref", kind: "file", value: "/repo/a.ts" },
+      { type: "text", text: " 里 @某人 和 @/goal" },
+    ]);
+  });
+
+  it("多个引用按原顺序认回", () => {
+    // Arrange
+    const refs = parseStoredContent(
+      "[[file:/a.ts]] 和 [[dir:/repo/src]] 都看",
+    ).filter((s) => s.type === "ref");
+
+    // Act
+    const rebuilt = segmentsFromEditedText(
+      "@/a.ts 和 /repo/src 都看",
+      refs,
+    );
+
+    // Assert — 目录引用被用户删掉了（agent 形态是 @/repo/src，正文里不是），
+    // 于是只剩文件引用 + 普通文本。
+    expect(rebuilt).toEqual([
+      { type: "ref", kind: "file", value: "/a.ts" },
+      { type: "text", text: " 和 /repo/src 都看" },
+    ]);
+  });
+});
+
+describe("parseStoredContent 的协议校验（验收 C11）", () => {
+  it("非 http(s) 的 url token 恢复成普通文本，不造可点语义的 chip", () => {
+    // Arrange
+    const stored = "点 [[url:javascript:alert(1)]] 试试";
+
+    // Act
+    const segs = parseStoredContent(stored);
+
+    // Assert
+    expect(segs).toEqual([
+      { type: "text", text: "点 " },
+      { type: "text", text: "[[url:javascript:alert(1)]]" },
+      { type: "text", text: " 试试" },
+    ]);
+  });
+
+  it("http(s) 的 url token 仍然是引用", () => {
+    // Arrange / Act
+    const segs = parseStoredContent("[[url:https://x.y/z]]");
+
+    // Assert
+    expect(segs).toEqual([{ type: "ref", kind: "url", value: "https://x.y/z" }]);
+  });
+
+  it("file / dir token 不受 url 协议校验影响", () => {
+    // Arrange / Act — 本地路径不是 URL，不该被 http 规则波及
+    const segs = parseStoredContent("[[file:/repo/a.ts]]");
+
+    // Assert
+    expect(segs).toEqual([
+      { type: "ref", kind: "file", value: "/repo/a.ts" },
+    ]);
   });
 });
