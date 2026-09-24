@@ -1111,8 +1111,12 @@ fn ensure_app_model_sections() -> Result<bool, String> {
 
 /// Whether this provider opts into Grok Build's native catalog / proxy mode.
 fn is_grok_build_proxy_section(section: &Section) -> bool {
-    normalize_provider_mode(section.fields.get(APP_PROVIDER_MODE_KEY).map(String::as_str))
-        == PROVIDER_MODE_GROK_BUILD_PROXY
+    normalize_provider_mode(
+        section
+            .fields
+            .get(APP_PROVIDER_MODE_KEY)
+            .map(String::as_str),
+    ) == PROVIDER_MODE_GROK_BUILD_PROXY
 }
 
 /// Reconstruct a provider's `app_models` catalog from its parsed section.
@@ -1173,8 +1177,6 @@ fn provider_alias_fields(section: &Section, model: &ProviderModelEntry) -> Vec<(
         channel_context_window,
     )
 }
-
-
 
 fn encode_app_models(models: &[ProviderModelEntry]) -> String {
     serde_json::to_string(models).unwrap_or_else(|_| "[]".into())
@@ -4092,10 +4094,8 @@ context_window = "1000000"
         let _lock = crate::paths::APP_HOME_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let home = std::env::temp_dir().join(format!(
-            "grok-app-proxy-no-alias-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let home =
+            std::env::temp_dir().join(format!("grok-app-proxy-no-alias-{}", uuid::Uuid::new_v4()));
         let previous_home = std::env::var("GROK_APP_HOME").ok();
         std::env::set_var("GROK_APP_HOME", &home);
         let _ = ensure_agent_home();
@@ -4144,10 +4144,8 @@ context_window = "1000000"
         let _lock = crate::paths::APP_HOME_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let home = std::env::temp_dir().join(format!(
-            "grok-app-shared-alias-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let home =
+            std::env::temp_dir().join(format!("grok-app-shared-alias-{}", uuid::Uuid::new_v4()));
         let previous_home = std::env::var("GROK_APP_HOME").ok();
         std::env::set_var("GROK_APP_HOME", &home);
         let _ = ensure_agent_home();
@@ -4264,11 +4262,17 @@ context_window = "1000000"
                 child.fields.get("api_backend").map(String::as_str),
                 Some("messages")
             );
-            assert_eq!(child.fields.get("api_key").map(String::as_str), Some("sk-test"));
+            assert_eq!(
+                child.fields.get("api_key").map(String::as_str),
+                Some("sk-test")
+            );
         }
 
         // Custom route resolves a known model to its own alias section id.
-        assert_eq!(agent_spawn_model_id("claude-sonnet-4-6"), "claude-sonnet-4-6");
+        assert_eq!(
+            agent_spawn_model_id("claude-sonnet-4-6"),
+            "claude-sonnet-4-6"
+        );
         assert_eq!(
             agent_spawn_model_id("claude-glm-5.3-flash[1M]"),
             "claude-glm-5.3-flash[1M]"
@@ -4277,8 +4281,11 @@ context_window = "1000000"
         assert_eq!(agent_spawn_model_id(""), "ada-anthropic");
 
         // Dropping a catalog model prunes its alias section.
-        let listed = upsert(vec![ProviderModelEntry::named("claude-sonnet-4-6", "Sonnet")])
-            .expect("second upsert");
+        let listed = upsert(vec![ProviderModelEntry::named(
+            "claude-sonnet-4-6",
+            "Sonnet",
+        )])
+        .expect("second upsert");
         assert_eq!(listed.providers.len(), 1);
         let text = std::fs::read_to_string(agent_config_toml()).unwrap();
         let sections = parse_model_sections(&text);
@@ -4561,5 +4568,4 @@ app_models = "[{\"id\":\"claude-sonnet-4-6\",\"name\":\"Sonnet\"},{\"id\":\"gpt-
         }
         let _ = std::fs::remove_dir_all(&home);
     }
-
 }
