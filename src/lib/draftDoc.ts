@@ -5,6 +5,7 @@
  */
 
 import {
+  isExternalHttpUrl,
   refAgentText,
   refTokenText,
   unescapeRefValue,
@@ -171,11 +172,15 @@ export function parseStoredContent(content: string): DraftSegment[] {
         scope: scope === "recent" ? undefined : scope,
       });
     } else if (m[5]) {
-      segments.push({
-        type: "ref",
-        kind: m[5] as RefKind,
-        value: unescapeRefValue(m[6] ?? ""),
-      });
+      const kind = m[5] as RefKind;
+      const value = unescapeRefValue(m[6] ?? "");
+      // 恢复入口（历史 / 草稿）也校验协议：手改过的存储态可能带
+      // `[[url:javascript:…]]`，不校验就会渲染成一个可点击语义的 chip（C11）。
+      if (kind === "url" && !isExternalHttpUrl(value)) {
+        segments.push({ type: "text", text: m[0] });
+      } else {
+        segments.push({ type: "ref", kind, value });
+      }
     }
     last = m.index + m[0].length;
   }
@@ -234,6 +239,51 @@ export function plainTextOf(segments: DraftSegment[]): string {
     .filter((s): s is { type: "text"; text: string } => s.type === "text")
     .map((s) => s.text)
     .join("");
+}
+
+/**
+ * 供纯文本编辑（行内编辑用户消息）使用的正文：引用段渲染成其 agent 形态
+ * （`@绝对路径` / URL 本身）留在**原位**，而不是像 {@link plainTextOf} 那样被丢掉。
+ *
+ * 行内编辑用的是 textarea，无法承载原子 chip；引用必须在正文里可读、可改，
+ * 位置也不能挪（「在 @a.ts 中找到」换个位置就成了另一句话）。
+ */
+export function editableTextOf(segments: DraftSegment[]): string {
+  return segments
+    .map((s) => {
+      if (s.type === "text") return s.text;
+      if (s.type === "ref") return refAgentText(s.kind, s.value);
+      return "";
+    })
+    .join("");
+}
+
+/**
+ * {@link editableTextOf} 的逆操作：把编辑后的纯文本切回段落，其中**原文里出现过
+ * 的引用**按其 agent 形态逐个认回，位置不变。
+ *
+ * 只认 `refs` 里给出的那几个具体字符串（来自解析过的原文），所以不会把用户随手
+ * 写的 `@某人`、`@/goal` 误判成引用（验收 C9）。用户在编辑框里改掉或删掉的引用
+ * 认不回来，就按普通文本留下 —— 不猜、不补。
+ */
+export function segmentsFromEditedText(
+  text: string,
+  refs: ReadonlyArray<Extract<DraftSegment, { type: "ref" }>>,
+): DraftSegment[] {
+  if (refs.length === 0) return text ? [{ type: "text", text }] : [];
+  const segments: DraftSegment[] = [];
+  let cursor = 0;
+  for (const ref of refs) {
+    const needle = refAgentText(ref.kind, ref.value);
+    if (!needle) continue;
+    const at = text.indexOf(needle, cursor);
+    if (at === -1) continue;
+    if (at > cursor) segments.push({ type: "text", text: text.slice(cursor, at) });
+    segments.push(ref);
+    cursor = at + needle.length;
+  }
+  if (cursor < text.length) segments.push({ type: "text", text: text.slice(cursor) });
+  return mergeAdjacentText(segments);
 }
 
 /** Empty when there are no skills, no attached chats, and no non-whitespace text. */

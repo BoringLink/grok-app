@@ -21,11 +21,12 @@ export type AtQuery = {
  * `@` must be at index 0 or immediately after whitespace.
  * Rejects email-like `name@host` (letter/digit before `@`).
  * Query is the non-whitespace rest after `@`.
+ *
+ * 尾部空白**不**先剥掉：`@` 后一旦出现空白就终止补全（验收 C9）。否则 `"@ "`
+ * 会以空 query 匹配成功，面板以「刚打完 @」的样子常驻，和标准相反。
  */
 export function detectAtQuery(textBeforeCursor: string): AtQuery | null {
-  const text = textBeforeCursor
-    .replace(/[\u200B-\u200D\uFEFF\u2060]/g, "")
-    .replace(/[\s\u00a0]+$/u, "");
+  const text = textBeforeCursor.replace(/[\u200B-\u200D\uFEFF\u2060]/g, "");
   const m = /(^|[\s])@([^\s@]*)$/u.exec(text);
   if (!m) return null;
   // Reject `user@domain` — char before `@` is not whitespace/start.
@@ -40,10 +41,8 @@ export function detectAtQueryOnStored(
 ): { start: number; query: string; end: number } | null {
   const q = detectAtQuery(stored);
   if (!q) return null;
-  const trimmed = stored
-    .replace(/[\u200B-\u200D\uFEFF\u2060]/g, "")
-    .replace(/[\s\u00a0]+$/u, "");
-  return { start: q.start, query: q.query, end: trimmed.length };
+  const stripped = stored.replace(/[\u200B-\u200D\uFEFF\u2060]/g, "");
+  return { start: q.start, query: q.query, end: stripped.length };
 }
 
 /** Live @ token from a contenteditable element — no innerText (forced layout). */
