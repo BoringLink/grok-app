@@ -1,0 +1,61 @@
+src/lib/composerColumn.guard.test.ts
+  s_45d8babae69c99::t_8ba378c93c917f 132-145
+  s_72db73f5d2fe1d::t_e569bba53880bd 115-131
+  s_45d8babae69c99::t_657b6df593baec 9-10
+src/styles/chat.part3.css
+  s_72db73f5d2fe1d::t_efb8311125e13d 737-749
+  s_45d8babae69c99::t_5d1d3fc5a28175 816-817
+src/lib/composerPrefsWrite.ts
+  s_45d8babae69c99::t_6a426be1679eed 16,18-21,23-26
+  s_45d8babae69c99::t_7b32e9d832f63d 30-31
+  s_45d8babae69c99::t_7af88205afcf2d 1-15,17,22,27-29,34-40
+src/hooks/useComposerSend.ts
+  s_45d8babae69c99::t_45f9039208a46e 137,222,287-288
+src/app/AppWorkbench.tsx
+  s_72db73f5d2fe1d::t_1059b06514890e 347
+  s_72db73f5d2fe1d::t_4d54cfba1fc0ca 6528,6530
+  s_45d8babae69c99::t_483420a0c4af9c 9408,9411
+  s_45d8babae69c99::t_45f9039208a46e 5616
+  s_72db73f5d2fe1d::t_c1d541c81261e2 6525
+  s_72db73f5d2fe1d::t_34f1c1e2fc50a5 9453-9458
+  s_72db73f5d2fe1d::t_0fe51c30cf4d2d 6489
+  s_72db73f5d2fe1d::t_8d5c4ecab0b3f6 2341-2344,2353-2359
+  s_72db73f5d2fe1d::t_80d35c23a5a28d 6522
+  s_45d8babae69c99::t_527f318b1aa658 9365,9371-9372
+  s_45d8babae69c99::t_35fe4acf29b68e 9382-9388
+  s_72db73f5d2fe1d::t_9367e4220dee61 6506-6508,6514-6521
+  s_45d8babae69c99::t_f582cbb9fc1553 2035-2036
+  s_72db73f5d2fe1d::t_9dced6bb3e6153 6523
+  s_72db73f5d2fe1d::t_55799d2c493139 244
+  s_45d8babae69c99::t_a347801bb53b62 9366
+  s_72db73f5d2fe1d::t_6e307ace81b22b 6585
+  s_45d8babae69c99::t_23bf6ae90079db 9356,9367-9370,9373-9375
+  s_45d8babae69c99::t_685ae24265f3ea 175
+  s_72db73f5d2fe1d::t_5f77b9a49f72bb 9172-9176
+  s_45d8babae69c99::t_f68ebc8349f819 9461,9464
+src/lib/composerPrefsWrite.test.ts
+  s_45d8babae69c99::t_00e8fb9d5f4964 2,9,11,13,16-25,27,30-32,36,38-44,46,48-54,57,61-62,72-73,84,86,95-97
+  s_45d8babae69c99::t_7b32e9d832f63d 4,15
+  s_45d8babae69c99::t_e86eb0ac478e0b 6-8,12,28-29,35,55-56,58-60,63-66,71,74-75,83,85,87-88,92-94,98
+  s_45d8babae69c99::t_b933c363885f6a 3,5,10,14,26,33-34,37
+src/styles/modals.part1.css
+  s_72db73f5d2fe1d::t_510c9b47bfd862 365
+  s_72db73f5d2fe1d::t_786a10c4987d8f 364
+  s_e38eb76bc01306::t_376c20b0e6e8e4 230,235-244,247-252,266-269,271,273-277,279-286,288-294,302,315,322,337,348-350,353-354,361-363
+  s_72db73f5d2fe1d::t_7fd8e256d99bf2 253-265,270,272,278,287,299,308,310,312-314,316-318,323-336
+  s_72db73f5d2fe1d::t_34f4f16ea7871f 338-347
+  s_45d8babae69c99::t_ef537874f9bac7 665-666
+  s_72db73f5d2fe1d::t_a0f89fe89f98d4 295-296,301,306,309,319
+  s_72db73f5d2fe1d::t_23f670016d9a56 351-352,355-360
+  s_72db73f5d2fe1d::t_8dd50cb648a7c3 297-298,300,305,307,311,320-321
+src/lib/wallpaperThemeContrast.guard.test.ts
+  s_45d8babae69c99::t_fc88ad7449f8e3 177-178,180
+src/lib/api/settings.ts
+  s_45d8babae69c99::t_98d100881ad514 314-315,322-324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "a2d72d61f6a36cec3b4ea41c9c9729bea1e56e29",
+  "prompts": {}
+}
