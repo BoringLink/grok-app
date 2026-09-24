@@ -342,17 +342,10 @@ import {
 import { useAttachChat } from "@/hooks/useAttachChat";
 import { mapStoredMessagesToChat } from "@/lib/mapStoredMessages";
 import {
-  insertAtTokenAsRef,
   rankAtFileHits,
-  removeAtTokenFromDraft,
 } from "@/lib/atFileQuery";
 import {
-  refCaretInEditorText,
-  locateAtRangeInMarkdown,
-} from "@/lib/composerMarkdown";
-import {
   isTokenizableRefValue,
-  refTokenText,
   type RefKind,
 } from "@/lib/composerRefToken";
 import {
@@ -471,7 +464,8 @@ import {
 } from "@/lib/setupGatePro";
 import { mapProbeToCliInfo } from "@/lib/cliVersionStatus";
 import {
-  getComposerEditorText,
+  insertComposerRefAtom,
+  removeComposerQueryRange,
   requestComposerStoredCaret,
   resizeComposerInput,
   serializeDom,
@@ -1050,6 +1044,7 @@ export function AppWorkbench() {
     setLiveAt,
     liveAtRef,
     atDismissedSigRef,
+    reportAtQuery,
     atActiveIndex,
     setAtActiveIndex,
     atEntries,
@@ -6530,6 +6525,7 @@ export function AppWorkbench() {
 
   const applyAtFile = useCallback(
     (entry: ComposerAtFileEntry) => {
+      // `liveAt` 的 start/end 已是文档位置（ADR 0003），插入无需再回字符串里搜。
       const live = liveAtRef.current;
       const kind: RefKind = entry.isDir ? "dir" : "file";
       const cleared = { present: false, query: "", start: 0, end: 0 };
@@ -6537,21 +6533,15 @@ export function AppWorkbench() {
       setLiveAt(cleared);
       setAtEntries([]);
       setAtSoftFail(null);
-
-      // 一律在 Markdown 源码里重新定位 `@query`：`live` 的偏移来自 DOM 文本空间，
-      // 在列表/引用/标题里与 draft 不一致（见 locateAtRangeInMarkdown 的说明）。
-      const draftNow = getDraft();
       const range = live.present
-        ? locateAtRangeInMarkdown(draftNow, live.query)
+        ? { from: live.start, to: live.end }
         : null;
 
       if (!isTokenizableRefValue(entry.path)) {
         // 路径含换行等无法安全写进 token 的字符：退回附件，而不是写出一个
         // 解析不回来的 token（那会让引用在下次加载时变成乱码文本）。
-        // `@query` 仍要从正文里删掉，否则它会以字面文本留在输入框里。
-        if (range) {
-          setDraft((d) => removeAtTokenFromDraft(d, range.start, range.end));
-        }
+        // `@query` 仍要从文档里删掉，否则它会以字面文本留在输入框里。
+        if (range) removeComposerQueryRange(composerInputRef.current, range);
         setAttachments((prev) =>
           mergeAttachments(prev, [
             {
@@ -6566,26 +6556,16 @@ export function AppWorkbench() {
         return;
       }
 
-      const token = refTokenText(kind, entry.path);
-      // 读 `getDraft()` 而非渲染期的值：这里需要同步算出 chip 后的光标偏移，
-      // 函数式更新做不到（更新器在下次渲染才执行）。
-      const inserted = insertAtTokenAsRef(draftNow, range, token);
-      // `insertAtTokenAsRef` 的 caret 是 Markdown 源码偏移，而
-      // `requestComposerStoredCaret` 收编辑器文本空间偏移（列表 / 标题 / 引用里
-      // 两者相差块语法前缀），见 `refCaretInEditorText`。
-      const caretAt = refCaretInEditorText({
-        editorText: getComposerEditorText(composerInputRef.current),
-        query: live.query,
-        range,
-        token,
-        storedCaret: inserted.caret,
+      // 一次 transaction 完成替换与落点；新 Markdown 由编辑器 onUpdate 上报，
+      // 不再手工 splice draft、也不再请求文本偏移光标。
+      insertComposerRefAtom(composerInputRef.current, {
+        from: range?.from ?? null,
+        to: range?.to ?? null,
+        kind,
+        value: entry.path,
       });
-      setDraft(inserted.draft);
-      // 落点由 ComposerEditor 的 placePendingCaret 负责定位与聚焦——不能用
-      // requestComposerFocus：它会把选区塌到文档末尾，覆盖上面算好的落点。
-      requestComposerStoredCaret(caretAt);
     },
-    [getDraft, requestComposerFocus],
+    [requestComposerFocus],
   );
 
   // Debounced project file search for @ panel. Keyed on `atQueryActive`（而非
@@ -12857,6 +12837,7 @@ export function AppWorkbench() {
             onComposerPasteFiles={onComposerPasteFiles}
             onComposerPasteMediaFallback={onComposerPasteMediaFallback}
             onSlashQueryChange={onSlashQueryChange}
+            onAtQueryChange={reportAtQuery}
             openAsidePane={openAsidePane}
             openQueueEdit={queueEdit.openEdit}
             openSession={openSession}

@@ -102,6 +102,7 @@ export function WorkbenchComposerShell(p: WorkbenchComposerShellProps) {
     onComposerPasteFiles,
     onComposerPasteMediaFallback,
     onSlashQueryChange,
+    onAtQueryChange,
     openQueueEdit,
     openSession,
     openSideSkillsPanel,
@@ -600,6 +601,7 @@ export function WorkbenchComposerShell(p: WorkbenchComposerShellProps) {
                 onPasteFiles={onComposerPasteFiles}
                 onPasteMediaFallback={onComposerPasteMediaFallback}
                 onSlashQueryChange={onSlashQueryChange}
+                onAtQueryChange={onAtQueryChange}
                 onKeyDown={onComposerKeyDown}
                 onContextMenu={onComposerContextMenu}
               />

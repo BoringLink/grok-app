@@ -14,6 +14,7 @@ import type { PermissionPolicyId, ModelOption, EffortOption } from "@/lib/grokCa
 import type { SlashItem, SlashKindFilter, SlashKindCounts } from "@/lib/slashCatalog";
 import type { FloatingPos } from "@/lib/floatingMenu";
 import type { LiveTokenQuery } from "@/hooks/useComposerController";
+import type { ComposerQueryRange } from "@/lib/composerQuery";
 import type { VoiceGate } from "@/hooks/useVoiceDictation";
 import type { VoiceFsmState } from "@/lib/voiceDictation";
 import type { SideWorkbenchState } from "@/lib/sideWorkbench";
@@ -153,6 +154,7 @@ export type WorkbenchComposerColumnProps = {
   onComposerPasteFiles: (files: File[]) => void;
   onComposerPasteMediaFallback: (opts?: { expectMedia?: boolean | undefined; } | undefined) => void;
   onSlashQueryChange: (q: { start: number; query: string; end: number; } | null) => void;
+  onAtQueryChange: (q: ComposerQueryRange | null) => void;
   openAsidePane: () => void;
   openQueueEdit: (item: QueuedSend) => void;
   openSession: (s: SessionRow, project?: Project | null | undefined) => Promise<void>;

@@ -6,6 +6,7 @@
  * workbench shell. Consumers use setDraft/getDraft (no draft value in return).
  */
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -13,7 +14,6 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { detectAtQueryFromEditor } from "@/lib/atFileQuery";
 import { shouldProbeComposerLiveDom } from "@/lib/composerLiveProbe";
 import {
   detectSlashQueryFromEditor,
@@ -247,44 +247,6 @@ export function useComposerController(initialDraft = "") {
           setSlashQuery((q) => (q == null ? q : null));
         }
       }
-      let atNext: LiveTokenQuery = {
-        present: false,
-        query: "",
-        start: 0,
-        end: 0,
-      };
-      if (probeDom && !next.present && !showComposerPlusRef.current) {
-        const atDetected = detectAtQueryFromEditor(el);
-        if (atDetected) {
-          atNext = {
-            present: true,
-            query: atDetected.query,
-            start: atDetected.start,
-            end: atDetected.end,
-          };
-          if (atDismissedSigRef.current != null) {
-            const sig = `${atNext.start}:${atNext.query}`;
-            if (sig === atDismissedSigRef.current) {
-              atNext = { present: false, query: "", start: 0, end: 0 };
-            } else {
-              atDismissedSigRef.current = null;
-            }
-          }
-        } else {
-          atDismissedSigRef.current = null;
-        }
-      }
-      const prevAt = liveAtRef.current;
-      if (
-        prevAt.present !== atNext.present ||
-        prevAt.query !== atNext.query ||
-        prevAt.start !== atNext.start ||
-        prevAt.end !== atNext.end
-      ) {
-        liveAtRef.current = atNext;
-        setLiveAt(atNext);
-        if (atNext.present) setAtActiveIndex(0);
-      }
       raf = requestAnimationFrame(tick);
     };
     const start = () => {
@@ -309,6 +271,75 @@ export function useComposerController(initialDraft = "") {
       document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
+
+  /**
+   * `@` 查询上报（由 ComposerEditor 在文档/选区变化时用文档位置算出）。
+   *
+   * 取代原来的 DOM walk + rAF：抑制逻辑（slash / `+` 菜单打开时不触发）现在由
+   * 消费方的 `composerMenuOpen` 承担，这里只负责去重、Escape 抑制区间比对与
+   * 状态落库。
+   */
+  const reportAtQuery = useCallback(
+    (range: { from: number; to: number; query: string } | null) => {
+      // 失焦 / 窗口隐藏时不保留查询：旧的 DOM 探测（probeDom）就是这个语义，
+      // 少了它，用 Tab 移出输入框后 `@` 面板会常驻。
+      const el = composerInputRef.current;
+      const sel = typeof window === "undefined" ? null : window.getSelection();
+      const composerActive = !!(
+        el &&
+        (document.activeElement === el || el.contains(document.activeElement))
+      );
+      const selectionInComposer = !!(
+        el &&
+        sel &&
+        sel.rangeCount > 0 &&
+        el.contains(sel.anchorNode)
+      );
+      if (
+        !shouldProbeComposerLiveDom({
+          visibilityState: document.visibilityState,
+          composerActive,
+          selectionInComposer,
+        })
+      ) {
+        range = null;
+      }
+      let atNext: LiveTokenQuery = {
+        present: false,
+        query: "",
+        start: 0,
+        end: 0,
+      };
+      if (range) {
+        atNext = {
+          present: true,
+          query: range.query,
+          start: range.from,
+          end: range.to,
+        };
+        const sig = `${atNext.start}:${atNext.query}`;
+        if (sig === atDismissedSigRef.current) {
+          atNext = { present: false, query: "", start: 0, end: 0 };
+        } else {
+          atDismissedSigRef.current = null;
+        }
+      } else {
+        atDismissedSigRef.current = null;
+      }
+      const prevAt = liveAtRef.current;
+      if (
+        prevAt.present !== atNext.present ||
+        prevAt.query !== atNext.query ||
+        prevAt.start !== atNext.start ||
+        prevAt.end !== atNext.end
+      ) {
+        liveAtRef.current = atNext;
+        setLiveAt(atNext);
+        if (atNext.present) setAtActiveIndex(0);
+      }
+    },
+    [],
+  );
 
   return useMemo(
     () => ({
@@ -377,6 +408,7 @@ export function useComposerController(initialDraft = "") {
       setLiveAt,
       liveAtRef,
       atDismissedSigRef,
+      reportAtQuery,
       atActiveIndex,
       setAtActiveIndex,
       atEntries,
