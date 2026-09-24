@@ -1,0 +1,36 @@
+src/lib/composerMarkdown.test.ts
+  s_45d8babae69c99::t_bde65e0421a748 58-79
+src/styles/modals.part1.css
+  s_45d8babae69c99::t_a2aabb6a32c286 305-325
+src/lib/composerMarkdownStyles.guard.test.ts
+  s_45d8babae69c99::t_a18a4bc88a918e 84-98
+src/lib/composerRefToken.ts
+  s_45d8babae69c99::t_d38d155faf62d8 179-198,201,203-213
+  s_45d8babae69c99::t_6424872b138a52 199-200,202
+src/lib/composerRefToken.test.ts
+  s_45d8babae69c99::t_48273fcc0445ed 19,23
+  s_45d8babae69c99::t_0165eb90e9dc12 263-304
+src/lib/draftDoc.test.ts
+  s_45d8babae69c99::t_0165eb90e9dc12 361-410
+src/lib/draftDoc.ts
+  s_45d8babae69c99::t_057860576da2d0 87-92,97,104,107-108,115,117
+  s_45d8babae69c99::t_7a3607d4d772bb 10,85-86
+src/components/composerExtensions.ts
+  s_45d8babae69c99::t_43e8df959eec9f 10-11,75-113,124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "bc3824ec9bb1ff6c3ae6f157eaeb21e4ae7a6df1",
+  "prompts": {},
+  "sessions": {
+    "s_45d8babae69c99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0677b74-ac92-453a-b6ba-9b663586b75d",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
