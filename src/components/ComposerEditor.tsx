@@ -124,18 +124,6 @@ export function getComposerCaretOffset(
 }
 
 /**
- * 在光标前定位 `${trigger}query` 的文档位置区间（供 `@` 面板上报）。
- */
-export function queryRangeAtEditorCaret(
-  el: HTMLElement | null | undefined,
-  trigger: "@" | "/",
-): ComposerQueryRange | null {
-  const editor = el ? editorsByDom.get(el) : undefined;
-  if (!editor || editor.isDestroyed) return null;
-  return queryRangeBeforeCaret(editor.state.doc, editor.state.selection.from, trigger);
-}
-
-/**
  * 在 `[from, to)` 处插入引用 chip（命令式 API，供 `@` 面板调用）。
  * 返回值表示是否找到了编辑器；区间失效时内部退回当前选区。
  */
