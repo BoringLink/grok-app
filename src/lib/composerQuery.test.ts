@@ -157,6 +157,30 @@ describe("queryRangeBeforeCaret", () => {
     expect(range?.query).toBe("");
   });
 
+  it("空白终止 query：不换行空格（U+00A0）也算", () => {
+    // Arrange —— 旧实现里 `"@ \u00a0"` 必须终止补全，否则面板会以空 query 常驻
+    editor = makeEditor("说 @\u00a0");
+    const doc = editor.state.doc;
+
+    // Act
+    const range = queryRangeBeforeCaret(doc, firstTextblock(doc).end, "@");
+
+    // Assert
+    expect(range).toBeNull();
+  });
+
+  it("query 内含 @ 不终止（与 slash 的字符集一致）", () => {
+    // Arrange —— 旧 '@' 正则把 @ 排除在 query 外，新规则对齐 slash 的 [^\s]*
+    editor = makeEditor("@a@b");
+    const doc = editor.state.doc;
+
+    // Act
+    const range = queryRangeBeforeCaret(doc, firstTextblock(doc).end, "@");
+
+    // Assert
+    expect(range).toEqual({ from: 1, to: 5, query: "a@b" });
+  });
+
   it("slash 用同一套规则", () => {
     // Arrange
     editor = makeEditor("run /rev");

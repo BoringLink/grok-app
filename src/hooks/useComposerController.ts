@@ -281,6 +281,29 @@ export function useComposerController(initialDraft = "") {
    */
   const reportAtQuery = useCallback(
     (range: { from: number; to: number; query: string } | null) => {
+      // 失焦 / 窗口隐藏时不保留查询：旧的 DOM 探测（probeDom）就是这个语义，
+      // 少了它，用 Tab 移出输入框后 `@` 面板会常驻。
+      const el = composerInputRef.current;
+      const sel = typeof window === "undefined" ? null : window.getSelection();
+      const composerActive = !!(
+        el &&
+        (document.activeElement === el || el.contains(document.activeElement))
+      );
+      const selectionInComposer = !!(
+        el &&
+        sel &&
+        sel.rangeCount > 0 &&
+        el.contains(sel.anchorNode)
+      );
+      if (
+        !shouldProbeComposerLiveDom({
+          visibilityState: document.visibilityState,
+          composerActive,
+          selectionInComposer,
+        })
+      ) {
+        range = null;
+      }
       let atNext: LiveTokenQuery = {
         present: false,
         query: "",

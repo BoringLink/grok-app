@@ -460,7 +460,10 @@ export const ComposerEditor = memo(function ComposerEditor({
     lastEmitted.current = value;
     placePendingCaret(createdEditor);
     resizeComposerInput(createdEditor.view.dom);
-  }, [value, createdEditor, placePendingCaret]);
+    // 重解析后必须重算 `@` 区间：消费方存的是**文档位置**，旧位置在新文档上
+    // 可能仍落在界内却指向别的正文，此时插入会删掉无关内容。
+    emitAt(createdEditor);
+  }, [value, createdEditor, placePendingCaret, emitAt]);
 
   // 粘贴文件兜底：React onPaste 覆盖 handlePaste 未拦截的场景（无文件负载）。
   const onPasteFallback = useCallback((e: ClipboardEvent<HTMLDivElement>) => {

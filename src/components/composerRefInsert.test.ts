@@ -23,12 +23,11 @@ function makeEditor(content: string): Editor {
   });
 }
 
-function markdownOf(editor: {
-  // tiptap-markdown augments storage at runtime; Storage type stays empty.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  storage: any;
-}): string {
-  const raw = editor.storage?.markdown?.getMarkdown?.();
+/** tiptap-markdown 在运行时给 `storage` 挂 `getMarkdown`，类型上仍是空的。 */
+type MarkdownStorage = { markdown?: { getMarkdown?: () => unknown } };
+
+function markdownOf(editor: { storage: unknown }): string {
+  const raw = (editor.storage as MarkdownStorage | undefined)?.markdown?.getMarkdown?.();
   return normalizeSerializedMarkdown(typeof raw === "string" ? raw : "");
 }
 
@@ -138,25 +137,57 @@ describe("insertRefAtomInto", () => {
   it("区间失效时退回当前选区，不误删正文", () => {
     // Arrange —— 面板由别处触发 / 文档在检测后变化
     editor = makeEditor("abc");
+    editor.commands.setTextSelection(3); // 光标在 'b' 之后
 
     // Act
     insertRefAtomInto(editor, { from: 999, to: 1000, kind: "dir", value: "/x" });
 
-    // Assert —— 正文仍在，只是多了一个 chip
-    expect(markdownOf(editor)).toContain("abc");
-    expect(markdownOf(editor)).toContain("[[dir:/x]]");
+    // Assert —— 正文完整保留，chip 落在光标处（不是文档开头），分隔空格补在 chip 后
+    expect(markdownOf(editor)).toBe("ab[[dir:/x]] c");
+    expect(editor.state.selection.from).toBe(5);
   });
 
   it("range 为 null 时同样退回选区，而不是插到文档开头", () => {
-    // Arrange —— 面板在没有可定位区间时触发
+    // Arrange —— 面板在没有可定位区间时触发，光标停在 'b' 之后
     editor = makeEditor("abc");
+    editor.commands.setTextSelection(3);
 
     // Act
     insertRefAtomInto(editor, { from: null, to: null, kind: "file", value: "/x" });
 
-    // Assert —— 插在选区处、正文完整保留
-    expect(markdownOf(editor)).toContain("abc");
-    expect(markdownOf(editor)).toContain("[[file:/x]]");
+    // Assert —— 落在光标处、正文完整保留
+    expect(markdownOf(editor)).toBe("ab[[file:/x]] c");
+    expect(editor.state.selection.from).toBe(5);
+  });
+
+  it("`@query` 后面已有空格时不补第二个空格", () => {
+    // Arrange —— "在 @ab 里"：替换掉 @ab 后紧跟的是空格
+    editor = makeEditor("在 @ab 里");
+    // 段落内容起点 1：'在'=1, ' '=2, '@'=3, 'a'=4, 'b'=5 —— 光标在 6
+    const range = queryRangeBeforeCaret(editor.state.doc, 6, "@");
+    expect(range).toEqual({ from: 3, to: 6, query: "ab" });
+
+    // Act
+    insertRefAtomInto(editor, {
+      from: range!.from,
+      to: range!.to,
+      kind: "file",
+      value: "/repo/a.ts",
+    });
+
+    // Assert —— 正文与发给 CLI 的 prompt 里都不能出现双空格
+    expect(markdownOf(editor)).toBe("在 [[file:/repo/a.ts]] 里");
+  });
+
+  it("空文档插入时不加前导空格", () => {
+    // Arrange
+    editor = makeEditor("");
+
+    // Act
+    insertRefAtomInto(editor, { from: null, to: null, kind: "file", value: "/x" });
+
+    // Assert
+    expect(markdownOf(editor)).toBe("[[file:/x]] ");
   });
 });
 
