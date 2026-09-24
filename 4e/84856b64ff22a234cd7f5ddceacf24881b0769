@@ -1,0 +1,40 @@
+src/lib/api/settings.ts
+  s_45d8babae69c99::t_98d100881ad514 314-315,322-324
+src/app/AppWorkbench.tsx
+  s_45d8babae69c99::t_9c5aa7cf29bed3 9463-9464
+  s_45d8babae69c99::t_1d6a08b3b51cf8 9486,9538
+  s_45d8babae69c99::t_7b32e9d832f63d 9430
+  s_45d8babae69c99::t_af987e16c059b6 176
+  s_45d8babae69c99::t_a347801bb53b62 9422-9427,9431,9445
+  s_45d8babae69c99::t_483420a0c4af9c 9487-9490
+  s_45d8babae69c99::t_f68ebc8349f819 9539-9542
+  s_45d8babae69c99::t_23bf6ae90079db 9421,9428-9429,9433,9438-9440,9446-9456
+  s_45d8babae69c99::t_f582cbb9fc1553 2047-2052
+  s_45d8babae69c99::t_45f9039208a46e 5632
+  s_45d8babae69c99::t_01e43dde0341f7 9561
+src/hooks/useComposerSend.ts
+  s_45d8babae69c99::t_45f9039208a46e 137,222,287-288
+src/lib/composerPrefsWrite.ts
+  s_45d8babae69c99::t_7b32e9d832f63d 7-8,15,22-23
+  s_45d8babae69c99::t_96cba89201abc9 1
+  s_45d8babae69c99::t_6a426be1679eed 5-6,10-12,14,16-18
+src/lib/composerPrefsWrite.test.ts
+  s_45d8babae69c99::t_7b32e9d832f63d 3-4,19,102
+  s_45d8babae69c99::t_e86eb0ac478e0b 6-12,16,21-22,25,30,34,36-42,46,66-67,69-71,74-77,80,83-84,88-93,96,99-101,103-120,122-125,128-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "4e84856b64ff22a234cd7f5ddceacf24881b0769",
+  "prompts": {},
+  "sessions": {
+    "s_45d8babae69c99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0677b74-ac92-453a-b6ba-9b663586b75d",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
