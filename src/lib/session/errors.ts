@@ -12,6 +12,14 @@ import type {
   ErrorDeckResolveOpts,
 } from "../errorDeck";
 import type { AgentError, AgentErrorCode, ChatMessage, TurnErrorPayload } from "./types";
+import { assistantHasVisibleBody } from "./stream";
+
+/** Distinct error-row id. Host id wins when it is already not the partial. */
+export function turnErrorRowId(messageId: string, partialId: string): string {
+  if (messageId && messageId !== partialId) return messageId;
+  if (partialId) return `${partialId}:turn-error`;
+  return "";
+}
 
 /**
  * Convert in-flight thinking bubble into a persistent error row in the thread.
@@ -51,6 +59,34 @@ export function applyTurnError(
   if (idx >= 0) {
     const next = messages.slice();
     const prev = next[idx]!;
+    // A visible partial keeps its id. The host journal upserts by id, so the
+    // error row must not reuse it. A repeat for that same partial updates
+    // the sibling error row instead of stacking another pill.
+    if (!prev.isError && assistantHasVisibleBody(prev)) {
+      next[idx] = { ...prev, streaming: false };
+      const errorId =
+        turnErrorRowId(mid, prev.id) || `err-${Date.now()}`;
+      const existing = next.findIndex((m) => m.id === errorId);
+      if (existing >= 0) {
+        next[existing] = {
+          ...next[existing]!,
+          content,
+          streaming: false,
+          isError: true,
+        };
+      } else {
+        next.push({
+          id: errorId,
+          role: "assistant",
+          content,
+          streaming: false,
+          isError: true,
+        });
+      }
+      return next.map((m, i) =>
+        i !== idx && m.streaming ? { ...m, streaming: false } : m,
+      );
+    }
     next[idx] = {
       ...prev,
       id: mid || prev.id,
