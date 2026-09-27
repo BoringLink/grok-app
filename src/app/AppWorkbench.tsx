@@ -1943,6 +1943,10 @@ export function AppWorkbench() {
     voiceDictationAutoSendRef,
     setDraft,
     sessionState: session.state,
+    dictationTarget: {
+      sessionId: viewingSessionIdRef.current ?? session.sessionId,
+      projectKey: projectDraftKey(activeProject?.id ?? null),
+    },
     refreshSessions,
     sttEngine,
     sttCustomBaseUrl,
