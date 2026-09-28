@@ -673,6 +673,29 @@ impl SessionManager {
         Ok(())
     }
 
+    /// Keep the in-memory row aligned with a provider just written to disk.
+    ///
+    /// Later `update_session_meta` calls replace the whole row. A snapshot taken
+    /// at connect time would otherwise erase `provider_id`.
+    pub fn remember_session_provider(&self, session_id: &str, provider_id: &str) {
+        let provider_id = provider_id.trim();
+        if session_id.is_empty() || provider_id.is_empty() {
+            return;
+        }
+        let owned = provider_id.to_string();
+        {
+            let mut guard = self.inner.lock();
+            if let Some(s) = guard.as_mut() {
+                if s.app_session_id == session_id {
+                    s.meta.provider_id = Some(owned.clone());
+                }
+            }
+        }
+        if let Some(s) = self.background.lock().get_mut(session_id) {
+            s.meta.provider_id = Some(owned);
+        }
+    }
+
     /// Apply model id on the live ACP session (best-effort session/set_model).
     ///
     /// `session_id` is the chat the change belongs to. Only that chat gets
@@ -690,13 +713,27 @@ impl SessionManager {
             return Err("model id empty".into());
         }
         // Store composer preference; agent receives channel-resolved id.
-        let agent_model = crate::providers::session_set_model_id(&model_id);
+        // Disk is the source of truth. The live meta snapshot can predate
+        // `save_provider_on_session`, and replacing the row would wipe it.
+        let stored_provider = session_id.and_then(|id| {
+            crate::store::load_sessions_index()
+                .into_iter()
+                .find(|s| s.id == id)
+                .and_then(|s| s.provider_id)
+        });
+        let provider = stored_provider
+            .clone()
+            .unwrap_or_else(|| crate::providers::session_route_provider_id(None));
+        let agent_model = crate::providers::session_set_model_id_for(&provider, &model_id);
         let (acp, sid) = {
             let mut guard = self.inner.lock();
             match guard.as_mut() {
                 Some(s) if session_id.is_some_and(|id| id == s.app_session_id) => {
                     s.model_id = Some(model_id.clone());
                     s.meta.model_id = Some(model_id.clone());
+                    if let Some(pid) = stored_provider.clone() {
+                        s.meta.provider_id = Some(pid);
+                    }
                     let _ = store::update_session_meta(&s.meta);
                     (s.acp.clone(), s.meta.agent_session_id.clone())
                 }
@@ -1502,6 +1539,7 @@ mod recycle_tests {
                 workspace_id: None,
                 workspace_root_snapshot: None,
                 workspace_capability: None,
+                provider_id: None,
             },
             fsm,
             backend: "mock_acp".into(),

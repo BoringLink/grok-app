@@ -370,6 +370,11 @@ impl SessionManager {
         let prefs =
             store::resolve_composer_prefs(meta.project_id.as_deref(), Some(meta.id.as_str()));
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
+        let route = if ssh_alias.is_some() {
+            crate::providers::SESSION_PROVIDER_OFFICIAL.to_string()
+        } else {
+            crate::providers::session_route_provider_id(meta.provider_id.as_deref())
+        };
         let agent_model = if ssh_alias.is_some() {
             let m = prefs.model_id.trim();
             if m.is_empty() || crate::providers::is_custom_provider_id(m) {
@@ -378,14 +383,14 @@ impl SessionManager {
                 m.to_string()
             }
         } else {
-            crate::providers::agent_spawn_model_id(&prefs.model_id)
+            crate::providers::spawn_model_for_provider(&route, &prefs.model_id)
         };
-        // Spawn keeps the route section id. set_model carries this chat's
-        // catalog id so a sibling process on another provider is not touched.
+        // set_model carries this chat's catalog id. Spawn `--model` is the
+        // provider section id (or an official catalog id).
         let session_model = if ssh_alias.is_some() {
             agent_model.clone()
         } else {
-            crate::providers::session_set_model_id(&prefs.model_id)
+            crate::providers::session_set_model_id_for(&route, &prefs.model_id)
         };
 
         // Pending CLI --fork-session: must cold-spawn so open can call session/fork.
@@ -529,7 +534,11 @@ impl SessionManager {
                 // cannot be hot-patched — kill and fall through to cold spawn.
                 let effort_ok = live.effort.as_deref() == Some(prefs.effort.as_str());
                 let policy_ok = live.policy == policy;
-                if !effort_ok || !policy_ok {
+                let route_ok = live
+                    .acp
+                    .as_ref()
+                    .is_none_or(|acp| acp.route_provider_id() == route);
+                if !effort_ok || !policy_ok || !route_ok {
                     tracing::info!(
                         session = %meta.id,
                         parked_effort = ?live.effort,
@@ -778,10 +787,7 @@ impl SessionManager {
                 // auth.json was stripped (#528 intermittent re-login).
                 // Only the ownerless prewarm process is eligible for reuse.
                 // Session-bound ACP processes stay with their App session.
-                let target_custom = matches!(
-                    crate::providers::active_route(),
-                    crate::providers::ActiveRoute::Custom { .. }
-                );
+                let target_custom = !crate::providers::is_session_provider_official(&route);
                 let gate = |alive: bool,
                             p_policy: PermissionPolicy,
                             p_effort: Option<&str>,
@@ -874,13 +880,15 @@ impl SessionManager {
                                         ));
                                         *pw = PrewarmState::Ready(p);
                                         None
-                                    } else if gate(
-                                        p.acp.is_alive(),
-                                        p.policy,
-                                        p.effort.as_deref(),
-                                        p.sandbox_profile.as_deref(),
-                                        p.acp.is_custom_route(),
-                                    ) {
+                                    } else if p.acp.route_provider_id() == route
+                                        && gate(
+                                            p.acp.is_alive(),
+                                            p.policy,
+                                            p.effort.as_deref(),
+                                            p.sandbox_profile.as_deref(),
+                                            p.acp.is_custom_route(),
+                                        )
+                                    {
                                         Some((p.acp, p.process_id, p.created_at))
                                     } else {
                                         // `PrewarmState::Ready` is ownerless, so
@@ -1194,7 +1202,19 @@ impl SessionManager {
                 .map(str::trim)
                 .is_some_and(|s| !s.is_empty());
         let spawn_opts = crate::acp_client::SpawnOptions {
-            model_id: Some(agent_model.clone()),
+            // Custom spawn `--model` is the section id. Pass the catalog id here
+            // so a Grok Build proxy section can bind that model; generic custom
+            // still spawns with the section id inside `AcpClient::spawn`.
+            model_id: Some(if crate::providers::is_session_provider_official(&route) {
+                agent_model.clone()
+            } else {
+                prefs.model_id.clone()
+            }),
+            route_provider_id: if ssh_alias.is_some() {
+                None
+            } else {
+                Some(route.clone())
+            },
             effort: Some(prefs.effort.clone()),
             permission_policy: Some(prefs.permission_policy.clone()),
             product_mode: Some(prefs.mode.clone()),
@@ -2202,6 +2222,7 @@ mod connect_preserve_tests {
                 workspace_id: None,
                 workspace_root_snapshot: None,
                 workspace_capability: None,
+                provider_id: None,
             },
             fsm,
             backend: "grok_agent_stdio".into(),
@@ -2301,6 +2322,7 @@ mod connect_preserve_tests {
                 workspace_id: None,
                 workspace_root_snapshot: None,
                 workspace_capability: None,
+                provider_id: None,
             },
             fsm,
             backend: "grok_agent_stdio".into(),

@@ -27,6 +27,7 @@ See `docs/llm-wiki/release.md`.
 - The session progress rail no longer scrolls the transcript while a reply is running.
 - Picking a model in one chat no longer stops chats running on another provider.
 - Reopening a chat uses the model that chat last chose.
+- A chat remembers its provider and reconnects to that provider.
 
 **中文 · 修复**
 - 切到另一条对话后，不再沿用上一条的目标开关。
@@ -36,6 +37,7 @@ See `docs/llm-wiki/release.md`.
 - 回复进行中，侧边进度条不再把正文滚回上面。
 - 在一条对话里换模型，不再停掉正在用另一个服务商的对话。
 - 重新打开一条对话时，用这条对话上次选的模型。
+- 一条对话会记住自己的服务商，重新打开时仍连这个服务商。
 
 ## [0.2.37] - 2026-09-22
 

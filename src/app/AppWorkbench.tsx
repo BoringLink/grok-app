@@ -648,6 +648,7 @@ import type { ContextMenuState } from "@/lib/app/appDialogTypes";
 import { useSessionRuntime } from "@/hooks/useSessionRuntime";
 import { sessionTranscriptStore } from "@/lib/sessionTranscriptStore";
 import { useSessionConnect, createSessionConnectHost } from "@/hooks/useSessionConnect";
+import { useSessionProviderChip } from "@/hooks/useSessionProviderChip";
 import {
   createGitWorktreeChromeHost,
   useGitWorktreeChrome,
@@ -2346,6 +2347,8 @@ export function AppWorkbench() {
     };
   }, []);
 
+  const sessionProviderChip = useSessionProviderChip();
+
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
       const models = catalog.length > 0 ? catalog : GROK_BUILD_MODELS;
@@ -2773,7 +2776,20 @@ export function AppWorkbench() {
         sessionId: session.sessionId ?? null,
       })
       .then((prefs) => {
-        if (!cancelled) applyComposerPrefs(prefs, availableModels);
+        if (cancelled) return;
+        applyComposerPrefs(prefs, availableModels);
+        if (session.sessionId) {
+          sessionProviderChip.draftComposerRouteRef.current = null;
+        }
+        const stored = prefs.providerId?.trim() ?? "";
+        const draft = sessionProviderChip.draftComposerRouteRef.current;
+        if (stored) {
+          sessionProviderChip.paint(stored);
+        } else if (session.sessionId || !draft) {
+          sessionProviderChip.paint(null);
+        } else {
+          sessionProviderChip.paint(draft.providerId);
+        }
       })
       .catch(() => {});
     return () => {
@@ -2785,6 +2801,7 @@ export function AppWorkbench() {
     prefsScope,
     applyComposerPrefs,
     availableModels,
+    sessionProviderChip,
   ]);
 
   // Prompt history browse is per viewed session — leave browse mode on switch / new chat.
@@ -3157,6 +3174,8 @@ export function AppWorkbench() {
     connectHost.sendInFlightBySessionRef = sendInFlightBySessionRef;
     connectHost.sendEpochBySessionRef = sendEpochBySessionRef;
     connectHost.sessionJsonSchemaRef = sessionJsonSchemaRef;
+    connectHost.draftComposerRouteRef =
+      sessionProviderChip.draftComposerRouteRef;
     connectHost.currentViewFocus = currentViewFocus;
     connectHost.syncViewedTurnClock = syncViewedTurnClock;
     connectHost.setLocalError = setLocalError;
@@ -9176,28 +9195,25 @@ export function AppWorkbench() {
       })),
     [customProviders],
   );
+  sessionProviderChip.bind({
+    setProviderActiveSource,
+    setProviderActiveId,
+    setActiveCustomProvider,
+  });
   const refreshProviderRoute = useCallback(async () => {
     if (!api.isTauri()) {
-      setActiveCustomProvider(null);
+      sessionProviderChip.noteProviderList(null);
       setCustomProviders([]);
-      setProviderActiveSource("official");
-      setProviderActiveId(null);
       return;
     }
     try {
       const list = await api.providersList();
       setCustomProviders(list.providers);
-      setProviderActiveSource(list.activeSource);
-      setProviderActiveId(list.activeProviderId);
-      const active =
-        list.activeSource === "custom"
-          ? list.providers.find((provider) => provider.id === list.activeProviderId) ?? null
-          : null;
-      setActiveCustomProvider(active);
+      sessionProviderChip.noteProviderList(list);
     } catch {
       /* keep previous */
     }
-  }, []);
+  }, [sessionProviderChip]);
   useEffect(() => {
     void refreshProviderRoute();
   }, [refreshProviderRoute]);
@@ -9379,89 +9395,65 @@ export function AppWorkbench() {
       if (modelPickBusy) return;
       setModelPickBusy(true);
       try {
+        // Remember provider on this chat only. Do not activate the global route:
+        // that rewrites `[models].default` and the next connect of every other
+        // chat would follow it.
+        const providerId =
+          pick.kind === "official" ? "official" : pick.providerId;
+        let nextEfforts = officialEffortCatalog;
         if (pick.kind === "official") {
-          if (providerActiveSource === "custom" && api.isTauri()) {
-            // This chat only. Other providers' running processes stay up.
-            await api.providersActivate("official", null, false);
-            await refreshProviderRoute();
-          }
           if (!isValidModelId(pick.modelId, availableModels)) return;
-          setModelId(pick.modelId);
-          const targetOfficial = effortCatalogForRoute({
+          nextEfforts = effortCatalogForRoute({
             model: findModel(pick.modelId, availableModels),
           });
-          const clampedOfficial = mapEffortToTargetCatalog(
-            effort,
-            targetOfficial,
-            channelEffortOptions ?? officialEffortCatalog,
-          );
-          setEffort(clampedOfficial);
-          void api
-            .composerPrefsSet({
-              projectId: activeProject?.id ?? null,
-              sessionId: session.sessionId ?? null,
-              modelId: pick.modelId,
-              effort: clampedOfficial,
-            })
-            .catch((e) => showToast(String(e), 4000));
         } else {
           if (!api.isTauri()) return;
-          const provider = customProviders.find(
-            (p) => p.id === pick.providerId,
-          );
+          const provider = customProviders.find((p) => p.id === pick.providerId);
           if (!provider) {
             showToast(tr("prov.err.unknownProvider"), 4000);
             return;
           }
-          // Do not rewrite the provider's shared `model` field. That recycled
-          // every warm process, including chats still running on another provider.
-          // This session gets the catalog id via session/set_model.
-          const models =
-            provider.models?.length
-              ? provider.models
-              : [{ id: provider.model, name: provider.model }];
+          const models = provider.models?.length
+            ? provider.models
+            : [{ id: provider.model, name: provider.model }];
           const catalog = models.some((m) => m.id === pick.modelId)
             ? models
             : [...models, { id: pick.modelId, name: pick.modelId }];
-          const appliedLive = materializeActiveModelChannel({
-            provider,
-            modelId: pick.modelId,
-            models: catalog,
-          });
-          if (
-            providerActiveSource !== "custom" ||
-            providerActiveId !== pick.providerId
-          ) {
-            const activated = await api.providersActivate(
-              "custom",
-              pick.providerId,
-              false,
-            );
-            // #557: custom routes require independent agent-home GROK_HOME.
-            if (activated.switchedToIndependent) {
-              setSessionDataMode("independent");
-              showToast(tr("prov.switchedToIndependent"), 5200);
-            }
-          }
-          await refreshProviderRoute();
-          // Map effort into the picked model's catalog (Grok ↔ DeepSeek tiers).
-          const nextEfforts =
-            effortOptionsFromProvider(appliedLive.efforts) ?? GROK_BUILD_EFFORTS;
-          const clampedCustom = mapEffortToTargetCatalog(
-            effort,
-            nextEfforts,
-            channelEffortOptions ?? officialEffortCatalog,
-          );
-          setEffort(clampedCustom);
-          void api
-            .composerPrefsSet({
-              projectId: activeProject?.id ?? null,
-              sessionId: session.sessionId ?? null,
-              modelId: pick.modelId,
-              effort: clampedCustom,
-            })
-            .catch((e) => showToast(String(e), 4000));
+          nextEfforts =
+            effortOptionsFromProvider(
+              materializeActiveModelChannel({
+                provider,
+                modelId: pick.modelId,
+                models: catalog,
+              }).efforts,
+            ) ?? GROK_BUILD_EFFORTS;
         }
+        const clamped = mapEffortToTargetCatalog(
+          effort,
+          nextEfforts,
+          channelEffortOptions ?? officialEffortCatalog,
+        );
+        setModelId(pick.modelId);
+        setEffort(clamped);
+        sessionProviderChip.paint(providerId);
+        if (session.sessionId) {
+          sessionProviderChip.draftComposerRouteRef.current = null;
+        } else {
+          sessionProviderChip.draftComposerRouteRef.current = {
+            providerId,
+            modelId: pick.modelId,
+            effort: clamped,
+          };
+        }
+        void api
+          .composerPrefsSet({
+            projectId: activeProject?.id ?? null,
+            sessionId: session.sessionId ?? null,
+            modelId: pick.modelId,
+            effort: clamped,
+            providerId,
+          })
+          .catch((e) => showToast(String(e), 4000));
       } catch (e) {
         showToast(String(e), 4000);
       } finally {
@@ -9470,8 +9462,6 @@ export function AppWorkbench() {
     },
     [
       modelPickBusy,
-      providerActiveSource,
-      providerActiveId,
       availableModels,
       customProviders,
       activeProject?.id,
@@ -9479,11 +9469,9 @@ export function AppWorkbench() {
       effort,
       channelEffortOptions,
       officialEffortCatalog,
-      refreshProviderRoute,
+      sessionProviderChip,
       showToast,
       tr,
-      channelEffortOptions,
-      officialEffortCatalog,
     ],
   );
   const handleContextWindow = useCallback(

@@ -351,6 +351,7 @@ pub async fn composer_prefs_set(
     effort: Option<String>,
     mode: Option<String>,
     permission_policy: Option<String>,
+    provider_id: Option<String>,
 ) -> Result<store::ComposerPrefs, String> {
     // Prefer explicit ids; fall back to live session context.
     let (live_proj, live_sess) = mgr.current_context_ids();
@@ -367,6 +368,12 @@ pub async fn composer_prefs_set(
     let previous_effort = effort.as_ref().map(|_| {
         store::resolve_composer_prefs(project_id.as_deref(), session_id.as_deref()).effort
     });
+    let previous_provider = session_id.as_deref().and_then(|id| {
+        store::load_sessions_index()
+            .into_iter()
+            .find(|s| s.id == id)
+            .and_then(|s| s.provider_id)
+    });
 
     let prefs = store::save_composer_prefs(
         project_id.as_deref(),
@@ -375,14 +382,30 @@ pub async fn composer_prefs_set(
         effort.clone(),
         mode.clone(),
         permission_policy.clone(),
+        provider_id.clone(),
     )?;
+    if let (Some(sid), Some(pid)) = (session_id.as_deref(), provider_id.as_deref()) {
+        mgr.remember_session_provider(sid, pid);
+    }
 
     if let Some(ref pol) = permission_policy {
         if let Err(e) = mgr.apply_permission_policy(&app, pol).await {
             tracing::warn!("composer_prefs_set apply_permission: {e}");
         }
     }
-    if let Some(mid) = model_id {
+    let provider_changed = provider_id
+        .as_ref()
+        .is_some_and(|next| previous_provider.as_deref() != Some(next.as_str()));
+    if provider_changed {
+        // This chat's process was spawned for the previous provider. Reload
+        // only the live slot; other providers keep running. The next connect
+        // uses the stored provider id.
+        if let Some(sid) = session_id.as_deref() {
+            if mgr.snapshot().session_id.as_deref() == Some(sid) {
+                mgr.soft_respawn_with_reason(&app, "session_provider").await;
+            }
+        }
+    } else if let Some(mid) = model_id {
         if let Err(e) = mgr.set_model(mid, session_id.as_deref()).await {
             tracing::warn!("composer_prefs_set set_model soft-fail: {e}");
         }
@@ -426,6 +449,7 @@ pub async fn session_set_policy(
         None,
         None,
         Some(p.as_str().into()),
+        None,
     )?;
     mgr.apply_permission_policy(&app, p.as_str()).await?;
     Ok(prefs)
@@ -444,6 +468,7 @@ pub async fn session_set_model(
         project_id.or(live_proj).as_deref(),
         session_id.as_deref(),
         Some(model_id.clone()),
+        None,
         None,
         None,
         None,

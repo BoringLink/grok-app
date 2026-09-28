@@ -1416,29 +1416,63 @@ pub fn custom_provider_id_for_catalog_model(catalog_id: &str) -> Option<String> 
 /// route. A catalog id that belongs to the active provider is sent only to
 /// this session, so another chat on a different provider is not retargeted
 /// and the shared `model =` field is left alone.
-pub fn session_set_model_id(composer_model: &str) -> String {
-    let m = composer_model.trim();
-    match active_route() {
-        ActiveRoute::Official => agent_spawn_model_id(m),
-        ActiveRoute::Custom { id } => {
-            let models = list_custom_providers()
-                .ok()
-                .and_then(|list| list.providers.into_iter().find(|p| p.id == id))
-                .map(|p| {
-                    let mut ids = Vec::new();
-                    if !p.model.trim().is_empty() {
-                        ids.push(p.model);
-                    }
-                    ids.extend(p.models.into_iter().map(|entry| entry.id));
-                    ids
-                })
-                .unwrap_or_default();
-            resolve_session_set_model_id(Some(&id), m, &models)
-        }
+pub const SESSION_PROVIDER_OFFICIAL: &str = "official";
+
+pub fn is_session_provider_official(id: &str) -> bool {
+    let id = id.trim();
+    id.is_empty() || id.eq_ignore_ascii_case(SESSION_PROVIDER_OFFICIAL)
+}
+
+/// Provider this chat should connect with. Missing → the global route.
+pub fn session_route_provider_id(stored: Option<&str>) -> String {
+    match stored.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(id) if is_session_provider_official(id) => SESSION_PROVIDER_OFFICIAL.into(),
+        Some(id) => id.to_string(),
+        None => match active_route() {
+            ActiveRoute::Custom { id } => id,
+            ActiveRoute::Official => SESSION_PROVIDER_OFFICIAL.into(),
+        },
     }
 }
 
-/// Pure half of [`session_set_model_id`]. `None` route means official; the
+/// `--model` for a process bound to `provider_id`.
+/// Custom routes spawn with the section id. Official routes spawn with a catalog id.
+pub fn spawn_model_for_provider(provider_id: &str, composer_model: &str) -> String {
+    if is_session_provider_official(provider_id) {
+        return session_set_model_id_for(SESSION_PROVIDER_OFFICIAL, composer_model);
+    }
+    provider_id.trim().to_string()
+}
+
+/// `session/set_model` id for one chat on `provider_id`.
+pub fn session_set_model_id_for(provider_id: &str, composer_model: &str) -> String {
+    if is_session_provider_official(provider_id) {
+        let m = composer_model.trim();
+        if m.is_empty() || is_custom_provider_id(m) || m == OFFICIAL_DEFAULT_MODEL {
+            return OFFICIAL_CATALOG_MODEL.into();
+        }
+        if is_official_catalog_model(m) {
+            return m.into();
+        }
+        return m.into();
+    }
+    let id = provider_id.trim();
+    let models = list_custom_providers()
+        .ok()
+        .and_then(|list| list.providers.into_iter().find(|p| p.id == id))
+        .map(|p| {
+            let mut ids = Vec::new();
+            if !p.model.trim().is_empty() {
+                ids.push(p.model);
+            }
+            ids.extend(p.models.into_iter().map(|entry| entry.id));
+            ids
+        })
+        .unwrap_or_default();
+    resolve_session_set_model_id(Some(id), composer_model, &models)
+}
+
+/// Pure half of [`session_set_model_id_for`]. `None` route means official; the
 /// caller passes an already resolved official id.
 pub fn resolve_session_set_model_id(
     custom_provider_id: Option<&str>,
@@ -1480,14 +1514,10 @@ pub fn agent_spawn_model_id(composer_model: &str) -> String {
     }
 }
 
-fn grok_build_proxy_spawn_from_text(
-    text: &str,
+fn grok_build_proxy_spawn_from_section(
+    section: &ModelSection,
     composer_model: &str,
 ) -> Option<GrokBuildProxySpawn> {
-    let default = get_models_default(text)?;
-    let section = parse_model_sections(text)
-        .into_iter()
-        .find(|s| s.id == default)?;
     if normalize_provider_mode(
         section
             .fields
@@ -1531,11 +1561,47 @@ fn grok_build_proxy_spawn_from_text(
     })
 }
 
+fn grok_build_proxy_spawn_from_text(
+    text: &str,
+    composer_model: &str,
+) -> Option<GrokBuildProxySpawn> {
+    let default = get_models_default(text)?;
+    let section = parse_model_sections(text)
+        .into_iter()
+        .find(|s| s.id == default)?;
+    grok_build_proxy_spawn_from_section(&section, composer_model)
+}
+
+/// Proxy spawn for one chat's provider. Official, and any non-proxy section,
+/// return `None` so a global proxy default cannot leak onto another chat.
+fn grok_build_proxy_spawn_for_provider_text(
+    text: &str,
+    provider_id: &str,
+    composer_model: &str,
+) -> Option<GrokBuildProxySpawn> {
+    if is_session_provider_official(provider_id) {
+        return None;
+    }
+    let section = parse_model_sections(text)
+        .into_iter()
+        .find(|s| s.id == provider_id.trim())?;
+    grok_build_proxy_spawn_from_section(&section, composer_model)
+}
+
 /// Resolve the active explicit Grok Build-compatible relay for one ACP spawn.
 /// The key is returned only to the spawn caller and must never be logged.
 pub fn active_grok_build_proxy_spawn(composer_model: &str) -> Option<GrokBuildProxySpawn> {
     let text = read_text(&agent_config_toml());
     grok_build_proxy_spawn_from_text(&text, composer_model)
+}
+
+/// Proxy env for a chat bound to `provider_id`, ignoring `[models].default`.
+pub fn session_grok_build_proxy_spawn(
+    provider_id: &str,
+    composer_model: &str,
+) -> Option<GrokBuildProxySpawn> {
+    let text = read_text(&agent_config_toml());
+    grok_build_proxy_spawn_for_provider_text(&text, provider_id, composer_model)
 }
 
 /// After official login / account switch: only the official route should
@@ -1549,27 +1615,36 @@ pub fn should_sync_cli_auth_after_account_change(route: &ActiveRoute) -> bool {
 ///
 /// Custom: strip agent-home `auth.json` so inference uses `api_key` only.
 /// Official: mirror `~/.grok/auth.json` into agent-home for OAuth.
+pub fn route_auth_lock() -> &'static tokio::sync::Mutex<()> {
+    static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    &LOCK
+}
+
 pub fn prepare_route_auth_for_agent() {
-    match active_route() {
-        ActiveRoute::Custom { ref id } => {
-            // Heal shared→independent before spawn so GROK_HOME matches config (#557).
-            let _ = ensure_independent_for_custom_route();
-            crate::account::clear_agent_home_auth();
-            tracing::info!(
+    let custom = matches!(active_route(), ActiveRoute::Custom { .. });
+    prepare_route_auth(custom);
+}
+
+/// Prepare agent-home auth for one spawn. `custom` strips `auth.json` so the
+/// process uses that provider's `api_key`. Official copies OIDC in.
+/// Callers that spawn different providers must not overlap this write.
+pub fn prepare_route_auth(custom: bool) {
+    if custom {
+        let _ = ensure_independent_for_custom_route();
+        crate::account::clear_agent_home_auth();
+        tracing::info!(
+            target: "providers",
+            "custom route spawn: cleared agent-home auth.json (api_key only)"
+        );
+    } else {
+        debug_assert!(should_sync_cli_auth_after_account_change(
+            &ActiveRoute::Official
+        ));
+        if let Err(e) = crate::account::sync_cli_auth_to_agent_home() {
+            tracing::warn!(
                 target: "providers",
-                "custom route `{id}`: cleared agent-home auth.json (api_key only)"
+                "official route: auth sync failed: {e}"
             );
-        }
-        ActiveRoute::Official => {
-            debug_assert!(should_sync_cli_auth_after_account_change(
-                &ActiveRoute::Official
-            ));
-            if let Err(e) = crate::account::sync_cli_auth_to_agent_home() {
-                tracing::warn!(
-                    target: "providers",
-                    "official route: auth sync failed: {e}"
-                );
-            }
         }
     }
     // Never import Claude/Cursor MCP catalogs into App agent-home sessions.
@@ -3091,6 +3166,15 @@ mod tests {
             "app_provider_mode = \"generic\"",
         );
         assert!(grok_build_proxy_spawn_from_text(&generic, "grok-4.5").is_none());
+
+        // A chat bound to this section still resolves when it is not the global default.
+        let other_default = set_models_default(&text, "grok-4.7");
+        let spawned =
+            grok_build_proxy_spawn_for_provider_text(&other_default, "beef-relay", "grok-4.5")
+                .expect("section spawn");
+        assert_eq!(spawned.model, "grok-4.5");
+        assert!(grok_build_proxy_spawn_for_provider_text(&text, "official", "grok-4.5").is_none());
+        assert!(grok_build_proxy_spawn_from_text(&other_default, "grok-4.5").is_none());
     }
 
     #[test]

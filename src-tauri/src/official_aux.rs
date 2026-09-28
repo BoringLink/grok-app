@@ -403,6 +403,7 @@ async fn run_official_acp_job_inner(
 
     let opts = SpawnOptions {
         model_id: Some(OFFICIAL_CATALOG_MODEL.into()),
+        route_provider_id: None,
         effort: Some("low".into()),
         permission_policy: Some("always_approve".into()),
         product_mode: Some("agent".into()),

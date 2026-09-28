@@ -1598,6 +1598,7 @@ mod stream_emit_lock_tests {
                 workspace_id: None,
                 workspace_root_snapshot: None,
                 workspace_capability: None,
+                provider_id: None,
             },
             fsm,
             backend: "grok_agent_stdio".into(),

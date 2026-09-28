@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   composerModelChipLabel,
   effectiveComposerModel,
+  resolveCustomRouteDisplay,
 } from "./effectiveModel";
 
 describe("effectiveComposerModel", () => {
@@ -23,6 +24,32 @@ describe("effectiveComposerModel", () => {
 
   it("keeps the composer selection when no provider is active", () => {
     expect(effectiveComposerModel("grok-4.5", "")).toBe("grok-4.5");
+  });
+});
+
+describe("resolveCustomRouteDisplay", () => {
+  const provider = {
+    name: "云驿",
+    model: "deepseek-chat",
+    models: [
+      { id: "deepseek-chat", name: "DeepSeek Chat" },
+      { id: "deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    ],
+  };
+
+  it("shows the model this chat picked", () => {
+    const shown = resolveCustomRouteDisplay(provider, "deepseek-v4-flash");
+    expect(shown?.chip).toEqual({
+      name: "DeepSeek V4 Flash",
+      model: "deepseek-v4-flash",
+    });
+    expect(shown?.requestModel).toBe("deepseek-v4-flash");
+  });
+
+  it("ignores an official catalog id on a custom route", () => {
+    const shown = resolveCustomRouteDisplay(provider, "grok-4.7");
+    expect(shown?.chip.name).toBe("DeepSeek Chat");
+    expect(shown?.requestModel).toBe("deepseek-chat");
   });
 });
 

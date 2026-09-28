@@ -36,7 +36,10 @@ import {
   type ComposerModelPick,
   type ComposerProviderInput,
 } from "@/lib/composerModelGroups";
-import { composerModelChipLabel } from "@/lib/effectiveModel";
+import {
+  composerModelChipLabel,
+  resolveCustomRouteDisplay,
+} from "@/lib/effectiveModel";
 import { formatTokenCount } from "@/lib/contextUsage";
 import { Tip } from "@/components/ui/tooltip";
 import {
@@ -749,24 +752,15 @@ export function ComposerModelMenu({
     return () => document.removeEventListener("keydown", onKey, true);
   }, [modelMenu.open, pane, hubFlyout]);
 
-  const activeCustom =
-    activeSource === "custom" && activeProviderId
-      ? (() => {
-          const p = providers.find((x) => x.id === activeProviderId);
-          if (!p) return null;
-          const activeId = p.model?.trim() ?? "";
-          const entry =
-            p.models?.find((m) => m.id === activeId) ??
-            (activeId ? { id: activeId, name: activeId } : null);
-          return entry
-            ? { name: entry.name || entry.id, model: entry.id }
-            : { name: p.name, model: p.model };
-        })()
-      : null;
-  const activeRequestModel =
+  const customRoute =
     activeSource === "custom"
-      ? providers.find((x) => x.id === activeProviderId)?.model ?? null
+      ? resolveCustomRouteDisplay(
+          providers.find((x) => x.id === activeProviderId),
+          modelId,
+        )
       : null;
+  const activeCustom = customRoute?.chip ?? null;
+  const activeRequestModel = customRoute?.requestModel ?? null;
   const officialLabel = activeModel?.label ?? modelId;
   const modelLabel = composerModelChipLabel({
     modelId,
