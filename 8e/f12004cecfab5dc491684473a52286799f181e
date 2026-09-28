@@ -1,0 +1,30 @@
+src-tauri/src/session_manager/control.rs
+  s_1ed624be4f7b23::t_bdfeffb8f375dd 718-723
+src-tauri/src/commands/providers.rs
+  s_8ee45656e8516f::t_dc6d5334ceeb5b 56-57
+  s_8ee45656e8516f::t_bd1bebce4ef484 26,117-118,231,252,297,378,390,402
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "8ef12004cecfab5dc491684473a52286799f181e",
+  "prompts": {},
+  "sessions": {
+    "s_1ed624be4f7b23": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0ca66-184a-75a0-ba8e-c4531e2f8c8a",
+        "model": "ada-anthropic"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    },
+    "s_8ee45656e8516f": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0c89a-26ae-7ec2-afc3-ce9017d5c222",
+        "model": "ada-anthropic"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
