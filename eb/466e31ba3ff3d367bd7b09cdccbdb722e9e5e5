@@ -1,0 +1,247 @@
+src/i18n/messages/ta/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src/i18n/messages/es/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src/lib/composerSessionDraft.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 143-154
+src/components/VirtualList.tsx
+  s_45d8babae69c99::t_6289a86d65ad7e 53-58
+src/i18n/messages/zh-TW/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 92
+src/i18n/messages/ja/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src-tauri/src/commands/settings.rs
+  s_72db73f5d2fe1d::t_edf32d96d0e0f4 470
+  s_72db73f5d2fe1d::t_1cd43ec6d8fd2c 403
+src/i18n/messages/uk/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/i18n/messages/es/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src/i18n/messages/id/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src/hooks/useVoiceDictation.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 42-46,63-64,86-87,101-102,187,266-284,307,356,399
+src/lib/sidebarDateGroups.test.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 7,156,193,198-218,245,252-301
+src/i18n/messages/ta/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src/i18n/messages/fr/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/i18n/messages/zh/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 77
+src-tauri/src/session_manager/process.rs
+  s_45d8babae69c99::t_85d32acf3bd2df 1626
+  s_45d8babae69c99::t_6289a86d65ad7e 22-51,1535-1544,1560,1587,1619-1624,1627-1629
+src/lib/voiceDictationDelivery.ts
+  s_45d8babae69c99::t_0621fd372ca258 1-94
+src/i18n/messages/pt-BR/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src-tauri/src/session_manager/journal.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 35-67,73-75,225,307,429-434
+src/app/WorkbenchComposerShell.tsx
+  s_45d8babae69c99::t_6289a86d65ad7e 27,702-705,723-729
+src/lib/goalClear.test.ts
+  s_45d8babae69c99::t_0621fd372ca258 1-32
+src/styles/sidebar.part3.css
+  s_45d8babae69c99::t_6289a86d65ad7e 844-849
+src/i18n/messages/fr/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src/app/WorkbenchChatStage.tsx
+  s_45d8babae69c99::t_6289a86d65ad7e 22,381-384
+src/i18n/messages/it/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/styles/sidebar.part2.css
+  s_45d8babae69c99::t_6289a86d65ad7e 249-259
+src-tauri/src/session_manager/control.rs
+  s_72db73f5d2fe1d::t_47d2d8faa155bd 741-743,747-748,766-767
+  s_72db73f5d2fe1d::t_cf501a02da3de1 717,725-728,730-731,736,750,752
+  s_72db73f5d2fe1d::t_529e49484893b4 746,755-762
+  s_72db73f5d2fe1d::t_922dea9b659690 17-23
+  s_1ed624be4f7b23::t_bdfeffb8f375dd 718-723
+src-tauri/src/session_manager/stream.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 200-202,205,209,213
+src/i18n/messages/de/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src/i18n/messages/ko/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src/i18n/messages/zh-TW/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/i18n/messages/fr/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src-tauri/src/session_manager/events.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 864
+src/i18n/messages/en/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 77
+src/i18n/messages/id/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src/i18n/messages/uk/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src/lib/api/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 154-155,160
+CHANGELOG.md
+  s_45d8babae69c99::t_6289a86d65ad7e 16-39
+src/lib/session/stream.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 388
+src/i18n/messages/fil/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/lib/sidebarPagination.ts
+  s_45d8babae69c99::t_0621fd372ca258 1-57
+src/lib/voiceDictationDelivery.test.ts
+  s_45d8babae69c99::t_0621fd372ca258 1-116
+docs/llm-wiki/providers.md
+  s_72db73f5d2fe1d::t_47105863db6459 115
+  s_45d8babae69c99::t_6289a86d65ad7e 58,71
+src/components/OverlayScroll.tsx
+  s_45d8babae69c99::t_6289a86d65ad7e 183-185
+src/lib/sidebarPagination.test.ts
+  s_45d8babae69c99::t_0621fd372ca258 1-73
+src/app/WorkbenchSessionContextMenu.tsx
+  s_45d8babae69c99::t_6289a86d65ad7e 40-41,116,256
+src/i18n/messages/ko/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src-tauri/src/wsl_backend.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 87-89,312-325,371-410,415-416,418,420-426,432,436,441-486,711-718,745-768
+src/app/AppWorkbench.tsx
+  s_45d8babae69c99::t_6289a86d65ad7e 14,105,175,414,499,1153,1958-1961,3293,3533,3819-3823,3828-3836,5607,5613-5619,8432,8499,8510,8557,8584,8622,8632,8659,9005-9008,9482-9483,9511-9520,9532,11420-11421,11534-11554,12724,13578
+src-tauri/src/providers.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 1414-1462,3124-3139
+  s_45d8babae69c99::t_85d32acf3bd2df 1404-1405,1413,1465,1823-1824,1849,1851-1858,1864-1870
+  s_72db73f5d2fe1d::t_3c648022259154 1825
+src-tauri/src/session_manager/routing_tests.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 439-440,443-445,447-453,455-457
+src/lib/goalClear.ts
+  s_45d8babae69c99::t_0621fd372ca258 1-49
+src-tauri/src/session_manager/events_bg.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 804
+src/lib/planSession.test.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 124-151
+src/i18n/messages/ru/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src/app/WorkbenchSessionTree.tsx
+  s_45d8babae69c99::t_6289a86d65ad7e 6,39,43-48,182-192,223-231,246-250,252-260,264-269,275,281,330,518,524,674-688,690,752-765,789,863-876,934-946
+src/i18n/messages/de/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/i18n/messages/de/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src/lib/planSession.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 340-342
+src/i18n/messages/it/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src-tauri/src/commands/providers.rs
+  s_8ee45656e8516f::t_dc6d5334ceeb5b 56-57
+  s_8ee45656e8516f::t_bd1bebce4ef484 26,117-118,231,252,297,378,390,402
+src/i18n/messages/pt-BR/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src/lib/providerPresets.test.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 13,190-226
+src-tauri/src/session_manager/mod.rs
+  s_45d8babae69c99::t_85d32acf3bd2df 23
+src/lib/composerSessionDraft.test.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 9,30-38
+src/lib/session.projection-snapshot.test.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 430-543
+src-tauri/src/session_manager/connect.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 383-389,571,1003,1032-1052,1532
+src/i18n/messages/ja/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/i18n/messages/ko/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src/i18n/messages/it/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src/components/settings/WslBackendField.tsx
+  s_45d8babae69c99::t_6289a86d65ad7e 84-85,178-179
+src/lib/sidebarDateGroups.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 150-182,193,195-200,209
+src/components/PlanReviewPanel.tsx
+  s_45d8babae69c99::t_6289a86d65ad7e 138,141-142
+src/lib/session/errors.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 15-22,62-89
+src/i18n/messages/ta/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/i18n/messages/es/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/i18n/messages/fil/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 75
+src/i18n/messages/zh/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/i18n/messages/pt-BR/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/i18n/messages/en/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 92
+src/i18n/messages/en/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/i18n/messages/zh/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 92
+src/i18n/messages/id/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src-tauri/src/store.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 1917-1919,1921-1922,1924-1926,2127-2133,2135-2156,3188-3193,3296-3298,3384-3395,4905,5029-5054,5057-5078
+  s_45d8babae69c99::t_85d32acf3bd2df 1923,3262-3266,5055-5056
+  s_72db73f5d2fe1d::t_1c092d9688f87b 3228,3238,3252,3277,3286
+AGENTS.md
+  s_45d8babae69c99::t_6289a86d65ad7e 21,50
+src/lib/providerPresets.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 212-236,372-387,531-533
+src/i18n/messages/ru/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src/lib/goalOrch.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 756
+src/i18n/messages/ja/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src/i18n/messages/ru/sidebar.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 40
+src/components/lobe-chat/MessageNodeRail.tsx
+  s_45d8babae69c99::t_6289a86d65ad7e 29,133-139
+src/components/VirtualList.test.tsx
+  s_45d8babae69c99::t_0621fd372ca258 1-79
+docs/llm-wiki/maintain.md
+  s_45d8babae69c99::t_6289a86d65ad7e 128,140-160
+src/i18n/messages/uk/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src-tauri/src/cli_sessions.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 1705-1706,1715-1723
+src/i18n/messages/fil/providers.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 90
+src/i18n/messages/zh-TW/composer.ts
+  s_45d8babae69c99::t_6289a86d65ad7e 137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "eb466e31ba3ff3d367bd7b09cdccbdb722e9e5e5",
+  "prompts": {},
+  "sessions": {
+    "s_1ed624be4f7b23": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0ca66-184a-75a0-ba8e-c4531e2f8c8a",
+        "model": "ada-anthropic"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    },
+    "s_45d8babae69c99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0677b74-ac92-453a-b6ba-9b663586b75d",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    },
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    },
+    "s_8ee45656e8516f": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0c89a-26ae-7ec2-afc3-ce9017d5c222",
+        "model": "ada-anthropic"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
