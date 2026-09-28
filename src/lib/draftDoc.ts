@@ -816,6 +816,6 @@ export function mergeAdjacentText(segments: AnyDraftSegment[]): AnyDraftSegment[
  * Simple editor projection: text as-is, skills as `[[skill:name]]`.
  * Same wire form as `serializeStored`.
  */
-export function segmentsToPlainEditorText(segments: DraftSegment[]): string {
+export function segmentsToPlainEditorText(segments: AnyDraftSegment[]): string {
   return serializeStored(segments);
 }

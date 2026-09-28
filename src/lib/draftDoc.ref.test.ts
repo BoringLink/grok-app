@@ -15,6 +15,7 @@ import {
   serializeForAgent,
   segmentsFromEditedText,
   serializeStored,
+  type AnyDraftSegment,
 } from "./draftDoc";
 
 describe("parseStoredContentWithRefs with references", () => {
@@ -262,7 +263,8 @@ describe("基版本 API 与上游旧编辑器的契约", () => {
   it("`parseStoredContent`（上游签名）把引用段降级为纯文本，不产出 ref 段", () => {
     // 上游那份 composer 编辑器遍历段落时假定 `seg.text` 一定存在，
     // 因此基版本必须把引用降级，ref 段只经 `*WithRefs` 系列出现。
-    const segs = parseStoredContent("在 [[file:/repo/a.ts]] 里");
+    // 基版本签名返回 DraftSegment[]；显式升宽到 AnyDraftSegment[] 才能断言「不含 ref 段」。
+    const segs: AnyDraftSegment[] = parseStoredContent("在 [[file:/repo/a.ts]] 里");
     expect(segs.some((s) => s.type === "ref")).toBe(false);
     expect(segs).toEqual([
       { type: "text", text: "在 " },
