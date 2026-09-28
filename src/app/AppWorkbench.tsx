@@ -12354,7 +12354,7 @@ export function AppWorkbench() {
           activeCustomProvider={activeCustomProvider}
           mainPane={mainPane}
           onOpenSearch={() => searchPalette.openBlank()}
-          onNewChat={() => void newChat(null)}
+          onNewChat={() => void newChat()}
           onNavigateAutomations={navigateAutomations}
           onNavigateKanban={navigateKanban}
           onNavigateRemoteIm={() => navigateSettings("remote_im", "im")}
