@@ -3223,26 +3223,9 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
         })
         .unwrap_or(g_effort);
 
-    // Model: same cascade, for the same reason as effort above. Under the
-    // default global scope one `settings.model_id` served every chat, so
-    // switching the model in one chat silently re-modelled every other chat —
-    // which is the reported "different chats share one model" defect. Picking a
-    // model is a per-chat decision; `settings.model_id` only seeds chats that
-    // never chose one.
-    let model_id = sess
-        .as_ref()
-        .and_then(|s| s.model_id.clone())
-        .filter(|x| !x.trim().is_empty())
-        .or_else(|| {
-            proj.as_ref()
-                .and_then(|p| p.model_id.clone())
-                .filter(|x| !x.trim().is_empty())
-        })
-        .unwrap_or(g_model);
-
     let mut prefs = match scope {
         ComposerPrefsScope::Global => ComposerPrefs {
-            model_id,
+            model_id: g_model,
             effort,
             mode: g_mode,
             permission_policy,
@@ -3252,7 +3235,7 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
         ComposerPrefsScope::Project => {
             if let Some(p) = proj {
                 ComposerPrefs {
-                    model_id,
+                    model_id: p.model_id.filter(|s| !s.is_empty()).unwrap_or(g_model),
                     effort,
                     mode: p
                         .mode
@@ -3266,7 +3249,7 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
                 }
             } else {
                 ComposerPrefs {
-                    model_id,
+                    model_id: g_model,
                     effort,
                     mode: g_mode,
                     permission_policy,
@@ -3276,6 +3259,11 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
             }
         }
         ComposerPrefsScope::Session => {
+            let p_model = proj
+                .as_ref()
+                .and_then(|p| p.model_id.clone())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(g_model.clone());
             let p_mode = proj
                 .as_ref()
                 .and_then(|p| p.mode.clone())
@@ -3286,7 +3274,7 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
 
             if let Some(s) = sess {
                 ComposerPrefs {
-                    model_id,
+                    model_id: s.model_id.filter(|x| !x.is_empty()).unwrap_or(p_model),
                     effort,
                     mode: s.mode.filter(|x| !x.is_empty()).unwrap_or(p_mode),
                     permission_policy,
@@ -3295,7 +3283,7 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
                 }
             } else {
                 ComposerPrefs {
-                    model_id,
+                    model_id: p_model,
                     effort,
                     mode: p_mode,
                     permission_policy,
