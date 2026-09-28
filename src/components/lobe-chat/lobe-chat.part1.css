@@ -80,7 +80,8 @@
 [data-theme="dark"] .lobe-chat {
   --chat-code-bg: color-mix(in srgb, var(--bg-code, #0a0a0a) 55%, #2a2a2e);
   --chat-code-fg: var(--text-primary, #e8e8ea);
-  --chat-inline-code-bg: rgba(255, 255, 255, 0.14);
+  /* BOR-56：与输入框共用同一个行内代码底色 token（tokens.css）。 */
+  --chat-inline-code-bg: var(--md-inline-code-bg, rgba(255, 255, 255, 0.14));
   --chat-inline-code-fg: var(--chat-code-fg);
 }
 
@@ -90,7 +91,7 @@
   --chat-code-fg: var(--text-primary, #1d1d1f);
   --chat-code-bar: color-mix(in srgb, var(--chat-code-bg) 92%, #000 8%);
   --chat-code-border: var(--border-subtle, rgba(0, 0, 0, 0.08));
-  --chat-inline-code-bg: rgba(0, 0, 0, 0.09);
+  --chat-inline-code-bg: var(--md-inline-code-bg, rgba(0, 0, 0, 0.09));
   --chat-inline-code-fg: var(--chat-code-fg);
   --chat-bubble: var(--bg-user-bubble, rgba(0, 0, 0, 0.05));
   --chat-card: var(--bg-card, #f5f5f7);

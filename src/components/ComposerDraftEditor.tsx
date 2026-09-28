@@ -7,7 +7,7 @@ import { memo, useCallback } from "react";
 import {
   ComposerEditor,
   type ComposerEditorProps,
-} from "@/components/ComposerEditor";
+} from "@/components/composer";
 import {
   useComposerDraft,
   useComposerDraftActions,

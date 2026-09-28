@@ -734,25 +734,19 @@ html[data-composer-min-rows="8"] .composer__input {
   min-height: 176px;
 }
 
-/* If any rich HTML still lands, strip visual styles (skill chips keep own classes). */
-.composer__input b,
-.composer__input strong,
-.composer__input i,
-.composer__input em,
-.composer__input u,
-.composer__input s,
-.composer__input span:not([data-skill]):not(.skill-chip):not(.skill-chip__name):not(.skill-chip__glyph),
-.composer__input font,
-.composer__input a {
-  font: inherit !important;
-  font-weight: inherit !important;
-  font-style: inherit !important;
-  color: inherit !important;
-  background: transparent !important;
-  text-decoration: none !important;
-  letter-spacing: inherit !important;
-  border: none !important;
-}
+/*
+ * 旧的「rich HTML 落进来就剥掉样式」防御规则已删除。
+ *
+ * 它来自自研 contenteditable 时代：那时输入框内容是可以被任意 HTML 污染的
+ * 纯文本 DOM，所以把 b/strong/i/em/u/s/font/a 与未白名单的 span 一律强制
+ * `inherit`。换成 TipTap 后这条防御已无保护对象——内容由 ProseMirror
+ * schema 约束，且 `Markdown.configure({ html: false, transformPastedText: true })`
+ * 不保留粘贴的任意 HTML。
+ *
+ * 副作用必须去掉：它让**粗体、斜体、下划线、删除线、链接**在输入框里全部
+ * 渲染成普通文本，「所见即所得」不成立。行内样式的视觉效果现在由
+ * `settings.part6.css` 的共享 Markdown 结构规则统一提供。
+ */
 
 .composer__input::placeholder {
   color: var(--text-tertiary);

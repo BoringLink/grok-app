@@ -465,7 +465,7 @@ import {
   requestComposerStoredCaret,
   resizeComposerInput,
   serializeDom,
-} from "@/components/ComposerEditor";
+} from "@/components/composer";
 
 import {
   pathsEqual,

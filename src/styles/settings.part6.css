@@ -29,6 +29,52 @@
   margin: 0.2em 0;
 }
 
+/*
+ * ── Markdown 结构：Tailwind preflight 的全局补偿（BOR-56）──────────────────
+ *
+ * Tailwind preflight（src/main.tsx 在 app.css 之前引入）设了
+ * `ol, ul, menu { list-style: none }`，而 preflight 之后没有任何地方恢复过。
+ * 结果是**全站** Markdown 列表都没有项目符号——聊天消息（.chat-md）、预览面
+ * （.md-body）、输入框（.composer__input）全中招，`.chat-md li::marker` 那条
+ * 颜色规则也因此一直是死规则。
+ *
+ * 三个作用域在这里一次补偿：这是同一个根因，分开写会漂移。
+ */
+.chat-md ul,
+.md-body ul,
+.composer__input ul {
+  list-style: disc;
+}
+.chat-md ul ul,
+.md-body ul ul,
+.composer__input ul ul {
+  list-style: circle;
+}
+.chat-md ul ul ul,
+.md-body ul ul ul,
+.composer__input ul ul ul {
+  list-style: square;
+}
+.chat-md ol,
+.md-body ol,
+.composer__input ol {
+  list-style: decimal;
+}
+.chat-md ol ol,
+.md-body ol ol,
+.composer__input ol ol {
+  list-style: lower-alpha;
+}
+.chat-md ol ol ol,
+.md-body ol ol ol,
+.composer__input ol ol ol {
+  list-style: lower-roman;
+}
+/* 聊天侧标记色规则（lobe-chat.part1b.css）此前因标记被关闭而未生效，现在生效。 */
+.composer__input li::marker {
+  color: var(--text-secondary);
+}
+
 .md-body a {
   color: var(--accent);
   text-decoration: underline;

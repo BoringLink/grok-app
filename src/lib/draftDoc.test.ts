@@ -9,8 +9,8 @@ import {
   hydrateDisplayContent,
   isDraftEmpty,
   mergeAdjacentText,
-  parseStoredContent,
-  parseUserMessageContent,
+  parseStoredContentWithRefs,
+  parseUserMessageContentWithRefs,
   plainTextOf,
   previewStoredAsSlash,
   segmentsToPlainEditorText,
@@ -62,9 +62,9 @@ describe("draftDoc empty / plain", () => {
 });
 
 describe("draftDoc roundtrip", () => {
-  it("parseStoredContent ↔ serializeStored", () => {
+  it("parseStoredContentWithRefs ↔ serializeStored", () => {
     const raw = "hello [[skill:my-skill]] world [[skill:a.b:c_1]]!";
-    const segs = parseStoredContent(raw);
+    const segs = parseStoredContentWithRefs(raw);
     expect(segs).toEqual([
       { type: "text", text: "hello " },
       { type: "skill", name: "my-skill" },
@@ -78,12 +78,12 @@ describe("draftDoc roundtrip", () => {
 
   it("plain text roundtrip", () => {
     const raw = "no skills here";
-    expect(serializeStored(parseStoredContent(raw))).toBe(raw);
+    expect(serializeStored(parseStoredContentWithRefs(raw))).toBe(raw);
   });
 
   it("leaves invalid tokens as text", () => {
     const raw = "[[skill:bad name]] [[skill:]]";
-    const segs = parseStoredContent(raw);
+    const segs = parseStoredContentWithRefs(raw);
     expect(segs.every((s) => s.type === "text")).toBe(true);
     expect(serializeStored(segs)).toBe(raw);
   });
@@ -91,7 +91,7 @@ describe("draftDoc roundtrip", () => {
   it("round-trips attached-chat tokens", () => {
     const id = "11111111-1111-4111-8111-111111111111";
     const raw = `[[chat:${id}]]\nplease continue`;
-    const segs = parseStoredContent(raw);
+    const segs = parseStoredContentWithRefs(raw);
     expect(segs).toEqual([
       { type: "chat", sessionId: id },
       { type: "text", text: "\nplease continue" },
@@ -104,7 +104,7 @@ describe("draftDoc roundtrip", () => {
   it("round-trips scoped attach tokens", () => {
     const id = "11111111-1111-4111-8111-111111111111";
     const raw = `[[chat:${id}:user]]\ngo`;
-    const segs = parseStoredContent(raw);
+    const segs = parseStoredContentWithRefs(raw);
     expect(segs).toEqual([
       { type: "chat", sessionId: id, scope: "user" },
       { type: "text", text: "\ngo" },
@@ -328,7 +328,7 @@ describe("hydrateDisplayContent", () => {
     expect(hydrateDisplayContent(raw)).toBe(
       "[[skill:xhx-media-gen]]\n画一张小猫喝水的图片，卡通怪诞画风",
     );
-    const segs = parseUserMessageContent(raw);
+    const segs = parseUserMessageContentWithRefs(raw);
     expect(segs[0]).toEqual({ type: "skill", name: "xhx-media-gen" });
   });
 
@@ -356,5 +356,55 @@ describe("hydrateDisplayContent", () => {
     expect(hydrateDisplayContent("/goal\n/xhx-media-gen\nhi")).toBe(
       "[[skill:xhx-media-gen]]\nhi",
     );
+  });
+});
+
+describe("hydrateDisplayContent 还原 agent 形态的引用", () => {
+  it("`@绝对路径` 还原成 file token，供气泡与重新编辑渲染 chip", () => {
+    // Arrange —— agent 侧 transcript 里引用就是这种形态
+    const raw = "在 @/repo/src/a.ts 中找到 xxx";
+
+    // Act / Assert
+    expect(hydrateDisplayContent(raw)).toBe(
+      "在 [[file:/repo/src/a.ts]] 中找到 xxx",
+    );
+  });
+
+  it("目录引用按结尾斜杠还原成 dir token", () => {
+    // Arrange / Act / Assert
+    expect(hydrateDisplayContent("看 @/repo/src/ 下")).toBe(
+      "看 [[dir:/repo/src/]] 下",
+    );
+  });
+
+  it("`@/goal` 这类一段路径不是引用（验收 C9）", () => {
+    // Arrange / Act / Assert
+    expect(hydrateDisplayContent("@/goal 请继续")).toBe("@/goal 请继续");
+  });
+
+  it("普通 `@文本` 与邮箱不受影响", () => {
+    // Arrange / Act / Assert
+    expect(hydrateDisplayContent("@某人 你好")).toBe("@某人 你好");
+    expect(hydrateDisplayContent("mail: user@host.com")).toBe(
+      "mail: user@host.com",
+    );
+  });
+
+  it("尾部句读留在正文，不进路径", () => {
+    // Arrange / Act / Assert
+    expect(hydrateDisplayContent("见 @/repo/a.ts。")).toBe(
+      "见 [[file:/repo/a.ts]]。",
+    );
+  });
+
+  it("路径里的 `]` 被转义，token 不会被提前闭合", () => {
+    // Arrange / Act
+    const hydrated = hydrateDisplayContent("@/repo/a]b.ts");
+
+    // Assert
+    expect(hydrated).toBe("[[file:/repo/a%5Db.ts]]");
+    expect(parseStoredContentWithRefs(hydrated)).toEqual([
+      { type: "ref", kind: "file", value: "/repo/a]b.ts" },
+    ]);
   });
 });
