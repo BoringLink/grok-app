@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, it, vi } from "vitest";
-import { stripCaretPadsInEditor } from "@/components/composer";
+import { stripCaretPadsInEditor } from "@/components/ComposerEditor";
 
 describe("stripCaretPadsInEditor", () => {
   it("does not touch selection when no ZWSP pads exist", () => {
