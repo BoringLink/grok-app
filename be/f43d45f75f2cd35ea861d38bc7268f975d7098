@@ -1,0 +1,41 @@
+src/components/composer/demoteRefs.test.ts
+  s_45d8babae69c99::t_960d9da7811f16 1-67,70-72
+src/lib/composerAtApply.test.ts
+  s_45d8babae69c99::t_fa85d3a565db8d 1-95
+src/components/ComposerDraftEditor.tsx
+  s_45d8babae69c99::t_5fb4d7522e4061 4-6,9,13,15,20,28-29,34,39-53,61
+src/components/composer/demoteRefs.ts
+  s_45d8babae69c99::t_2856c1835ad451 1-58,62-90
+src/hooks/useComposerController.ts
+  s_45d8babae69c99::t_cb5756414c9e38 321-388
+  s_45d8babae69c99::t_1ad480774bedbe 189-194
+  s_45d8babae69c99::t_303d0c5b3e6a41 389-450
+src/components/composer/index.tsx
+  s_45d8babae69c99::t_b5b34a7349f68a 1-25,27-104
+src/app/AppWorkbench.tsx
+  s_45d8babae69c99::t_b7c358eaee3313 5899-5905,5908-5911
+src/components/composer/editorPref.ts
+  s_45d8babae69c99::t_7ea326e555ff0e 1-36
+src/components/ComposerDraftEditor.test.tsx
+  s_45d8babae69c99::t_75cdea44e52bde 1-52
+src/lib/composerAtApply.ts
+  s_45d8babae69c99::t_e59101ab92b69a 1-110
+src/components/composer/index.test.tsx
+  s_45d8babae69c99::t_201238973f748a 1-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "bef43d45f75f2cd35ea861d38bc7268f975d7098",
+  "prompts": {},
+  "sessions": {
+    "s_45d8babae69c99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0677b74-ac92-453a-b6ba-9b663586b75d",
+        "model": "deepseek/deepseek-flash"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
