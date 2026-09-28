@@ -6,8 +6,9 @@
  *    `ol, ul, menu { list-style: none }`）清掉了全站列表标记，之后无人恢复，
  *    聊天消息与输入框都没有项目符号，`.chat-md li::marker` 也成了死规则。
  * 2. 旧 contenteditable 时代的 `.composer__input b/strong/i/em/a { inherit
- *    !important }` 压制规则让粗体、斜体、删除线、链接在输入框里渲染成普通
- *    文本——换成 TipTap 后该防御已无保护对象。
+ *    !important }` 压制规则让粗体、斜体、删除线、链接在 Markdown 档里渲染成
+ *    普通文本。ADR 0004 双实现并存后这条防御**只保留给内置档**（那块自研
+ *    contenteditable 仍需防任意 HTML），选择器必须带 `:not(.ProseMirror)`。
  *
  * 这些是样式层不变量，组件测试断言不到；沿用仓库既有的 CSS guard 范式
  * （见 composerColumn.guard.test.ts）。
@@ -21,6 +22,7 @@ const read = (name: string) => readFileSync(join(styles, name), "utf8");
 
 const chatPart3 = read("chat.part3.css");
 const modalsPart1 = read("modals.part1.css");
+const composerPart6 = read("composer.part6.css");
 const settingsPart6 = read("settings.part6.css");
 
 /** 取出第一条匹配 `rules[0]` 的规则体，便于逐条断言声明。 */
@@ -29,15 +31,23 @@ function ruleBody(css: string, pattern: RegExp): string | undefined {
 }
 
 describe("BOR-56 composer markdown alignment", () => {
-  it("no longer strips inline marks inside the composer", () => {
-    // Arrange / Act — 这条规则若回来，粗斜体/删除线/链接在输入框里会重新变成纯文本
-    const suppression =
-      /\.composer__input\s+(?:b|strong|i|em|u|s|font|a)\s*[,{][\s\S]{0,400}?font-weight:\s*inherit\s*!important/;
+  it("只对内置档剥掉落进来的 rich HTML，Markdown 档不受影响", () => {
+    // Arrange / Act —— 内置档仍是自研 contenteditable，落进来的任意 HTML 必须剥掉
+    // 视觉样式（上游行为）；Markdown 档由 ProseMirror schema 约束，不需要这条防御，
+    // 且它在那档有害：会把粗斜体/删除线/链接压成纯文本、把 chip 底色按掉。
+    const rules =
+      chatPart3.match(
+        /\.composer__input[^{]*\{[^}]*font-weight:\s*inherit\s*!important[^}]*\}/g,
+      ) ?? [];
 
     // Assert
-    expect(chatPart3).not.toMatch(suppression);
-    expect(chatPart3).not.toMatch(/font-style:\s*inherit\s*!important/);
-    expect(chatPart3).not.toMatch(/text-decoration:\s*none\s*!important/);
+    expect(rules.length).toBeGreaterThan(0);
+    for (const rule of rules) {
+      expect(rule).toMatch(/:not\(\.ProseMirror\)/);
+    }
+    // font-style / text-decoration 也一并剥离，否则斜体与链接下划线仍会漏进来
+    expect(chatPart3).toMatch(/font-style:\s*inherit\s*!important/);
+    expect(chatPart3).toMatch(/text-decoration:\s*none\s*!important/);
   });
 
   it("restores list markers for chat, preview and composer from one rule set", () => {
@@ -56,9 +66,9 @@ describe("BOR-56 composer markdown alignment", () => {
 
   it("renders composer text emphasis the way chat does", () => {
     // Arrange / Act
-    const strong = ruleBody(modalsPart1, /\.composer__input strong\s*\{([\s\S]*?)\}/);
+    const strong = ruleBody(composerPart6, /\.composer__input strong\s*\{([\s\S]*?)\}/);
     const headings = ruleBody(
-      modalsPart1,
+      composerPart6,
       /\.composer__input h1,\s*\n\.composer__input h2,\s*\n\.composer__input h3\s*\{([\s\S]*?)\}/,
     );
 
@@ -66,14 +76,14 @@ describe("BOR-56 composer markdown alignment", () => {
     expect(strong).toMatch(/font-weight:\s*600/);
     expect(headings).toMatch(/font-weight:\s*600/);
     // h2 与聊天侧一致（1.12em）
-    expect(modalsPart1).toMatch(
+    expect(composerPart6).toMatch(
       /\.composer__input h2\s*\{\s*font-size:\s*1\.12em/s,
     );
   });
 
   it("renders composer links like .chat-md__link but keeps a text cursor", () => {
     // Arrange / Act
-    const link = ruleBody(modalsPart1, /\.composer__input a\s*\{([\s\S]*?)\}/);
+    const link = ruleBody(composerPart6, /\.composer__input a\s*\{([\s\S]*?)\}/);
 
     // Assert — 点击应定位光标，不该把鼠标变成手型或直接开浏览器
     expect(link).toMatch(/color:\s*var\(--accent\)/);
@@ -84,7 +94,7 @@ describe("BOR-56 composer markdown alignment", () => {
   it("代码块有语言栏，且只显示语言（不带复制按钮）", () => {
     // Arrange / Act
     const lang = ruleBody(
-      modalsPart1,
+      composerPart6,
       /\.composer__input pre\[data-language\]::before\s*\{([\s\S]*?)\}/,
     );
 
@@ -93,15 +103,15 @@ describe("BOR-56 composer markdown alignment", () => {
     expect(lang).toMatch(/text-transform:\s*lowercase/);
     expect(lang).toMatch(/color:\s*var\(--text-tertiary\)/);
     // 输入框不搬聊天侧的复制按钮
-    expect(modalsPart1).not.toMatch(/\.composer__input[^{]*__btn/);
+    expect(composerPart6).not.toMatch(/\.composer__input[^{]*__btn/);
   });
 
   it("renders composer code in the chat palette", () => {
     // Arrange / Act
-    const pre = ruleBody(modalsPart1, /\.composer__input pre\s*\{([\s\S]*?)\}/);
-    const inline = ruleBody(modalsPart1, /\.composer__input code\s*\{([\s\S]*?)\}/);
+    const pre = ruleBody(composerPart6, /\.composer__input pre\s*\{([\s\S]*?)\}/);
+    const inline = ruleBody(composerPart6, /\.composer__input code\s*\{([\s\S]*?)\}/);
     const preCode = ruleBody(
-      modalsPart1,
+      composerPart6,
       /\.composer__input pre code\s*\{([\s\S]*?)\}/,
     );
 
@@ -117,7 +127,7 @@ describe("BOR-56 composer markdown alignment", () => {
     expect(preCode).toMatch(/border:\s*0/);
     expect(preCode).toMatch(/border-radius:\s*0/);
     // 未定义的 token 不能再回到输入框的 Markdown 规则里
-    expect(modalsPart1).not.toMatch(/--bg-tertiary/);
+    expect(composerPart6).not.toMatch(/--bg-tertiary/);
   });
 
   it("keeps one shared inline-code background token for both surfaces", () => {
@@ -129,12 +139,43 @@ describe("BOR-56 composer markdown alignment", () => {
 
     // Assert
     expect(lobeChat1).toMatch(/--chat-inline-code-bg:\s*var\(--md-inline-code-bg/);
-    expect(modalsPart1).toMatch(/var\(--md-inline-code-bg/);
+    expect(composerPart6).toMatch(/var\(--md-inline-code-bg/);
+  });
+
+  it("内置档的 placeholder 仍是浮层，不会被正文顶掉", () => {
+    // Arrange / Act —— 曾经的事故：给 TipTap 加 wrapper 规则时整块替换掉了上游的
+    // `.composer-editor__placeholder`，placeholder 失去绝对定位，变成占一行的正文。
+    const ph = ruleBody(modalsPart1, /\.composer-editor__placeholder\s*\{([\s\S]*?)\}/);
+
+    // Assert
+    expect(ph).toMatch(/position:\s*absolute/);
+    expect(ph).toMatch(/pointer-events:\s*none/);
+    expect(modalsPart1).toMatch(
+      /\.composer-editor-wrap\s*>\s*\.composer__input\s*\{[\s\S]*?position:\s*relative/,
+    );
+  });
+
+  it("输入框里的引用 chip 是圆角矩形底色，不是聊天的透明链接", () => {
+    // Arrange / Act —— 聊天侧 .file-path-card 是「带图标的链接」（透明、无描边），
+    // 输入框里语义是 chip，必须补上底色与描边。
+    const chip = ruleBody(
+      composerPart6,
+      /\.composer__input \.file-path-card--editor\s*\{([\s\S]*?)\}/,
+    );
+
+    // Assert
+    expect(chip).toMatch(/border-radius:\s*6px/);
+    expect(chip).toMatch(/background:\s*var\(--bg-hover\)/);
+    expect(chip).toMatch(/border:\s*1px solid var\(--border-subtle\)/);
+    // 点它=定位光标，悬停不该退回链接语义（下划线）
+    expect(composerPart6).toMatch(
+      /\.file-path-card--editor \.file-path-card__main:hover[\s\S]{0,160}?text-decoration:\s*none/,
+    );
   });
 
   it("keeps the composer divider visible on purpose", () => {
     // Arrange / Act
-    const hr = ruleBody(modalsPart1, /\.composer__input hr\s*\{([\s\S]*?)\}/);
+    const hr = ruleBody(composerPart6, /\.composer__input hr\s*\{([\s\S]*?)\}/);
 
     // Assert — 聊天侧故意 display:none，输入框必须让用户看见自己敲的 `---`；
     // 这是本 Issue 唯一一处有意的不对齐，别当 bug 改掉。

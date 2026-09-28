@@ -4,6 +4,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { applyAtFileToComposer } from "@/lib/composerAtApply";
+import type { Attachment } from "@/lib/attachments";
 
 function ctx(over: Partial<Parameters<typeof applyAtFileToComposer>[0]> = {}) {
   const calls: string[] = [];
@@ -13,15 +14,17 @@ function ctx(over: Partial<Parameters<typeof applyAtFileToComposer>[0]> = {}) {
     live: { present: true, start: 3, end: 5 },
     editorEl: () => null,
     clearAtState: vi.fn(),
-    removeAtTokenFromDraft: vi.fn((d: string) => {
-      calls.push("remove-at-token");
-      return `${d.slice(0, 3)}${d.slice(5)}`;
-    }),
+    removeAtTokenFromDraft: vi.fn(
+      (d: string, start: number, end: number) => {
+        calls.push("remove-at-token");
+        return `${d.slice(0, start)}${d.slice(end)}`;
+      },
+    ),
     setDraft: vi.fn((next: string | ((prev: string) => string)) => {
       calls.push("set-draft");
       return typeof next === "function" ? next("ab@qu") : next;
     }),
-    setAttachments: vi.fn((next: (prev: never[]) => never[]) => {
+    setAttachments: vi.fn((next: (prev: Attachment[]) => Attachment[]) => {
       calls.push("set-attachments");
       return next([]);
     }),

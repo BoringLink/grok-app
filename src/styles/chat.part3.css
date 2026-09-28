@@ -735,18 +735,39 @@ html[data-composer-min-rows="8"] .composer__input {
 }
 
 /*
- * 旧的「rich HTML 落进来就剥掉样式」防御规则已删除。
+ * 「rich HTML 落进来就剥掉样式」防御规则（ADR 0004 后重新**只对内置档**生效）。
  *
- * 它来自自研 contenteditable 时代：那时输入框内容是可以被任意 HTML 污染的
- * 纯文本 DOM，所以把 b/strong/i/em/u/s/font/a 与未白名单的 span 一律强制
- * `inherit`。换成 TipTap 后这条防御已无保护对象——内容由 ProseMirror
- * schema 约束，且 `Markdown.configure({ html: false, transformPastedText: true })`
- * 不保留粘贴的任意 HTML。
+ * 它来自自研 contenteditable 时代：那时输入框内容是可以被任意 HTML 污染的纯文本
+ * DOM，所以把 b/strong/i/em/u/s/font/a 与未白名单的 span 一律强制 `inherit`。
+ * 内置档仍是这样一块 contenteditable，因此这条防御必须留着——上游行为逐项一致。
  *
- * 副作用必须去掉：它让**粗体、斜体、下划线、删除线、链接**在输入框里全部
- * 渲染成普通文本，「所见即所得」不成立。行内样式的视觉效果现在由
- * `settings.part6.css` 的共享 Markdown 结构规则统一提供。
+ * Markdown 档（TipTap）不需要它：内容由 ProseMirror schema 约束，且
+ * `Markdown.configure({ html: false, transformPastedText: true })` 不保留粘贴的任意
+ * HTML。反过来，它在那档是有害的——会把**粗体、斜体、下划线、删除线、链接**
+ * 全部压成普通文本，「所见即所得」不成立，也会把引用 / URL chip 的底色按掉。
+ *
+ * 两档的输入框都带 `.composer__input`，用 `.ProseMirror`（TipTap 独有）区分。
  */
+.composer-editor-wrap > .composer__input:not(.ProseMirror) b,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) strong,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) i,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) em,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) u,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) s,
+.composer-editor-wrap
+  > .composer__input:not(.ProseMirror)
+  span:not([data-skill]):not(.skill-chip):not(.skill-chip__name):not(.skill-chip__glyph),
+.composer-editor-wrap > .composer__input:not(.ProseMirror) font,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) a {
+  font: inherit !important;
+  font-weight: inherit !important;
+  font-style: inherit !important;
+  color: inherit !important;
+  background: transparent !important;
+  text-decoration: none !important;
+  letter-spacing: inherit !important;
+  border: none !important;
+}
 
 .composer__input::placeholder {
   color: var(--text-tertiary);
