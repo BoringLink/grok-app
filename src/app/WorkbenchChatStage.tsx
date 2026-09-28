@@ -19,6 +19,7 @@ import {
   stallTierFromProgress,
   normalizeStallTier,
 } from "@/lib/sessionPhase";
+import { sessionGoalClear } from "@/lib/goalClear";
 import { goalOrchPhaseLabelKey, type GoalOrchEvent } from "@/lib/goalOrch";
 import { AttachedChatLookupContext, type AttachedChatLookup } from "@/components/AttachedChatLookup";
 import type { ResourceOpenTarget } from "@/components/resource-viewer/types";
@@ -377,7 +378,10 @@ export function WorkbenchChatStage(p: WorkbenchChatStageProps) {
               onRequestChanges={() => openRequestPlanChanges()}
               onDismiss={() => void dismissPlan()}
               onExitPlanMode={exitPlanMode}
-              onClearGoal={() => setGoalMode(false)}
+              onClearGoal={() => {
+                setGoalMode(false);
+                sessionGoalClear.arm(session.sessionId, session.state);
+              }}
               onOpenDetails={() => openPlanInResource()}
             />
           )}

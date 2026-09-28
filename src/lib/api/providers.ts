@@ -151,10 +151,13 @@ export async function providersCcSwitchImport(body: {
 export async function providersActivate(
   source: "official" | "custom",
   providerId?: string | null,
+  /** False: reload only the live chat. Default true: drop every warm process. */
+  recycleAgents?: boolean,
 ) {
   return invoke<ProvidersListResult>("providers_activate", {
     source,
     providerId: providerId ?? null,
+    recycleAgents: recycleAgents ?? null,
   });
 }
 

@@ -26,6 +26,7 @@ import {
 } from "@/lib/sessionMessageNodes";
 import type { ChatMessage } from "@/lib/session";
 import { cn } from "@/lib/utils";
+import { scrollChildIntoContainer } from "@/lib/grokActivityVirtualize";
 import { scrollPerfDebug } from "@/lib/scrollPerfDebug";
 import {
   MSG_RAIL_SIDE_CHANGE_EVENT,
@@ -129,13 +130,13 @@ export function MessageNodeRail({
       `[data-node-id="${CSS.escape(nodes[activeIndex]!.id)}"]`,
     ) as HTMLElement | null;
     if (!tick) return;
-    const tickTop = tick.offsetTop;
-    const tickBottom = tickTop + tick.offsetHeight;
-    const viewTop = list.scrollTop;
-    const viewBottom = viewTop + list.clientHeight;
-    // Only scroll if outside visible range to avoid redundant scroll operations.
-    if (tickTop < viewTop || tickBottom > viewBottom) {
-      tick.scrollIntoView({ block: "nearest", behavior: "auto" });
+    // Rail list only. scrollIntoView walks the chat scroller and jumps the
+    // transcript when a tick's transformed box sits outside the viewport
+    // during thinking / tool updates.
+    const listBox = list.getBoundingClientRect();
+    const tickBox = tick.getBoundingClientRect();
+    if (tickBox.top < listBox.top || tickBox.bottom > listBox.bottom) {
+      scrollChildIntoContainer(list, tick);
     }
   }, [activeIndex, nodes]);
 

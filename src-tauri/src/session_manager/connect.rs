@@ -380,6 +380,13 @@ impl SessionManager {
         } else {
             crate::providers::agent_spawn_model_id(&prefs.model_id)
         };
+        // Spawn keeps the route section id. set_model carries this chat's
+        // catalog id so a sibling process on another provider is not touched.
+        let session_model = if ssh_alias.is_some() {
+            agent_model.clone()
+        } else {
+            crate::providers::session_set_model_id(&prefs.model_id)
+        };
 
         // Pending CLI --fork-session: must cold-spawn so open can call session/fork.
         // Never no-op / unpark a warm process that still holds the source agent id.
@@ -561,7 +568,7 @@ impl SessionManager {
                     if let Some(acp) = live.acp.clone() {
                         if let Some(sid) = live.meta.agent_session_id.clone() {
                             if let Err(e) =
-                                Self::with_soft_rpc_budget(acp.set_model_for(&sid, &agent_model))
+                                Self::with_soft_rpc_budget(acp.set_model_for(&sid, &session_model))
                                     .await
                             {
                                 tracing::warn!("acp set_model on unpark soft-fail: {e}");
@@ -993,6 +1000,7 @@ impl SessionManager {
                 match open_result {
                     Ok((agent_sid, resumed)) => {
                         let need_bootstrap = !resumed && journal_has_history;
+                        let acp_align = acp.clone();
                         {
                             let mut guard = self.inner.lock();
                             if let Some(s) = guard.as_mut() {
@@ -1021,6 +1029,27 @@ impl SessionManager {
                             resumed,
                             "connect warm-reuse ok"
                         );
+                        // #1000: mirror the cold-spawn and unpark paths.
+                        // session/load restores the chat's own persisted
+                        // model/mode, and the prewarm process was spawned with
+                        // whatever prefs were current at prewarm time. Without
+                        // this a resumed chat silently kept running on its old
+                        // model while the composer and live shell showed the
+                        // resolved one.
+                        if let Err(e) = Self::with_soft_rpc_budget(
+                            acp_align.set_model_for(&agent_sid, &session_model),
+                        )
+                        .await
+                        {
+                            tracing::warn!("acp set_model after warm reuse soft-fail: {e}");
+                        }
+                        if let Err(e) = Self::with_soft_rpc_budget(
+                            acp_align.set_mode_for(&agent_sid, &prefs.mode),
+                        )
+                        .await
+                        {
+                            tracing::warn!("acp set_mode after warm reuse soft-fail: {e}");
+                        }
                         emit_host_exit_heal(&app, &meta.id);
                         // Refresh the prewarm slot with a FRESH process: the
                         // one we just consumed now hosts this session's actor,
@@ -1500,7 +1529,7 @@ impl SessionManager {
                 // session/set_model after session/new. Spawn `--model` alone is not
                 // enough when the composer id is an App `app_models` catalog id that
                 // CLI spawn resolves differently from ACP set_model.
-                if let Err(e) = Self::with_soft_rpc_budget(client.set_model(&agent_model)).await {
+                if let Err(e) = Self::with_soft_rpc_budget(client.set_model(&session_model)).await {
                     tracing::warn!("acp set_model after session open soft-fail: {e}");
                 }
                 emit_host_exit_heal(&app, &meta.id);

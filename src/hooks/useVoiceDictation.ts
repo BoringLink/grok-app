@@ -39,6 +39,11 @@ import {
   type VoiceErrorClass,
   type VoiceFsmState,
 } from "@/lib/voiceDictation";
+import {
+  parkDictationTranscript,
+  sameDictationTarget,
+  type DictationTarget,
+} from "@/lib/voiceDictationDelivery";
 
 type TFn = ReturnType<typeof createT>;
 
@@ -55,6 +60,8 @@ export function useVoiceDictation(opts: {
   voiceDictationAutoSendRef: MutableRefObject<boolean>;
   setDraft: Dispatch<SetStateAction<string>>;
   sessionState: string;
+  /** Composer buffer in view right now (synced to a ref inside). */
+  dictationTarget: DictationTarget;
   refreshSessions: () => void | Promise<void>;
   sttEngine: string;
   sttCustomBaseUrl: string;
@@ -76,6 +83,8 @@ export function useVoiceDictation(opts: {
   } = opts;
   const sessionStateRef = useRef(opts.sessionState);
   sessionStateRef.current = opts.sessionState;
+  const dictationTargetRef = useRef(opts.dictationTarget);
+  dictationTargetRef.current = opts.dictationTarget;
 
   const [voice, setVoice] = useState<VoiceFsmState>(() => initialVoiceState());
   const [liveVoiceOpen, setLiveVoiceOpen] = useState(false);
@@ -89,6 +98,8 @@ export function useVoiceDictation(opts: {
   voiceRef.current = voice;
   const voiceGenRef = useRef(0);
   const voiceCaretRef = useRef<number | null>(null);
+  /** Composer buffer that owned the mic when the user stopped recording. */
+  const voiceTargetRef = useRef<DictationTarget | null>(null);
 
   const voiceErrorMessage = useCallback(
     (cls: VoiceErrorClass | null | undefined) => {
@@ -173,6 +184,7 @@ export function useVoiceDictation(opts: {
     }
     voiceCaptureRef.current = null;
     voiceCaretRef.current = null;
+    voiceTargetRef.current = null;
     setVoice(reduceVoice(voiceRef.current, { type: "cancel" }));
   }, [clearVoiceTimers]);
 
@@ -251,6 +263,25 @@ export function useVoiceDictation(opts: {
           applyVoiceFail("no_speech", 4200);
           return;
         }
+        const origin = voiceTargetRef.current;
+        const now = dictationTargetRef.current;
+        if (origin && !sameDictationTarget(origin, now)) {
+          // Chat switched while STT ran. Park into the buffer that owned the
+          // mic. Do not executeSend: that uses the chat now on screen
+          // (schema, title, automation wrap) and would send with no
+          // attachments, then delete the origin draft's files and quotes.
+          // Auto-send still runs below when the composer never left this chat.
+          const parked = parkDictationTranscript({
+            target: origin,
+            transcript: commit.text,
+            caret,
+          });
+          setVoice((s) => reduceVoice(s, { type: "transcribe_ok" }));
+          if (parked) {
+            notifyRef.current(tr("composer.voiceDelivered"), 4800);
+          }
+          return;
+        }
         setDraft((d) => {
           const at =
             caret == null ? d.length : Math.max(0, Math.min(caret, d.length));
@@ -273,6 +304,7 @@ export function useVoiceDictation(opts: {
         if (voiceResultStillCurrent(gen, voiceGenRef.current)) {
           voiceCaptureRef.current = null;
           voiceCaretRef.current = null;
+          voiceTargetRef.current = null;
           clearVoiceTimers();
         }
       }
@@ -321,6 +353,7 @@ export function useVoiceDictation(opts: {
             voiceCaretRef.current = getComposerCaretOffset(
               composerInputRef.current,
             );
+            voiceTargetRef.current = dictationTargetRef.current;
             const blob = await cap.stop();
             await finishVoiceTranscribe(blob, gen);
           } catch (e) {
@@ -363,6 +396,7 @@ export function useVoiceDictation(opts: {
     if (voiceRef.current.phase !== "recording") return;
     const gen = voiceGenRef.current;
     voiceCaretRef.current = getComposerCaretOffset(composerInputRef.current);
+    voiceTargetRef.current = dictationTargetRef.current;
     clearVoiceTimers();
     const cap = voiceCaptureRef.current;
     if (!cap) {

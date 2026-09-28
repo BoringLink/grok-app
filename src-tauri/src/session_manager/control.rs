@@ -14,16 +14,13 @@ use crate::store::{self};
 
 use super::*;
 
-/// 模型变更在各槽位上的记账结果（见 [`SessionManager::apply_model_to_session_slots`]）。
-pub(super) struct ModelApplyOutcome {
-    /// live 槽位持有的 ACP —— 仅当目标会话就是 live 会话时才有值。
-    pub acp: Option<Arc<AcpClient>>,
-    /// live 槽位的 agent session id（`session/set_model` 的目标）。
-    pub agent_session_id: Option<String>,
-    /// 目标会话是否正占据 live 槽位；否 = 调用方不应再碰 live。
-    pub applies_live: bool,
-    /// background 槽位需要在本轮结束后换路由。
-    pub background_needs_respawn: bool,
+/// `set_model` 的落点结果：`Queued` 表示目标正是进行中的 live 会话，
+/// 已登记待生效，调用方应提示「本轮结束后生效」。
+pub enum ModelSwitch {
+    /// 已对 live 会话生效；或目标不占 live 槽位（由 connect 时按 prefs 生效）。
+    Applied,
+    /// 已排队：携带目标会话 id，轮末由 `flush_pending_soft_respawn` 换路由。
+    Queued(String),
 }
 
 impl SessionManager {
@@ -440,103 +437,6 @@ impl SessionManager {
         Self::emit_state(app, &self.snapshot());
     }
 
-    /// 路由级回收（provider_route / models_aux）：与 [`Self::recycle_all_agents`]
-    /// 的差异是**不杀运行中的会话**。每个 App 会话持有独立子进程后，路由/凭据
-    /// 变更只影响下一次 spawn：忙碌会话保留进程并登记 `pending_soft_respawn`，
-    /// 本轮结束后由 `flush_pending_soft_respawn` 换到新路由；空闲 live shell、
-    /// parked 与 prewarm 进程立即回收。忙碌会话不写 hard-end journal，因此
-    /// 「已停止 — 模型或供应商路由已切换」chip 只出现在真正被终止的会话上
-    /// （BOR-50）。
-    pub async fn recycle_agents_for_route_change(&self, app: &AppHandle, reason: &str) {
-        // 已完成的 background turn 先转入 parked，纳入本次空闲回收。
-        self.sweep_finished_background_to_parked();
-        // 空闲 live shell：soft_respawn 换进程；若 live 恰好忙碌，内部 defer 到
-        // pending_soft_respawn，不会杀进程。
-        self.soft_respawn_with_reason(app, reason).await;
-        // 保留忙碌会话放在 soft_respawn 之后：soft_respawn 的无进程分支会清掉
-        // live sid 的 pending，最后写入的标记必须属于保留集合。
-        let preserved = self.preserve_busy_sessions_for_route_change(reason);
-        // 空闲 parked：整体回收；仍被忙碌会话共享的进程只丢句柄、跳过 kill。
-        let parked: Vec<ParkedAgent> = {
-            let mut p = self.parked.lock();
-            std::mem::take(&mut *p).into_values().collect()
-        };
-        let parked_count = parked.len();
-        let mut acps: Vec<Arc<AcpClient>> = Vec::new();
-        for p in parked {
-            if self.has_other_process_tenant(&p.process_id, &p.app_session_id) {
-                tracing::info!(
-                    session = %p.app_session_id,
-                    process = %p.process_id,
-                    "route recycle: dropped parked entry, skip kill (busy co-tenant)"
-                );
-                continue;
-            }
-            acps.push(p.acp);
-        }
-        // Prewarm 是 ownerless 进程，旧路由/旧凭据不能留给下一次 connect。
-        self.invalidate_prewarm_epoch();
-        let prewarm_count = {
-            let mut pw = self.prewarm.lock();
-            match std::mem::replace(&mut *pw, PrewarmState::None) {
-                PrewarmState::Ready(p) => {
-                    acps.push(p.acp);
-                    1
-                }
-                PrewarmState::Spawning { .. } | PrewarmState::None => 0,
-            }
-        };
-        let killed = acps.len();
-        for acp in acps {
-            Self::kill_acp_bounded(&acp).await;
-        }
-        tracing::info!(
-            "recycle_agents_for_route_change reason={reason} killed={killed} parked={parked_count} prewarm={prewarm_count} preserved_busy={}",
-            preserved.len()
-        );
-        let _ = app.emit(
-            "session://agents_recycled",
-            serde_json::json!({
-                "reason": reason,
-                "killed": killed,
-                "background": 0,
-                "parked": parked_count,
-                "prewarm": prewarm_count,
-                "preservedBusy": preserved,
-            }),
-        );
-        Self::emit_state(app, &self.snapshot());
-    }
-
-    /// 登记所有运行中会话（live busy + background busy）的软重启并返回会话 id。
-    /// 进程与事件泵保持原样；本轮结束后 `flush_pending_soft_respawn` 换新路由。
-    pub(super) fn preserve_busy_sessions_for_route_change(&self, reason: &str) -> Vec<String> {
-        let mut preserved = Vec::new();
-        {
-            let guard = self.inner.lock();
-            if let Some(s) = guard.as_ref() {
-                if Self::live_session_is_busy(s) {
-                    preserved.push(s.app_session_id.clone());
-                }
-            }
-        }
-        {
-            let bg = self.background.lock();
-            for s in bg.values() {
-                if Self::live_session_is_busy(s) {
-                    preserved.push(s.app_session_id.clone());
-                }
-            }
-        }
-        if !preserved.is_empty() {
-            let mut pending = self.pending_soft_respawn.lock();
-            for sid in &preserved {
-                pending.insert(sid.clone(), reason.to_string());
-            }
-        }
-        preserved
-    }
-
     /// Snapshot app session ids that still hold a pending human gate so the
     /// frontend can clear stale permission / plan / ask_user UI after kill.
     pub(super) fn collect_pending_gate_invalidations(&self) -> Vec<serde_json::Value> {
@@ -814,129 +714,60 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Apply a model id to the **requested** session (best-effort
-    /// `session/set_model` on its live process).
+    /// Apply model id on the live ACP session (best-effort session/set_model).
     ///
-    /// Queue semantics (BOR-52): a mid-turn session never gets a live
-    /// `session/set_model` — the id is stored on the meta (next connect
-    /// spawns / aligns with it) and a `pending_soft_respawn` is registered so
-    /// the turn-end flush swaps the route. Idle sessions apply immediately.
+    /// `session_id` is the chat the change belongs to. Only that chat gets
+    /// retuned when it owns the live slot — a draft, parked, or background
+    /// chat owns no agent here, and applying its model to the live slot used
+    /// to retune an unrelated conversation (same class as the effort scoping
+    /// fix). Other chats pick the model up from their saved prefs at connect.
     ///
-    /// `session_id` scopes the write. Without it the previous implementation
-    /// wrote whichever chat happened to occupy the live slot, so changing a
-    /// parked chat's model re-modelled the chat on screen. `None` now means
-    /// "no target" and changes nothing: guessing the live slot is exactly the
-    /// bug being fixed (a draft chat sends `None` and never touches another
-    /// chat's meta).
+    /// Queue semantics (this branch's user-facing layer): a **mid-turn** live
+    /// chat never gets a live `session/set_model`。它的选择已经写在会话行上，
+    /// 这里只登记 `pending_soft_respawn`，由轮末的 `flush_pending_soft_respawn`
+    /// 换路由；命令层据此提示「本轮结束后生效」。空闲会话立即生效。
+    ///
+    /// 返回值告诉调用方要不要显示那个提示 —— 管理器不持有 `AppHandle`，
+    /// 事件由命令层发。
     pub async fn set_model(
         &self,
-        app: &AppHandle,
         model_id: String,
         session_id: Option<&str>,
-    ) -> Result<(), String> {
+    ) -> Result<ModelSwitch, String> {
         let model_id = model_id.trim().to_string();
         if model_id.is_empty() {
             return Err("model id empty".into());
         }
-        let Some(target) = session_id.filter(|id| !id.is_empty()) else {
-            return Ok(());
-        };
-        // Store composer preference; agent receives channel-resolved id.
-        let agent_model = crate::providers::agent_spawn_model_id(&model_id);
-        let applied = self.apply_model_to_session_slots(target, &model_id);
-        if applied.background_needs_respawn {
-            let _ = app.emit(
-                "session://model_switch_pending",
-                serde_json::json!({ "sessionId": target, "pending": true }),
-            );
-        }
-        if !applied.applies_live {
-            return Ok(());
-        }
-        if let Some(app_session_id) = self.queue_model_change_for_busy() {
-            tracing::info!(
-                session = %app_session_id,
-                "model change queued: session mid-turn, applies after turn end"
-            );
-            let _ = app.emit(
-                "session://model_switch_pending",
-                serde_json::json!({ "sessionId": app_session_id, "pending": true }),
-            );
-            return Ok(());
-        }
-        // Target the live session explicitly (shared process safety).
-        if let (Some(acp), Some(sid)) = (applied.acp, applied.agent_session_id) {
-            acp.set_model_for(&sid, &agent_model).await?;
-        }
-        Ok(())
-    }
-
-    /// 把模型写进目标会话的 meta，覆盖 live / background / parked 三个槽位。
-    ///
-    /// 抽成不依赖 `AppHandle` 的方法（BOR-52 的同一手法），这样槽位记账能被单测
-    /// 覆盖：此前只写 live 槽位，于是改后台会话的模型会落到「当前屏幕上那个会话」
-    /// 的 meta 上。
-    pub(super) fn apply_model_to_session_slots(
-        &self,
-        target: &str,
-        model_id: &str,
-    ) -> ModelApplyOutcome {
-        let (acp, agent_session_id, applies_live) = {
+        // Store composer preference; agent receives the session-scoped id.
+        let agent_model = crate::providers::session_set_model_id(&model_id);
+        let (acp, sid) = {
             let mut guard = self.inner.lock();
             match guard.as_mut() {
-                Some(s) if s.app_session_id == target => {
-                    s.model_id = Some(model_id.to_string());
-                    s.meta.model_id = Some(model_id.to_string());
+                Some(s) if session_id.is_some_and(|id| id == s.app_session_id) => {
+                    s.model_id = Some(model_id.clone());
+                    s.meta.model_id = Some(model_id.clone());
                     let _ = store::update_session_meta(&s.meta);
-                    (s.acp.clone(), s.meta.agent_session_id.clone(), true)
+                    (s.acp.clone(), s.meta.agent_session_id.clone())
                 }
-                _ => (None, None, false),
+                _ => (None, None),
             }
         };
-        // Parked / background chats own their own process and meta (#598 for
-        // effort, same shape here).
-        let background_needs_respawn = if let Some(s) = self.background.lock().get_mut(target) {
-            let same = s.model_id.as_deref() == Some(model_id);
-            s.model_id = Some(model_id.to_string());
-            s.meta.model_id = Some(model_id.to_string());
-            let _ = store::update_session_meta(&s.meta);
-            !same && s.acp.is_some()
-        } else {
-            false
-        };
-        if background_needs_respawn {
-            self.pending_soft_respawn
-                .lock()
-                .insert(target.to_string(), "model".into());
-        }
-        // Let-binding so the parking_lot guard drops before the if-let body
-        // (edition 2021 keeps if-let temps alive through else — re-lock deadlock).
-        let removed = self.parked.lock().remove(target);
-        if let Some(p) = removed {
-            if p.model_id.as_deref() != Some(model_id) {
-                if !self.has_other_process_tenant(&p.process_id, target) {
-                    tokio::spawn(async move {
-                        SessionManager::kill_acp_bounded(&p.acp).await;
-                    });
-                } else {
-                    tracing::info!(
-                        session = %target,
-                        process = %p.process_id,
-                        "model change: removed parked entry, skip kill (mid-turn cohabitant)"
-                    );
-                }
-            } else {
-                self.parked.lock().insert(target.to_string(), p);
+        // 目标占着 live 槽位且本轮进行中：排队，不打断当前 turn。
+        if acp.is_some() {
+            if let Some(app_session_id) = self.queue_model_change_for_busy() {
+                tracing::info!(
+                    session = %app_session_id,
+                    "model change queued: session mid-turn, applies after turn end"
+                );
+                return Ok(ModelSwitch::Queued(app_session_id));
             }
         }
-        ModelApplyOutcome {
-            acp,
-            agent_session_id,
-            applies_live,
-            background_needs_respawn,
+        // Target the live session explicitly (shared process safety).
+        if let (Some(acp), Some(sid)) = (acp, sid) {
+            acp.set_model_for(&sid, &agent_model).await?;
         }
+        Ok(ModelSwitch::Applied)
     }
-
     /// Apply product mode via session/set_mode; soft-respawn if agent rejects.
     pub async fn apply_product_mode(&self, app: &AppHandle, mode: String) -> Result<(), String> {
         let mode = mode.trim().to_ascii_lowercase();
@@ -1615,6 +1446,11 @@ mod recycle_tests {
     use super::*;
     use std::time::Instant;
 
+    use crate::journal_throttle::JournalWriteThrottle;
+    use crate::permission::SessionAllowCache;
+    use crate::session_fsm::SessionFsm;
+    use crate::store::SessionMeta;
+
     #[test]
     fn session_is_busy_is_false_when_untracked() {
         let mgr = SessionManager::new();
@@ -1674,5 +1510,128 @@ mod recycle_tests {
             map.get("keep").map(String::as_str),
             Some("permission_policy")
         );
+    }
+
+    #[test]
+    fn set_model_retunes_only_the_live_target_session() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp =
+            std::env::temp_dir().join(format!("grok-app-set-model-scope-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = std::fs::create_dir_all(&tmp);
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        let _ = crate::paths::ensure_app_dirs();
+
+        let mgr = SessionManager::new();
+        let mut fsm = SessionFsm::new();
+        let _ = fsm.start_connect();
+        let _ = fsm.handshake_ok();
+        let now = Instant::now();
+        *mgr.inner.lock() = Some(LiveSession {
+            app_session_id: "session-1".into(),
+            process_id: "process-1".into(),
+            meta: SessionMeta {
+                id: "session-1".into(),
+                project_id: None,
+                title: "Test".into(),
+                agent_session_id: None,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                model_id: None,
+                archived: false,
+                pinned: false,
+                effort: None,
+                mode: None,
+                permission_policy: None,
+                json_schema: None,
+                scheduled: false,
+                worktree_path: None,
+                worktree_branch: None,
+                is_worktree_session: false,
+                plugin_dirs: Vec::new(),
+                extra_rules: None,
+                max_agent_turns: None,
+                system_prompt_override: None,
+                fork_agent_session: false,
+                fork_rewind_prompt_index: None,
+                no_ask_user: None,
+                workspace_id: None,
+                workspace_root_snapshot: None,
+                workspace_capability: None,
+            },
+            fsm,
+            backend: "mock_acp".into(),
+            acp: None,
+            mock_stream: None,
+            streaming_message_id: None,
+            active_turn_id: None,
+            stream_message_id_locked: false,
+            stream_buf: String::new(),
+            stream_thought: String::new(),
+            stream_last_was_assistant: false,
+            stream_attachments: Vec::new(),
+            model_id: None,
+            effort: None,
+            product_mode: None,
+            project_path: None,
+            allow_cache: SessionAllowCache::default(),
+            policy: PermissionPolicy::default(),
+            provider_retry_attempt: 0,
+            provider_retry_aborted: false,
+            needs_history_bootstrap: false,
+            pending_plan_rpc_id: None,
+            pending_permission_rpc_id: None,
+            pending_permission_options: None,
+            pending_permission_tool_name: None,
+            pending_permission_ui: None,
+            pending_ask_user_rpc_id: None,
+            pending_ask_user_ui: None,
+            last_activity: now,
+            last_stream_progress: now,
+            last_stall_emit: None,
+            stall_soft_emits: 0,
+            journal_throttle: JournalWriteThrottle::with_default_interval(),
+            open_tool_ids: HashSet::new(),
+            open_tool_seen_at: HashMap::new(),
+            terminal_tool_ids: HashSet::new(),
+            deferred_prompt_complete: None,
+            tools_this_turn: 0,
+            saw_model_output: false,
+            prompt_in_flight: false,
+            sent_prompt_this_visit: false,
+            pending_stream_emit: None,
+            stream_emit_flush_gen: 0,
+            last_tool_heartbeat_emit: None,
+        });
+
+        // A model change aimed at another chat (draft, parked, background, or a
+        // scheduled automation's new session before it connects) must not
+        // retune the conversation that happens to be open.
+        tauri::async_runtime::block_on(mgr.set_model("grok-4.6".into(), Some("other-chat")))
+            .expect("non-target apply is a no-op, not an error");
+        // Draft / global scope (no session id) keeps the live agent alone too.
+        tauri::async_runtime::block_on(mgr.set_model("grok-4.6".into(), None))
+            .expect("unscoped apply is a no-op, not an error");
+        {
+            let guard = mgr.inner.lock();
+            let s = guard.as_ref().expect("live session");
+            assert_eq!(s.model_id, None);
+            assert_eq!(s.meta.model_id, None);
+        }
+
+        // The chat that owns the live slot still retunes in place.
+        tauri::async_runtime::block_on(mgr.set_model("grok-4.7".into(), Some("session-1")))
+            .expect("live target applies");
+        {
+            let guard = mgr.inner.lock();
+            let s = guard.as_ref().expect("live session");
+            assert_eq!(s.model_id.as_deref(), Some("grok-4.7"));
+            assert_eq!(s.meta.model_id.as_deref(), Some("grok-4.7"));
+        }
+
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

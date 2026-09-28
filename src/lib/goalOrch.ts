@@ -753,7 +753,7 @@ export function shouldConfirmClearGoalOrch(
 
 /**
  * Soft: whether the plan-bar "Clear goal" control should be available.
- * Host path is local only — toggles composer `goalMode` off (no RPC).
+ * The click must also arm `sessionGoalClear` (`/goal clear` on that chat).
  * Independent of the goal orch event ring.
  */
 export function canClearGoalBar(opts: {

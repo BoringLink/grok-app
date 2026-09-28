@@ -55,6 +55,7 @@ Add flow opens a **preset gallery** (`providerPresets.ts`):
 | **DeepSeek** | `deepseek-v4-flash`, `deepseek-v4-flash-vision-exp`, `deepseek-v4-pro` | `low` / `high` / `xhigh` / `max` (docs mapping table; default `high`) |
 | **OpenRouter** | `z-ai/glm-5.3-flash` | GLM `low`/`high`/`max` (default `max`); vision on; `context_window` 1 048 576 |
 | **OrcaRouter** | `orcarouter/auto`, `openai/gpt-4o-mini`, `google/gemini-2.5-flash` | Grok `low`/`medium`/`high`/`max` (default `medium`); vision on |
+| **Requesty** | `grok-4.6`, `gemini-3.5-flash`, `deepseek-v4-flash` (managed policy ids; `vendor/model` ids also work) | Grok `low`/`medium`/`high`/`max` (default `medium`); vision on |
 | **Amux** | `grok-4.7` + `grok-4.6` + `grok-4.5` | Official Grok `low`/`medium`/`high`/`xhigh` (default `xhigh`) |
 | **Yun API** | `grok-4.7` + `grok-4.6` + `grok-4.5` | Official Grok `low`/`medium`/`high`/`xhigh` (default `xhigh`) |
 | **OpenCode Go** | `deepseek-v4-flash`, `deepseek-v4-pro` | DeepSeek efforts (default `high`) |
@@ -67,6 +68,7 @@ Add flow opens a **preset gallery** (`providerPresets.ts`):
 | DeepSeek | `https://api.deepseek.com/v1` (`chat_completions`) | https://platform.deepseek.com/ |
 | OpenRouter | `https://openrouter.ai/api/v1` (`chat_completions`) | https://openrouter.ai/settings/keys |
 | OrcaRouter | `https://api.orcarouter.ai/v1` (`chat_completions`) | https://orcarouter.ai/ |
+| Requesty | `https://router.requesty.ai/v1` (`chat_completions`; EU: `https://router.eu.requesty.ai/v1`) | https://app.requesty.ai/api-keys |
 | Amux | `https://api.amux.ai/v1` (`responses`) | https://api.amux.ai/register?aff=Vccp |
 | Yun API | `https://api.yunyi.ai/v1` (`responses`) | https://api.yunyi.ai/register/?aff_code=W0iw |
 | OpenCode Go | `https://opencode.ai/zen/go/v1` (`chat_completions`) | https://opencode.ai/ |
@@ -110,8 +112,7 @@ separate from ordinary `[model.<id>]` relays:
 | ACP model | Spawn uses the real selected model id, such as `grok-4.7`, rather than the provider section alias |
 | Child environment | Only the target `grok agent stdio` process receives `GROK_MODELS_BASE_URL`, `GROK_MODELS_LIST_URL`, `GROK_CLI_CHAT_PROXY_BASE_URL`, and `XAI_API_KEY` |
 | Generic compatibility | Generic providers keep `[model.<id>]`, provider-alias spawn, and the existing stream sanitizer behavior |
-| Per-model alias sections | On save, every `app_models[]` entry is also written as a self-contained `[model.<upstream-id>]` section carrying the same `base_url` / `api_backend` / `api_key` (so it does not depend on the provider section or `[model_providers.*]`) plus `app_model_for = "<provider-id>"`. That marker keeps aliases out of the provider list (`is_custom`) and out of every provider-only repair path. Upsert is idempotent: aliases for renamed or dropped models are pruned, and deleting a provider removes its aliases. |
-| Composer id vs CLI id (#1000) | The picker may store `app_models[].id` (request-body id). Host `agent_spawn_model_id` maps that back to a `[model.<id>]` **section** name for both `--model` and `session/set_model`, including when `[models].default` is still official. On a custom route, a per-session model that belongs to the active provider's `app_models` resolves to its own alias section id (each chat keeps its own upstream model); other ids fall back to the provider section id — an id with no backing section is never emitted. Cold connect also applies `session/set_model` after `session/new` (same as unpark) so turn 1 and turn 2 cannot diverge. Official catalog ids (`grok-4.7`, `grok-4.7-build-fast`, `grok-4.6`, `grok-4.5`) are never remapped through a relay that also lists them. |
+| Composer id vs CLI id (#1000) | The picker may store `app_models[].id` (request-body id). Host `agent_spawn_model_id` maps that back to the `[model.<id>]` **section** name for both `--model` and `session/set_model`, including when `[models].default` is still official. Cold connect also applies `session/set_model` after `session/new` (same as unpark) so turn 1 and turn 2 cannot diverge. Official catalog ids (`grok-4.7`, `grok-4.7-build-fast`, `grok-4.6`, `grok-4.5`) are never remapped through a relay that also lists them. |
 | Apply | Editing the active provider recycles warm ACP processes; the next send starts with the new catalog and capability contract |
 | Attachments | Unchanged: App still sends `@absolute/path` inside ACP text content; this mode does not claim or add native ACP image blocks |
 
