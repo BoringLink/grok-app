@@ -2,6 +2,8 @@
 
 **文档日期**：2026-09-24 · **决策**：`docs/adr/0003-composer-document-position-editing.md` · **跟踪**：BOR-73
 
+> 本条改造线现落在 **Markdown 档**（ADR 0004）：上游内置档保持原样，两档由设置项切换。
+
 **分支**：`refactor/composer-doc-positions`（基于 `d764e668`）→ 已合并 `main` @ `3514db7b`
 
 **提交**：`e1d2f441`(ADR) · `8ae3e634` · `76c4bc4a` · `6848b427` · `a69ca7e4` · `4292c8d4`(软换行回归) · `46f3b197`(评审意见)
