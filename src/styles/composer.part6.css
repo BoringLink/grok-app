@@ -122,39 +122,23 @@
  * 内联引用 chip（BOR-53）：输入框里点它应当定位光标，不是打开文件。
  * 悬停的完整路径走节点自带的 title 属性。
  *
- * 聊天侧的 `.file-path-card` 是「带图标的链接」（透明、无描边，见
- * `chat.part3.css`）；输入框里的语义是 **chip**，所以在 `.composer__input`
- * 作用域内补上圆角矩形底色 —— 取值对齐同一输入框里的 `.skill-chip`
- * （同一套 token、同样的 12px/18px 字号与描边），圆角取矩形而非胶囊。
+ * **外观（蓝底蓝字 + 圆角矩形）不在这里定义** —— 聊天消息与输入框共用
+ * `chat.part3.css` 里的 `.file-path-card`（见那里的配色说明）。这里只写
+ * 输入框需要的差异：点它=定位光标（不做链接下划线）、悬停加深底色、
+ * 选中态描边走 `--accent`、长路径在 chip 内截断。
  */
 .composer__input .file-path-card--editor {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  margin: 0 2px;
-  padding: 0 7px 0 5px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  font-size: 12px;
-  line-height: 18px;
-  vertical-align: middle;
+  padding-right: 7px;
 }
-/* 悬停/选中：比 skill chip 多一层反馈（点它=定位光标，不做下划线）。 */
 .composer__input .file-path-card--editor:hover {
-  background: var(--bg-active);
+  background: color-mix(in srgb, var(--chat-link, var(--accent)) 20%, transparent);
 }
 .composer__input .file-path-card--editor.ProseMirror-selectednode {
-  border-color: var(--accent);
+  border-color: var(--chat-link, var(--accent));
 }
 .composer__input .file-path-card--editor .file-path-card__main {
-  display: inline-flex;
-  align-items: center;
   max-width: 100%;
   color: inherit;
-  font: inherit;
-  line-height: inherit;
   cursor: text;
   user-select: none;
 }
@@ -166,18 +150,9 @@
   text-decoration: none;
 }
 .composer__input .file-path-card--editor .file-path-card__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 14px;
   height: 14px;
-  margin-right: 4px;
-  color: var(--text-tertiary);
   opacity: 0.88;
-}
-.composer__input .file-path-card--editor .file-path-card__meta {
-  display: inline;
-  min-width: 0;
 }
 .composer__input .file-path-card--editor .file-path-card__name {
   overflow: hidden;
@@ -185,8 +160,6 @@
   max-width: 24ch;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 500;
-  color: inherit;
 }
 
 .composer__input blockquote {

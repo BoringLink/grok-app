@@ -155,19 +155,27 @@ describe("BOR-56 composer markdown alignment", () => {
     );
   });
 
-  it("输入框里的引用 chip 是圆角矩形底色，不是聊天的透明链接", () => {
-    // Arrange / Act —— 聊天侧 .file-path-card 是「带图标的链接」（透明、无描边），
-    // 输入框里语义是 chip，必须补上底色与描边。
-    const chip = ruleBody(
+  it("引用 chip 两处共用一份外观：蓝底蓝字 + 圆角矩形", () => {
+    // Arrange / Act —— 聊天消息与输入框共用 `.file-path-card`；输入框只允许补交互
+    // 差异，不能再写一套自己的底色/字色（否则两处会各自漂移）。
+    const chip = ruleBody(chatPart3, /\.file-path-card\s*\{([\s\S]*?)\}/);
+    const editorBase = ruleBody(
       composerPart6,
       /\.composer__input \.file-path-card--editor\s*\{([\s\S]*?)\}/,
     );
 
-    // Assert
+    // Assert —— 底色/描边与字色是同一支蓝（字色即加底色前的那支蓝）
     expect(chip).toMatch(/border-radius:\s*6px/);
-    expect(chip).toMatch(/background:\s*var\(--bg-hover\)/);
-    expect(chip).toMatch(/border:\s*1px solid var\(--border-subtle\)/);
-    // 点它=定位光标，悬停不该退回链接语义（下划线）
+    expect(chip).toMatch(/background:\s*color-mix\(in srgb, var\(--chat-link/);
+    expect(chip).toMatch(
+      /border:\s*1px solid color-mix\(in srgb, var\(--chat-link/,
+    );
+    expect(chip).toMatch(/color:\s*var\(--chat-link, var\(--accent\)\)/);
+    expect(editorBase).not.toMatch(/background:|color:|border-radius:/);
+    // 点它=定位光标，悬停不该退回链接语义（下划线）；底色加深用同一蓝
+    expect(composerPart6).toMatch(
+      /\.file-path-card--editor:hover\s*\{[^}]*background:\s*color-mix\(in srgb, var\(--chat-link/,
+    );
     expect(composerPart6).toMatch(
       /\.file-path-card--editor \.file-path-card__main:hover[\s\S]{0,160}?text-decoration:\s*none/,
     );

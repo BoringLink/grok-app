@@ -529,24 +529,34 @@
   margin-block: 0.35em;
 }
 
-/* File / URL path — inline link, no card chrome. Hover tip has the full path. */
+/*
+ * File / URL path — inline chip。聊天消息与输入框**共用**这一份外观：
+ * 蓝底蓝字，圆角矩形，悬停提示完整路径（title）。
+ *
+ * 配色规则：底色与描边是同一个蓝（`--chat-link`，输入框里回落到 `--accent`）
+ * 以 `transparent` 打底的 color-mix 叠层，所以在深色 / 浅色 / 壁纸主题、
+ * 以及灰色用户气泡上都能自适应；文字就是**加深背景前的那支蓝**（`--chat-link`），
+ * 与底色同色相，靠蓝底把它的识别度和对比度一起抬起来。
+ */
 .file-path-card {
-  display: inline;
+  display: inline-flex;
+  align-items: center;
   max-width: 100%;
-  margin: 0;
-  padding: 0;
+  margin: 0 2px;
+  padding: 0 6px 0 5px;
   position: relative;
-  border: none;
-  border-radius: 0;
-  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--chat-link, var(--accent)) 30%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--chat-link, var(--accent)) 12%, transparent);
   box-shadow: none;
   overflow: visible;
-  vertical-align: baseline;
+  color: var(--chat-link, var(--accent));
+  vertical-align: middle;
 }
 
 .file-path-card__main {
-  display: inline;
-  align-items: baseline;
+  display: inline-flex;
+  align-items: center;
   gap: 0;
   width: auto;
   min-height: 0;
@@ -554,7 +564,7 @@
   text-align: left;
   background: transparent;
   border: none;
-  color: var(--chat-link, var(--accent, #6db3f2));
+  color: inherit;
   cursor: pointer;
   font: inherit;
   line-height: inherit;
