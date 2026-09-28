@@ -44,10 +44,11 @@ skill / plugin chip，没有列表、代码块与行内文件引用；上游近�
   出问题时用户可一键回退；将来若上游采纳迁移，移除开关即可。
 - **代价**：两套实现长期并存 —— composer 侧任何新功能要么只对 Markdown 档生效，要么写两遍；
   段落模型需要分层（基版本降级 + `*WithRefs` 超集）；必须维护分发与按档位的门控。
-- **已知缺口**：上游那条 Windows IME 兜底针对的是自研 contenteditable 的 ZWSP 填充与
-  `flushAfterIme`，Markdown 档不走这套机制（IME 交给 ProseMirror 原生处理，组合期不下发键盘路由），
-  因此不是「少修了一个 bug」，而是**等价行为未在 Windows / WebView2 上验证过**（开发机为 macOS）。
-  验收时需在 Windows 上重点看：组合期候选窗锚定、Shift 切换中英文、Enter 候选确认不发送。
+- **已知缺口（接受，不处理）**：上游那条 Windows IME 兜底针对的是自研 contenteditable 的 ZWSP
+  填充与 `flushAfterIme`，Markdown 档不走这套机制（IME 交给 ProseMirror 原生处理，组合期不下发
+  键盘路由），因此不是「少修了一个 bug」，而是**等价行为未在 Windows / WebView2 上验证过**。
+  开发机为 macOS、无 Windows 环境，本仓库不再为验证这件事投入，此处记为**已知缺口并接受**；
+  若使用者反馈 Windows 组合期异常，再按复现单独处理。
 
 ## 影响
 
