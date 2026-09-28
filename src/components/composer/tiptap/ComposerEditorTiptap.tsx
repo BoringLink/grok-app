@@ -124,6 +124,18 @@ export function getComposerCaretOffset(
 }
 
 /**
+ * 这个 DOM 节点是否由本套（TipTap）编辑器托管。
+ *
+ * 分发器据此把「按 DOM 元素寻址」的命令式 API 路由到正确的那一套 —— 上游那份
+ * 编辑器是无注册表的（函数直接读 DOM），所以只需要判断「是不是我们的」。
+ */
+export function ownsComposerDom(el: HTMLElement | null | undefined): boolean {
+  if (!el) return false;
+  const editor = editorsByDom.get(el);
+  return !!editor && !editor.isDestroyed;
+}
+
+/**
  * 在 `[from, to)` 处插入引用 chip（命令式 API，供 `@` 面板调用）。
  * 返回值表示是否找到了编辑器；区间失效时内部退回当前选区。
  */

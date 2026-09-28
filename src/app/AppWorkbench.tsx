@@ -345,6 +345,7 @@ import {
   rankAtFileHits,
   removeAtTokenFromDraft,
 } from "@/lib/atFileQuery";
+import { applyAtFileToComposer } from "@/lib/composerAtApply";
 import {
   type ComposerAtFileEntry,
 } from "@/components/ComposerAtPanel";
@@ -462,6 +463,9 @@ import {
 } from "@/lib/setupGatePro";
 import { mapProbeToCliInfo } from "@/lib/cliVersionStatus";
 import {
+  composerEditorKind,
+  insertComposerRefAtom,
+  removeComposerQueryRange,
   requestComposerStoredCaret,
   resizeComposerInput,
   serializeDom,
@@ -1038,6 +1042,8 @@ export function AppWorkbench() {
     slashKindFilter,
     setSlashKindFilter,
     liveAt,
+    reportAtQuery,
+    reportSlashQuery,
     setLiveAt,
     liveAtRef,
     atDismissedSigRef,
@@ -5890,9 +5896,19 @@ export function AppWorkbench() {
     setSlashActiveIndex(0);
   }, []);
 
-  /** Stable slash-query setter: skip no-op updates so filter effects don't thrash. */
+  /**
+   * Stable slash-query setter: skip no-op updates so filter effects don't thrash.
+   *
+   * 内置档：`liveSlash` 由控制器的 DOM 轮询维护，这里只同步 `slashQuery`（上游行为）。
+   * Markdown 档：轮询让位，编辑器上报的区间要同时驱动 `liveSlash`（消费方读它取
+   * 落点与过滤词），因此整条交给 `reportSlashQuery`。
+   */
   const onSlashQueryChange = useCallback(
     (q: { start: number; query: string; end: number } | null) => {
+      if (composerEditorKind() === "tiptap") {
+        reportSlashQuery(q);
+        return;
+      }
       setSlashQuery((prev) => {
         if (q == null) return prev == null ? prev : null;
         if (
@@ -5906,7 +5922,7 @@ export function AppWorkbench() {
         return q;
       });
     },
-    [],
+    [reportSlashQuery],
   );
 
   /**
@@ -6505,25 +6521,21 @@ export function AppWorkbench() {
 
   const applyAtFile = useCallback(
     (entry: ComposerAtFileEntry) => {
-      const live = liveAtRef.current;
-      if (live.present) {
-        setDraft((d) => removeAtTokenFromDraft(d, live.start, live.end));
-      }
-      const cleared = { present: false, query: "", start: 0, end: 0 };
-      liveAtRef.current = cleared;
-      setLiveAt(cleared);
-      setAtEntries([]);
-      setAtSoftFail(null);
-      setAttachments((prev) =>
-        mergeAttachments(prev, [
-          {
-            path: entry.path,
-            name: entry.name || entry.path.split(/[/\\]/).pop() || entry.path,
-            isDir: !!entry.isDir,
-          },
-        ]),
-      );
-      requestComposerFocus();
+      // 两条档位分支（内置档进附件条 / Markdown 档插行内引用）在 lib 里，
+      // 这里只注入上下文，避免 AppWorkbench 继续膨胀（AGENTS 规则 7）。
+      applyAtFileToComposer({
+        entry,
+        kind: composerEditorKind(),
+        live: liveAtRef.current,
+        editorEl: () => composerInputRef.current,
+        clearAtState: closeAtMenu,
+        removeAtTokenFromDraft,
+        setDraft,
+        setAttachments,
+        insertRefAtom: insertComposerRefAtom,
+        removeQueryRange: removeComposerQueryRange,
+        focus: requestComposerFocus,
+      });
     },
     [requestComposerFocus],
   );
@@ -12789,6 +12801,7 @@ export function AppWorkbench() {
             onComposerPasteFiles={onComposerPasteFiles}
             onComposerPasteMediaFallback={onComposerPasteMediaFallback}
             onSlashQueryChange={onSlashQueryChange}
+            onAtQueryChange={reportAtQuery}
             openAsidePane={openAsidePane}
             openQueueEdit={queueEdit.openEdit}
             openSession={openSession}

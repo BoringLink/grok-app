@@ -6,6 +6,7 @@
  * workbench shell. Consumers use setDraft/getDraft (no draft value in return).
  */
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -14,6 +15,7 @@ import {
   type SetStateAction,
 } from "react";
 import { detectAtQueryFromEditor } from "@/lib/atFileQuery";
+import { ownsComposerDom } from "@/components/composer";
 import { shouldProbeComposerLiveDom } from "@/lib/composerLiveProbe";
 import {
   detectSlashQueryFromEditor,
@@ -184,6 +186,12 @@ export function useComposerController(initialDraft = "") {
       raf = 0;
       if (!shouldPollTickVisible(document.visibilityState)) return;
       const el = composerInputRef.current;
+      // Markdown 档：`@` / slash 的查询由编辑器按文档位置上报（reportAtQuery /
+      // onSlashQueryChange），DOM 轮询整体让位，避免两套坐标互相覆盖。
+      if (ownsComposerDom(el)) {
+        raf = requestAnimationFrame(tick);
+        return;
+      }
       const sel = window.getSelection();
       const composerActive = !!(
         el &&
@@ -310,6 +318,136 @@ export function useComposerController(initialDraft = "") {
     };
   }, []);
 
+  /**
+   * `@` 查询上报（Markdown 档）：由 ComposerEditor 在文档 / 选区变化时按文档位置
+   * 算出区间后调用。取代内置档的 DOM walk：抑制逻辑（slash / `+` 菜单打开时不
+   * 触发）由消费方的 `composerMenuOpen` 承担，这里只做去重、Escape 抑制比对与
+   * 状态落库。
+   */
+  const reportAtQuery = useCallback(
+    (range: { from: number; to: number; query: string } | null) => {
+      // 失焦 / 窗口隐藏时不保留查询：与内置档的 probeDom 语义一致，否则用 Tab
+      // 移出输入框后 `@` 面板会常驻。
+      const el = composerInputRef.current;
+      const sel = typeof window === "undefined" ? null : window.getSelection();
+      const composerActive = !!(
+        el &&
+        (document.activeElement === el || el.contains(document.activeElement))
+      );
+      const selectionInComposer = !!(
+        el &&
+        sel &&
+        sel.rangeCount > 0 &&
+        el.contains(sel.anchorNode)
+      );
+      if (
+        !shouldProbeComposerLiveDom({
+          visibilityState: document.visibilityState,
+          composerActive,
+          selectionInComposer,
+        })
+      ) {
+        range = null;
+      }
+      let atNext: LiveTokenQuery = {
+        present: false,
+        query: "",
+        start: 0,
+        end: 0,
+      };
+      if (range) {
+        atNext = {
+          present: true,
+          query: range.query,
+          start: range.from,
+          end: range.to,
+        };
+        const sig = `${atNext.start}:${atNext.query}`;
+        if (sig === atDismissedSigRef.current) {
+          atNext = { present: false, query: "", start: 0, end: 0 };
+        } else {
+          atDismissedSigRef.current = null;
+        }
+      } else {
+        atDismissedSigRef.current = null;
+      }
+      const prevAt = liveAtRef.current;
+      if (
+        prevAt.present !== atNext.present ||
+        prevAt.query !== atNext.query ||
+        prevAt.start !== atNext.start ||
+        prevAt.end !== atNext.end
+      ) {
+        liveAtRef.current = atNext;
+        setLiveAt(atNext);
+        if (atNext.present) setAtActiveIndex(0);
+      }
+    },
+    [],
+  );
+
+  /**
+   * slash 查询上报（Markdown 档）：内置档的 DOM 轮询在 TipTap 托管时整体让位，
+   * `liveSlash` / `slashQuery` 改由编辑器上报的区间驱动，去重与 Escape 抑制比对
+   * 规则与轮询版一致。
+   */
+  const reportSlashQuery = useCallback(
+    (range: { start: number; query: string; end: number } | null) => {
+      const el = composerInputRef.current;
+      const sel = typeof window === "undefined" ? null : window.getSelection();
+      const composerActive = !!(
+        el &&
+        (document.activeElement === el || el.contains(document.activeElement))
+      );
+      const selectionInComposer = !!(
+        el &&
+        sel &&
+        sel.rangeCount > 0 &&
+        el.contains(sel.anchorNode)
+      );
+      const live =
+        !!range &&
+        shouldProbeComposerLiveDom({
+          visibilityState: document.visibilityState,
+          composerActive,
+          selectionInComposer,
+        });
+      let next: LiveTokenQuery = live
+        ? { present: true, query: range.query, start: range.start, end: range.end }
+        : { present: false, query: "", start: 0, end: 0 };
+      if (next.present && slashDismissedSigRef.current != null) {
+        const sig = `${next.start}:${next.query}`;
+        if (sig === slashDismissedSigRef.current) {
+          next = { present: false, query: "", start: 0, end: 0 };
+        } else {
+          slashDismissedSigRef.current = null;
+        }
+      } else if (!next.present) {
+        slashDismissedSigRef.current = null;
+      }
+      const prev = liveSlashRef.current;
+      if (
+        prev.present !== next.present ||
+        prev.query !== next.query ||
+        prev.start !== next.start ||
+        prev.end !== next.end
+      ) {
+        liveSlashRef.current = next;
+        setLiveSlash(next);
+        if (next.present) {
+          setSlashQuery({
+            start: next.start,
+            query: next.query,
+            end: next.end,
+          });
+        } else if (!showComposerPlusRef.current) {
+          setSlashQuery((q) => (q == null ? q : null));
+        }
+      }
+    },
+    [],
+  );
+
   return useMemo(
     () => ({
       /** Call-time read; does not subscribe (safe in event handlers / send). */
@@ -377,6 +515,8 @@ export function useComposerController(initialDraft = "") {
       setLiveAt,
       liveAtRef,
       atDismissedSigRef,
+      reportAtQuery,
+      reportSlashQuery,
       atActiveIndex,
       setAtActiveIndex,
       atEntries,
