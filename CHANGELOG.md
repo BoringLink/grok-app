@@ -23,11 +23,15 @@ See `docs/llm-wiki/release.md`.
 - Switching chats no longer keeps the previous chat's goal switch on.
 - Rewinding a running reply stops that chat first. A failed rewind is not sent.
 - Pinned chats stay in pin order, with the workspace name as a divider.
+- Closing the goal chip tells that chat's CLI to run /goal clear.
+- The session progress rail no longer scrolls the transcript while a reply is running.
 
 **中文 · 修复**
 - 切到另一条对话后，不再沿用上一条的目标开关。
 - 回复还在进行时撤回，会先停这一条。撤回失败不会把新内容发出去。
 - 置顶按置顶顺序保留，工作区名只作分隔。
+- 关掉目标芯片时，会让这一条对话的 CLI 执行 /goal clear。
+- 回复进行中，侧边进度条不再把正文滚回上面。
 
 ## [0.2.37] - 2026-09-22
 

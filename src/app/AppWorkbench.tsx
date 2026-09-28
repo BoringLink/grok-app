@@ -172,6 +172,7 @@ import {
   resolveGoalOrchSessionIndicator,
   shouldConfirmClearGoalOrch,
 } from "@/lib/goalOrch";
+import { sessionGoalClear } from "@/lib/goalClear";
 import * as api from "@/lib/api";
 import { queueComposerPreferenceApply } from "@/lib/composerPrefsBarrier";
 import {
@@ -5579,6 +5580,10 @@ export function AppWorkbench() {
     canRewindSession ||
     (canStop(session.state) && !connecting && !editSubmitting && !rewindBusy);
 
+  useEffect(() => {
+    sessionGoalClear.flush(session.sessionId, session.state);
+  }, [session.sessionId, session.state]);
+
   const {
     executeSend,
     send,
@@ -8930,6 +8935,10 @@ export function AppWorkbench() {
           }
           case "goal-clear":
             setGoalMode(false);
+            sessionGoalClear.arm(
+              viewingSessionIdRef.current ?? session.sessionId,
+              session.state,
+            );
             return;
           default:
             return;
