@@ -9381,7 +9381,8 @@ export function AppWorkbench() {
       try {
         if (pick.kind === "official") {
           if (providerActiveSource === "custom" && api.isTauri()) {
-            await api.providersActivate("official");
+            // This chat only. Other providers' running processes stay up.
+            await api.providersActivate("official", null, false);
             await refreshProviderRoute();
           }
           if (!isValidModelId(pick.modelId, availableModels)) return;
@@ -9412,7 +9413,9 @@ export function AppWorkbench() {
             showToast(tr("prov.err.unknownProvider"), 4000);
             return;
           }
-          // Switch request model on the channel when needed (keeps multi-model catalog).
+          // Do not rewrite the provider's shared `model` field. That recycled
+          // every warm process, including chats still running on another provider.
+          // This session gets the catalog id via session/set_model.
           const models =
             provider.models?.length
               ? provider.models
@@ -9425,23 +9428,6 @@ export function AppWorkbench() {
             modelId: pick.modelId,
             models: catalog,
           });
-          if (provider.model.trim() !== pick.modelId.trim()) {
-            await api.providersUpsert({
-              id: provider.id,
-              model: pick.modelId,
-              baseUrl: provider.baseUrl,
-              name: provider.name,
-              apiBackend: provider.apiBackend,
-              models: catalog,
-              efforts: appliedLive.efforts ?? provider.efforts,
-              contextWindow:
-                appliedLive.contextWindow ??
-                provider.contextWindow ??
-                undefined,
-              supportsVision: appliedLive.supportsVision,
-              setAsDefault: false,
-            });
-          }
           if (
             providerActiveSource !== "custom" ||
             providerActiveId !== pick.providerId
@@ -9449,6 +9435,7 @@ export function AppWorkbench() {
             const activated = await api.providersActivate(
               "custom",
               pick.providerId,
+              false,
             );
             // #557: custom routes require independent agent-home GROK_HOME.
             if (activated.switchedToIndependent) {

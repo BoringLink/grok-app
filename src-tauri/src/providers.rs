@@ -1410,6 +1410,55 @@ pub fn custom_provider_id_for_catalog_model(catalog_id: &str) -> Option<String> 
 ///   owning section id so spawn `--model` and later `session/set_model` agree.
 ///   CLI `--model` does not resolve App-only `app_models` ids; ACP set_model can,
 ///   which previously caused turn-1 official / turn-2 custom silent switches.
+/// Model id for `session/set_model` on one chat.
+///
+/// Spawn `--model` stays the provider section id so the process keeps that
+/// route. A catalog id that belongs to the active provider is sent only to
+/// this session, so another chat on a different provider is not retargeted
+/// and the shared `model =` field is left alone.
+pub fn session_set_model_id(composer_model: &str) -> String {
+    let m = composer_model.trim();
+    match active_route() {
+        ActiveRoute::Official => agent_spawn_model_id(m),
+        ActiveRoute::Custom { id } => {
+            let models = list_custom_providers()
+                .ok()
+                .and_then(|list| list.providers.into_iter().find(|p| p.id == id))
+                .map(|p| {
+                    let mut ids = Vec::new();
+                    if !p.model.trim().is_empty() {
+                        ids.push(p.model);
+                    }
+                    ids.extend(p.models.into_iter().map(|entry| entry.id));
+                    ids
+                })
+                .unwrap_or_default();
+            resolve_session_set_model_id(Some(&id), m, &models)
+        }
+    }
+}
+
+/// Pure half of [`session_set_model_id`]. `None` route means official; the
+/// caller passes an already resolved official id.
+pub fn resolve_session_set_model_id(
+    custom_provider_id: Option<&str>,
+    composer_model: &str,
+    same_provider_models: &[String],
+) -> String {
+    let m = composer_model.trim();
+    let Some(id) = custom_provider_id.map(str::trim).filter(|s| !s.is_empty()) else {
+        return if m.is_empty() {
+            OFFICIAL_CATALOG_MODEL.into()
+        } else {
+            m.to_string()
+        };
+    };
+    if !m.is_empty() && m != id && same_provider_models.iter().any(|got| got == m) {
+        return m.to_string();
+    }
+    id.to_string()
+}
+
 pub fn agent_spawn_model_id(composer_model: &str) -> String {
     match active_route() {
         ActiveRoute::Custom { id } => id,
@@ -3071,6 +3120,22 @@ mod tests {
             agent_home: String::new(),
             switched_to_independent: false,
         };
+        assert_eq!(
+            resolve_session_set_model_id(
+                Some("relay"),
+                "deepseek-v4-pro",
+                &["deepseek-v4-flash".into(), "deepseek-v4-pro".into()],
+            ),
+            "deepseek-v4-pro"
+        );
+        assert_eq!(
+            resolve_session_set_model_id(Some("relay"), "grok-4.7", &["deepseek-v4-flash".into()]),
+            "relay"
+        );
+        assert_eq!(
+            resolve_session_set_model_id(None, "grok-4.7", &[]),
+            "grok-4.7"
+        );
         assert!(provider_mutation_needs_agent_reload(true, "other", &active));
         assert!(provider_mutation_needs_agent_reload(
             false, "relay", &active

@@ -61,6 +61,7 @@ pub async fn providers_activate(
     mgr: State<'_, Arc<SessionManager>>,
     source: String,
     provider_id: Option<String>,
+    recycle_agents: Option<bool>,
 ) -> Result<crate::providers::ProvidersListResult, String> {
     let result = tauri::async_runtime::spawn_blocking(move || {
         let result =
@@ -107,8 +108,14 @@ pub async fn providers_activate(
     let mode = store::load_settings_async().await.session_data_mode.clone();
     let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
     let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    // Parked processes keep old GROK_HOME auth/config in memory — kill them.
-    mgr.recycle_all_agents(&app, "provider_route").await;
+    // Settings: drop every warm process so none keeps the old route.
+    // Composer: reload only the live chat. Background and parked processes
+    // on another provider stay up.
+    if recycle_agents.unwrap_or(true) {
+        mgr.recycle_all_agents(&app, "provider_route").await;
+    } else {
+        mgr.soft_respawn_with_reason(&app, "provider_route").await;
+    }
     Ok(result)
 }
 

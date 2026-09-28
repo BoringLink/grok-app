@@ -690,7 +690,7 @@ impl SessionManager {
             return Err("model id empty".into());
         }
         // Store composer preference; agent receives channel-resolved id.
-        let agent_model = crate::providers::agent_spawn_model_id(&model_id);
+        let agent_model = crate::providers::session_set_model_id(&model_id);
         let (acp, sid) = {
             let mut guard = self.inner.lock();
             match guard.as_mut() {
