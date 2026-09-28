@@ -1879,8 +1879,8 @@ export function AppWorkbench() {
     setAutoWakeEnabled,
     workflowsEnabled,
     setWorkflowsEnabled,
-    planEnabled,
-    setPlanEnabled,
+    planEnabled, composerEditor,
+    setPlanEnabled, setComposerEditor,
     todoGateEnabled,
     setTodoGateEnabled,
     todoGateMaxFiresPerPrompt,
@@ -12082,7 +12082,7 @@ export function AppWorkbench() {
         cliInfo={cliInfo}
         closeToTray={closeToTray}
         compactionDetail={compact.compactionDetail}
-        compactionMode={compact.compactionMode}
+        compactionMode={compact.compactionMode} composerEditor={composerEditor}
         confirmArchiveOlderThan={confirmArchiveOlderThan}
         defaultOpenTarget={defaultOpenTarget}
         deleteSessionsConfirm={deleteSessionsConfirm}
@@ -12165,7 +12165,7 @@ export function AppWorkbench() {
         setCliInfo={setCliInfo}
         setCloseToTray={setCloseToTray}
         setCompactionDetail={compact.setCompactionDetail}
-        setCompactionMode={compact.setCompactionMode}
+        setCompactionMode={compact.setCompactionMode} setComposerEditor={setComposerEditor}
         setDefaultOpenTarget={setDefaultOpenTarget}
         setDisableWebSearch={setDisableWebSearch}
         setDisallowedTools={setDisallowedTools}

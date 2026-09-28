@@ -11,6 +11,10 @@ import {
 import { writeOpenTargetStorage } from "@/lib/openEditorHonesty";
 import { DEFAULT_SANDBOX_PROFILE } from "@/lib/sandboxProfile";
 import { DEFAULT_SESSION_DATA_MODE } from "@/lib/sessionDataMode";
+import {
+  DEFAULT_COMPOSER_EDITOR,
+  type ComposerEditorId,
+} from "@/lib/composerEditorPref";
 
 export function useAppSettingsPrefs() {
   const [sessionDataMode, setSessionDataMode] = useState(
@@ -82,6 +86,9 @@ export function useAppSettingsPrefs() {
   notifyPrefsRef.current = { notifyOnTurnDone, notifyOnPermission };
   const [lastSessionId, setLastSessionId] = useState<string | null>(null);
   const [manualCliPath, setManualCliPath] = useState("");
+  const [composerEditor, setComposerEditor] = useState<ComposerEditorId>(
+    DEFAULT_COMPOSER_EDITOR,
+  );
 
   const applySnapshot = useCallback((p: AppSettingsPrefsSnapshot) => {
     setSessionDataMode(p.sessionDataMode);
@@ -137,6 +144,7 @@ export function useAppSettingsPrefs() {
     setNotifyOnPermission(p.notifyOnPermission);
     setLastSessionId(p.lastSessionId);
     setManualCliPath(p.manualCliPath);
+    setComposerEditor(p.composerEditor);
   }, []);
 
   const hydrateFromSettings = useCallback(
@@ -254,6 +262,8 @@ export function useAppSettingsPrefs() {
     setLastSessionId,
     manualCliPath,
     setManualCliPath,
+    composerEditor,
+    setComposerEditor,
     hydrateFromSettings,
   };
 }

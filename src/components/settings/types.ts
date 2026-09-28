@@ -33,6 +33,7 @@ import type {
   SetStateAction,
 } from "react";
 import type { MessageTimeFormat } from "@/lib/messageTimeFormatPref";
+import type { ComposerEditorId } from "@/lib/composerEditorPref";
 import type { ThemeSkinId, WallpaperClip, WallpaperFocus, WallpaperKind, WallpaperRecord } from "@/lib/themeSkin";
 import type { WallpaperFocusApplyResult } from "@/components/WallpaperFocusEditor";
 import type { ComposerPrefsScope, ModelOption, PermissionPolicyId } from "@/lib/grokCatalog";
@@ -80,6 +81,9 @@ export interface SettingsPageProps {
   onThemeSchedule?: (v: ThemeScheduleConfig) => void;
   showMessageTimestamps?: boolean;
   onShowMessageTimestamps?: (v: boolean) => void;
+  /** Composer input editor: `legacy` (built-in, default) | `tiptap` (experimental). */
+  composerEditor?: ComposerEditorId;
+  onComposerEditor?: (v: ComposerEditorId) => void;
   showReplyLength?: boolean;
   onShowReplyLength?: (v: boolean) => void;
   /** When true, sidebar top-left Grok mark follows the active branded provider. */
@@ -373,6 +377,7 @@ export type SettingsViewModel = SettingsPageProps & {
   codeFontScale: CodeFontScale;
   codeLineNumbers: boolean;
   codeWrapDefault: boolean;
+  composerEditor: ComposerEditorId;
   composerDraftStats: boolean;
   composerMinRows: ComposerMinRows;
   composerSendKeyPref: ComposerSendKeyPref;

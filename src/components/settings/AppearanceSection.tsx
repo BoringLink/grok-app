@@ -61,6 +61,7 @@ import type { SessionSearchRankMode } from "@/lib/sessionSearch";
 import { saveConfirmExternalLinksPref } from "@/lib/externalLinkPref";
 import { MESSAGE_ACTIONS_VISIBILITIES } from "@/lib/messageActionsPref";
 import { MESSAGE_TIME_FORMATS } from "@/lib/messageTimeFormatPref";
+import { normalizeComposerEditor } from "@/lib/composerEditorPref";
 import { normalizeHHmm } from "@/lib/notifyQuietHours";
 import { SettingsTabStrip, SettingsLabelWithTip, UiCheck } from "./shared";
 import { SkinPresetsCard } from "./SkinPresetsCard";
@@ -83,6 +84,8 @@ export function AppearanceSection() {
     codeFontScale,
     codeLineNumbers,
     codeWrapDefault,
+    composerEditor = "legacy",
+    onComposerEditor,
     confirmExternalLinks,
     exportLogo,
     exportLogoInputRef,
@@ -783,6 +786,36 @@ export function AppearanceSection() {
 
       {activeTab === "interface" && (
         <div className="settings-appearance-interface">
+          {/* Composer input editor: built-in (upstream) vs experimental Markdown. */}
+          <div className="settings-card" id="settings-anchor-composerEditor">
+            <div
+              className={
+                "settings-row" + rowHighlight("settings-anchor-composerEditor")
+              }
+            >
+              <div className="settings-row__text">
+                <SettingsLabelWithTip
+                  label={t("settings.composerEditor")}
+                  tip={t("settings.composerEditorDesc")}
+                />
+              </div>
+              <Select
+                value={composerEditor}
+                aria-label={t("settings.composerEditor")}
+                onChange={(v) => onComposerEditor?.(normalizeComposerEditor(v))}
+                options={[
+                  {
+                    value: "legacy",
+                    label: t("settings.composerEditor.legacy"),
+                  },
+                  {
+                    value: "tiptap",
+                    label: t("settings.composerEditor.tiptap"),
+                  },
+                ]}
+              />
+            </div>
+          </div>
           {/* Layout: zen / welcome / density / width / sidebar */}
           <div className="settings-card" id="settings-anchor-zenMode">
             {onZenMode ? (
