@@ -1,7 +1,8 @@
 /**
  * @vitest-environment jsdom
  *
- * 回归：文件引用 chip 之后 Shift+Enter 换行，再敲 `1. ` / `- ` 必须**起一个列表**。
+ * 回归：文件引用 chip 之后 Shift+Enter 换行，再敲块标记必须照常生效
+ * （`1. ` / `- ` 起列表，```` ` 起代码块，`> ` / `# ` / `---` 同理）。
  *
  * ProseMirror 的列表输入规则是**锚在段落开头**的（`^\s*([-+*])\s$`），而
  * Shift+Enter 只是一个硬换行（`hardBreak` 叶子节点，在规则眼里是 `￼`），
@@ -13,6 +14,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { Editor } from "@tiptap/react";
+import { TextSelection } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { buildComposerExtensions } from "@/components/composer/tiptap/composerExtensions";
 
@@ -67,7 +69,7 @@ function endOfFirstBlock(ed: Editor): number {
   return 1 + (ed.state.doc.firstChild?.content.size ?? 0);
 }
 
-describe("引用 chip 之后 Shift+Enter 起列表", () => {
+describe("引用 chip 之后 Shift+Enter，块标记照常生效", () => {
   it("`1. ` 起有序列表，数字带进 start", () => {
     // Arrange —— 句中：正文 + 引用 chip + 硬换行，光标在换行之后
     editor = makeEditor();
@@ -188,5 +190,79 @@ describe("引用 chip 之后 Shift+Enter 起列表", () => {
 
     expect(blockTypes(editor)).toEqual(["paragraph"]);
     expect(editor.state.doc.textContent).toBe("看 普通文本");
+  });
+});
+
+describe("换行后的其它块标记", () => {
+  /** 铺「正文 + 引用 chip + 硬换行」，光标落在换行之后。 */
+  function seedAfterBreak(): Editor {
+    const ed = makeEditor();
+    ed.commands.insertContent([
+      { type: "text", text: "看 " },
+      { type: "refToken", attrs: { kind: "file", value: "src/app/main.ts" } },
+      { type: "hardBreak" },
+    ]);
+    ed.commands.setTextSelection(endOfFirstBlock(ed));
+    return ed;
+  }
+
+  it("```` `` 起代码块（不带语言）", () => {
+    editor = seedAfterBreak();
+    typeText(editor.view, "``` ");
+    expect(blockTypes(editor)).toContain("codeBlock");
+    expect(markdownOf(editor)).toContain("```");
+  });
+
+  it("````ts `` 把语言带进代码块", () => {
+    editor = seedAfterBreak();
+    typeText(editor.view, "```ts ");
+    const code = editor.state.doc.child(1);
+    expect(code.type.name).toBe("codeBlock");
+    expect(code.attrs.language).toBe("ts");
+    expect(markdownOf(editor)).toContain("```ts");
+  });
+
+  it("`~~~ ` 同样起代码块", () => {
+    editor = seedAfterBreak();
+    typeText(editor.view, "~~~ ");
+    expect(editor.state.doc.child(1).type.name).toBe("codeBlock");
+  });
+
+  it("`> ` 起引用块", () => {
+    editor = seedAfterBreak();
+    typeText(editor.view, "> ");
+    expect(blockTypes(editor)).toContain("blockquote");
+  });
+
+  it("`## ` 起二级标题", () => {
+    editor = seedAfterBreak();
+    typeText(editor.view, "## ");
+    const heading = editor.state.doc.child(1);
+    expect(heading.type.name).toBe("heading");
+    expect(heading.attrs.level).toBe(2);
+  });
+
+  it("`---` 起分割线，光标落在分割线之后的段落里", () => {
+    editor = seedAfterBreak();
+    typeText(editor.view, "---");
+    expect(blockTypes(editor)).toEqual([
+      "paragraph",
+      "horizontalRule",
+      "paragraph",
+    ]);
+    // 光标必须是真的文本选区、且在分割线**之后**：落在分割线上时下一次按键会把它
+    // 替换掉，等于白敲
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    typeText(editor.view, "继续");
+    const after = editor.state.doc.child(2);
+    expect(after.textContent).toBe("继续");
+  });
+
+  it("换行后先写了字，行中的代码围栏不起代码块", () => {
+    editor = seedAfterBreak();
+    typeText(editor.view, "说明");
+    typeText(editor.view, "``` ");
+    expect(blockTypes(editor)).toEqual(["paragraph"]);
+    expect(editor.state.doc.textContent).toBe("看 说明``` ");
   });
 });

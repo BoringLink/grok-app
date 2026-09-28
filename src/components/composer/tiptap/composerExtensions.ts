@@ -9,6 +9,7 @@
 import { Extension, InputRule } from "@tiptap/react";
 import { findWrapping } from "@tiptap/pm/transform";
 import { TextSelection } from "@tiptap/pm/state";
+import type { Transaction } from "@tiptap/pm/state";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import StarterKit from "@tiptap/starter-kit";
@@ -68,26 +69,27 @@ const ListLineBreak = Extension.create({
 });
 
 /**
- * 硬换行之后直接敲列表标记（`- ` / `1. `）也要起列表。
+ * 硬换行之后直接敲**块标记**也要生效（`- ` / `1. ` / ```` ` / `> ` / `# ` / `---`）。
  *
- * ProseMirror 的列表输入规则锚在**段落开头**（`^\s*([-+*])\s$`），而 Shift+Enter
- * 只插入一个 `hardBreak` 叶子节点（在规则眼里是占位字符 `\uFFFC`），光标仍停在
- * 同一段里——于是「换行后敲标记」永远匹配不上，列表起不来。
+ * 背景：ProseMirror 的块级输入规则都锚在**段落开头**（`^\s*([-+*])\s$`、
+ * `/^```([a-z]+)?[\s\n]$/` …），而 Shift+Enter 只插入一个 `hardBreak` 叶子节点，光标
+ * 仍停在同一段里——于是「换行后敲标记」永远匹配不上。本应用 Enter 被绑成发送，
+ * Shift+Enter 是**唯一**的换行手势，所以「先插文件引用、再换行写清单 / 贴代码块」这类
+ * 常见路径会整个卡住（BOR-73 验收发现）。
  *
- * 本应用 Enter 被绑成发送，Shift+Enter 是**唯一**的换行手势，所以先插文件引用、
- * 再换行写清单这种常见路径会彻底卡住（BOR-73 验收发现）。
- *
- * 处理方式：识别「硬换行 + 行首空白 + 标记」这一串，删掉换行与刚敲下的标记，
- * 在原位裂块，再把新块包成列表——等价于用户在一段新段落里敲下标记。
+ * 做法：不为每种标记重写一套规则，而是**识别**「光标所在行以硬换行开头」这一前提，
+ * 把标记文本连同那个硬换行一起删掉、在原位裂块，再按标记把新段落变成目标块——与用户
+ * 在真段首敲下标记等价。标记正则与 StarterKit 各扩展逐字一致（见下表），两处语义
+ * 因此不会漂移。
  */
 /**
- * 叶子节点在 ProseMirror 的 `textBetween` 里写作 `\uFFFC`（用它反算硬换行的文档
- * 位置：文本块内每个文本字符与每个叶子恰好各占 1 个位置）。
+ * 叶子节点在 ProseMirror 的 `textBetween` 里写作占位符（第 4 个参数）：文本块内每个
+ * 文本字符与每个叶子恰好各占 1 个位置，所以能直接把文本下标换算成文档位置。
  *
  * 注意**不要**用正则后顾去匹配硬换行：输入规则看到的是 tiptap 另拼的一份文本
- * （`getTextContentFromNodes`，硬换行在那里是 `"\n"`），而且后顾语法在旧版
- * WebKit（Linux 的 WebKitGTK）上会让整个正则字面量报错。所以统一在 handler 里拿
- * 这份 `\uFFFC` 文本自己判断「标记是否落在行首」。
+ * （`getTextContentFromNodes`，硬换行在那里是 `"\n"`），而且后顾语法会让旧版 WebKit
+ * （Linux 的 WebKitGTK）的正则字面量直接报错。所以统一在 handler 里拿这份文本自己
+ * 判断「行首是不是硬换行」。
  */
 /** 硬换行在下面这份文本里的占位符。 */
 const DOC_LEAF = "\uFFFC";
@@ -98,60 +100,147 @@ const DOC_LEAF_OTHER = "\uFFFD";
 function leafPlaceholder(node: { type: { name: string } }): string {
   return node.type.name === "hardBreak" ? DOC_LEAF : DOC_LEAF_OTHER;
 }
-function listAfterBreakRules() {
-  const rule = (
-    listName: "bulletList" | "orderedList",
-    marker: string,
-  ): InputRule =>
+
+/**
+ * 把裂块出来的空段落变成目标块。
+ *
+ * 返回 `ok: false` 表示 schema 不允许（本次输入退回纯文本）；`caret` 用于叶子块
+ * （分割线）——那里没有可落光标的位置，必须显式给出新段落里的落点，不能靠
+ * `Selection.near()` 去猜（它会选中分割线本身，下一次按键就把分割线替换掉）。
+ */
+type BlockApplyResult = { ok: boolean; caret?: number };
+type BlockApply = (
+  tr: Transaction,
+  /** 新段落内部（内容起点）的文档位置。 */
+  pos: number,
+  match: RegExpMatchArray,
+) => BlockApplyResult;
+
+/** 包一层：`- ` / `1. ` 起列表，`> ` 起引用块。 */
+function wrapBlock(
+  name: string,
+  attrsOf?: (match: RegExpMatchArray) => Record<string, unknown>,
+): BlockApply {
+  return (tr, pos, match) => {
+    const type = tr.doc.type.schema.nodes[name];
+    if (!type) return { ok: false };
+    const $pos = tr.doc.resolve(pos);
+    const blockRange = $pos.blockRange();
+    const wrapping =
+      blockRange && findWrapping(blockRange, type, attrsOf?.(match) ?? {});
+    if (!blockRange || !wrapping) return { ok: false };
+    tr.wrap(blockRange, wrapping);
+    return { ok: true };
+  };
+}
+
+/** 换块类型：代码块 / 标题。 */
+function setBlockType(
+  name: string,
+  attrsOf?: (match: RegExpMatchArray) => Record<string, unknown>,
+): BlockApply {
+  return (tr, pos, match) => {
+    const type = tr.doc.type.schema.nodes[name];
+    if (!type) return { ok: false };
+    tr.setBlockType(pos, pos, type, attrsOf?.(match) ?? {});
+    return { ok: true };
+  };
+}
+
+/**
+ * 用整块节点替换那个空段落，并在其后补一个空段落：分割线。
+ *
+ * 不调 `replaceWith`：它挂的是 FitStep，拟合发生在 dispatch 时，handler 里读到的
+ * 文档还不是最终形态（看不到它补出来的尾段），光标只能靠猜。这里用
+ * delete + insert 把最终形态直接写死，落点因此是确定的。
+ */
+function replaceBlockWith(name: string): BlockApply {
+  return (tr, pos) => {
+    const type = tr.doc.type.schema.nodes[name];
+    const paragraph = tr.doc.type.schema.nodes.paragraph;
+    if (!type || !paragraph) return { ok: false };
+    const paragraphStart = pos - 1;
+    tr.delete(paragraphStart, paragraphStart + 2);
+    tr.insert(paragraphStart, type.create());
+    // 叶子块之后必须有可键入的文本块（与标准规则留下的形状一致）
+    tr.insert(paragraphStart + 1, paragraph.create());
+    return { ok: true, caret: paragraphStart + 2 };
+  };
+}
+
+/**
+ * 支持的块标记。正则与 StarterKit 各扩展**逐字一致**（含它把 em dash 也当分隔线的
+ * 写法），避免「段首能起、换行后不能起」这类不一致。
+ */
+const BLOCK_MARKERS: readonly { find: RegExp; apply: BlockApply }[] = [
+  { find: /^\s*([-+*])\s$/, apply: wrapBlock("bulletList") },
+  {
+    find: /^\s*(\d+)\.\s$/,
+    apply: wrapBlock("orderedList", (m) => ({ start: Number(m[1]) || 1 })),
+  },
+  {
+    find: /^```([a-z]+)?[\s\n]$/,
+    apply: setBlockType("codeBlock", (m) => ({ language: m[1] ?? null })),
+  },
+  {
+    find: /^~~~([a-z]+)?[\s\n]$/,
+    apply: setBlockType("codeBlock", (m) => ({ language: m[1] ?? null })),
+  },
+  { find: /^\s*>\s$/, apply: wrapBlock("blockquote") },
+  {
+    find: /^(#{1,3})\s$/,
+    apply: setBlockType("heading", (m) => ({ level: m[1].length })),
+  },
+  {
+    find: /^(?:---|—-|___\s|\*\*\*\s)$/,
+    apply: replaceBlockWith("horizontalRule"),
+  },
+];
+
+function blockAfterBreakRules(): InputRule[] {
+  return [
     new InputRule({
-      // 先按「标记 + 一个空白」匹配，是否真的在行首由 handler 判定（见上）
-      find: new RegExp(`${marker}[ \\t]$`),
-      handler: ({ state, range, match }) => {
-        const listType = state.schema.nodes[listName];
-        if (!listType) return null;
-        // 光标之前（不含刚敲下的标记）的这份文本里，每个文本字符与每个叶子都恰好
-        // 占 1 个位置，所以「末尾非空白字符是硬换行」等价于「标记落在行首」。
-        const $from = state.doc.resolve(range.from);
+      // 每个字符都过一遍：标记可能是「标记 + 空格」（`- `），也可能自成一体（`---`）
+      find: /([\s\S])$/,
+      handler: ({ state, match }) => {
+        const typed = match[1] ?? "";
+        const $from = state.selection.$from;
+        if (!$from.parent.isTextblock) return null;
+        // 光标之前（不含刚敲下的那一下）的这份文本里，叶子各占 1 个位置
         const before = $from.parent.textBetween(
           0,
           $from.parentOffset,
           null,
           leafPlaceholder,
         );
-        const trimmed = before.replace(/[ \t]+$/, "");
-        if (!trimmed.endsWith(DOC_LEAF)) return null;
-        const breakPos = $from.start() + trimmed.length - 1;
-        // 再用文档本身确认一次：正文里手打的 U+FFFC 不该被当成换行
+        const breakIndex = before.lastIndexOf(DOC_LEAF);
+        if (breakIndex < 0) return null;
+        const breakPos = $from.start() + breakIndex;
+        // 用文档本身确认一次：正文里手打的 U+FFFC 不该被当成换行
         if (state.doc.nodeAt(breakPos)?.type.name !== "hardBreak") return null;
+        // 当前行（不含换行，含刚敲下的那一下）——与标准规则在段首看到的是同一串
+        const line = before.slice(breakIndex + 1) + typed;
+        const marker = BLOCK_MARKERS.find((m) => m.find.test(line));
+        const markerMatch = marker ? line.match(marker.find) : null;
+        if (!marker || !markerMatch) return null;
 
         const tr = state.tr;
-        tr.delete(breakPos, range.to); // 去掉硬换行与刚敲下的标记
+        tr.delete(breakPos, $from.pos); // 去掉硬换行与标记（刚敲的那一下并未入库）
         tr.split(breakPos); // 在原位裂块：标记所在的那一行成为新段落
         // 裂块后 breakPos 是两个段落之间的边界：+1 是段落的开标记，+2 才是内容起点
-        const $pos = tr.doc.resolve(breakPos + 2);
-        const blockRange = $pos.blockRange();
-        const wrapping =
-          blockRange &&
-          findWrapping(blockRange, listType, {
-            ...(listName === "orderedList"
-              ? { start: Number(match[1]) || 1 }
-              : {}),
-          });
-        if (!blockRange || !wrapping) return null;
-        tr.wrap(blockRange, wrapping);
-        tr.setSelection(
-          TextSelection.near(tr.doc.resolve(tr.mapping.map(breakPos + 2))),
-        );
+        const pos = breakPos + 2;
+        if (!marker.apply(tr, pos, markerMatch)) return null;
+        tr.setSelection(TextSelection.near(tr.doc.resolve(pos)));
         // 不必返回 transaction：tiptap 检查上面这个 tr 的 steps 后统一 dispatch
       },
-    });
-  return [rule("bulletList", "[-+*]"), rule("orderedList", "(\\d+)\\.")];
+    }),
+  ];
 }
 
-const ListAfterBreak = Extension.create({
-  name: "listAfterBreak",
+const BlockAfterBreak = Extension.create({
+  name: "blockAfterBreak",
   addInputRules() {
-    return listAfterBreakRules();
+    return blockAfterBreakRules();
   },
 });
 
@@ -210,7 +299,7 @@ export function buildComposerExtensions(opts: ComposerExtensionOptions = {}) {
     SkillTokenNode,
     RefTokenNode,
     ListLineBreak,
-    ListAfterBreak,
+    BlockAfterBreak,
     CodeBlockLanguageLabel,
     Placeholder.configure({
       placeholder: opts.placeholder ?? "",
