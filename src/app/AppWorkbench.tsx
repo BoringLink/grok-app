@@ -174,7 +174,10 @@ import {
 } from "@/lib/goalOrch";
 import { sessionGoalClear } from "@/lib/goalClear";
 import * as api from "@/lib/api";
-import { queueComposerPreferenceApply } from "@/lib/composerPrefsBarrier";
+import {
+  liveHostAfterProviderSwitch,
+  queueComposerPreferenceApply,
+} from "@/lib/composerPrefsBarrier";
 import {
   isDangerousSandboxProfile,
   normalizeSandboxProfile,
@@ -9179,6 +9182,7 @@ export function AppWorkbench() {
     useState<string>("official");
   const [providerActiveId, setProviderActiveId] = useState<string | null>(null);
   const [modelPickBusy, setModelPickBusy] = useState(false);
+  const modelPickBusyRef = useRef(false);
   const customRouteActive = activeCustomProvider != null;
   const composerProviderInputs = useMemo(
     () =>
@@ -9392,12 +9396,10 @@ export function AppWorkbench() {
 
   const handleModelPick = useCallback(
     async (pick: ComposerModelPick) => {
-      if (modelPickBusy) return;
+      if (modelPickBusyRef.current) return;
+      modelPickBusyRef.current = true;
       setModelPickBusy(true);
       try {
-        // Remember provider on this chat only. Do not activate the global route:
-        // that rewrites `[models].default` and the next connect of every other
-        // chat would follow it.
         const providerId =
           pick.kind === "official" ? "official" : pick.providerId;
         let nextEfforts = officialEffortCatalog;
@@ -9445,23 +9447,44 @@ export function AppWorkbench() {
             effort: clamped,
           };
         }
-        void api
-          .composerPrefsSet({
-            projectId: activeProject?.id ?? null,
-            sessionId: session.sessionId ?? null,
-            modelId: pick.modelId,
-            effort: clamped,
-            providerId,
-          })
-          .catch((e) => showToast(String(e), 4000));
+        const providerChanged =
+          (providerId === "official") !== (providerActiveSource === "official") ||
+          (providerId !== "official" && providerActiveId !== providerId);
+        const sid = session.sessionId;
+        const apply = queueComposerPreferenceApply(
+          effortApplyRef.current,
+          async () => {
+            await api.composerPrefsSet({
+              projectId: activeProject?.id ?? null,
+              sessionId: sid,
+              modelId: pick.modelId,
+              effort: clamped,
+              providerId,
+            });
+            const next = liveHostAfterProviderSwitch(
+              liveHostRef.current,
+              sid,
+              providerChanged,
+            );
+            if (!next) return;
+            liveHostRef.current = next;
+            setLiveHost(next);
+            setSession((prev) =>
+              prev.sessionId === sid ? { ...prev, state: next.state } : prev,
+            );
+          },
+          (error) => showToast(String(error), 4000),
+        );
+        effortApplyRef.current = apply;
+        await apply;
       } catch (e) {
         showToast(String(e), 4000);
       } finally {
+        modelPickBusyRef.current = false;
         setModelPickBusy(false);
       }
     },
     [
-      modelPickBusy,
       availableModels,
       customProviders,
       activeProject?.id,
@@ -9469,6 +9492,8 @@ export function AppWorkbench() {
       effort,
       channelEffortOptions,
       officialEffortCatalog,
+      providerActiveSource,
+      providerActiveId,
       sessionProviderChip,
       showToast,
       tr,
@@ -12744,7 +12769,7 @@ export function AppWorkbench() {
             currentModelWindow={currentModelWindow}
             customRouteActive={customRouteActive}
             cycleAttachedChatScope={cycleAttachedChatScope}
-            effectiveCanSend={effectiveCanSend}
+            effectiveCanSend={effectiveCanSend && !modelPickBusy}
             effectiveCanStop={effectiveCanStop}
             effort={effort}
             formatPermCountdown={formatPermCountdown}

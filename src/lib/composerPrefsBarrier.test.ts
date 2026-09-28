@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { queueComposerPreferenceApply } from "./composerPrefsBarrier";
+import {
+  liveHostAfterProviderSwitch,
+  queueComposerPreferenceApply,
+} from "./composerPrefsBarrier";
 
 describe("composer preference apply barrier", () => {
   it("holds the next send until the effort change is applied", async () => {
@@ -36,5 +39,29 @@ describe("composer preference apply barrier", () => {
     await send;
     expect(sent).toBe(true);
     expect(applied).toEqual(["high", "xhigh"]);
+  });
+
+  it("drops a ready live host only when this chat switched provider", () => {
+    const live = { sessionId: "s1", state: "ready", modelId: "grok-4.7" };
+    expect(liveHostAfterProviderSwitch(live, "s1", true)).toEqual({
+      sessionId: "s1",
+      state: "disconnected",
+      modelId: "grok-4.7",
+    });
+    expect(liveHostAfterProviderSwitch(live, "s1", false)).toBeNull();
+    expect(
+      liveHostAfterProviderSwitch(
+        { sessionId: "s1", state: "streaming" },
+        "s1",
+        true,
+      ),
+    ).toBeNull();
+    expect(
+      liveHostAfterProviderSwitch(
+        { sessionId: "other", state: "ready" },
+        "s1",
+        true,
+      ),
+    ).toBeNull();
   });
 });
