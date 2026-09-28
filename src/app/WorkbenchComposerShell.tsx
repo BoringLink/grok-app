@@ -24,6 +24,7 @@ import { chatHasUpdate, loadRecentAttachIds, lookupChatStatus, lookupChatTitle }
 import { type PermissionPolicyId } from "@/lib/grokCatalog";
 import { removeRecentPrompt } from "@/lib/recentPromptHistory";
 import { queuePreviewText, shouldEnqueueSend } from "@/lib/sendQueue";
+import { sessionGoalClear } from "@/lib/goalClear";
 import { canType } from "@/lib/session";
 import { resolveVoiceMicChrome, voiceMicLabelMessageKey } from "@/lib/voiceDictation";
 import { createPortal } from "react-dom";
@@ -696,7 +697,10 @@ export function WorkbenchComposerShell(p: WorkbenchComposerShellProps) {
                       }}
                       onMode={(v) => {
                         setMode(v);
-                        if (v === "plan") setGoalMode(false);
+                        if (v === "plan") {
+                          setGoalMode(false);
+                          sessionGoalClear.arm(session.sessionId, session.state);
+                        }
                         void api
                           .composerPrefsSet({
                             projectId: activeProject?.id ?? null,
@@ -714,7 +718,13 @@ export function WorkbenchComposerShell(p: WorkbenchComposerShellProps) {
                         <button
                           type="button"
                           className="chip chip--goal"
-                          onClick={() => setGoalMode(false)}
+                          onClick={() => {
+                            setGoalMode(false);
+                            sessionGoalClear.arm(
+                              session.sessionId,
+                              session.state,
+                            );
+                          }}
                           aria-label={tr("composer.goalClear")}
                         >
                           <IconImagine size={14} />

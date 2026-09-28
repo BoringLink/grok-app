@@ -1,3 +1,19 @@
+use crate::session_manager::control::ModelSwitch;
+use tauri::Emitter;
+
+/// 模型切换若因「本轮进行中」而排队，向 UI 广播待生效提示。
+///
+/// 管理器不持有 `AppHandle`（见 `SessionManager::set_model` 的返回值），事件由
+/// 命令层发；轮末 `flush_pending_soft_respawn` 会发 `pending: false` 收尾。
+fn emit_model_switch_pending_if_queued(app: &tauri::AppHandle, outcome: ModelSwitch) {
+    if let ModelSwitch::Queued(session_id) = outcome {
+        let _ = app.emit(
+            "session://model_switch_pending",
+            serde_json::json!({ "sessionId": session_id, "pending": true }),
+        );
+    }
+}
+
 #[tauri::command]
 pub async fn settings_get() -> Result<AppSettings, String> {
     Ok(store::load_settings_async().await)
@@ -384,10 +400,9 @@ pub async fn composer_prefs_set(
         }
     }
     if let Some(mid) = model_id {
-        // No session id (draft chat) means "no target" — `set_model` is a no-op
-        // rather than guessing the live slot.
-        if let Err(e) = mgr.set_model(&app, mid, session_id.as_deref()).await {
-            tracing::warn!("composer_prefs_set set_model soft-fail: {e}");
+        match mgr.set_model(mid, session_id.as_deref()).await {
+            Ok(outcome) => emit_model_switch_pending_if_queued(&app, outcome),
+            Err(e) => tracing::warn!("composer_prefs_set set_model soft-fail: {e}"),
         }
     }
     if let Some(eff) = effort {
@@ -452,8 +467,9 @@ pub async fn session_set_model(
         None,
         None,
     )?;
-    if let Err(e) = mgr.set_model(&app, model_id, session_id.as_deref()).await {
-        tracing::warn!("session_set_model soft-fail: {e}");
+    match mgr.set_model(model_id, session_id.as_deref()).await {
+        Ok(outcome) => emit_model_switch_pending_if_queued(&app, outcome),
+        Err(e) => tracing::warn!("session_set_model soft-fail: {e}"),
     }
     Ok(prefs)
 }

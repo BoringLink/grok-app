@@ -23,7 +23,7 @@ pub async fn providers_cc_switch_import(
     .await
     .map_err(|e| e.to_string())??;
     if result.imported > 0 {
-        mgr.recycle_agents_for_route_change(&app, "provider_route").await;
+        mgr.recycle_all_agents(&app, "provider_route").await;
     }
     Ok(result)
 }
@@ -53,15 +53,15 @@ pub async fn providers_list() -> Result<crate::providers::ProvidersListResult, S
 
 /// Activate official Grok Build or a custom provider; returns updated list.
 ///
-/// Recycles idle warm agents so the next send spawns with rebound auth /
-/// config (no full app restart). Busy sessions keep their per-session process
-/// and switch routes after the current turn (BOR-50).
+/// Recycles warm agents so the next send spawns with rebound auth / config
+/// (no full app restart).
 #[tauri::command]
 pub async fn providers_activate(
     app: tauri::AppHandle,
     mgr: State<'_, Arc<SessionManager>>,
     source: String,
     provider_id: Option<String>,
+    recycle_agents: Option<bool>,
 ) -> Result<crate::providers::ProvidersListResult, String> {
     let result = tauri::async_runtime::spawn_blocking(move || {
         let result =
@@ -108,8 +108,14 @@ pub async fn providers_activate(
     let mode = store::load_settings_async().await.session_data_mode.clone();
     let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
     let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    // Parked processes keep old GROK_HOME auth/config in memory — kill them.
-    mgr.recycle_agents_for_route_change(&app, "provider_route").await;
+    // Settings: drop every warm process so none keeps the old route.
+    // Composer: reload only the live chat. Background and parked processes
+    // on another provider stay up.
+    if recycle_agents.unwrap_or(true) {
+        mgr.recycle_all_agents(&app, "provider_route").await;
+    } else {
+        mgr.soft_respawn_with_reason(&app, "provider_route").await;
+    }
     Ok(result)
 }
 
@@ -222,7 +228,7 @@ pub async fn providers_upsert(
         &mutated_id,
         &result,
     ) {
-        mgr.recycle_agents_for_route_change(&app, "provider_route").await;
+        mgr.recycle_all_agents(&app, "provider_route").await;
     }
     Ok(result)
 }
@@ -243,7 +249,7 @@ pub async fn providers_remove(
     let mode = store::load_settings_async().await.session_data_mode.clone();
     let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
     let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    mgr.recycle_agents_for_route_change(&app, "provider_route").await;
+    mgr.recycle_all_agents(&app, "provider_route").await;
     Ok(result)
 }
 
@@ -288,7 +294,7 @@ pub async fn providers_set_default(
     let mode = store::load_settings_async().await.session_data_mode.clone();
     let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
     let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    mgr.recycle_agents_for_route_change(&app, "provider_route").await;
+    mgr.recycle_all_agents(&app, "provider_route").await;
     Ok(result)
 }
 
@@ -369,7 +375,7 @@ pub async fn models_aux_set(
     let result = tauri::async_runtime::spawn_blocking(move || crate::models_aux::set_slots(input))
         .await
         .map_err(|e| e.to_string())??;
-    mgr.recycle_agents_for_route_change(&app, "models_aux").await;
+    mgr.recycle_all_agents(&app, "models_aux").await;
     Ok(result)
 }
 
@@ -381,7 +387,7 @@ pub async fn models_aux_apply_save_grok(
     let result = tauri::async_runtime::spawn_blocking(crate::models_aux::apply_save_grok)
         .await
         .map_err(|e| e.to_string())??;
-    mgr.recycle_agents_for_route_change(&app, "models_aux").await;
+    mgr.recycle_all_agents(&app, "models_aux").await;
     Ok(result)
 }
 
@@ -393,7 +399,7 @@ pub async fn models_aux_reset_defaults(
     let result = tauri::async_runtime::spawn_blocking(crate::models_aux::reset_defaults)
         .await
         .map_err(|e| e.to_string())??;
-    mgr.recycle_agents_for_route_change(&app, "models_aux").await;
+    mgr.recycle_all_agents(&app, "models_aux").await;
     Ok(result)
 }
 

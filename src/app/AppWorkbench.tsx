@@ -11,6 +11,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useThemeShell } from "@/providers/ThemeShellContext";
+import { useSshWatch } from "@/providers/SshWatchProvider";
 import { usePetCompanion } from "@/hooks/usePetCompanion";
 import { useFloatingMenu } from "@/lib/floatingMenu";
 import { restoreSessionGate } from "@/lib/sessionGateRestore";
@@ -101,6 +102,7 @@ import {
   applyTurnError,
   applyTurnMarker,
   canSend,
+  canStop,
   canType,
   isSessionLiveStreaming,
   presentErrorBanner,
@@ -170,6 +172,7 @@ import {
   resolveGoalOrchSessionIndicator,
   shouldConfirmClearGoalOrch,
 } from "@/lib/goalOrch";
+import { sessionGoalClear } from "@/lib/goalClear";
 import * as api from "@/lib/api";
 import { ComposerPrefsFreshness } from "@/lib/composerPrefsFreshness";
 import { writeComposerPrefs } from "@/lib/composerPrefsWrite";
@@ -405,6 +408,7 @@ import {
 } from "@/lib/composerProjectDraft";
 import {
   loadComposerSessionDraft,
+  restoredComposerGoalMode,
   saveComposerSessionDraft,
 } from "@/lib/composerSessionDraft";
 import {
@@ -487,6 +491,7 @@ import {
   canRestoreCodeOnResume,
 } from "@/lib/sessionResumeRestore";
 import {
+  hideSshProjectInLocalTree,
   isProjectFolderMissing,
   isProjectWarmable,
 } from "@/lib/projectPath";
@@ -1139,6 +1144,7 @@ export function AppWorkbench() {
   projectsRef.current = projects;
   const projectSpaces = useProjectSpaces();
   const visibleProjects = projectSpaces.visibleProjects(projects);
+  const { watchAliases } = useSshWatch();
   const {
     sessions,
     setSessions,
@@ -1943,6 +1949,10 @@ export function AppWorkbench() {
     voiceDictationAutoSendRef,
     setDraft,
     sessionState: session.state,
+    dictationTarget: {
+      sessionId: viewingSessionIdRef.current ?? session.sessionId,
+      projectKey: projectDraftKey(activeProject?.id ?? null),
+    },
     refreshSessions,
     sttEngine,
     sttCustomBaseUrl,
@@ -3268,15 +3278,13 @@ export function AppWorkbench() {
         setAttachments(saved.attachments ?? []);
         setChatAttachments(saved.chatAttachments ?? []);
         setQuotes(saved.quotes ?? []);
-        if (typeof saved.goalMode === "boolean") {
-          setGoalMode(saved.goalMode);
-        }
       } else {
         setDraft("");
         setAttachments([]);
         setChatAttachments([]);
         setQuotes([]);
       }
+      setGoalMode(restoredComposerGoalMode(saved));
       requestAnimationFrame(() => {
         suppressProjectDraftPersistRef.current = false;
       });
@@ -3510,15 +3518,13 @@ export function AppWorkbench() {
         setAttachments(saved.attachments ?? []);
         setChatAttachments(saved.chatAttachments ?? []);
         setQuotes(saved.quotes ?? []);
-        if (typeof saved.goalMode === "boolean") {
-          setGoalMode(saved.goalMode);
-        }
       } else {
         setDraft("");
         setAttachments([]);
         setChatAttachments([]);
         setQuotes([]);
       }
+      setGoalMode(restoredComposerGoalMode(saved));
       // Allow debounced persist again after React commits the load.
       requestAnimationFrame(() => {
         suppressProjectDraftPersistRef.current = false;
@@ -3804,11 +3810,24 @@ export function AppWorkbench() {
       navSessionIds({
         sessions,
         projects,
+        // Mirror the tree's project set — sessions of space-filtered or
+        // SSH-watched projects are not rendered, so j/k must skip them too.
+        visibleProjects: visibleProjects.filter(
+          (p) => !hideSshProjectInLocalTree(p, watchAliases),
+        ),
         projectsOpen,
         historyOpen,
         expandedProjects,
       }),
-    [projectsOpen, projects, expandedProjects, sessions, historyOpen],
+    [
+      projectsOpen,
+      projects,
+      visibleProjects,
+      watchAliases,
+      expandedProjects,
+      sessions,
+      historyOpen,
+    ],
   );
   sidebarNavIdsRef.current = sidebarNavSessionIds;
   sidebarNavCurrentIdRef.current =
@@ -5579,12 +5598,19 @@ export function AppWorkbench() {
     session.state !== "streaming" &&
     session.state !== "awaiting_permission";
 
-  /** Idle-ish: allow fork / rewind from transcript (not mid-turn). */
+  /** Idle gate for fork / duplicate. Rewind itself is also allowed mid-turn. */
   const canRewindSession =
     canSend(session.state) &&
     !connecting &&
     !editSubmitting &&
     !rewindBusy;
+  const canRewindNow =
+    canRewindSession ||
+    (canStop(session.state) && !connecting && !editSubmitting && !rewindBusy);
+
+  useEffect(() => {
+    sessionGoalClear.flush(session.sessionId, session.state);
+  }, [session.sessionId, session.state]);
 
   const {
     executeSend,
@@ -8364,7 +8390,7 @@ export function AppWorkbench() {
         showToast(msg);
         return;
       }
-      if (!canRewindSession) {
+      if (!canRewindNow) {
         const msg = tr("session.rewindBusy");
         setRewindError(msg);
         showToast(msg);
@@ -8431,7 +8457,7 @@ export function AppWorkbench() {
     },
     // ensureConnected / refreshSessions via closure
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [applyRewindComposerRestore, captureRewindComposerRestore, canRewindSession, session.sessionId, session.state, showToast, tr],
+    [applyRewindComposerRestore, captureRewindComposerRestore, canRewindNow, session.sessionId, session.state, showToast, tr],
   );
 
   const runRewindDropLastUser = useCallback(
@@ -8442,7 +8468,7 @@ export function AppWorkbench() {
         showToast(msg);
         return;
       }
-      if (!canRewindSession) {
+      if (!canRewindNow) {
         const msg = tr("session.rewindBusy");
         setRewindError(msg);
         showToast(msg);
@@ -8489,7 +8515,7 @@ export function AppWorkbench() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [applyRewindComposerRestore, captureRewindComposerRestore, canRewindSession, session.sessionId, session.state, showToast, tr],
+    [applyRewindComposerRestore, captureRewindComposerRestore, canRewindNow, session.sessionId, session.state, showToast, tr],
   );
 
   const confirmRewindToPrompt = useCallback(
@@ -8516,7 +8542,7 @@ export function AppWorkbench() {
         showToast(tr("error.needTauri"));
         return;
       }
-      if (!canRewindSession) {
+      if (!canRewindNow) {
         showToast(tr("session.rewindBusy"));
         return;
       }
@@ -8554,7 +8580,7 @@ export function AppWorkbench() {
         showToast(tr("session.rewindFailed") + ": " + String(e), 4500);
       }
     },
-    [canRewindSession, showToast, tr],
+    [canRewindNow, showToast, tr],
   );
 
   const onRewindToUserMessage = useCallback(
@@ -8564,7 +8590,7 @@ export function AppWorkbench() {
         showToast(tr("session.rewindFailed"));
         return;
       }
-      if (!canRewindSession) {
+      if (!canRewindNow) {
         showToast(tr("session.rewindBusy"));
         return;
       }
@@ -8591,7 +8617,7 @@ export function AppWorkbench() {
       });
     },
     [
-      canRewindSession,
+      canRewindNow,
       confirmRewindToPrompt,
       messages,
       session.sessionId,
@@ -8937,6 +8963,10 @@ export function AppWorkbench() {
           }
           case "goal-clear":
             setGoalMode(false);
+            sessionGoalClear.arm(
+              viewingSessionIdRef.current ?? session.sessionId,
+              session.state,
+            );
             return;
           default:
             return;
@@ -9410,7 +9440,8 @@ export function AppWorkbench() {
       try {
         if (pick.kind === "official") {
           if (providerActiveSource === "custom" && api.isTauri()) {
-            await api.providersActivate("official");
+            // This chat only. Other providers' running processes stay up.
+            await api.providersActivate("official", null, false);
             await refreshProviderRoute();
           }
           if (!isValidModelId(pick.modelId, availableModels)) return;
@@ -9438,13 +9469,20 @@ export function AppWorkbench() {
             showToast(tr("prov.err.unknownProvider"), 4000);
             return;
           }
-          // Per-session model only: the picker selection is stored on the
-          // session (composerPrefsSet) and mapped to the model's own
-          // `[model.<id>]` section at spawn. Never rewrite the channel's global
-          // `model =` here — that would leak one chat's pick into every chat.
+          // Do not rewrite the provider's shared `model` field. That recycled
+          // every warm process, including chats still running on another provider.
+          // This session gets the catalog id via session/set_model.
+          const models =
+            provider.models?.length
+              ? provider.models
+              : [{ id: provider.model, name: provider.model }];
+          const catalog = models.some((m) => m.id === pick.modelId)
+            ? models
+            : [...models, { id: pick.modelId, name: pick.modelId }];
           const appliedLive = materializeActiveModelChannel({
             provider,
             modelId: pick.modelId,
+            models: catalog,
           });
           if (
             providerActiveSource !== "custom" ||
@@ -9453,6 +9491,7 @@ export function AppWorkbench() {
             const activated = await api.providersActivate(
               "custom",
               pick.providerId,
+              false,
             );
             // #557: custom routes require independent agent-home GROK_HOME.
             if (activated.switchedToIndependent) {
@@ -11340,6 +11379,8 @@ export function AppWorkbench() {
       // May still be a draft id; ensureConnected materializes it later.
       let sendTargetId = session.sessionId;
       let cacheKey = sendTargetId ?? "__draft__";
+      const priorKey = cacheKey;
+      const priorMessages = messagesRef.current.slice();
       const nowIso = new Date().toISOString();
       const nextModelId = opts?.modelId?.trim() || "";
       const switchModel =
@@ -11452,8 +11493,27 @@ export function AppWorkbench() {
           try {
             await api.sessionRewindDropLastUser(sessionId);
           } catch (e) {
-            console.warn("session rewind before edit failed", e);
-            // Continue: UI already replaced the turn; resend still proceeds.
+            // The bubble was already replaced. A failed rewind must not send,
+            // or the agent answers the prompt that is no longer on screen.
+            messagesBySessionRef.current.set(priorKey, priorMessages);
+            messagesBySessionRef.current.set(sessionId, priorMessages);
+            if (
+              viewingSessionIdRef.current === sessionId ||
+              viewingSessionIdRef.current === priorKey ||
+              viewingSessionIdRef.current == null
+            ) {
+              setMessages(priorMessages);
+            }
+            setSession((prev) =>
+              prev.state === "streaming"
+                ? { ...prev, state: prev.sessionId ? "ready" : prev.state }
+                : prev,
+            );
+            showToast(
+              tr("session.rewindFailed") + ": " + String(e),
+              4500,
+            );
+            return;
           }
         }
 
@@ -12623,7 +12683,7 @@ export function AppWorkbench() {
             availableModels={availableModels}
             beginEditLastUser={beginEditLastUser}
             canEditLastUser={canEditLastUser}
-            canRewindSession={canRewindSession}
+            canRewindSession={canRewindNow}
             cancelEditUser={cancelEditUser}
             chatFindFocusKey={chatFindFocusKey}
             composerFloatPad={composerFloatPad}
@@ -13476,6 +13536,7 @@ export function AppWorkbench() {
             archiveSession={archiveSession}
             bulkMoveMenuItems={bulkMoveMenuItems}
             busyIds={busyIds}
+            canRewindNow={canRewindNow}
             canRewindSession={canRewindSession}
             clearSessionPluginDirs={clearSessionPluginDirs}
             composerCtxItems={composerCtxItems}

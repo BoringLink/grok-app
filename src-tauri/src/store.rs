@@ -1914,13 +1914,16 @@ pub fn set_project_sandbox_profile(id: &str, profile: Option<String>) -> Result<
     Ok(clone)
 }
 
-/// Pinned first, then newest `updated_at` (mirrors project pin sort).
+/// Pinned chats keep the order they were pinned (relative file order).
+/// A new pin stays where `set_session_pinned` left it, after older pins.
+/// Unpinned chats are newest `updated_at` first. Pin does not use `updated_at`.
 pub fn sort_sessions_by_pin_then_updated(list: &mut [SessionMeta]) {
-    list.sort_by(|a, b| match (b.pinned, a.pinned) {
-        (true, false) => std::cmp::Ordering::Greater,
-        (false, true) => std::cmp::Ordering::Less,
-        _ => b.updated_at.cmp(&a.updated_at),
-    });
+    let pinned: Vec<SessionMeta> = list.iter().filter(|s| s.pinned).cloned().collect();
+    let mut unpinned: Vec<SessionMeta> = list.iter().filter(|s| !s.pinned).cloned().collect();
+    unpinned.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
+    let mut ordered = pinned;
+    ordered.extend(unpinned);
+    list.clone_from_slice(&ordered);
 }
 
 pub fn load_sessions_index() -> Vec<SessionMeta> {
@@ -2121,9 +2124,36 @@ pub fn set_session_archived(id: &str, archived: bool) -> Result<SessionMeta, Str
 }
 
 pub fn set_session_pinned(id: &str, pinned: bool) -> Result<SessionMeta, String> {
-    update_session_row(id, move |s| {
-        s.pinned = pinned;
+    let id = id.to_string();
+    update_sessions_index(move |list| {
+        let idx = list
+            .iter()
+            .position(|s| s.id == id)
+            .ok_or_else(|| "session not found".to_string())?;
+        list[idx].pinned = pinned;
         // Do not bump updated_at — pin is organizational (same as project pin).
+        // A new pin appends after pins already in the list so activity cannot
+        // move it, and it does not knock an older pin off.
+        if pinned {
+            let row = list.remove(idx);
+            let at = list.iter().position(|s| !s.pinned).unwrap_or(list.len());
+            list.insert(at, row);
+        }
+        let meta = list
+            .iter()
+            .find(|s| s.id == id)
+            .cloned()
+            .ok_or_else(|| "session not found".to_string())?;
+        Ok(meta)
+    })
+}
+
+/// Drop the CLI session link after a rewind that removed every user prompt.
+/// The next send starts a new agent session. Does not bump `updated_at`.
+pub fn clear_session_agent_link(id: &str) -> Result<SessionMeta, String> {
+    update_session_row(id, |s| {
+        s.agent_session_id = None;
+        s.fork_agent_session = false;
         Ok(s.clone())
     })
 }
@@ -3155,6 +3185,12 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
     let (g_model, g_effort, g_mode, g_policy) = global_prefs(&settings);
 
     let sess = session_id.and_then(|id| load_sessions_index().into_iter().find(|s| s.id == id));
+    // A chat that already chose a model keeps it across restart, whatever the
+    // memory scope says. Chats that never chose one still follow the scope.
+    let session_model = sess
+        .as_ref()
+        .and_then(|s| s.model_id.clone())
+        .filter(|x| !x.trim().is_empty());
     let proj = sess
         .as_ref()
         .and_then(|s| s.project_id.as_deref())
@@ -3269,6 +3305,9 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
             }
         }
     };
+    if let Some(m) = session_model {
+        prefs.model_id = m;
+    }
     prefs.effort = clamp_effort_for_model(&prefs.model_id, &prefs.effort);
     prefs
 }
@@ -3354,6 +3393,18 @@ pub fn save_composer_prefs(
     let settings = load_settings();
     let scope = ComposerPrefsScope::parse(&settings.composer_prefs_scope);
 
+    // Model and effort are remembered per chat. Under the global / project
+    // scope they must not land in settings, or one chat's pick rewrites every
+    // other chat. `settings.model_id` only seeds a chat that never chose.
+    // Session scope already writes the row further down.
+    let model_id = if matches!(scope, ComposerPrefsScope::Session) {
+        model_id
+    } else {
+        match model_id {
+            Some(v) => save_model_on_session(session_id, v)?,
+            None => None,
+        }
+    };
     // Effort is remembered per chat (see `resolve_composer_prefs`). Under the
     // global / project scope it must not land in `settings.effort`, or raising
     // effort in one chat rewrites every other chat that never chose its own.
@@ -4863,7 +4914,7 @@ mod tests {
         let ids: Vec<&str> = list.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(
             ids,
-            vec!["pinned-new", "pinned-old", "unpinned-new", "unpinned-mid"]
+            vec!["pinned-old", "pinned-new", "unpinned-new", "unpinned-mid"]
         );
     }
 
@@ -4985,6 +5036,58 @@ mod tests {
         let m: SessionMeta = serde_json::from_str(raw).expect("deserialize legacy session");
         assert!(!m.pinned);
         assert!(!m.archived);
+    }
+
+    #[test]
+    fn model_stays_per_session_under_global_scope() {
+        let _g = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-model-scope-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("tmp home");
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        let _ = ensure_app_dirs();
+
+        let a = create_session(None, Some("a".into()), false).expect("create a");
+        let b = create_session(None, Some("b".into()), false).expect("create b");
+        save_composer_prefs(
+            None,
+            Some(&a.id),
+            Some("deepseek-v4-flash".into()),
+            None,
+            None,
+            None,
+        )
+        .expect("a model");
+        save_composer_prefs(None, Some(&b.id), Some("grok-4.7".into()), None, None, None)
+            .expect("b model");
+
+        assert_eq!(
+            resolve_composer_prefs(None, Some(&a.id)).model_id,
+            "deepseek-v4-flash"
+        );
+        assert_eq!(
+            resolve_composer_prefs(None, Some(&b.id)).model_id,
+            "grok-4.7"
+        );
+        // Neither pick rewrote the seed used by a chat that never chose.
+        assert_eq!(load_settings().model_id.as_deref(), Some("grok-4.7"));
+        let fresh = create_session(None, Some("fresh".into()), false).expect("fresh");
+        assert_eq!(
+            resolve_composer_prefs(None, Some(&fresh.id)).model_id,
+            "grok-4.7"
+        );
+
+        let _ = delete_session(&a.id);
+        let _ = delete_session(&b.id);
+        let _ = delete_session(&fresh.id);
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
