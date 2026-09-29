@@ -1,5 +1,5 @@
 /**
- * BOR-56 回归护栏：输入框的 Markdown 渲染必须与聊天消息（`.chat-md`）对齐。
+ * 回归护栏：输入框的 Markdown 渲染必须与聊天消息（`.chat-md`）对齐。
  *
  * 修掉的两个既有缺陷：
  * 1. Tailwind preflight（`node_modules/tailwindcss/preflight.css` 的
@@ -30,7 +30,7 @@ function ruleBody(css: string, pattern: RegExp): string | undefined {
   return css.match(pattern)?.[1];
 }
 
-describe("BOR-56 composer markdown alignment", () => {
+describe("composer markdown alignment", () => {
   it("只对内置档剥掉落进来的 rich HTML，Markdown 档不受影响", () => {
     // Arrange / Act —— 内置档仍是自研 contenteditable，落进来的任意 HTML 必须剥掉
     // 视觉样式（上游行为）；Markdown 档由 ProseMirror schema 约束，不需要这条防御，

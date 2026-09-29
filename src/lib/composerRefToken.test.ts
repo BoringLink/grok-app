@@ -1,5 +1,5 @@
 /**
- * BOR-53：内联引用 token 的语法约束。
+ * 内联引用 token 的语法约束。
  *
  * 这些不变量决定了 draft 能否无损往返：只要转义/解析不对称，引用就会在下次
  * 加载时退化成乱码文本，而那是静默的数据损坏。
@@ -147,9 +147,9 @@ describe("ref agent form and label", () => {
   });
 });
 
-// ── BOR-57：URL 自动识别 ───────────────────────────────────────────────────
+// ── URL 自动识别 ───────────────────────────────────────────────────
 
-describe("url scheme gate (BOR-57)", () => {
+describe("url scheme gate", () => {
   it("accepts only absolute http(s)", () => {
     // Arrange / Act / Assert
     expect(isExternalHttpUrl("https://example.com/a")).toBe(true);
@@ -177,7 +177,7 @@ describe("url scheme gate (BOR-57)", () => {
   });
 });
 
-describe("stripTrailingUrlPunctuation (BOR-57)", () => {
+describe("stripTrailingUrlPunctuation", () => {
   it("drops sentence punctuation in both scripts", () => {
     // Arrange / Act / Assert
     expect(stripTrailingUrlPunctuation("https://x.y/z.")).toBe("https://x.y/z");
@@ -209,7 +209,7 @@ describe("stripTrailingUrlPunctuation (BOR-57)", () => {
   });
 });
 
-describe("matchPastedUrl (BOR-57)", () => {
+describe("matchPastedUrl", () => {
   it("accepts a clipboard that is exactly one link", () => {
     // Arrange / Act / Assert
     expect(matchPastedUrl("https://example.com/a")).toBe(
@@ -233,7 +233,7 @@ describe("matchPastedUrl (BOR-57)", () => {
   });
 });
 
-describe("matchTypedUrl (BOR-57)", () => {
+describe("matchTypedUrl", () => {
   it("converts a link the user just typed at end of a word boundary", () => {
     // Arrange / Act / Assert
     expect(matchTypedUrl("https://x.y ")).toEqual({

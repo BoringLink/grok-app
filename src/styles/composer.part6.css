@@ -1,6 +1,6 @@
 /* domain CSS chunk (move-only split; selectors unchanged) */
 /*
- * 输入框内的 Markdown 结构与行内引用 chip（BOR-53 / BOR-56 / ADR 0004）。
+ * 输入框内的 Markdown 结构与行内引用 chip（ADR 0004）。
  *
  * 从 `modals.part1.css` **原样搬来**（同一条规则、同一顺序，只换文件）：那份文件
  * 已越过「禁止新增 ≥1000 行文件」的体量闸门，而这些规则本就属于 composer 域。
@@ -13,7 +13,7 @@
   line-height: 22px;
 }
 /*
- * 输入框内的 Markdown 结构与行内样式（BOR-56）。
+ * 输入框内的 Markdown 结构与行内样式。
  *
  * 对齐基准是聊天消息（`.chat-md`，见 lobe-chat.part1b.css）：**配色、描边、
  * 圆角、字重、纹理**与聊天侧一致，**行长与间距**保留输入框自己的紧凑密度
@@ -119,7 +119,7 @@
   text-underline-offset: 2px;
 }
 /*
- * 内联引用 chip（BOR-53）：输入框里点它应当定位光标，不是打开文件。
+ * 内联引用 chip：输入框里点它应当定位光标，不是打开文件。
  * 悬停的完整路径走节点自带的 title 属性。
  *
  * **外观（蓝底蓝字 + 圆角矩形）不在这里定义** —— 聊天消息与输入框共用
@@ -173,7 +173,7 @@
  * hr 保持输入框原有外观，不对齐聊天侧。
  * 聊天侧**故意**不渲染分割线（.chat-md hr { display: none } + MarkdownChat
  * 的 MdHr 返回 null），而输入框必须让用户看见自己敲下的 `---`，否则就是
- * 看不见的内容。这是 BOR-56 里唯一一处有意的不对齐，不要当 bug 改掉。
+ * 看不见的内容。这是输入框渲染里唯一一处有意的不对齐，不要当 bug 改掉。
  */
 .composer__input hr {
   margin: 6px 0;

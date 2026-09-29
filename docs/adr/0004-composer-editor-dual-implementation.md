@@ -2,12 +2,12 @@
 
 - 状态：已采纳
 - 日期：2026-09-28
-- 关联：ADR 0002（编辑器内核）、ADR 0003（文档位置编辑）、BOR-73
+- 关联：ADR 0002（编辑器内核）、ADR 0003（文档位置编辑）
 
 ## 背景
 
 ADR 0002 决定 composer 采用 ProseMirror/TipTap，并据此交付了行内引用、列表、代码块语言栏与
-Markdown 所见即所得（BOR-51 / 53 / 56 / 57、ADR 0003）。**这套迁移只存在于本 fork**：上游
+Markdown 所见即所得（ADR 0003）。**这套迁移只存在于本 fork**：上游
 `RongleCat/grok-app` 的 composer 至今是自研 contenteditable —— 纯文本 + `<br>` + 不可编辑的
 skill / plugin chip，没有列表、代码块与行内文件引用；上游近期对它的改动只有一条 Windows IME
 兜底（`7677ae4f`，12 行，围绕 ZWSP 填充与 `flushAfterIme`）。

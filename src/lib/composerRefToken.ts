@@ -1,5 +1,5 @@
 /**
- * 内联引用 token 的语法与取值（BOR-53）。
+ * 内联引用 token 的语法与取值。
  *
  * 存储态用不与正文撞车的专用 token，而不是直接把 `@路径` 写进 draft：
  * 否则「用户手打的 `@/goal`」与「真的文件引用」在编辑回填时无法区分。
@@ -10,7 +10,7 @@
  * URL 习惯做百分号转义——不含这两个字符的路径保持完全可读。
  */
 
-/** 引用类型。`url` 由 BOR-57 引入，语法先在此固定。 */
+/** 引用类型。`url` 的语法先在此固定。 */
 export type RefKind = "file" | "dir" | "url";
 
 const REF_KINDS: readonly RefKind[] = ["file", "dir", "url"];

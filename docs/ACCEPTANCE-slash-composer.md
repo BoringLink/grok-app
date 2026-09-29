@@ -29,7 +29,7 @@ Run after implementation. Every item is pass/fail.
 - **内置档（默认）** = 上游自研 contenteditable（纯文本 + `<br>` + skill/plugin chip）。
   它没有列表 / 代码块 / 行内文件引用，因此下表中标「仅 Markdown 档」的行不适用；
   这些行在默认档的表现是上游行为本身（`@` / slash 选中的文件进下方附件条）。
-- **Markdown 档** = TipTap / ProseMirror（BOR-51 起实现，ADR 0002/0003），下表全部适用。
+- **Markdown 档** = TipTap / ProseMirror（ADR 0002/0003 的实现），下表全部适用。
 
 | # | Check | How | 档位 |
 |---|--------|-----|------|

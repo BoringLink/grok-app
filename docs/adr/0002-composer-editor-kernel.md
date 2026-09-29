@@ -13,7 +13,7 @@
 而不是落在扩展面板里。
 
 历史上输入框是自研 contenteditable（旧 `ComposerEditor.tsx`，约 1800 行），
-BOR-51（`de7351cc` / `382905c1`）把它换成了 TipTap + markdown-it，并交付了
+它后来被换成了 TipTap + markdown-it，并交付了
 `[[skill:name]]` 原子节点与 Markdown 往返序列化（`src/components/composerSkillNode.ts`、
 `src/lib/composerMarkdown.ts`）。本次重新评估「是否回退到自研内核再扩展」。
 
@@ -28,7 +28,7 @@ BOR-51（`de7351cc` / `382905c1`）把它换成了 TipTap + markdown-it，并交
   其 DOM 结构为 `text nodes + <br> + [data-skill] chips`）。列表、分割线、
   代码块、行内代码、粗斜体、标题全部为空。回退不是「延续既有能力再扩展」，
   而是从零造这些结构及其光标/退格/IME 交互。
-- **回退不减少依赖**：`@tiptap/*` 与 `tiptap-markdown` 在 BOR-51 **之前**就是
+- **回退不减少依赖**：`@tiptap/*` 与 `tiptap-markdown` 在本次迁移**之前**就是
   直接依赖（`src/components/MarkdownTiptapEditor.tsx` 等在用），
   `src/lib/viteManualChunks.ts:27` 已单列 `tiptap` vendor chunk。回退编辑内核
   不会移除该 chunk，只在 composer 组件层面少了代码。

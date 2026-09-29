@@ -28,7 +28,7 @@ export type DraftSegment =
   | { type: "chat"; sessionId: string; scope?: "recent" | "user" | "full" };
 
 /**
- * 内联文件 / 目录 / URL 引用（BOR-53）。存储态是 `[[file:…]]` 形式的 token，
+ * 内联文件 / 目录 / URL 引用。存储态是 `[[file:…]]` 形式的 token，
  * 发送给 CLI 时转成 `@路径`（URL 即其本身），位置保持在正文中说到的位置。
  */
 export type RefSegment = { type: "ref"; kind: RefKind; value: string };
@@ -481,7 +481,7 @@ function cleanEditorText(raw: string): string {
 }
 
 function chipTokenFromEl(he: HTMLElement): string | null {
-  // 内联引用 chip（BOR-53）：DOM 上带 data-ref-token / data-ref-value。
+  // 内联引用 chip：DOM 上带 data-ref-token / data-ref-value。
   const refKind = he.getAttribute("data-ref-token");
   if (refKind === "file" || refKind === "dir" || refKind === "url") {
     const value = he.getAttribute("data-ref-value") ?? "";

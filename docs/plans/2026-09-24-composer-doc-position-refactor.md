@@ -1,12 +1,8 @@
 # Composer 编辑改用 ProseMirror 文档位置 —— 进度与交接
 
-**文档日期**：2026-09-24 · **决策**：`docs/adr/0003-composer-document-position-editing.md` · **跟踪**：BOR-73
+**文档日期**：2026-09-24 · **决策**：`docs/adr/0003-composer-document-position-editing.md`
 
 > 本条改造线现落在 **Markdown 档**（ADR 0004）：上游内置档保持原样，两档由设置项切换。
-
-**分支**：`refactor/composer-doc-positions`（基于 `d764e668`）→ 已合并 `main` @ `3514db7b`
-
-**提交**：`e1d2f441`(ADR) · `8ae3e634` · `76c4bc4a` · `6848b427` · `a69ca7e4` · `4292c8d4`(软换行回归) · `46f3b197`(评审意见)
 
 ## 为什么改
 
@@ -25,8 +21,8 @@
 
 | 事故 | 机制 |
 |---|---|
-| `8565200d`（BOR-53 验收） | 列表项在 Markdown 里多 `- ` 前缀，DOM 偏移套到 Markdown 上短两个字符 → 替换掉正文末字并留下 `@` |
-| BOR-72（`336f054d`） | `@query` 后紧跟已有 token 时边界判定失败 → 退化成追加到文末、光标跑到文末、`@query` 留成纯文本 |
+| 手工验收 | 列表项在 Markdown 里多 `- ` 前缀，DOM 偏移套到 Markdown 上短两个字符 → 替换掉正文末字并留下 `@` |
+| 插入落点边界 | `@query` 后紧跟已有 token 时边界判定失败 → 退化成追加到文末、光标跑到文末、`@query` 留成纯文本 |
 | 未修（本方向下消失） | 同名 `@query` 出现两次时只能猜「最后一个」——光标位置在检测阶段就被丢掉 |
 | 代码块语言栏 | 只能用装饰器加属性、不能上 NodeView —— 因为序列化走 DOM walk，NodeView 多余元素会被当成正文 |
 
@@ -54,7 +50,7 @@ composer 的**编辑操作以 ProseMirror 文档位置为唯一坐标空间**；
 
 ### 回归修复（过程中发现）
 
-`4292c8d4`：`textBetween(..., ATOM_LEAF)` 把**所有** leaf 都换成占位字符，`hardBreak` 也中招 —— 段落内 Shift+Enter 软换行之后打 `@` 会因「前面不是空白」而不触发补全（旧的自造文本空间把 hardBreak 当换行，是可用的）。改用 `textBetween` 的函数形式（prosemirror-model 1.25 支持 `leafText?: (node) => string`）区分两者，规则单源在 `composerQuery.composerLeafText`，`composerRefInsert.nextCharIsTight` 共用。
+**软换行回归**：`textBetween(..., ATOM_LEAF)` 把**所有** leaf 都换成占位字符，`hardBreak` 也中招 —— 段落内 Shift+Enter 软换行之后打 `@` 会因「前面不是空白」而不触发补全（旧的自造文本空间把 hardBreak 当换行，是可用的）。改用 `textBetween` 的函数形式（prosemirror-model 1.25 支持 `leafText?: (node) => string`）区分两者，规则单源在 `composerQuery.composerLeafText`，`composerRefInsert.nextCharIsTight` 共用。
 
 ## 代码评审与处理
 
@@ -72,9 +68,9 @@ composer 的**编辑操作以 ProseMirror 文档位置为唯一坐标空间**；
 ## 测试与验证
 
 - 合并前分支：`npx tsc -b`（0 错）、`npx eslint src --max-warnings 0`（0 错）、`npx vitest run`（**665 文件 / 7722 用例全绿**）。
-- 新增测试：`src/lib/composerQuery.test.ts`（18 例：普通段落 / 列表项 / 标题 / 行首 / 前空白 / `user@host` 拒绝 / 空 query / 查询后紧跟原子节点 / 软换行两种 / U+00A0 终止 / query 含 `@` / slash / 无 trigger / 非文本块）、`src/components/composerRefInsert.test.ts`（10 例，含 BOR-72 的「已有 chip 之前插入」与两条落点断言）、`src/components/ComposerEditor.atWiring.test.tsx`（5 例）、`src/hooks/useComposerController.atGate.test.ts`（3 例）。
+- 新增测试：`src/lib/composerQuery.test.ts`（18 例：普通段落 / 列表项 / 标题 / 行首 / 前空白 / `user@host` 拒绝 / 空 query / 查询后紧跟原子节点 / 软换行两种 / U+00A0 终止 / query 含 `@` / slash / 无 trigger / 非文本块）、`src/components/composerRefInsert.test.ts`（10 例，含「已有 chip 之前插入」与两条落点断言）、`src/components/ComposerEditor.atWiring.test.tsx`（5 例）、`src/hooks/useComposerController.atGate.test.ts`（3 例）。
 - 迁移：原 `src/components/ComposerEditor.caret.test.tsx` 的 5 个用例改为 `composerRefInsert.test.ts` 里的**位置**断言（不再断言自造文本空间的偏移）。
-- 回归护栏验证方式：把 `composerLeafText` 退回「永远返回占位符」，新增的软换行两例会失败；`locateAtRangeInMarkdown` 的边界修复（`336f054d`）对应的场景由 `已有 chip 之前` 用例覆盖。
+- 回归护栏验证方式：把 `composerLeafText` 退回「永远返回占位符」，新增的软换行两例会失败；`locateAtRangeInMarkdown` 的边界修复对应的场景由 `已有 chip 之前` 用例覆盖。
 
 ## 待办与风险
 

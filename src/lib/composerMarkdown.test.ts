@@ -201,9 +201,9 @@ describe("isStoredMarkdownEmpty", () => {
   });
 });
 
-// ── BOR-53：内联引用 token 的往返与坐标 ─────────────────────────────────────
+// ── 内联引用 token 的往返与坐标 ─────────────────────────────────────
 
-describe("reference tokens (BOR-53)", () => {
+describe("reference tokens", () => {
   let editor: Editor | null = null;
 
   afterEach(() => {
@@ -283,7 +283,7 @@ describe("reference tokens (BOR-53)", () => {
   });
 });
 
-describe("reference chip deletion (BOR-53)", () => {
+describe("reference chip deletion", () => {
   let editor: Editor | null = null;
 
   afterEach(() => {

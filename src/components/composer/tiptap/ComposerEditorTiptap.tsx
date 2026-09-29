@@ -397,7 +397,7 @@ export const ComposerEditor = memo(function ComposerEditor({
           );
           return true;
         }
-        // 粘贴一整条 http(s) 链接 → 直接成为内联 URL chip（BOR-57）。
+        // 粘贴一整条 http(s) 链接 → 直接成为内联 URL chip。
         // 只在整段内容就是一个链接时成立；含空白的普通文本照旧走 Markdown。
         const pastedUrl = plain ? matchPastedUrl(plain) : null;
         if (pastedUrl) {

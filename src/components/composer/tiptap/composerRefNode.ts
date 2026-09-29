@@ -1,5 +1,5 @@
 /**
- * `[[file:…]]` / `[[dir:…]]` 内联引用 token 的 ProseMirror 原子节点（BOR-53）。
+ * `[[file:…]]` / `[[dir:…]]` 内联引用 token 的 ProseMirror 原子节点。
  *
  * 存储态是 {@link refTokenText} 产出的纯文本 token（与 `[[skill:…]]` 同族），
  * 编辑器内由 markdown-it inline 规则反解析为原子节点，序列化时原样写回；
@@ -122,7 +122,7 @@ function refIconSvg(kind: RefKind): string {
 }
 
 /**
- * URL chip 的打开方式（BOR-57）：编辑态下**普通点击只定位光标**——点进去改字
+ * URL chip 的打开方式：编辑态下**普通点击只定位光标**——点进去改字
  * 是这个区域最常见的手势，直接跳浏览器会很烦人。用 ⌘/Ctrl + 点击显式打开。
  *
  * 只有 http(s) 会被打开：`isExternalHttpUrl` 拒绝 `javascript:` / `data:` 等，
@@ -165,7 +165,7 @@ export const RefTokenNode = Node.create({
   },
 
   /**
-   * 敲下一个空白时，把光标前刚写完的 http(s) 链接就地变成 URL chip（BOR-57）。
+   * 敲下一个空白时，把光标前刚写完的 http(s) 链接就地变成 URL chip。
    * 用 `matchTypedUrl` 的同一套边界规则，保证「输入」与「粘贴」判定一致。
    */
   addInputRules() {

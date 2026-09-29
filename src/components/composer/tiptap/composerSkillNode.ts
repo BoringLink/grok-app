@@ -83,7 +83,7 @@ export function skillTokenText(kind: string, name: string): string {
 /**
  * 该节点在编辑器文本空间 / 存储空间里的 token 文本；不是 skill token 时返回
  * `null`。两个空间逐字符等价，因此这一个函数同时供 caret 换算与 DOM 序列化
- * 使用（BOR-53 起由 `composerMarkdown` 汇总多种 atom 类型）。
+ * 使用（由 `composerMarkdown` 汇总多种 atom 类型）。
  */
 export function skillTokenStoredText(node: ProseMirrorNode): string | null {
   if (node.type.name !== "skillToken") return null;

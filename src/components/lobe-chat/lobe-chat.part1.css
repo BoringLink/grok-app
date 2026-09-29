@@ -80,7 +80,7 @@
 [data-theme="dark"] .lobe-chat {
   --chat-code-bg: color-mix(in srgb, var(--bg-code, #0a0a0a) 55%, #2a2a2e);
   --chat-code-fg: var(--text-primary, #e8e8ea);
-  /* BOR-56：与输入框共用同一个行内代码底色 token（tokens.css）。 */
+  /* 与输入框共用同一个行内代码底色 token（tokens.css）。 */
   --chat-inline-code-bg: var(--md-inline-code-bg, rgba(255, 255, 255, 0.14));
   --chat-inline-code-fg: var(--chat-code-fg);
 }

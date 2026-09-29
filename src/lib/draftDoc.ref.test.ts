@@ -1,5 +1,5 @@
 /**
- * BOR-53：引用 segment 在 draft 模型里的行为。
+ * 引用 segment 在 draft 模型里的行为。
  *
  * 重点是无损与「说到哪就是哪」：引用必须留在正文中说到的位置，而不是像
  * skill 那样被提到最前；漏改 `serializeForAgent` 会把 `[[file:…]]` 字面

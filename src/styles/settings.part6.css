@@ -30,7 +30,7 @@
 }
 
 /*
- * ── Markdown 结构：Tailwind preflight 的全局补偿（BOR-56）──────────────────
+ * ── Markdown 结构：Tailwind preflight 的全局补偿──────────────────
  *
  * Tailwind preflight（src/main.tsx 在 app.css 之前引入）设了
  * `ol, ul, menu { list-style: none }`，而 preflight 之后没有任何地方恢复过。

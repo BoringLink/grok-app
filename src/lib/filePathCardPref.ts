@@ -150,7 +150,7 @@ export function filePathCardHoverLabel(
 /**
  * FilePathCard 的文案表（按 locale 缓存）。
  *
- * 原本在 `MarkdownChat` 里，仅供助手气泡使用；BOR-53 起用户气泡的文件引用
+ * 原本在 `MarkdownChat` 里，仅供助手气泡使用；此后用户气泡的文件引用
  * chip 也要用同一套文案，因此下沉到 lib，由两处共享。
  */
 const FILE_LABELS_CACHE = new Map<Locale, FilePathCardLabels>();
