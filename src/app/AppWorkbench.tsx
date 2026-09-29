@@ -355,7 +355,6 @@ import {
   rankAtFileHits,
   removeAtTokenFromDraft,
 } from "@/lib/atFileQuery";
-import { applyAtFileToComposer } from "@/lib/composerAtApply";
 import {
   type ComposerAtFileEntry,
 } from "@/components/ComposerAtPanel";
@@ -473,13 +472,11 @@ import {
 } from "@/lib/setupGatePro";
 import { mapProbeToCliInfo } from "@/lib/cliVersionStatus";
 import {
-  composerEditorKind,
-  insertComposerRefAtom,
-  removeComposerQueryRange,
   requestComposerStoredCaret,
   resizeComposerInput,
   serializeDom,
 } from "@/components/composer";
+import { useApplyAtFile } from "@/hooks/useApplyAtFile";
 
 import {
   pathsEqual,
@@ -1054,7 +1051,7 @@ export function AppWorkbench() {
     setSlashKindFilter,
     liveAt,
     reportAtQuery,
-    reportSlashQuery,
+    onSlashQueryChange,
     setLiveAt,
     liveAtRef,
     atDismissedSigRef,
@@ -1896,8 +1893,10 @@ export function AppWorkbench() {
     setAutoWakeEnabled,
     workflowsEnabled,
     setWorkflowsEnabled,
-    planEnabled, composerEditor,
-    setPlanEnabled, setComposerEditor,
+    planEnabled,
+    composerEditor,
+    setPlanEnabled,
+    setComposerEditor,
     todoGateEnabled,
     setTodoGateEnabled,
     todoGateMaxFiresPerPrompt,
@@ -5924,35 +5923,6 @@ export function AppWorkbench() {
   }, []);
 
   /**
-   * Stable slash-query setter: skip no-op updates so filter effects don't thrash.
-   *
-   * 内置档：`liveSlash` 由控制器的 DOM 轮询维护，这里只同步 `slashQuery`（上游行为）。
-   * Markdown 档：轮询让位，编辑器上报的区间要同时驱动 `liveSlash`（消费方读它取
-   * 落点与过滤词），因此整条交给 `reportSlashQuery`。
-   */
-  const onSlashQueryChange = useCallback(
-    (q: { start: number; query: string; end: number } | null) => {
-      if (composerEditorKind() === "tiptap") {
-        reportSlashQuery(q);
-        return;
-      }
-      setSlashQuery((prev) => {
-        if (q == null) return prev == null ? prev : null;
-        if (
-          prev &&
-          prev.start === q.start &&
-          prev.query === q.query &&
-          prev.end === q.end
-        ) {
-          return prev;
-        }
-        return q;
-      });
-    },
-    [reportSlashQuery],
-  );
-
-  /**
    * Composer right-click menu (Paste + Command panel). Same ContextMenu
    * baseline as attachment cards; native menu is already suppressed.
    */
@@ -6546,26 +6516,15 @@ export function AppWorkbench() {
     setAtLoading(false);
   }, []);
 
-  const applyAtFile = useCallback(
-    (entry: ComposerAtFileEntry) => {
-      // 两条档位分支（内置档进附件条 / Markdown 档插行内引用）在 lib 里，
-      // 这里只注入上下文，避免 AppWorkbench 继续膨胀（AGENTS 规则 7）。
-      applyAtFileToComposer({
-        entry,
-        kind: composerEditorKind(),
-        live: liveAtRef.current,
-        editorEl: () => composerInputRef.current,
-        clearAtState: closeAtMenu,
-        removeAtTokenFromDraft,
-        setDraft,
-        setAttachments,
-        insertRefAtom: insertComposerRefAtom,
-        removeQueryRange: removeComposerQueryRange,
-        focus: requestComposerFocus,
-      });
-    },
-    [requestComposerFocus],
-  );
+  const applyAtFile = useApplyAtFile({
+    liveAtRef,
+    clearAtState: closeAtMenu,
+    removeAtTokenFromDraft,
+    editorRef: composerInputRef,
+    setDraft,
+    setAttachments,
+    focus: requestComposerFocus,
+  });
 
   // Debounced project file search for @ panel.
   useEffect(() => {
@@ -12092,7 +12051,8 @@ export function AppWorkbench() {
         cliInfo={cliInfo}
         closeToTray={closeToTray}
         compactionDetail={compact.compactionDetail}
-        compactionMode={compact.compactionMode} composerEditor={composerEditor}
+        compactionMode={compact.compactionMode}
+        composerEditor={composerEditor}
         confirmArchiveOlderThan={confirmArchiveOlderThan}
         defaultOpenTarget={defaultOpenTarget}
         deleteSessionsConfirm={deleteSessionsConfirm}
@@ -12175,7 +12135,8 @@ export function AppWorkbench() {
         setCliInfo={setCliInfo}
         setCloseToTray={setCloseToTray}
         setCompactionDetail={compact.setCompactionDetail}
-        setCompactionMode={compact.setCompactionMode} setComposerEditor={setComposerEditor}
+        setCompactionMode={compact.setCompactionMode}
+        setComposerEditor={setComposerEditor}
         setDefaultOpenTarget={setDefaultOpenTarget}
         setDisableWebSearch={setDisableWebSearch}
         setDisallowedTools={setDisallowedTools}

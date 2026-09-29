@@ -34,7 +34,12 @@ skill / plugin chip，没有列表、代码块与行内文件引用；上游近�
    永远不会收到它不认识的段。
 6. **跨档降级**：切到内置档时，草稿里的引用 token 转成附件条目（`[[file:…]]` → 附件条），**单向有损**；
    URL 引用留在正文（它本来就是链接本身）。降级发生在 `ComposerDraftEditor` 的渲染前与落盘处。
-7. **检测按档位分派**：`useComposerController` 保留上游的 DOM 轮询，但 Markdown 档托管输入框时整体
+7. **引用只从 journal 的显示态读回，不猜**：发送时 `session_send` 收 `display_text`
+   （本应用写的 journal 因此落盘的就是 `[[file:…]]` 形态），读回来直接就是 token。
+   不从正文里的 `@绝对路径` 反推引用 —— 那会把「用户真写了 `@/usr/bin/foo`」的普通
+   叙述在**所有**会话里变成 chip，与用哪套编辑器无关。
+
+8. **检测按档位分派**：`useComposerController` 保留上游的 DOM 轮询，但 Markdown 档托管输入框时整体
    让位 —— `@` / slash 改由编辑器按**文档位置**上报（`reportAtQuery` / `reportSlashQuery`），
    去重与 Escape 抑制规则与轮询版一致。
 

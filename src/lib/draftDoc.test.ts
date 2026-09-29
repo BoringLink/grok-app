@@ -359,52 +359,38 @@ describe("hydrateDisplayContent", () => {
   });
 });
 
-describe("hydrateDisplayContent 还原 agent 形态的引用", () => {
-  it("`@绝对路径` 还原成 file token，供气泡与重新编辑渲染 chip", () => {
-    // Arrange —— agent 侧 transcript 里引用就是这种形态
-    const raw = "在 @/repo/src/a.ts 中找到 xxx";
+describe("hydrateDisplayContent 不猜引用", () => {
+  it("普通叙述里的 `@绝对路径` 保持纯文本", () => {
+    // Arrange —— 气泡里的 `@/usr/bin/foo` 只是文字。把它猜成引用会让**所有**会话
+    // （包括用内置档写的）多出一个 chip，与用哪套输入框编辑器无关，因此不做这件事。
+    const cases = [
+      "看 @/usr/bin/foo",
+      "@/usr/bin",
+      "见 @/repo/a.ts，还有 @/repo/b.md",
+      "@/usr/bin/foo 挺好用的",
+    ];
 
     // Act / Assert
-    expect(hydrateDisplayContent(raw)).toBe(
-      "在 [[file:/repo/src/a.ts]] 中找到 xxx",
-    );
+    for (const raw of cases) {
+      expect(hydrateDisplayContent(raw)).toBe(raw);
+      expect(
+        parseUserMessageContentWithRefs(raw).every((s) => s.type === "text"),
+      ).toBe(true);
+    }
   });
 
-  it("目录引用按结尾斜杠还原成 dir token", () => {
-    // Arrange / Act / Assert
-    expect(hydrateDisplayContent("看 @/repo/src/ 下")).toBe(
-      "看 [[dir:/repo/src/]] 下",
-    );
-  });
+  it("journal 里本来就是 token 形态的引用照常渲染成 chip", () => {
+    // Arrange —— 本应用写 journal 用的是显示态（`session_send` 的 display_text），
+    // 引用落盘就是 token 形态，读回来不需要任何猜测。
+    const raw = "看 [[file:/repo/a.ts]] 和 [[dir:/repo/src/]]";
+    const segs = parseUserMessageContentWithRefs(raw);
 
-  it("`@/goal` 这类一段路径不是引用（验收 C9）", () => {
-    // Arrange / Act / Assert
-    expect(hydrateDisplayContent("@/goal 请继续")).toBe("@/goal 请继续");
-  });
-
-  it("普通 `@文本` 与邮箱不受影响", () => {
-    // Arrange / Act / Assert
-    expect(hydrateDisplayContent("@某人 你好")).toBe("@某人 你好");
-    expect(hydrateDisplayContent("mail: user@host.com")).toBe(
-      "mail: user@host.com",
-    );
-  });
-
-  it("尾部句读留在正文，不进路径", () => {
-    // Arrange / Act / Assert
-    expect(hydrateDisplayContent("见 @/repo/a.ts。")).toBe(
-      "见 [[file:/repo/a.ts]]。",
-    );
-  });
-
-  it("路径里的 `]` 被转义，token 不会被提前闭合", () => {
-    // Arrange / Act
-    const hydrated = hydrateDisplayContent("@/repo/a]b.ts");
-
-    // Assert
-    expect(hydrated).toBe("[[file:/repo/a%5Db.ts]]");
-    expect(parseStoredContentWithRefs(hydrated)).toEqual([
-      { type: "ref", kind: "file", value: "/repo/a]b.ts" },
+    // Act / Assert
+    expect(hydrateDisplayContent(raw)).toBe(raw);
+    expect(segs.filter((s) => s.type === "ref")).toEqual([
+      { type: "ref", kind: "file", value: "/repo/a.ts" },
+      { type: "ref", kind: "dir", value: "/repo/src/" },
     ]);
   });
 });
+

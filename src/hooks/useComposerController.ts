@@ -15,7 +15,7 @@ import {
   type SetStateAction,
 } from "react";
 import { detectAtQueryFromEditor } from "@/lib/atFileQuery";
-import { ownsComposerDom } from "@/components/composer";
+import { composerEditorKind, ownsComposerDom } from "@/components/composer";
 import { shouldProbeComposerLiveDom } from "@/lib/composerLiveProbe";
 import {
   detectSlashQueryFromEditor,
@@ -448,6 +448,35 @@ export function useComposerController(initialDraft = "") {
     [],
   );
 
+  /**
+   * 编辑器上报的 slash 查询（消费方把它透传给编辑器）。
+   *
+   * 内置档沿用上游语义：DOM 轮询维护 `liveSlash`，这里只把区间同步进 `slashQuery`
+   * 并去重。Markdown 档轮询整体让位，上报的区间必须连 `liveSlash` 一起驱动（消费方
+   * 读它取落点与过滤词），因此整条交给 {@link reportSlashQuery}。
+   */
+  const onSlashQueryChange = useCallback(
+    (q: SlashQueryRange | null) => {
+      if (composerEditorKind() === "tiptap") {
+        reportSlashQuery(q);
+        return;
+      }
+      setSlashQuery((prev) => {
+        if (q == null) return prev == null ? prev : null;
+        if (
+          prev &&
+          prev.start === q.start &&
+          prev.query === q.query &&
+          prev.end === q.end
+        ) {
+          return prev;
+        }
+        return q;
+      });
+    },
+    [reportSlashQuery],
+  );
+
   return useMemo(
     () => ({
       /** Call-time read; does not subscribe (safe in event handlers / send). */
@@ -516,7 +545,7 @@ export function useComposerController(initialDraft = "") {
       liveAtRef,
       atDismissedSigRef,
       reportAtQuery,
-      reportSlashQuery,
+      onSlashQueryChange,
       atActiveIndex,
       setAtActiveIndex,
       atEntries,
