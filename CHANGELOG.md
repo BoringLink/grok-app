@@ -32,6 +32,7 @@ See `docs/llm-wiki/release.md`.
 - Switching a chat's provider finishes before the next message is sent. Queued messages wait for that switch as well.
 - New session in the sidebar keeps the project you already have open.
 - Voice dictation stays in the chat where you stopped recording. Switching away while it transcribes leaves the text in that draft and does not send it.
+- Switching a chat's provider starts that chat clean on the new provider. SSH chats stay on the official provider.
 
 **中文 · 修复**
 - 切到另一条对话后，不再沿用上一条的目标开关。
@@ -46,6 +47,7 @@ See `docs/llm-wiki/release.md`.
 - 换服务商会先完成，下一条消息才发出去。已经排在队列里的消息也会等这次切换。
 - 在侧栏新建对话时，会沿用当前已经打开的项目。
 - 语音转写停在停止录音的那条对话里。转写还没结束就切走时，文字留在那条草稿里，不会发出去。
+- 更换一条对话的服务商后，这条对话会在新服务商上重新开始。SSH 对话仍使用官方服务商。
 
 ## [0.2.37] - 2026-09-22
 
