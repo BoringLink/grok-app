@@ -54,6 +54,12 @@ export type SessionConnectHost = {
   sendInFlightBySessionRef: MutableRefObject<Set<string>>;
   sendEpochBySessionRef: MutableRefObject<Map<string, number>>;
   sessionJsonSchemaRef: MutableRefObject<string | null>;
+  /** Provider picked on a chat that has no row yet. Stamped before connect. */
+  draftComposerRouteRef: MutableRefObject<{
+    providerId: string;
+    modelId: string;
+    effort: string;
+  } | null>;
   currentViewFocus: () => ViewFocus;
   syncViewedTurnClock: (sessionId: string) => void;
   setLocalError: (msg: string | null) => void;
@@ -87,6 +93,7 @@ function emptyHost(): SessionConnectHost {
     sendInFlightBySessionRef: { current: new Set() },
     sendEpochBySessionRef: { current: new Map() },
     sessionJsonSchemaRef: { current: null },
+    draftComposerRouteRef: { current: null },
     currentViewFocus: () => ({ sessionId: null, epoch: 0 }),
     syncViewedTurnClock: noop,
     setLocalError: noop,
@@ -243,6 +250,21 @@ export function useSessionConnect(opts: {
             h.tr("session.new"),
           )) as { id: string; title?: string };
           sessionId = meta.id;
+          const pendingRoute = h.draftComposerRouteRef.current;
+          if (pendingRoute && api.isTauri()) {
+            h.draftComposerRouteRef.current = null;
+            try {
+              await api.composerPrefsSet({
+                sessionId: meta.id,
+                projectId: connectProject?.id ?? null,
+                providerId: pendingRoute.providerId,
+                modelId: pendingRoute.modelId,
+                effort: pendingRoute.effort,
+              });
+            } catch {
+              /* connect still follows the global route if the stamp fails */
+            }
+          }
           const materializedKey = queueSessionKey(sessionId);
           if (!heldConnectKeys.has(materializedKey)) {
             const claims = connectingBySessionRef.current;

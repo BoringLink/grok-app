@@ -53,6 +53,9 @@ pub struct ComposerPrefs {
     pub scope: String,
     /// Which layer actually supplied the values (global | project | session).
     pub source: String,
+    /// `official` or a custom provider section id. Missing → global route.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
 }
 
 impl Default for ComposerPrefs {
@@ -65,6 +68,7 @@ impl Default for ComposerPrefs {
             permission_policy: "ask".into(),
             scope: "global".into(),
             source: "global".into(),
+            provider_id: None,
         }
     }
 }
@@ -319,6 +323,10 @@ pub struct SessionMeta {
     /// Last known capability label (`context_only`, …).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_capability: Option<String>,
+    /// Provider this chat was last used with. `official`, or a custom section id.
+    /// Missing on older rows → follow the global route until the user picks one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1920,7 +1928,7 @@ pub fn set_project_sandbox_profile(id: &str, profile: Option<String>) -> Result<
 pub fn sort_sessions_by_pin_then_updated(list: &mut [SessionMeta]) {
     let pinned: Vec<SessionMeta> = list.iter().filter(|s| s.pinned).cloned().collect();
     let mut unpinned: Vec<SessionMeta> = list.iter().filter(|s| !s.pinned).cloned().collect();
-    unpinned.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    unpinned.sort_by_key(|a| std::cmp::Reverse(a.updated_at));
     let mut ordered = pinned;
     ordered.extend(unpinned);
     list.clone_from_slice(&ordered);
@@ -2042,6 +2050,7 @@ pub fn create_session(
         workspace_id: None,
         workspace_root_snapshot: None,
         workspace_capability: None,
+        provider_id: None,
     };
     update_sessions_index({
         let meta = meta.clone();
@@ -2058,6 +2067,30 @@ pub fn create_session(
 
 pub fn update_session_meta(meta: &SessionMeta) -> Result<(), String> {
     update_session_index_row(meta).map(|_| ())
+}
+
+/// Whole-row replace that keeps `provider_id` and `model_id` from the current
+/// index row. Connect holds a snapshot across the handshake; a composer save
+/// in that window must survive the final write. Other handshake fields
+/// (`agent_session_id`, fork flags, effort, mode) still come from `meta`.
+pub fn update_session_meta_preserving_composer(meta: &SessionMeta) -> Result<SessionMeta, String> {
+    let meta = meta.clone();
+    update_sessions_index(move |list| {
+        let (provider_id, model_id) = list
+            .iter()
+            .find(|s| s.id == meta.id)
+            .map(|s| (s.provider_id.clone(), s.model_id.clone()))
+            .unwrap_or_else(|| (meta.provider_id.clone(), meta.model_id.clone()));
+        let mut writing = meta.clone();
+        writing.provider_id = provider_id;
+        writing.model_id = model_id;
+        if let Some(slot) = list.iter_mut().find(|s| s.id == writing.id) {
+            *slot = writing.clone();
+        } else {
+            list.insert(0, writing.clone());
+        }
+        Ok(writing)
+    })
 }
 
 fn clear_agent_session_id(list: &mut [SessionMeta], id: &str) -> bool {
@@ -3191,6 +3224,10 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
         .as_ref()
         .and_then(|s| s.model_id.clone())
         .filter(|x| !x.trim().is_empty());
+    let session_provider = sess
+        .as_ref()
+        .and_then(|s| s.provider_id.clone())
+        .filter(|x| !x.trim().is_empty());
     let proj = sess
         .as_ref()
         .and_then(|s| s.project_id.as_deref())
@@ -3231,6 +3268,7 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
             permission_policy,
             scope: scope.as_str().into(),
             source: "global".into(),
+            provider_id: None,
         },
         ComposerPrefsScope::Project => {
             if let Some(p) = proj {
@@ -3246,6 +3284,7 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
                     permission_policy,
                     scope: scope.as_str().into(),
                     source: "project".into(),
+                    provider_id: None,
                 }
             } else {
                 ComposerPrefs {
@@ -3255,6 +3294,7 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
                     permission_policy,
                     scope: scope.as_str().into(),
                     source: "global".into(),
+                    provider_id: None,
                 }
             }
         }
@@ -3280,6 +3320,7 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
                     permission_policy,
                     scope: scope.as_str().into(),
                     source: "session".into(),
+                    provider_id: None,
                 }
             } else {
                 ComposerPrefs {
@@ -3289,6 +3330,7 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
                     permission_policy,
                     scope: scope.as_str().into(),
                     source: if proj.is_some() { "project" } else { "global" }.into(),
+                    provider_id: None,
                 }
             }
         }
@@ -3296,6 +3338,7 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
     if let Some(m) = session_model {
         prefs.model_id = m;
     }
+    prefs.provider_id = session_provider;
     prefs.effort = clamp_effort_for_model(&prefs.model_id, &prefs.effort);
     prefs
 }
@@ -3326,6 +3369,20 @@ pub(crate) fn non_plan_mode(mode: &str) -> String {
 ///
 /// Returns the value back when there is no row yet (a draft) so the caller
 /// can seed the global default. A real chat keeps the model it was given.
+fn save_provider_on_session(session_id: Option<&str>, provider_id: String) -> Result<(), String> {
+    let Some(sid) = session_id.filter(|s| !s.is_empty()) else {
+        return Ok(());
+    };
+    let sid = sid.to_string();
+    update_sessions_index(move |list| {
+        if let Some(sess) = list.iter_mut().find(|s| s.id == sid) {
+            sess.provider_id = Some(provider_id);
+            sess.updated_at = Utc::now();
+        }
+        Ok(())
+    })
+}
+
 fn save_model_on_session(
     session_id: Option<&str>,
     model_id: String,
@@ -3375,7 +3432,11 @@ pub fn save_composer_prefs(
     effort: Option<String>,
     mode: Option<String>,
     permission_policy: Option<String>,
+    provider_id: Option<String>,
 ) -> Result<ComposerPrefs, String> {
+    if let Some(provider) = provider_id.clone() {
+        save_provider_on_session(session_id, provider)?;
+    }
     let settings = load_settings();
     let scope = ComposerPrefsScope::parse(&settings.composer_prefs_scope);
 
@@ -4340,6 +4401,7 @@ mod tests {
             workspace_id: None,
             workspace_root_snapshot: None,
             workspace_capability: None,
+            provider_id: None,
         }
     }
 
@@ -4858,6 +4920,7 @@ mod tests {
                 workspace_id: None,
                 workspace_root_snapshot: None,
                 workspace_capability: None,
+                provider_id: None,
             },
         );
         write_json(&sessions_index_file(), &sessions).expect("seed sessions");
@@ -5035,12 +5098,14 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .expect("a model");
         save_composer_prefs(
             None,
             Some(&b.id),
             Some("grok-4.7".into()),
+            None,
             None,
             None,
             None,
@@ -5071,6 +5136,91 @@ mod tests {
     }
 
     #[test]
+    fn provider_stays_per_session_under_global_scope() {
+        let _g = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-provider-scope-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("tmp home");
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        let _ = ensure_app_dirs();
+
+        let a = create_session(None, Some("a".into()), false).expect("create a");
+        let b = create_session(None, Some("b".into()), false).expect("create b");
+        save_composer_prefs(
+            None,
+            Some(&a.id),
+            Some("deepseek-v4-flash".into()),
+            None,
+            None,
+            None,
+            Some("yunyi".into()),
+        )
+        .expect("a provider");
+        save_composer_prefs(
+            None,
+            Some(&b.id),
+            Some("grok-4.7".into()),
+            None,
+            None,
+            None,
+            Some("official".into()),
+        )
+        .expect("b provider");
+
+        assert_eq!(
+            resolve_composer_prefs(None, Some(&a.id))
+                .provider_id
+                .as_deref(),
+            Some("yunyi")
+        );
+        assert_eq!(
+            resolve_composer_prefs(None, Some(&b.id))
+                .provider_id
+                .as_deref(),
+            Some("official")
+        );
+        assert_eq!(
+            resolve_composer_prefs(None, Some(&a.id)).model_id,
+            "deepseek-v4-flash"
+        );
+        // A chat that never picked still has no provider and follows the global route.
+        let fresh = create_session(None, Some("fresh".into()), false).expect("fresh");
+        assert_eq!(
+            resolve_composer_prefs(None, Some(&fresh.id)).provider_id,
+            None
+        );
+        // A draft pick does not write a row and does not retarget an existing chat.
+        save_composer_prefs(
+            None,
+            None,
+            Some("grok-4.7".into()),
+            None,
+            None,
+            None,
+            Some("other".into()),
+        )
+        .expect("draft");
+        assert_eq!(
+            resolve_composer_prefs(None, Some(&b.id))
+                .provider_id
+                .as_deref(),
+            Some("official")
+        );
+
+        let _ = delete_session(&a.id);
+        let _ = delete_session(&b.id);
+        let _ = delete_session(&fresh.id);
+        std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn effort_stays_per_session_under_global_scope() {
         // Effort is a per-chat decision even when model/mode memory is global:
         // raising it in one chat used to rewrite `settings.effort` and therefore
@@ -5090,10 +5240,26 @@ mod tests {
 
         let a = create_session(None, Some("a".into()), false).expect("create a");
         let b = create_session(None, Some("b".into()), false).expect("create b");
-        save_composer_prefs(None, Some(&a.id), None, Some("low".into()), None, None)
-            .expect("a low");
-        save_composer_prefs(None, Some(&b.id), None, Some("max".into()), None, None)
-            .expect("b max");
+        save_composer_prefs(
+            None,
+            Some(&a.id),
+            None,
+            Some("low".into()),
+            None,
+            None,
+            None,
+        )
+        .expect("a low");
+        save_composer_prefs(
+            None,
+            Some(&b.id),
+            None,
+            Some("max".into()),
+            None,
+            None,
+            None,
+        )
+        .expect("b max");
 
         assert_eq!(resolve_composer_prefs(None, Some(&a.id)).effort, "low");
         assert_eq!(resolve_composer_prefs(None, Some(&b.id)).effort, "max");
@@ -5131,10 +5297,12 @@ mod tests {
             Some("max".into()),
             None,
             None,
+            None,
         )
         .expect("existing max");
 
-        save_composer_prefs(None, None, None, Some("low".into()), None, None).expect("draft low");
+        save_composer_prefs(None, None, None, Some("low".into()), None, None, None)
+            .expect("draft low");
 
         assert_eq!(
             resolve_composer_prefs(None, Some(&existing.id)).effort,
@@ -5684,6 +5852,62 @@ mod tests {
         );
 
         std::env::remove_var("GROK_APP_HOME");
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn connect_writeback_keeps_provider_and_model_saved_during_handshake() {
+        let _g = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-meta-preserve-{}-{}",
+            std::process::id(),
+            Uuid::new_v4()
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("tmp home");
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        let _ = ensure_app_dirs();
+
+        let mut snap = create_session(None, Some("chat".into()), false).expect("session");
+        snap.agent_session_id = Some("old-agent".into());
+        update_session_meta(&snap).expect("seed agent id");
+        save_composer_prefs(
+            None,
+            Some(&snap.id),
+            Some("deepseek-v4-flash".into()),
+            None,
+            None,
+            None,
+            Some("relay-b".into()),
+        )
+        .expect("in-flight composer save");
+
+        // Handshake still holds the entry snapshot, plus the agent id it just opened.
+        snap.agent_session_id = Some("spawned-agent".into());
+        snap.provider_id = None;
+        snap.model_id = Some("grok-4.7".into());
+        snap.effort = Some("high".into());
+        let written = update_session_meta_preserving_composer(&snap).expect("writeback");
+        assert_eq!(written.provider_id.as_deref(), Some("relay-b"));
+        assert_eq!(written.model_id.as_deref(), Some("deepseek-v4-flash"));
+        assert_eq!(written.agent_session_id.as_deref(), Some("spawned-agent"));
+        assert_eq!(written.effort.as_deref(), Some("high"));
+
+        let row = load_sessions_index()
+            .into_iter()
+            .find(|s| s.id == snap.id)
+            .expect("row");
+        assert_eq!(row.provider_id.as_deref(), Some("relay-b"));
+        assert_eq!(row.model_id.as_deref(), Some("deepseek-v4-flash"));
+        assert_eq!(row.agent_session_id.as_deref(), Some("spawned-agent"));
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
         let _ = fs::remove_dir_all(&tmp);
     }
 }

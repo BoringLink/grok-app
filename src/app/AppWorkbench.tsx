@@ -108,7 +108,6 @@ import {
   presentErrorBanner,
   type ErrorBannerView,
   weaveToolsIntoAssistantSegments,
-  truncateBeforeLastUser,
   truncateThroughUserPrompt,
   resolveRewindKeepForUserMessage,
   canRegenerateAssistant,
@@ -174,7 +173,10 @@ import {
 } from "@/lib/goalOrch";
 import { sessionGoalClear } from "@/lib/goalClear";
 import * as api from "@/lib/api";
-import { queueComposerPreferenceApply } from "@/lib/composerPrefsBarrier";
+import {
+  liveHostAfterProviderSwitch,
+  queueComposerPreferenceApply,
+} from "@/lib/composerPrefsBarrier";
 import {
   isDangerousSandboxProfile,
   normalizeSandboxProfile,
@@ -234,6 +236,14 @@ import {
   type Locale,
   type LocalePreference,
 } from "@/i18n";
+import { resolveComposerPrefsSelection } from "@/lib/composerPrefsApply";
+import {
+  messagesAfterEditResend,
+  optimisticLiveHostForEditResend,
+  restoreOptimisticLiveHost,
+  shellAfterEditResendStart,
+  shellReadyAfterRewindFailure,
+} from "@/lib/editResendState";
 import {
   DEFAULT_EFFORT,
   DEFAULT_MODEL_ID,
@@ -652,6 +662,7 @@ import type { ContextMenuState } from "@/lib/app/appDialogTypes";
 import { useSessionRuntime } from "@/hooks/useSessionRuntime";
 import { sessionTranscriptStore } from "@/lib/sessionTranscriptStore";
 import { useSessionConnect, createSessionConnectHost } from "@/hooks/useSessionConnect";
+import { useSessionProviderChip } from "@/hooks/useSessionProviderChip";
 import {
   createGitWorktreeChromeHost,
   useGitWorktreeChrome,
@@ -2352,22 +2363,17 @@ export function AppWorkbench() {
     };
   }, []);
 
+  const sessionProviderChip = useSessionProviderChip();
+
   const applyComposerPrefs = useCallback(
     (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
-      const models = catalog.length > 0 ? catalog : GROK_BUILD_MODELS;
-      let nextModelId: string;
-      if (prefs.modelId && isValidModelId(prefs.modelId, models)) {
-        nextModelId = prefs.modelId;
-      } else {
-        nextModelId = pickDefaultModelId(models);
-      }
-      setModelId(nextModelId);
-      const model = findModel(nextModelId, models);
-      setEffort(
-        isValidEffort(prefs.effort, model)
-          ? prefs.effort
-          : pickDefaultEffort(model),
-      );
+      const next = resolveComposerPrefsSelection({
+        prefs,
+        catalog,
+        providers: sessionProviderChip.providersSnapshot(),
+      });
+      setModelId(next.modelId);
+      setEffort(next.effort);
       setMode(prefs.mode || "agent");
       setPolicy(
         isValidPolicy(prefs.permissionPolicy) ? prefs.permissionPolicy : "ask",
@@ -2376,7 +2382,7 @@ export function AppWorkbench() {
         setPrefsScope(prefs.scope);
       }
     },
-    [],
+    [sessionProviderChip],
   );
 
   const refreshLists = useCallback(async () => {
@@ -2773,17 +2779,35 @@ export function AppWorkbench() {
   useEffect(() => {
     if (!api.isTauri()) return;
     let cancelled = false;
-    void api
-      .composerPrefsResolve({
-        projectId: activeProject?.id ?? null,
-        sessionId: session.sessionId ?? null,
-      })
-      .then((prefs) => {
-        if (!cancelled) applyComposerPrefs(prefs, availableModels);
-      })
-      .catch(() => {});
+    const run = () => {
+      void api
+        .composerPrefsResolve({
+          projectId: activeProject?.id ?? null,
+          sessionId: session.sessionId ?? null,
+        })
+        .then((prefs) => {
+          if (cancelled) return;
+          applyComposerPrefs(prefs, availableModels);
+          if (session.sessionId) {
+            sessionProviderChip.draftComposerRouteRef.current = null;
+          }
+          const stored = prefs.providerId?.trim() ?? "";
+          const draft = sessionProviderChip.draftComposerRouteRef.current;
+          if (stored) {
+            sessionProviderChip.paint(stored);
+          } else if (session.sessionId || !draft) {
+            sessionProviderChip.paint(null);
+          } else {
+            sessionProviderChip.paint(draft.providerId);
+          }
+        })
+        .catch(() => {});
+    };
+    sessionProviderChip.setAfterProviderList(run);
+    run();
     return () => {
       cancelled = true;
+      sessionProviderChip.setAfterProviderList(null);
     };
   }, [
     activeProject?.id,
@@ -2791,6 +2815,7 @@ export function AppWorkbench() {
     prefsScope,
     applyComposerPrefs,
     availableModels,
+    sessionProviderChip,
   ]);
 
   // Prompt history browse is per viewed session — leave browse mode on switch / new chat.
@@ -3163,6 +3188,8 @@ export function AppWorkbench() {
     connectHost.sendInFlightBySessionRef = sendInFlightBySessionRef;
     connectHost.sendEpochBySessionRef = sendEpochBySessionRef;
     connectHost.sessionJsonSchemaRef = sessionJsonSchemaRef;
+    connectHost.draftComposerRouteRef =
+      sessionProviderChip.draftComposerRouteRef;
     connectHost.currentViewFocus = currentViewFocus;
     connectHost.syncViewedTurnClock = syncViewedTurnClock;
     connectHost.setLocalError = setLocalError;
@@ -9172,6 +9199,7 @@ export function AppWorkbench() {
     useState<string>("official");
   const [providerActiveId, setProviderActiveId] = useState<string | null>(null);
   const [modelPickBusy, setModelPickBusy] = useState(false);
+  const modelPickBusyRef = useRef(false);
   const customRouteActive = activeCustomProvider != null;
   const composerProviderInputs = useMemo(
     () =>
@@ -9188,28 +9216,25 @@ export function AppWorkbench() {
       })),
     [customProviders],
   );
+  sessionProviderChip.bind({
+    setProviderActiveSource,
+    setProviderActiveId,
+    setActiveCustomProvider,
+  });
   const refreshProviderRoute = useCallback(async () => {
     if (!api.isTauri()) {
-      setActiveCustomProvider(null);
+      sessionProviderChip.noteProviderList(null);
       setCustomProviders([]);
-      setProviderActiveSource("official");
-      setProviderActiveId(null);
       return;
     }
     try {
       const list = await api.providersList();
       setCustomProviders(list.providers);
-      setProviderActiveSource(list.activeSource);
-      setProviderActiveId(list.activeProviderId);
-      const active =
-        list.activeSource === "custom"
-          ? list.providers.find((provider) => provider.id === list.activeProviderId) ?? null
-          : null;
-      setActiveCustomProvider(active);
+      sessionProviderChip.noteProviderList(list);
     } catch {
       /* keep previous */
     }
-  }, []);
+  }, [sessionProviderChip]);
   useEffect(() => {
     void refreshProviderRoute();
   }, [refreshProviderRoute]);
@@ -9388,102 +9413,95 @@ export function AppWorkbench() {
 
   const handleModelPick = useCallback(
     async (pick: ComposerModelPick) => {
-      if (modelPickBusy) return;
+      if (modelPickBusyRef.current) return;
+      modelPickBusyRef.current = true;
       setModelPickBusy(true);
       try {
+        const providerId =
+          pick.kind === "official" ? "official" : pick.providerId;
+        let nextEfforts = officialEffortCatalog;
         if (pick.kind === "official") {
-          if (providerActiveSource === "custom" && api.isTauri()) {
-            // This chat only. Other providers' running processes stay up.
-            await api.providersActivate("official", null, false);
-            await refreshProviderRoute();
-          }
           if (!isValidModelId(pick.modelId, availableModels)) return;
-          setModelId(pick.modelId);
-          const targetOfficial = effortCatalogForRoute({
+          nextEfforts = effortCatalogForRoute({
             model: findModel(pick.modelId, availableModels),
           });
-          const clampedOfficial = mapEffortToTargetCatalog(
-            effort,
-            targetOfficial,
-            channelEffortOptions ?? officialEffortCatalog,
-          );
-          setEffort(clampedOfficial);
-          void api
-            .composerPrefsSet({
-              projectId: activeProject?.id ?? null,
-              sessionId: session.sessionId ?? null,
-              modelId: pick.modelId,
-              effort: clampedOfficial,
-            })
-            .catch((e) => showToast(String(e), 4000));
         } else {
           if (!api.isTauri()) return;
-          const provider = customProviders.find(
-            (p) => p.id === pick.providerId,
-          );
+          const provider = customProviders.find((p) => p.id === pick.providerId);
           if (!provider) {
             showToast(tr("prov.err.unknownProvider"), 4000);
             return;
           }
-          // Do not rewrite the provider's shared `model` field. That recycled
-          // every warm process, including chats still running on another provider.
-          // This session gets the catalog id via session/set_model.
-          const models =
-            provider.models?.length
-              ? provider.models
-              : [{ id: provider.model, name: provider.model }];
+          const models = provider.models?.length
+            ? provider.models
+            : [{ id: provider.model, name: provider.model }];
           const catalog = models.some((m) => m.id === pick.modelId)
             ? models
             : [...models, { id: pick.modelId, name: pick.modelId }];
-          const appliedLive = materializeActiveModelChannel({
-            provider,
-            modelId: pick.modelId,
-            models: catalog,
-          });
-          if (
-            providerActiveSource !== "custom" ||
-            providerActiveId !== pick.providerId
-          ) {
-            const activated = await api.providersActivate(
-              "custom",
-              pick.providerId,
-              false,
-            );
-            // #557: custom routes require independent agent-home GROK_HOME.
-            if (activated.switchedToIndependent) {
-              setSessionDataMode("independent");
-              showToast(tr("prov.switchedToIndependent"), 5200);
-            }
-          }
-          await refreshProviderRoute();
-          // Map effort into the picked model's catalog (Grok ↔ DeepSeek tiers).
-          const nextEfforts =
-            effortOptionsFromProvider(appliedLive.efforts) ?? GROK_BUILD_EFFORTS;
-          const clampedCustom = mapEffortToTargetCatalog(
-            effort,
-            nextEfforts,
-            channelEffortOptions ?? officialEffortCatalog,
-          );
-          setEffort(clampedCustom);
-          void api
-            .composerPrefsSet({
-              projectId: activeProject?.id ?? null,
-              sessionId: session.sessionId ?? null,
-              modelId: pick.modelId,
-              effort: clampedCustom,
-            })
-            .catch((e) => showToast(String(e), 4000));
+          nextEfforts =
+            effortOptionsFromProvider(
+              materializeActiveModelChannel({
+                provider,
+                modelId: pick.modelId,
+                models: catalog,
+              }).efforts,
+            ) ?? GROK_BUILD_EFFORTS;
         }
+        const clamped = mapEffortToTargetCatalog(
+          effort,
+          nextEfforts,
+          channelEffortOptions ?? officialEffortCatalog,
+        );
+        setModelId(pick.modelId);
+        setEffort(clamped);
+        sessionProviderChip.paint(providerId);
+        if (session.sessionId) {
+          sessionProviderChip.draftComposerRouteRef.current = null;
+        } else {
+          sessionProviderChip.draftComposerRouteRef.current = {
+            providerId,
+            modelId: pick.modelId,
+            effort: clamped,
+          };
+        }
+        const providerChanged =
+          (providerId === "official") !== (providerActiveSource === "official") ||
+          (providerId !== "official" && providerActiveId !== providerId);
+        const sid = session.sessionId;
+        const apply = queueComposerPreferenceApply(
+          effortApplyRef.current,
+          async () => {
+            await api.composerPrefsSet({
+              projectId: activeProject?.id ?? null,
+              sessionId: sid,
+              modelId: pick.modelId,
+              effort: clamped,
+              providerId,
+            });
+            const next = liveHostAfterProviderSwitch(
+              liveHostRef.current,
+              sid,
+              providerChanged,
+            );
+            if (!next) return;
+            liveHostRef.current = next;
+            setLiveHost(next);
+            setSession((prev) =>
+              prev.sessionId === sid ? { ...prev, state: next.state } : prev,
+            );
+          },
+          (error) => showToast(String(error), 4000),
+        );
+        effortApplyRef.current = apply;
+        await apply;
       } catch (e) {
         showToast(String(e), 4000);
       } finally {
+        modelPickBusyRef.current = false;
         setModelPickBusy(false);
       }
     },
     [
-      modelPickBusy,
-      providerActiveSource,
-      providerActiveId,
       availableModels,
       customProviders,
       activeProject?.id,
@@ -9491,11 +9509,11 @@ export function AppWorkbench() {
       effort,
       channelEffortOptions,
       officialEffortCatalog,
-      refreshProviderRoute,
+      providerActiveSource,
+      providerActiveId,
+      sessionProviderChip,
       showToast,
       tr,
-      channelEffortOptions,
-      officialEffortCatalog,
     ],
   );
   const handleContextWindow = useCallback(
@@ -11351,49 +11369,43 @@ export function AppWorkbench() {
 
       // 1) Instant UI commit — same as normal send: user bubble + thinking.
       //    Connect/rewind wait happens under this thinking row, not the edit form.
+      let liveBeforeEdit = liveHostRef.current;
+      let tookOptimisticLive = false;
       setMessages((m) => {
-        const kept = truncateBeforeLastUser(m);
-        const next: ChatMessage[] = [
-          ...kept,
-          {
-            id: `u-${Date.now()}`,
-            role: "user",
-            content: storedDisplay,
-            attachments: att.length ? att : undefined,
-            createdAt: nowIso,
-          },
-          {
-            id: pendingAssistantId,
-            role: "assistant",
-            content: "",
-            streaming: true,
-            createdAt: nowIso,
-          },
-        ];
+        const next = messagesAfterEditResend(m, {
+          userId: `u-${Date.now()}`,
+          pendingAssistantId,
+          content: storedDisplay,
+          attachments: att,
+          createdAt: nowIso,
+        });
         messagesBySessionRef.current.set(cacheKey, next);
         return next;
       });
       setEditingUserMessageId(null);
       setEditAttachments([]);
       setRetryStatus(null);
-      setSession((prev) =>
-        prev.state === "streaming" || prev.state === "awaiting_permission"
-          ? prev
-          : { ...prev, state: "streaming", lastError: null },
-      );
+      setSession((prev) => shellAfterEditResendStart(prev));
       setLiveHost((prev) => {
-        if (sendTargetId && prev.sessionId && prev.sessionId !== sendTargetId) {
-          return prev;
-        }
-        const next = {
-          ...prev,
-          sessionId: sendTargetId ?? prev.sessionId,
-          state: "streaming" as const,
-          lastError: null,
-        };
-        liveHostRef.current = next;
+        liveBeforeEdit = prev;
+        const next = optimisticLiveHostForEditResend(prev, sendTargetId);
+        tookOptimisticLive = next !== prev;
+        if (tookOptimisticLive) liveHostRef.current = next;
         return next;
       });
+      const restoreEditFailure = (targetId: string | null) => {
+        setSession((prev) => shellReadyAfterRewindFailure(prev, targetId));
+        setLiveHost((prev) => {
+          const next = restoreOptimisticLiveHost(
+            prev,
+            liveBeforeEdit,
+            targetId,
+            tookOptimisticLive,
+          );
+          liveHostRef.current = next;
+          return next;
+        });
+      };
 
       const failPending = (errText?: string) => {
         const errTarget = sendTargetId ?? viewingSessionIdRef.current;
@@ -11407,17 +11419,7 @@ export function AppWorkbench() {
             localeRef.current,
           ),
         );
-        if (
-          viewingSessionIdRef.current === sendTargetId ||
-          viewingSessionIdRef.current === errTarget ||
-          (!sendTargetId && viewingSessionIdRef.current === null)
-        ) {
-          setSession((prev) =>
-            prev.state === "streaming"
-              ? { ...prev, state: prev.sessionId ? "ready" : prev.state }
-              : prev,
-          );
-        }
+        restoreEditFailure(sendTargetId);
       };
 
       // 2) Background: connect → rewind journal → send (thinking already shown).
@@ -11453,11 +11455,7 @@ export function AppWorkbench() {
             ) {
               setMessages(priorMessages);
             }
-            setSession((prev) =>
-              prev.state === "streaming"
-                ? { ...prev, state: prev.sessionId ? "ready" : prev.state }
-                : prev,
-            );
+            restoreEditFailure(sessionId);
             showToast(
               tr("session.rewindFailed") + ": " + String(e),
               4500,
@@ -12353,7 +12351,7 @@ export function AppWorkbench() {
           activeCustomProvider={activeCustomProvider}
           mainPane={mainPane}
           onOpenSearch={() => searchPalette.openBlank()}
-          onNewChat={() => void newChat(null)}
+          onNewChat={() => void newChat()}
           onNavigateAutomations={navigateAutomations}
           onNavigateKanban={navigateKanban}
           onNavigateRemoteIm={() => navigateSettings("remote_im", "im")}
@@ -12768,7 +12766,7 @@ export function AppWorkbench() {
             currentModelWindow={currentModelWindow}
             customRouteActive={customRouteActive}
             cycleAttachedChatScope={cycleAttachedChatScope}
-            effectiveCanSend={effectiveCanSend}
+            effectiveCanSend={effectiveCanSend && !modelPickBusy}
             effectiveCanStop={effectiveCanStop}
             effort={effort}
             formatPermCountdown={formatPermCountdown}

@@ -378,6 +378,8 @@ pub struct AcpClient {
     /// provider section id; that mis-labeled processes as "official" and
     /// let them be reused after auth.json was cleared → #528 re-login).
     custom_route: bool,
+    /// `official` or the custom section id this process was spawned for.
+    route_provider_id: String,
     /// Agent `initialize` advertisement for rewind RPCs.
     /// `None` = unknown (try RPC); `Some(false)` = skip; `Some(true)` = call.
     rewind_supported: ParkingMutex<Option<bool>>,
@@ -389,6 +391,8 @@ pub struct AcpClient {
 #[derive(Debug, Clone, Default)]
 pub struct SpawnOptions {
     pub model_id: Option<String>,
+    /// `official` or a custom section id. `None` follows the global route.
+    pub route_provider_id: Option<String>,
     pub effort: Option<String>,
     /// App permission policy id (ask / accept_edits / …).
     pub permission_policy: Option<String>,
@@ -580,13 +584,33 @@ impl AcpClient {
         // aux override home is always OIDC-side; main home follows active_route.
         // Custom relays live only in agent-home — force that GROK_HOME even when
         // session_data_mode=shared so third-party keys work without official login (#557).
+        let explicit_route = opts
+            .route_provider_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
         let custom_route = if home_override.is_some() {
             false
+        } else if let Some(ref id) = explicit_route {
+            !crate::providers::is_session_provider_official(id)
         } else {
             matches!(
                 crate::providers::active_route(),
                 crate::providers::ActiveRoute::Custom { .. }
             )
+        };
+        let route_provider_id = match explicit_route {
+            Some(id) if crate::providers::is_session_provider_official(&id) => {
+                crate::providers::SESSION_PROVIDER_OFFICIAL.to_string()
+            }
+            Some(id) => id,
+            None => match crate::providers::active_route() {
+                crate::providers::ActiveRoute::Custom { id } => id,
+                crate::providers::ActiveRoute::Official => {
+                    crate::providers::SESSION_PROVIDER_OFFICIAL.to_string()
+                }
+            },
         };
         let grok_home = if let Some(ref h) = home_override {
             h.clone()
@@ -606,9 +630,11 @@ impl AcpClient {
         } else {
             session_data_mode
         };
+        // Hold across the auth-file write and process spawn so two chats on
+        // different providers cannot strip and restore auth.json at once.
+        let route_auth_guard = crate::providers::route_auth_lock().lock().await;
         if agent_home_prep {
-            // Official → sync OIDC; custom → strip auth.json (api_key only).
-            crate::providers::prepare_route_auth_for_agent();
+            crate::providers::prepare_route_auth(custom_route);
             if let Some(ref pol) = opts.permission_policy {
                 let _ = crate::agent_prefs::sync_permission_to_agent_profile(prep_mode, pol);
             }
@@ -619,6 +645,14 @@ impl AcpClient {
         // Override home (official aux): pass model id through as catalog id.
         let grok_build_proxy = if ssh_alias.is_some() || home_override.is_some() {
             None
+        } else if opts.route_provider_id.is_some() {
+            // This chat's provider only. A global proxy default must not attach
+            // to an official chat, and a proxy section must still bind when it
+            // is not `[models].default`.
+            crate::providers::session_grok_build_proxy_spawn(
+                &route_provider_id,
+                opts.model_id.as_deref().unwrap_or(""),
+            )
         } else {
             crate::providers::active_grok_build_proxy_spawn(opts.model_id.as_deref().unwrap_or(""))
         };
@@ -635,6 +669,13 @@ impl AcpClient {
             let m = opts.model_id.as_deref().unwrap_or("").trim();
             if m.is_empty() {
                 crate::providers::OFFICIAL_CATALOG_MODEL.to_string()
+            } else {
+                m.to_string()
+            }
+        } else if opts.route_provider_id.is_some() {
+            let m = opts.model_id.as_deref().unwrap_or("").trim();
+            if m.is_empty() || custom_route {
+                route_provider_id.clone()
             } else {
                 m.to_string()
             }
@@ -1007,6 +1048,7 @@ impl AcpClient {
         );
 
         let mut child = cmd.spawn().map_err(|e| {
+            drop(route_auth_guard);
             let code = if ssh_alias.is_some() {
                 AgentErrorCode::ConnectFailed
             } else {
@@ -1056,6 +1098,7 @@ impl AcpClient {
             empty_mcp_servers,
             sandbox_profile: ParkingMutex::new(sandbox.map(|sb| sb.profile.clone())),
             custom_route,
+            route_provider_id,
             rewind_supported: ParkingMutex::new(None),
             ssh_alias: ssh_alias.clone(),
         });
@@ -1155,6 +1198,7 @@ impl AcpClient {
             sandbox_profile: ParkingMutex::new(None),
             // Remote ACP: treat as official-class for reuse (no local auth strip).
             custom_route: false,
+            route_provider_id: crate::providers::SESSION_PROVIDER_OFFICIAL.to_string(),
             rewind_supported: ParkingMutex::new(None),
             ssh_alias: None,
         });
@@ -1165,6 +1209,15 @@ impl AcpClient {
     /// Whether this process was spawned for a custom relay route (api_key only).
     pub fn is_custom_route(&self) -> bool {
         self.custom_route
+    }
+
+    /// `official` or the custom section id this process was spawned for.
+    pub fn route_provider_id(&self) -> &str {
+        if self.route_provider_id.is_empty() {
+            crate::providers::SESSION_PROVIDER_OFFICIAL
+        } else {
+            &self.route_provider_id
+        }
     }
 
     /// Spawn the transport read loop over any `AsyncRead` (child stdout or the

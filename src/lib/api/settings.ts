@@ -291,6 +291,8 @@ export interface ComposerPrefs {
   permissionPolicy: string;
   scope: string;
   source: string;
+  /** `official` or a custom provider id. Missing on older chats. */
+  providerId?: string | null;
 }
 
 export async function settingsGet() {
@@ -323,6 +325,8 @@ export async function composerPrefsSet(body: {
   effort?: string | null;
   mode?: string | null;
   permissionPolicy?: string | null;
+  /** `official` or a custom section id. Omitted leaves the stored provider. */
+  providerId?: string | null;
 }) {
   return invoke<ComposerPrefs>("composer_prefs_set", {
     projectId: body.projectId ?? null,
@@ -331,6 +335,7 @@ export async function composerPrefsSet(body: {
     effort: body.effort ?? null,
     mode: body.mode ?? null,
     permissionPolicy: body.permissionPolicy ?? null,
+    providerId: body.providerId ?? null,
   });
 }
 

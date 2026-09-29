@@ -65,7 +65,7 @@
 - 📝 **Файлы, код и генерация контента** — Встроенный редактор CodeMirror 6 с мгновенной синхронизацией с диском, визуальный просмотр изменений Git Diff, поддержка мультимедиа (изображения, видео, аудио, PDF, документы Office) и генерация изображений/видео через Imagine.
 - 📲 **Мультиканальный Remote IM** — Единый мост для подключения агента к Telegram, Discord, Slack, Feishu/Lark, DingTalk, WeCom, личному WeChat, QQ, Matrix, LINE и Weibo; мобильное веб-зеркало с защитой по токену и локальный REST API.
 - 🐾 **Настольный компаньон и интерактивность** — Интерактивный плавающий питомец поверх окон с реакцией на статус работы агента, поддержкой кастомизации и всплывающими подсказками.
-- 🔐 **Локальная приватность и кастомные relay** — Ключи API надёжно хранятся в системном хранилище ключей ОС. Мониторинг квоты SuperGrok и тепловая карта расхода, поддержка сторонних шлюзов (OpenRouter, DeepSeek, AI98PRO и др.) и 15 встроенных языков интерфейса.
+- 🔐 **Локальная приватность и кастомные relay** — Ключи API надёжно хранятся в системном хранилище ключей ОС. Мониторинг квоты SuperGrok и тепловая карта расхода, поддержка сторонних шлюзов (OpenRouter, Requesty, DeepSeek, AI98PRO и др.) и 15 встроенных языков интерфейса.
 
 ---
 
@@ -102,7 +102,7 @@
 
 ### 6. Учётные записи, шлюзы и персонализация
 - **Мультиаккаунт и контроль квот**: Быстрое переключение между профилями, официальный вход, прогресс-бар квоты SuperGrok, тепловая карта расходов и локальный учёт сторонних провайдеров.
-- **Настройка провайдеров и relay**: Независимый режим конфигурации или безопасный совместный режим (сохраняет оригинальный `~/.grok`); готовые пресеты для OpenRouter, DeepSeek, AI98PRO и др.
+- **Настройка провайдеров и relay**: Независимый режим конфигурации или безопасный совместный режим (сохраняет оригинальный `~/.grok`); готовые пресеты для OpenRouter, Requesty, DeepSeek, AI98PRO и др.
 - **Визуальная кастомизация**: Светлая, тёмная и системная темы; поддержка скинов, обоев, шрифтов интерфейса и терминала.
 - **Интернационализация**: 15 встроенных языков с автоматическим определением языка операционной системы при первом запуске.
 
@@ -316,7 +316,7 @@ Windows (необязательно): дважды щёлкните [`install-la
 ## 👥 Участники
 
 <!-- CONTRIBUTORS:START -->
-Спасибо всем, кто внёс вклад в Grok App. Все участники GitHub — люди (по числу коммитов, обновлено 2026-09-22).
+Спасибо всем, кто внёс вклад в Grok App. Все участники GitHub — люди (по числу коммитов, обновлено 2026-09-30).
 
 <p align="center">
   <a href="https://github.com/RongleCat" title="RongleCat"><img src="https://github.com/RongleCat.png?size=96" width="72" height="72" alt="RongleCat" style="border-radius:50%" /></a>
@@ -344,6 +344,7 @@ Windows (необязательно): дважды щёлкните [`install-la
   <a href="https://github.com/falser101" title="falser101"><img src="https://github.com/falser101.png?size=96" width="72" height="72" alt="falser101" style="border-radius:50%" /></a>
   <a href="https://github.com/salasebas" title="salasebas"><img src="https://github.com/salasebas.png?size=96" width="72" height="72" alt="salasebas" style="border-radius:50%" /></a>
   <a href="https://github.com/Sdefendre" title="Sdefendre"><img src="https://github.com/Sdefendre.png?size=96" width="72" height="72" alt="Sdefendre" style="border-radius:50%" /></a>
+  <a href="https://github.com/Thibaultjaigu" title="Thibaultjaigu"><img src="https://github.com/Thibaultjaigu.png?size=96" width="72" height="72" alt="Thibaultjaigu" style="border-radius:50%" /></a>
   <a href="https://github.com/yuhaouno" title="yuhaouno"><img src="https://github.com/yuhaouno.png?size=96" width="72" height="72" alt="yuhaouno" style="border-radius:50%" /></a>
   <a href="https://github.com/2530185073" title="2530185073"><img src="https://github.com/2530185073.png?size=96" width="72" height="72" alt="2530185073" style="border-radius:50%" /></a>
   <a href="https://github.com/86208620" title="86208620"><img src="https://github.com/86208620.png?size=96" width="72" height="72" alt="86208620" style="border-radius:50%" /></a>
