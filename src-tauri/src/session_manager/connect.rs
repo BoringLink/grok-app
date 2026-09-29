@@ -247,6 +247,32 @@ impl SessionManager {
         snap
     }
 
+    /// Whole-row connect write that keeps `provider_id` and `model_id` from
+    /// the index. The in-memory shell is updated to those disk values so a
+    /// later snapshot write cannot put the spawn-time pair back.
+    fn persist_connect_meta(&self, meta: &mut store::SessionMeta) {
+        match store::update_session_meta_preserving_composer(meta) {
+            Ok(written) => {
+                {
+                    let mut guard = self.inner.lock();
+                    if let Some(s) = guard.as_mut() {
+                        if s.app_session_id == written.id {
+                            s.meta.provider_id = written.provider_id.clone();
+                            s.meta.model_id = written.model_id.clone();
+                        }
+                    }
+                }
+                *meta = written;
+            }
+            Err(e) => tracing::warn!(
+                target: "session",
+                session = %meta.id,
+                error = %e,
+                "connect meta write failed"
+            ),
+        }
+    }
+
     pub(super) async fn connect_inner(
         self: &Arc<Self>,
         app: AppHandle,
@@ -291,7 +317,7 @@ impl SessionManager {
                 .unwrap_or(false)
         {
             meta.project_id = None;
-            let _ = store::update_session_meta(&meta);
+            self.persist_connect_meta(&mut meta);
         }
 
         let projects = store::load_projects();
@@ -346,7 +372,7 @@ impl SessionManager {
                     p.ssh_alias.as_deref() == Some(alias) && p.path == cwd.to_string_lossy()
                 }) {
                     meta.project_id = Some(p.id.clone());
-                    let _ = store::update_session_meta(&meta);
+                    self.persist_connect_meta(&mut meta);
                 }
             }
         }
@@ -370,11 +396,8 @@ impl SessionManager {
         let prefs =
             store::resolve_composer_prefs(meta.project_id.as_deref(), Some(meta.id.as_str()));
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
-        let route = if ssh_alias.is_some() {
-            crate::providers::SESSION_PROVIDER_OFFICIAL.to_string()
-        } else {
-            crate::providers::session_route_provider_id(meta.provider_id.as_deref())
-        };
+        let route =
+            crate::providers::connect_route_id(ssh_alias.is_some(), meta.provider_id.as_deref());
         let agent_model = if ssh_alias.is_some() {
             let m = prefs.model_id.trim();
             if m.is_empty() || crate::providers::is_custom_provider_id(m) {
@@ -969,9 +992,22 @@ impl SessionManager {
                     "connect prewarm reuse (ownerless process, no cross-session sharing)"
                 );
                 // #528: warm reuse skips cold spawn (no prepare_route_auth).
-                // Re-apply route auth so official OIDC is on disk after any
-                // intervening custom-route clear, and nested tools see keys.
-                crate::providers::prepare_route_auth_for_agent();
+                // Shared-mode official uses ~/.grok and must not copy OIDC into
+                // agent-home. Independent mode still prepares like a cold spawn
+                // (no conflict skip — skipping can leave the official chat
+                // signed out at session/load).
+                let process_custom = acp.is_custom_route();
+                let mode = store::load_settings().session_data_mode;
+                if crate::providers::warm_reuse_should_prepare_auth(&mode, process_custom) {
+                    let _route_auth = crate::providers::route_auth_lock().lock().await;
+                    crate::providers::prepare_route_auth_for_agent();
+                } else {
+                    tracing::info!(
+                        target: "session",
+                        session = %meta.id,
+                        "connect warm-reuse skipped agent-home auth rewrite (shared official uses ~/.grok)"
+                    );
+                }
                 // P0: bind the live shell to the reused process *before*
                 // session/load. Load replays stream/tool notifications while
                 // open awaits; if live still held a temporary process_id,
@@ -1027,7 +1063,7 @@ impl SessionManager {
                                 meta = s.meta.clone();
                             }
                         }
-                        let _ = store::update_session_meta(&meta);
+                        self.persist_connect_meta(&mut meta);
                         let snap = self.snapshot();
                         Self::emit_state(&app, &snap);
                         tracing::info!(
@@ -1044,6 +1080,12 @@ impl SessionManager {
                         // this a resumed chat silently kept running on its old
                         // model while the composer and live shell showed the
                         // resolved one.
+                        let session_model = connect_set_model_argument(
+                            ssh_alias.is_some(),
+                            &route,
+                            &session_model,
+                            disk_session_model_id(&meta.id).as_deref(),
+                        );
                         if let Err(e) = Self::with_soft_rpc_budget(
                             acp_align.set_model_for(&agent_sid, &session_model),
                         )
@@ -1522,7 +1564,7 @@ impl SessionManager {
                         meta = s.meta.clone();
                     }
                 }
-                let _ = store::update_session_meta(&meta);
+                self.persist_connect_meta(&mut meta);
                 let snap = self.snapshot();
                 Self::emit_state(&app, &snap);
                 // Child is live/Ready — drop it from the abort-reap list before
@@ -1545,6 +1587,12 @@ impl SessionManager {
                 // session/set_model after session/new. Spawn `--model` alone is not
                 // enough when the composer id is an App `app_models` catalog id that
                 // CLI spawn resolves differently from ACP set_model.
+                let session_model = connect_set_model_argument(
+                    ssh_alias.is_some(),
+                    &route,
+                    &session_model,
+                    disk_session_model_id(&meta.id).as_deref(),
+                );
                 if let Err(e) = Self::with_soft_rpc_budget(client.set_model(&session_model)).await {
                     tracing::warn!("acp set_model after session open soft-fail: {e}");
                 }
@@ -2082,6 +2130,37 @@ pub(crate) fn should_kill_parked_after_flag_mismatch(
 ///
 /// SSH sessions are official-only. `None` follows `active_route()` and would
 /// prepare a custom global relay's auth for a remote official chat.
+/// `session/set_model` id for a connect that already spawned.
+///
+/// A model saved on the row after spawn wins. Empty disk keeps the id this
+/// handshake already resolved.
+pub(crate) fn connect_set_model_argument(
+    ssh: bool,
+    route: &str,
+    spawned: &str,
+    disk_model: Option<&str>,
+) -> String {
+    let Some(raw) = disk_model.map(str::trim).filter(|s| !s.is_empty()) else {
+        return spawned.to_string();
+    };
+    if ssh {
+        if crate::providers::is_custom_provider_id(raw) {
+            return crate::providers::OFFICIAL_CATALOG_MODEL.to_string();
+        }
+        return raw.to_string();
+    }
+    crate::providers::session_set_model_id_for(route, raw)
+}
+
+fn disk_session_model_id(session_id: &str) -> Option<String> {
+    store::load_sessions_index()
+        .into_iter()
+        .find(|s| s.id == session_id)
+        .and_then(|s| s.model_id)
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+}
+
 pub(super) fn cold_start_route_provider_id(ssh_alias: Option<&str>, session_route: &str) -> String {
     if ssh_alias.is_some() {
         crate::providers::SESSION_PROVIDER_OFFICIAL.to_string()
@@ -2110,6 +2189,66 @@ mod connect_preserve_tests {
             cold_start_route_provider_id(None, crate::providers::SESSION_PROVIDER_OFFICIAL),
             crate::providers::SESSION_PROVIDER_OFFICIAL
         );
+    }
+
+    #[test]
+    fn set_model_after_ready_uses_the_model_saved_on_disk() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-set-model-disk-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("temp home");
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        let _ = crate::paths::ensure_app_dirs();
+
+        assert_eq!(
+            connect_set_model_argument(false, "official", "grok-4.7", None),
+            "grok-4.7",
+            "no disk model keeps the spawn-time id"
+        );
+        assert_eq!(
+            connect_set_model_argument(false, "official", "grok-4.7", Some("  ")),
+            "grok-4.7"
+        );
+        assert_eq!(
+            connect_set_model_argument(false, "official", "grok-4.7", Some("grok-4.5")),
+            "grok-4.5",
+            "a model saved after Ready replaces the spawn-time id"
+        );
+
+        let session =
+            crate::store::create_session(None, Some("chat".into()), false).expect("session");
+        crate::store::save_composer_prefs(
+            None,
+            Some(&session.id),
+            Some("grok-4.5".into()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("save model");
+        let disk = disk_session_model_id(&session.id);
+        assert_eq!(disk.as_deref(), Some("grok-4.5"));
+        assert_eq!(
+            connect_set_model_argument(false, "official", "grok-4.7", disk.as_deref()),
+            "grok-4.5"
+        );
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
