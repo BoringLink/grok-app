@@ -10,7 +10,6 @@
  * 路由（同一时刻只有一套编辑器挂载）。
  */
 
-import type { ComponentType } from "react";
 import { useSyncExternalStore } from "react";
 import * as legacy from "@/components/ComposerEditor";
 import type { ComposerEditorProps } from "./tiptap/ComposerEditorTiptap";
@@ -32,11 +31,15 @@ export function useComposerEditorKind() {
 }
 
 /**
- * 内置编辑器的 props 是我们这套的子集：这里显式窄化一次，让分发器对外只有
- * 一个（超集）签名。多出来的属性对内置编辑器是惰性字段，不受影响。
+ * 内置编辑器的 props 是我们这套的子集：这里显式丢掉只有 Markdown 档认识的属性，
+ * 其余原样透传 —— 让类型检查站住这条边界，而不是 `as` 断言（多传少传都会在此报错）。
  */
-const LegacyComposerEditor =
-  legacy.ComposerEditor as unknown as ComponentType<ComposerEditorProps>;
+function LegacyComposerEditor({
+  onAtQueryChange: _onAtQueryChange,
+  ...rest
+}: ComposerEditorProps) {
+  return <legacy.ComposerEditor {...rest} />;
+}
 
 /** 按档位挂载对应的编辑器。 */
 export function ComposerEditor(props: ComposerEditorProps) {

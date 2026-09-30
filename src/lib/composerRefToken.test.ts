@@ -19,12 +19,26 @@ import {
   unescapeRefValue,
   REF_TOKEN_RE,
 } from "./composerRefToken";
+import { parseStoredContentWithRefs } from "./draftDoc";
 
 describe("ref token escaping", () => {
   it("leaves ordinary paths untouched so drafts stay readable", () => {
     // Arrange / Act / Assert
     expect(escapeRefValue("/repo/src/a b.ts")).toBe("/repo/src/a b.ts");
     expect(escapeRefValue("C:\\Users\\me\\a.ts")).toBe("C:\\Users\\me\\a.ts");
+  });
+
+  it("解转义只认大写序列，字面量 `%5d` / `%25` 原样保留", () => {
+    // Arrange —— 转义只产出大写（`%5D` / `%25`）。解转义若带 `i` 标志，手写或旧版本
+    // 留下的 `%5d` 会被解成 `]`、`%25` 之外的小写 `%25`…都会静默改掉路径。
+    // Act / Assert
+    expect(unescapeRefValue("/repo/a%5db.ts")).toBe("/repo/a%5db.ts");
+    expect(unescapeRefValue("/repo/a%5Db.ts")).toBe("/repo/a]b.ts");
+    expect(unescapeRefValue("/repo/100%25.ts")).toBe("/repo/100%.ts");
+    // token 解析同理：小写序列不是转义
+    expect(parseStoredContentWithRefs("[[file:/repo/a%5db.ts]]")).toEqual([
+      { type: "ref", kind: "file", value: "/repo/a%5db.ts" },
+    ]);
   });
 
   it("escapes only the two characters that break the grammar", () => {

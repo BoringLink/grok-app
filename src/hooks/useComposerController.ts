@@ -61,6 +61,32 @@ const EMPTY_LIVE: LiveTokenQuery = {
  * Local composer UI state. Send path and Host wiring remain in AppWorkbench.
  * Draft is external-store only — never returned as React state.
  */
+/**
+ * 光标是否还在输入框里、且窗口可见 —— 编辑器上报的 `@` / slash 查询共用这条判定
+ * （失焦或窗口隐藏时不该保留查询，否则用 Tab 移出输入框后面板会常驻）。
+ *
+ * 内置档 rAF 轮询里那份同样的判定保持原样不动（上游代码，见 tick），因此这里只服务
+ * 两个上报入口。
+ */
+function composerLiveVisible(el: HTMLElement | null): boolean {
+  const sel = typeof window === "undefined" ? null : window.getSelection();
+  const composerActive = !!(
+    el &&
+    (document.activeElement === el || el.contains(document.activeElement))
+  );
+  const selectionInComposer = !!(
+    el &&
+    sel &&
+    sel.rangeCount > 0 &&
+    el.contains(sel.anchorNode)
+  );
+  return shouldProbeComposerLiveDom({
+    visibilityState: document.visibilityState,
+    composerActive,
+    selectionInComposer,
+  });
+}
+
 export function useComposerController(initialDraft = "") {
   /** Seed store once when a non-empty initial is passed (tests / rare). */
   const seededRef = useRef(false);
@@ -328,25 +354,7 @@ export function useComposerController(initialDraft = "") {
     (range: { from: number; to: number; query: string } | null) => {
       // 失焦 / 窗口隐藏时不保留查询：与内置档的 probeDom 语义一致，否则用 Tab
       // 移出输入框后 `@` 面板会常驻。
-      const el = composerInputRef.current;
-      const sel = typeof window === "undefined" ? null : window.getSelection();
-      const composerActive = !!(
-        el &&
-        (document.activeElement === el || el.contains(document.activeElement))
-      );
-      const selectionInComposer = !!(
-        el &&
-        sel &&
-        sel.rangeCount > 0 &&
-        el.contains(sel.anchorNode)
-      );
-      if (
-        !shouldProbeComposerLiveDom({
-          visibilityState: document.visibilityState,
-          composerActive,
-          selectionInComposer,
-        })
-      ) {
+      if (!composerLiveVisible(composerInputRef.current)) {
         range = null;
       }
       let atNext: LiveTokenQuery = {
@@ -393,25 +401,7 @@ export function useComposerController(initialDraft = "") {
    */
   const reportSlashQuery = useCallback(
     (range: { start: number; query: string; end: number } | null) => {
-      const el = composerInputRef.current;
-      const sel = typeof window === "undefined" ? null : window.getSelection();
-      const composerActive = !!(
-        el &&
-        (document.activeElement === el || el.contains(document.activeElement))
-      );
-      const selectionInComposer = !!(
-        el &&
-        sel &&
-        sel.rangeCount > 0 &&
-        el.contains(sel.anchorNode)
-      );
-      const live =
-        !!range &&
-        shouldProbeComposerLiveDom({
-          visibilityState: document.visibilityState,
-          composerActive,
-          selectionInComposer,
-        });
+      const live = !!range && composerLiveVisible(composerInputRef.current);
       let next: LiveTokenQuery = live
         ? { present: true, query: range.query, start: range.start, end: range.end }
         : { present: false, query: "", start: 0, end: 0 };

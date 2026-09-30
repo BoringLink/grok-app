@@ -59,15 +59,21 @@ skill / plugin chip，没有列表、代码块与行内文件引用；上游近�
 
 - **新增**：`src/components/composer/`（分发器 + `editorPref.ts` + `demoteRefs.ts` + `tiptap/`）、
   `src/lib/composerAtApply.ts`（`@` 落刀的两条档位分支）、设置项与 15 个 locale 文案、本 ADR。
-- **对上游文件的改动**（按改动性质分列，均为接线；`ComposerEditor.tsx` 零改动）：
-  - 挂载薄岛 `src/components/ComposerDraftEditor.tsx`：改从分发器取组件，加渲染前的引用降级。
-  - 透传：`src/app/WorkbenchComposerShell.tsx`（+5 行）、`src/app/WorkbenchComposerColumn.tsx`（+2 行，
-    `onAtQueryChange` 属性）。
-  - import 改指分发器：`src/hooks/useComposerSend.ts`、`src/hooks/useVoiceDictation.ts`（各 1 行）。
-  - 按档位分支：`src/hooks/useComposerController.ts`（DOM 轮询让位 + 两个上报函数）、
-    `src/app/AppWorkbench.tsx`（`@` 落刀注入上下文 + 按档位分流 slash 上报）。
-  - 设置项接线：`src/hooks/useAppSettingsPrefs.ts`（把设置值同步给模块级档位）、
-    `WorkbenchSettingsStage.tsx` / `workbenchSettingsStageProps.ts` / `SettingsPage.tsx` /
-    `settings/AppearanceSection.tsx` / `settings/types.ts` / `settingsCatalog` / i18n × 15。
+- **对上游文件的改动**（数字取自 `git diff upstream/main...HEAD --numstat`；均为接线，
+  `ComposerEditor.tsx` 零改动）：
+  - 挂载薄岛 `src/components/ComposerDraftEditor.tsx`（+27/−3）：改从分发器取组件，加渲染前的引用降级。
+  - 透传：`src/app/WorkbenchComposerShell.tsx`（+17/−1，`onAtQueryChange` 与 memo 过的
+    `onDemoteRefs`）、`src/app/WorkbenchComposerColumn.tsx`（+2）。
+  - import 改指分发器：`src/hooks/useComposerSend.ts`、`src/hooks/useVoiceDictation.ts`（各 +1/−1）。
+  - 聊天侧渲染行内引用（气泡 chip 与「重新编辑」回填）：`src/components/lobe-chat/MarkdownChat.tsx`、
+    `ThreadUserBody.tsx`、`InlineUserEdit.tsx`，配套把气泡文案表下沉到 `src/lib/filePathCardPref.ts`
+    供两处共用 —— 这段**属于本 Feature 的一部分**（引用在气泡里要渲染成 chip，否则输入框里是
+    chip、发出去变字面量），不是顺带重构。
+  - 按档位分支：`src/hooks/useComposerController.ts`（+169：DOM 轮询让位、两个上报函数、编辑器上报入口）、
+    `src/app/AppWorkbench.tsx`（+18/−44，**净 −26**：`@` 落刀与 slash 分流都不在这里了）。
+  - 设置项接线：`src/hooks/useAppSettingsPrefs.ts`（+18/−1）、`src/app/WorkbenchSettingsStage.tsx`
+    （+11/−2）、`src/app/workbenchSettingsStageProps.ts`（+3）、`src/components/SettingsPage.tsx`（+4）、
+    `src/components/settings/AppearanceSection.tsx`（+33）、`src/components/settings/types.ts`（+5）、
+    `settingsCatalog` / i18n × 15。
 - **文档**：`docs/ACCEPTANCE-slash-composer.md` 的 C 段按档位分栏；ADR 0002 与 ADR 0003 的适用范围
   限定为 Markdown 档（本 ADR 是它们的前提说明）。

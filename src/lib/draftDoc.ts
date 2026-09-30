@@ -7,6 +7,7 @@
 import {
   isExternalHttpUrl,
   refAgentText,
+  REF_TOKEN_RE,
   refTokenText,
   unescapeRefValue,
   type RefKind,
@@ -102,7 +103,7 @@ export function hydrateDisplayContent(content: string): string {
   if (!content.startsWith("/") && !content.includes("/goal")) return content;
 
   let rest = content;
-  // Drop the goal-mode prefix before hydration (mode is session chrome, not a chip).
+  // Drop goal mode prefix from display hydration (mode is session chrome, not a chip).
   if (rest.startsWith("/goal\n")) {
     rest = rest.slice("/goal\n".length);
   } else if (rest === "/goal") {
@@ -255,7 +256,7 @@ export function previewStoredAsSlash(stored: string): string {
     )
     // 引用 token 预览成它发送时的样子（`@路径` / URL），否则会漏出原始 token。
     .replace(
-      /\[\[(file|dir|url):([^\]\r\n]*)\]\]/g,
+      new RegExp(REF_TOKEN_RE.source, "g"),
       (_m, kind: RefKind, value: string) =>
         refAgentText(kind, unescapeRefValue(value)),
     )

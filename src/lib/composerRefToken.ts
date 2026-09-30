@@ -34,7 +34,9 @@ export function escapeRefValue(value: string): string {
 
 /** {@link escapeRefValue} 的逆操作。 */
 export function unescapeRefValue(value: string): string {
-  return value.replace(/%5D/gi, "]").replace(/%25/gi, "%");
+  // 只认大写：`escapeRefValue` 只产出大写，带 `i` 会把路径里字面量的
+  // `%5d` / `%25` 也当成转义序列解回 `]`，往返就不对称了。
+  return value.replace(/%5D/g, "]").replace(/%25/g, "%");
 }
 
 /**
@@ -165,9 +167,11 @@ export function matchTypedUrl(
 /**
  * 只有 http(s) 才能成为 URL chip 或可点击链接。
  *
- * 在 `composerRefToken` 里做这个判定是为了让节点/粘贴/输入规则共用一条规则；
- * 与 `externalLinkPref.isExternalHttpUrl` 的结论一致（拒绝 `javascript:` /
- * `data:` / `mailto:` / 相对路径等）。
+ * 在 `composerRefToken` 里做这个判定是为了让节点 / 粘贴 / 输入规则共用一条规则。
+ * 与 `externalLinkPref.isExternalHttpUrl` 同源但**故意更严**（不复用）：这里还要挡住
+ * `blob:` / `vbscript:` / `file:` 与协议相对地址 `//host/path`，并要求 URL 至少有一个
+ * 主机字符 —— 输入框里的 chip 是可点击语义（验收 C11），不能只按「能外开」放行。
+ * 两者不一致的用例见 `composerRefToken.test.ts` 的 `url scheme gate`。
  */
 export function isExternalHttpUrl(url: string): boolean {
   const t = url.trim();

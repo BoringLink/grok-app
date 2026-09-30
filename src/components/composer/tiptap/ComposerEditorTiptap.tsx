@@ -65,13 +65,16 @@ const COMPOSER_MAX_LINES = 10;
 /** 编辑器 DOM → Editor 实例注册表（serializeDom / caret 换算入口）。 */
 const editorsByDom = new WeakMap<HTMLElement, Editor>();
 
-function readMarkdown(editor: {
-  // tiptap-markdown augments storage at runtime; Storage type stays empty.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  storage: any;
-}): string {
+/**
+ * tiptap-markdown 在运行时往 `storage.markdown` 上挂 `getMarkdown`，而 tiptap 把
+ * `storage` 类型成空的。这里按需收窄到我们真正要读的那一格 —— 不用 `any`，
+ * 也不关类型检查规则。
+ */
+type MarkdownStorage = { markdown?: { getMarkdown?: () => unknown } };
+
+function readMarkdown(editor: { storage: unknown }): string {
   try {
-    const md = editor.storage?.markdown?.getMarkdown?.();
+    const md = (editor.storage as MarkdownStorage | undefined)?.markdown?.getMarkdown?.();
     return typeof md === "string" ? md : "";
   } catch {
     return "";
