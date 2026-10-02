@@ -529,24 +529,34 @@
   margin-block: 0.35em;
 }
 
-/* File / URL path — inline link, no card chrome. Hover tip has the full path. */
+/*
+ * File / URL path — inline chip。聊天消息与输入框**共用**这一份外观：
+ * 蓝底蓝字，圆角矩形，悬停提示完整路径（title）。
+ *
+ * 配色规则：底色与描边是同一个蓝（`--chat-link`，输入框里回落到 `--accent`）
+ * 以 `transparent` 打底的 color-mix 叠层，所以在深色 / 浅色 / 壁纸主题、
+ * 以及灰色用户气泡上都能自适应；文字就是**加深背景前的那支蓝**（`--chat-link`），
+ * 与底色同色相，靠蓝底把它的识别度和对比度一起抬起来。
+ */
 .file-path-card {
-  display: inline;
+  display: inline-flex;
+  align-items: center;
   max-width: 100%;
-  margin: 0;
-  padding: 0;
+  margin: 0 2px;
+  padding: 0 6px 0 5px;
   position: relative;
-  border: none;
-  border-radius: 0;
-  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--chat-link, var(--accent)) 30%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--chat-link, var(--accent)) 12%, transparent);
   box-shadow: none;
   overflow: visible;
-  vertical-align: baseline;
+  color: var(--chat-link, var(--accent));
+  vertical-align: middle;
 }
 
 .file-path-card__main {
-  display: inline;
-  align-items: baseline;
+  display: inline-flex;
+  align-items: center;
   gap: 0;
   width: auto;
   min-height: 0;
@@ -554,7 +564,7 @@
   text-align: left;
   background: transparent;
   border: none;
-  color: var(--chat-link, var(--accent, #6db3f2));
+  color: inherit;
   cursor: pointer;
   font: inherit;
   line-height: inherit;
@@ -734,16 +744,31 @@ html[data-composer-min-rows="8"] .composer__input {
   min-height: 176px;
 }
 
-/* If any rich HTML still lands, strip visual styles (skill chips keep own classes). */
-.composer__input b,
-.composer__input strong,
-.composer__input i,
-.composer__input em,
-.composer__input u,
-.composer__input s,
-.composer__input span:not([data-skill]):not(.skill-chip):not(.skill-chip__name):not(.skill-chip__glyph),
-.composer__input font,
-.composer__input a {
+/*
+ * 「rich HTML 落进来就剥掉样式」防御规则（ADR 0004 后重新**只对内置档**生效）。
+ *
+ * 它来自自研 contenteditable 时代：那时输入框内容是可以被任意 HTML 污染的纯文本
+ * DOM，所以把 b/strong/i/em/u/s/font/a 与未白名单的 span 一律强制 `inherit`。
+ * 内置档仍是这样一块 contenteditable，因此这条防御必须留着——上游行为逐项一致。
+ *
+ * Markdown 档（TipTap）不需要它：内容由 ProseMirror schema 约束，且
+ * `Markdown.configure({ html: false, transformPastedText: true })` 不保留粘贴的任意
+ * HTML。反过来，它在那档是有害的——会把**粗体、斜体、下划线、删除线、链接**
+ * 全部压成普通文本，「所见即所得」不成立，也会把引用 / URL chip 的底色按掉。
+ *
+ * 两档的输入框都带 `.composer__input`，用 `.ProseMirror`（TipTap 独有）区分。
+ */
+.composer-editor-wrap > .composer__input:not(.ProseMirror) b,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) strong,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) i,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) em,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) u,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) s,
+.composer-editor-wrap
+  > .composer__input:not(.ProseMirror)
+  span:not([data-skill]):not(.skill-chip):not(.skill-chip__name):not(.skill-chip__glyph),
+.composer-editor-wrap > .composer__input:not(.ProseMirror) font,
+.composer-editor-wrap > .composer__input:not(.ProseMirror) a {
   font: inherit !important;
   font-weight: inherit !important;
   font-style: inherit !important;

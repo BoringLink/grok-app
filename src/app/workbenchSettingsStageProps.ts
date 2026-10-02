@@ -30,6 +30,7 @@ import type { ThemeSkinId, WallpaperRecord } from "@/lib/themeSkin";
 import type { WallpaperClip } from "@/lib/wallpaperClip";
 import type { WallpaperFocus } from "@/lib/wallpaperFocus";
 import type { MessageTimeFormat } from "@/lib/messageTimeFormatPref";
+import type { ComposerEditorId } from "@/lib/composerEditorPref";
 
 type TFn = ReturnType<typeof createT>;
 
@@ -80,6 +81,7 @@ export type WorkbenchSettingsStageProps = {
   closeToTray: boolean;
   compactionDetail: CompactionDetailId;
   compactionMode: CompactionModeId;
+  composerEditor: ComposerEditorId;
   confirmArchiveOlderThan: (days: number) => void;
   defaultOpenTarget: string;
   deleteSessionsConfirm: (rows: SessionRow[]) => void;
@@ -163,6 +165,7 @@ export type WorkbenchSettingsStageProps = {
   setCloseToTray: Dispatch<SetStateAction<boolean>>;
   setCompactionDetail: Dispatch<SetStateAction<CompactionDetailId>>;
   setCompactionMode: Dispatch<SetStateAction<CompactionModeId>>;
+  setComposerEditor: Dispatch<SetStateAction<ComposerEditorId>>;
   setDefaultOpenTarget: Dispatch<SetStateAction<string>>;
   setDisableWebSearch: Dispatch<SetStateAction<boolean>>;
   setDisallowedTools: Dispatch<SetStateAction<string[]>>;

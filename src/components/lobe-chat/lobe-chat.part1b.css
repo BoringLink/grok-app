@@ -25,6 +25,8 @@
 .chat-md ol {
   margin: 0 0 0.85em;
   padding-left: 1.35em;
+  /* 项目符号的恢复（Tailwind preflight 全局清了 list-style）在
+   * src/styles/settings.part6.css，与 .md-body / .composer__input 一起补。 */
 }
 .chat-md li {
   margin: 0.28em 0;

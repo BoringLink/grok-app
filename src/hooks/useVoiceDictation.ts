@@ -13,7 +13,7 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react";
-import { getComposerCaretOffset } from "@/components/ComposerEditor";
+import { getComposerCaretOffset } from "@/components/composer";
 import { createT, type MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
 import { isMirrorClient } from "@/lib/mirrorTransport";

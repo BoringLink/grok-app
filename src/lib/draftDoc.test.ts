@@ -9,8 +9,8 @@ import {
   hydrateDisplayContent,
   isDraftEmpty,
   mergeAdjacentText,
-  parseStoredContent,
-  parseUserMessageContent,
+  parseStoredContentWithRefs,
+  parseUserMessageContentWithRefs,
   plainTextOf,
   previewStoredAsSlash,
   segmentsToPlainEditorText,
@@ -62,9 +62,9 @@ describe("draftDoc empty / plain", () => {
 });
 
 describe("draftDoc roundtrip", () => {
-  it("parseStoredContent ↔ serializeStored", () => {
+  it("parseStoredContentWithRefs ↔ serializeStored", () => {
     const raw = "hello [[skill:my-skill]] world [[skill:a.b:c_1]]!";
-    const segs = parseStoredContent(raw);
+    const segs = parseStoredContentWithRefs(raw);
     expect(segs).toEqual([
       { type: "text", text: "hello " },
       { type: "skill", name: "my-skill" },
@@ -78,12 +78,12 @@ describe("draftDoc roundtrip", () => {
 
   it("plain text roundtrip", () => {
     const raw = "no skills here";
-    expect(serializeStored(parseStoredContent(raw))).toBe(raw);
+    expect(serializeStored(parseStoredContentWithRefs(raw))).toBe(raw);
   });
 
   it("leaves invalid tokens as text", () => {
     const raw = "[[skill:bad name]] [[skill:]]";
-    const segs = parseStoredContent(raw);
+    const segs = parseStoredContentWithRefs(raw);
     expect(segs.every((s) => s.type === "text")).toBe(true);
     expect(serializeStored(segs)).toBe(raw);
   });
@@ -91,7 +91,7 @@ describe("draftDoc roundtrip", () => {
   it("round-trips attached-chat tokens", () => {
     const id = "11111111-1111-4111-8111-111111111111";
     const raw = `[[chat:${id}]]\nplease continue`;
-    const segs = parseStoredContent(raw);
+    const segs = parseStoredContentWithRefs(raw);
     expect(segs).toEqual([
       { type: "chat", sessionId: id },
       { type: "text", text: "\nplease continue" },
@@ -104,7 +104,7 @@ describe("draftDoc roundtrip", () => {
   it("round-trips scoped attach tokens", () => {
     const id = "11111111-1111-4111-8111-111111111111";
     const raw = `[[chat:${id}:user]]\ngo`;
-    const segs = parseStoredContent(raw);
+    const segs = parseStoredContentWithRefs(raw);
     expect(segs).toEqual([
       { type: "chat", sessionId: id, scope: "user" },
       { type: "text", text: "\ngo" },
@@ -328,7 +328,7 @@ describe("hydrateDisplayContent", () => {
     expect(hydrateDisplayContent(raw)).toBe(
       "[[skill:xhx-media-gen]]\n画一张小猫喝水的图片，卡通怪诞画风",
     );
-    const segs = parseUserMessageContent(raw);
+    const segs = parseUserMessageContentWithRefs(raw);
     expect(segs[0]).toEqual({ type: "skill", name: "xhx-media-gen" });
   });
 
@@ -358,3 +358,39 @@ describe("hydrateDisplayContent", () => {
     );
   });
 });
+
+describe("hydrateDisplayContent 不猜引用", () => {
+  it("普通叙述里的 `@绝对路径` 保持纯文本", () => {
+    // Arrange —— 气泡里的 `@/usr/bin/foo` 只是文字。把它猜成引用会让**所有**会话
+    // （包括用内置档写的）多出一个 chip，与用哪套输入框编辑器无关，因此不做这件事。
+    const cases = [
+      "看 @/usr/bin/foo",
+      "@/usr/bin",
+      "见 @/repo/a.ts，还有 @/repo/b.md",
+      "@/usr/bin/foo 挺好用的",
+    ];
+
+    // Act / Assert
+    for (const raw of cases) {
+      expect(hydrateDisplayContent(raw)).toBe(raw);
+      expect(
+        parseUserMessageContentWithRefs(raw).every((s) => s.type === "text"),
+      ).toBe(true);
+    }
+  });
+
+  it("journal 里本来就是 token 形态的引用照常渲染成 chip", () => {
+    // Arrange —— 本应用写 journal 用的是显示态（`session_send` 的 display_text），
+    // 引用落盘就是 token 形态，读回来不需要任何猜测。
+    const raw = "看 [[file:/repo/a.ts]] 和 [[dir:/repo/src/]]";
+    const segs = parseUserMessageContentWithRefs(raw);
+
+    // Act / Assert
+    expect(hydrateDisplayContent(raw)).toBe(raw);
+    expect(segs.filter((s) => s.type === "ref")).toEqual([
+      { type: "ref", kind: "file", value: "/repo/a.ts" },
+      { type: "ref", kind: "dir", value: "/repo/src/" },
+    ]);
+  });
+});
+

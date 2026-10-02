@@ -5,10 +5,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  editableTextOf,
   isDraftEmpty,
-  parseUserMessageContent,
-  plainTextOf,
+  parseUserMessageContentWithRefs,
+  segmentsFromEditedText,
   serializeStored,
+  type DraftSegment,
 } from "@/lib/draftDoc";
 import type { Attachment } from "@/lib/attachments";
 import { isImagePath } from "@/lib/attachments";
@@ -43,21 +45,30 @@ export function InlineUserEdit({
   onRemoveAttachment?: (a: Attachment) => void;
 }) {
   const skills = useMemo(() => {
-    return parseUserMessageContent(content)
+    return parseUserMessageContentWithRefs(content)
       .filter((s): s is { type: "skill"; name: string } => s.type === "skill")
       .map((s) => s.name);
   }, [content]);
 
   const chatLookup = useAttachedChatLookup();
   const chats = useMemo(() => {
-    return parseUserMessageContent(content).filter(
+    return parseUserMessageContentWithRefs(content).filter(
       (s): s is { type: "chat"; sessionId: string; scope?: "recent" | "user" | "full" } =>
         s.type === "chat",
     );
   }, [content]);
 
+  // 引用（`@文件` / URL）以 agent 形态留在正文里，位置不变；丢一段就是丢一条引用，
+  // 所以这里不能用 plainTextOf。
+  const refs = useMemo(
+    () =>
+      parseUserMessageContentWithRefs(content).filter(
+        (s): s is Extract<DraftSegment, { type: "ref" }> => s.type === "ref",
+      ),
+    [content],
+  );
   const initialText = useMemo(
-    () => plainTextOf(parseUserMessageContent(content)),
+    () => editableTextOf(parseUserMessageContentWithRefs(content)),
     [content],
   );
   const [text, setText] = useState(initialText);
@@ -100,7 +111,8 @@ export function InlineUserEdit({
         scope: c.scope,
       })),
       ...skills.map((name) => ({ type: "skill" as const, name })),
-      { type: "text" as const, text },
+      // 编辑后的正文里认回原文出现过的引用；改掉/删掉的引用留作普通文本。
+      ...segmentsFromEditedText(text, refs),
     ];
     onSubmit(serializeStored(segs));
   };

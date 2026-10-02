@@ -15,6 +15,10 @@ import {
   normalizeSessionDataMode,
 } from "@/lib/sessionDataMode";
 import { normalizeProxyMode, type ProxyMode } from "@/lib/networkProxy";
+import {
+  normalizeComposerEditor,
+  type ComposerEditorId,
+} from "@/lib/composerEditorPref";
 
 export type AppSettingsPrefsSnapshot = {
   sessionDataMode: ReturnType<typeof normalizeSessionDataMode>;
@@ -69,6 +73,7 @@ export type AppSettingsPrefsSnapshot = {
   notifyOnPermission: boolean;
   lastSessionId: string | null;
   manualCliPath: string;
+  composerEditor: ComposerEditorId;
 };
 
 export function parseAppSettingsPrefs(
@@ -184,5 +189,6 @@ export function parseAppSettingsPrefs(
         ? settings.lastSessionId.trim() || null
         : null,
     manualCliPath: settings.manualCliPath || opts?.fallbackCliPath || "",
+    composerEditor: normalizeComposerEditor(settings.composerEditor),
   };
 }

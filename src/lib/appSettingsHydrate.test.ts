@@ -46,6 +46,21 @@ describe("parseAppSettingsPrefs", () => {
     expect(p.prefsScope).toBeNull();
   });
 
+  it("defaults the composer editor to legacy and accepts tiptap", () => {
+    expect(parseAppSettingsPrefs(settings()).composerEditor).toBe("legacy");
+    expect(parseAppSettingsPrefs(settings({ composerEditor: "legacy" })).composerEditor).toBe(
+      "legacy",
+    );
+    expect(parseAppSettingsPrefs(settings({ composerEditor: "tiptap" })).composerEditor).toBe(
+      "tiptap",
+    );
+    expect(
+      parseAppSettingsPrefs(
+        settings({ composerEditor: "nonsense" as unknown as string }),
+      ).composerEditor,
+    ).toBe("legacy");
+  });
+
   it("clamps process and stall budgets", () => {
     const p = parseAppSettingsPrefs(
       settings({

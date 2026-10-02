@@ -10,7 +10,7 @@ import {
   type RefObject,
   type SetStateAction,
 } from "react";
-import { serializeDom } from "@/components/ComposerEditor";
+import { serializeDom } from "@/components/composer";
 import { createT } from "@/i18n";
 import * as api from "@/lib/api";
 import type { AppDialog } from "@/lib/app/appDialogTypes";

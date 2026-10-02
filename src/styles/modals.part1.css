@@ -250,6 +250,20 @@
   position: relative;
   z-index: 1;
 }
+/* Markdown 档（TipTap）：同 wrapper 内的定位上下文 */
+.composer-editor-wrap > .composer-editor-tiptap {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+/* Placeholder 延续旧输入框的视觉（tertiary 文本、首行渲染） */
+.composer__input p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
 div.composer__input {
   white-space: pre-wrap;
   word-break: break-word;

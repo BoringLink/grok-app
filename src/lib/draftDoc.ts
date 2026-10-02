@@ -1,14 +1,40 @@
 /**
- * Composer draft document model: text segments + inline skill chips.
- * Storage / user bubbles use stable tokens `[[skill:name]]`.
- * Agent prompts serialize skills as `/name` (Grok Build invocable form).
+ * Composer draft document model: text segments + inline skill / reference chips.
+ * Storage / user bubbles use stable tokens `[[skill:name]]` / `[[file:…]]`.
+ * Agent prompts serialize skills as `/name` and references as `@path`.
  */
 
+import {
+  isExternalHttpUrl,
+  refAgentText,
+  REF_TOKEN_RE,
+  refTokenText,
+  unescapeRefValue,
+  type RefKind,
+} from "./composerRefToken";
+
+/**
+ * 段落模型（与上游一致）：正文 / skill / plugin / 已挂载聊天。
+ *
+ * **不含**内联引用段 —— 上游那份 composer 编辑器就建立在「只有这几种段」的
+ * 假设上（它遍历时段落一定带 `text`）。我们新增的引用段走
+ * {@link RefSegment} / {@link AnyDraftSegment}，由 ref-aware 的 API 处理；
+ * 基版本 API 会把引用段降级成纯文本，旧编辑器因此永远看不到它。
+ */
 export type DraftSegment =
   | { type: "text"; text: string }
   | { type: "skill"; name: string }
   | { type: "plugin"; name: string }
   | { type: "chat"; sessionId: string; scope?: "recent" | "user" | "full" };
+
+/**
+ * 内联文件 / 目录 / URL 引用。存储态是 `[[file:…]]` 形式的 token，
+ * 发送给 CLI 时转成 `@路径`（URL 即其本身），位置保持在正文中说到的位置。
+ */
+export type RefSegment = { type: "ref"; kind: RefKind; value: string };
+
+/** 含引用段的超集：ref-aware API 的入参 / 出参类型。 */
+export type AnyDraftSegment = DraftSegment | RefSegment;
 
 /** Skill name character class: letters, digits, `_` `.` `:` `-`. */
 export const SKILL_NAME_RE = /[a-zA-Z0-9_.:-]+/;
@@ -16,9 +42,12 @@ export const SKILL_NAME_RE = /[a-zA-Z0-9_.:-]+/;
 const SKILL_TOKEN_RE = /\[\[skill:([a-zA-Z0-9_.:-]+)\]\]/g;
 const PLUGIN_TOKEN_RE = /\[\[plugin:([a-zA-Z0-9_.:-]+)\]\]/g;
 
-/** Combined skill + plugin + attached-chat tokens, in document order. */
+/**
+ * Combined skill + plugin + attached-chat + ref tokens, in document order.
+ * 分组顺序必须与 {@link parseStoredContent} 的读取顺序一致。
+ */
 const STORED_TOKEN_RE =
-  /\[\[skill:([a-zA-Z0-9_.:-]+)\]\]|\[\[plugin:([a-zA-Z0-9_.:-]+)\]\]|\[\[chat:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?::(recent|user|full))?\]\]/g;
+  /\[\[skill:([a-zA-Z0-9_.:-]+)\]\]|\[\[plugin:([a-zA-Z0-9_.:-]+)\]\]|\[\[chat:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?::(recent|user|full))?\]\]|\[\[(file|dir|url):([^\]\r\n]*)\]\]/g;
 
 /**
  * Slash names that are App/Build commands, not skill chips, when rehydrating
@@ -65,6 +94,11 @@ const NON_SKILL_SLASH = new Set(
  */
 export function hydrateDisplayContent(content: string): string {
   if (!content) return content;
+  // 引用不需要在这里还原：本应用写 journal 时用的是**显示态**（`display_text`），
+  // file / dir 引用落盘就是 `[[file:…]]` 形态，读回来直接就是 token。
+  // 反过来把正文里的 `@绝对路径` 猜成引用是不可取的：那会让「用户真写了
+  // `@/usr/bin/foo`」的普通叙述在所有人的会话里变成 chip（与用哪套输入框编辑器无关）。
+  // 已 token 化（本应用写的 journal）直接放行；下面只处理 agent 形态的 skill 行。
   if (content.includes("[[skill:")) return content;
   if (!content.startsWith("/") && !content.includes("/goal")) return content;
 
@@ -121,16 +155,36 @@ export function draftFromPlainText(text: string): DraftSegment[] {
  * Parse stored content with `[[skill:name]]` tokens into segments.
  * Invalid / incomplete tokens stay as plain text.
  */
+/** 与 {@link parseUserMessageContent} 同一实现，但保留引用段（聊天侧 / TipTap 侧）。 */
+export function parseUserMessageContentWithRefs(
+  content: string,
+): AnyDraftSegment[] {
+  return parseStoredContentWithRefs(hydrateDisplayContent(content));
+}
+
 export function parseStoredContent(content: string): DraftSegment[] {
+  // 基版本（上游签名）：引用段降级为它的 token 文本，旧编辑器不会拿到 ref 段。
+  return parseStoredContentWithRefs(content).map((s) =>
+    s.type === "ref"
+      ? { type: "text" as const, text: refTokenText(s.kind, s.value) }
+      : s,
+  );
+}
+
+/** 与 {@link parseStoredContent} 同一实现，但保留引用段（我们侧使用）。 */
+export function parseStoredContentWithRefs(content: string): AnyDraftSegment[] {
   if (!content) return [];
   if (
     !content.includes("[[skill:") &&
     !content.includes("[[plugin:") &&
-    !content.includes("[[chat:")
+    !content.includes("[[chat:") &&
+    !content.includes("[[file:") &&
+    !content.includes("[[dir:") &&
+    !content.includes("[[url:")
   ) {
     return [{ type: "text", text: content }];
   }
-  const segments: DraftSegment[] = [];
+  const segments: AnyDraftSegment[] = [];
   let last = 0;
   const re = new RegExp(STORED_TOKEN_RE.source, "g");
   let m: RegExpExecArray | null;
@@ -152,6 +206,16 @@ export function parseStoredContent(content: string): DraftSegment[] {
         sessionId: m[3],
         scope: scope === "recent" ? undefined : scope,
       });
+    } else if (m[5]) {
+      const kind = m[5] as RefKind;
+      const value = unescapeRefValue(m[6] ?? "");
+      // 恢复入口（历史 / 草稿）也校验协议：手改过的存储态可能带
+      // `[[url:javascript:…]]`，不校验就会渲染成一个可点击语义的 chip（C11）。
+      if (kind === "url" && !isExternalHttpUrl(value)) {
+        segments.push({ type: "text", text: m[0] });
+      } else {
+        segments.push({ type: "ref", kind, value });
+      }
     }
     last = m.index + m[0].length;
   }
@@ -161,13 +225,14 @@ export function parseStoredContent(content: string): DraftSegment[] {
   return segments;
 }
 
-/** Serialize segments back to stored form (`[[skill:name]]` tokens). */
-export function serializeStored(segments: DraftSegment[]): string {
+/** Serialize segments back to stored form (`[[skill:name]]` / `[[file:…]]` tokens). */
+export function serializeStored(segments: AnyDraftSegment[]): string {
   return segments
     .map((s) => {
       if (s.type === "text") return s.text;
       if (s.type === "skill") return `[[skill:${s.name}]]`;
       if (s.type === "plugin") return `[[plugin:${s.name}]]`;
+      if (s.type === "ref") return refTokenText(s.kind, s.value);
       return s.scope && s.scope !== "recent"
         ? `[[chat:${s.sessionId}:${s.scope}]]`
         : `[[chat:${s.sessionId}]]`;
@@ -189,6 +254,12 @@ export function previewStoredAsSlash(stored: string): string {
       /\[\[chat:([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?::(recent|user|full))?\]\]/g,
       "",
     )
+    // 引用 token 预览成它发送时的样子（`@路径` / URL），否则会漏出原始 token。
+    .replace(
+      new RegExp(REF_TOKEN_RE.source, "g"),
+      (_m, kind: RefKind, value: string) =>
+        refAgentText(kind, unescapeRefValue(value)),
+    )
     .replace(/[ \t]+\n/g, "\n")
     .replace(/^\n+/, "")
     .trim();
@@ -198,17 +269,68 @@ export function previewStoredAsSlash(stored: string): string {
  * Text of text segments only (skills omitted).
  * Do not use alone for "has content" when skills may be present — use `isDraftEmpty`.
  */
-export function plainTextOf(segments: DraftSegment[]): string {
+export function plainTextOf(segments: AnyDraftSegment[]): string {
   return segments
     .filter((s): s is { type: "text"; text: string } => s.type === "text")
     .map((s) => s.text)
     .join("");
 }
 
+/**
+ * 供纯文本编辑（行内编辑用户消息）使用的正文：引用段渲染成其 agent 形态
+ * （`@绝对路径` / URL 本身）留在**原位**，而不是像 {@link plainTextOf} 那样被丢掉。
+ *
+ * 行内编辑用的是 textarea，无法承载原子 chip；引用必须在正文里可读、可改，
+ * 位置也不能挪（「在 @a.ts 中找到」换个位置就成了另一句话）。
+ */
+export function editableTextOf(segments: AnyDraftSegment[]): string {
+  return segments
+    .map((s) => {
+      if (s.type === "text") return s.text;
+      if (s.type === "ref") return refAgentText(s.kind, s.value);
+      return "";
+    })
+    .join("");
+}
+
+/**
+ * {@link editableTextOf} 的逆操作：把编辑后的纯文本切回段落，其中**原文里出现过
+ * 的引用**按其 agent 形态逐个认回，位置不变。
+ *
+ * 只认 `refs` 里给出的那几个具体字符串（来自解析过的原文），所以不会把用户随手
+ * 写的 `@某人`、`@/goal` 误判成引用（验收 C9）。用户在编辑框里改掉或删掉的引用
+ * 认不回来，就按普通文本留下 —— 不猜、不补。
+ */
+export function segmentsFromEditedText(
+  text: string,
+  refs: readonly RefSegment[],
+): AnyDraftSegment[] {
+  if (refs.length === 0) return text ? [{ type: "text", text }] : [];
+  const segments: AnyDraftSegment[] = [];
+  let cursor = 0;
+  for (const ref of refs) {
+    const needle = refAgentText(ref.kind, ref.value);
+    if (!needle) continue;
+    const at = text.indexOf(needle, cursor);
+    if (at === -1) continue;
+    if (at > cursor) segments.push({ type: "text", text: text.slice(cursor, at) });
+    segments.push(ref);
+    cursor = at + needle.length;
+  }
+  if (cursor < text.length) segments.push({ type: "text", text: text.slice(cursor) });
+  return mergeAdjacentText(segments);
+}
+
 /** Empty when there are no skills, no attached chats, and no non-whitespace text. */
-export function isDraftEmpty(segments: DraftSegment[]): boolean {
+export function isDraftEmpty(segments: AnyDraftSegment[]): boolean {
   for (const s of segments) {
-    if (s.type === "skill" || s.type === "plugin" || s.type === "chat") {
+    if (
+      s.type === "skill" ||
+      s.type === "plugin" ||
+      s.type === "chat" ||
+      // 只引用一个文件也是可发送内容（发送时会变成 `@路径`）。
+      (s.type === "ref" && s.value.trim() !== "")
+    ) {
       return false;
     }
     if (s.type === "text" && s.text.trim() !== "") return false;
@@ -223,7 +345,7 @@ export function isDraftEmpty(segments: DraftSegment[]): boolean {
  * - `goalMode` prefixes `/goal\n`
  */
 export function serializeForAgent(
-  segments: DraftSegment[],
+  segments: AnyDraftSegment[],
   opts?: { goalMode?: boolean; pluginSkills?: Record<string, string[]> },
 ): string {
   const pluginSkills = opts?.pluginSkills ?? {};
@@ -249,6 +371,10 @@ export function serializeForAgent(
     } else if (s.type === "skill") {
       if (covered.has(s.name.toLowerCase())) continue;
       pushSkill(s.name);
+    } else if (s.type === "ref") {
+      // 引用保持在正文里说到的位置（不是像 skill 那样提到最前），
+      // 否则「在 @文件 中找到…」会被打乱成「@文件 在 中找到…」。
+      textParts.push(refAgentText(s.kind, s.value));
     } else if (s.type === "text") textParts.push(s.text);
   }
 
@@ -356,6 +482,12 @@ function cleanEditorText(raw: string): string {
 }
 
 function chipTokenFromEl(he: HTMLElement): string | null {
+  // 内联引用 chip：DOM 上带 data-ref-token / data-ref-value。
+  const refKind = he.getAttribute("data-ref-token");
+  if (refKind === "file" || refKind === "dir" || refKind === "url") {
+    const value = he.getAttribute("data-ref-value") ?? "";
+    return value ? refTokenText(refKind, value) : null;
+  }
   const plugin =
     he.dataset?.plugin || he.getAttribute("data-plugin") || "";
   if (plugin || he.hasAttribute("data-plugin")) {
@@ -506,7 +638,8 @@ export function serializeEditorDomWalk(
   if (
     !opts?.preserveWhitespaceOnly &&
     !t.replace(/\n/g, "").trim() &&
-    !/\[\[(?:skill|plugin):/.test(t)
+    // 只有 token 的 draft（skill 或引用）同样是可发送内容，不能判空。
+    !/\[\[(?:skill|plugin|file|dir|url):/.test(t)
   ) {
     return "";
   }
@@ -666,9 +799,9 @@ export function detectSlashQueryFromEditor(
 }
 
 /** Collapse consecutive text segments into one. */
-export function mergeAdjacentText(segments: DraftSegment[]): DraftSegment[] {
+export function mergeAdjacentText(segments: AnyDraftSegment[]): AnyDraftSegment[] {
   if (segments.length === 0) return [];
-  const out: DraftSegment[] = [];
+  const out: AnyDraftSegment[] = [];
   for (const s of segments) {
     const prev = out[out.length - 1];
     if (s.type === "text" && prev?.type === "text") {
@@ -684,6 +817,6 @@ export function mergeAdjacentText(segments: DraftSegment[]): DraftSegment[] {
  * Simple editor projection: text as-is, skills as `[[skill:name]]`.
  * Same wire form as `serializeStored`.
  */
-export function segmentsToPlainEditorText(segments: DraftSegment[]): string {
+export function segmentsToPlainEditorText(segments: AnyDraftSegment[]): string {
   return serializeStored(segments);
 }

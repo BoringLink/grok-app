@@ -29,6 +29,7 @@ import {
 import { saveTrayBusyBadgePref } from "@/lib/trayBusyBadgePref";
 import { saveWinTaskbarOverlayPref } from "@/lib/winTaskbarOverlayPref";
 import { saveGoalOrchUiEnabled } from "@/lib/goalOrch";
+import { normalizeComposerEditor } from "@/lib/composerEditorPref";
 import * as api from "@/lib/api";
 import {
   parseLocalePreference,
@@ -50,7 +51,7 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
     applyThemeChoice, applyThemeScheduleChoice, applyWallpaperAdjustChoice, applyWallpaperChoice, applyWallpaperMediaSize, applyWallpaperScrimChoice, applyWallpaperBlurChoice,
     archivedGroups, askUserTimeoutSec, auditLedgerRetentionDays, autoWakeEnabled, availableModels, backgroundWaitPolicy,
     backgroundWaitTimeoutSec, cancelAccountLogin, cliAgentSkewRepairing, cliInfo, closeToTray, compactionDetail,
-    compactionMode, confirmArchiveOlderThan, defaultOpenTarget, deleteSessionsConfirm, disableWebSearch, disallowedTools,
+    compactionMode, composerEditor, confirmArchiveOlderThan, defaultOpenTarget, deleteSessionsConfirm, disableWebSearch, disallowedTools,
     effectiveProjectPath, experimentalMemory, goalOrchUiEnabled, handleClearAllSessionMutes, handleClearAllSessionUnread, importChatTranscript,
     includePartialMessages, keepTrayForSchedules, lastCliChecksumVerified, lastProcessLimit, launchAtLogin, locale,
     localePreference, loginHint, manualCliPath, maxAgentTurns, maxConcurrentAgents, messageTimeFormat,
@@ -63,7 +64,7 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
     sandboxProfile, savedAccounts, session, sessionDataMode, sessions, setAcpServerAddr,
     setAgentIdleMinutes, setAgentProfilePath, setAgentsJson, setAllowUnverifiedCliInstall, setAllowedTools, setAppDialog,
     setAskUserTimeoutSec, setAuditLedgerRetentionDays, setAutoWakeEnabled, setBackgroundWaitPolicy, setBackgroundWaitTimeoutSec, setCliAgentSkewRepairing,
-    setCliInfo, setCloseToTray, setCompactionDetail, setCompactionMode, setDefaultOpenTarget, setDisableWebSearch,
+    setCliInfo, setCloseToTray, setCompactionDetail, setCompactionMode, setComposerEditor, setDefaultOpenTarget, setDisableWebSearch,
     setDisallowedTools, setExperimentalMemory, setGoalOrchUiEnabled, setIncludePartialMessages, setKeepTrayForSchedules, setLaunchAtLogin,
     setLocale, setLocalePreference, setManualCliPath, setMaxAgentTurns, setMaxConcurrentAgents, setMessageTimeFormat,
     setNoAskUser, setNotifyOnPermission, setNotifyOnTurnDone, setNotifySound, setPermissionTimeoutSec, setPlanEnabled,
@@ -447,6 +448,14 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
           setCompactionDetail(next);
           void api.settingsGet().then((s) =>
           api.settingsSet({ ...s, compactionDetail: next }),
+          );
+          }}
+          composerEditor={composerEditor}
+          onComposerEditor={(v) => {
+          const next = normalizeComposerEditor(v);
+          setComposerEditor(next);
+          void api.settingsGet().then((s) =>
+          api.settingsSet({ ...s, composerEditor: next }),
           );
           }}
           twoPassCompactionEnabled={twoPassCompactionEnabled}
