@@ -385,6 +385,9 @@ pub struct AcpClient {
     rewind_supported: ParkingMutex<Option<bool>>,
     /// OpenSSH alias this process was spawned with. Remote cwd is not local.
     ssh_alias: Option<String>,
+    /// Private `GROK_HOME` sealed for this process (#1293). `None` for
+    /// `~/.grok`, official-aux, SSH, and TCP. Discarded in `kill`.
+    proc_home: std::sync::Mutex<Option<PathBuf>>,
 }
 
 /// Options applied at agent process start (CLI flags).
@@ -630,8 +633,9 @@ impl AcpClient {
         } else {
             session_data_mode
         };
-        // Hold across the auth-file write and process spawn so two chats on
-        // different providers cannot strip and restore auth.json at once.
+        // Hold across canonical auth/config writes and the private GROK_HOME
+        // snapshot. The child and its nested tools read the snapshot, so the
+        // lock does not have to outlive spawn (#1293).
         let route_auth_guard = crate::providers::route_auth_lock().lock().await;
         if agent_home_prep {
             crate::providers::prepare_route_auth(custom_route);
@@ -988,6 +992,29 @@ impl AcpClient {
                 cmd.env("PATH", path);
             }
         }
+        // agent-home is shared by every independent official chat and every
+        // custom chat. Seal a private directory so one spawn cannot replace
+        // the other's auth.json while nested tools are still reading it.
+        let proc_home = if agent_home_prep {
+            match crate::agent_proc_home::create(&grok_home, custom_route) {
+                Ok(dir) => Some(dir),
+                Err(e) => {
+                    drop(route_auth_guard);
+                    return Err(AgentError::new(
+                        AgentErrorCode::ConnectFailed,
+                        format!("failed to prepare a private agent home: {e}"),
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+        let grok_home = proc_home.clone().unwrap_or(grok_home);
+        let discard_proc_home = || {
+            if let Some(ref dir) = proc_home {
+                crate::agent_proc_home::discard(dir);
+            }
+        };
         if ssh_alias.is_none() {
             cmd.env("GROK_HOME", &grok_home);
         }
@@ -1049,6 +1076,7 @@ impl AcpClient {
 
         let mut child = cmd.spawn().map_err(|e| {
             drop(route_auth_guard);
+            discard_proc_home();
             let code = if ssh_alias.is_some() {
                 AgentErrorCode::ConnectFailed
             } else {
@@ -1065,18 +1093,18 @@ impl AcpClient {
             "acp: spawned child"
         );
 
-        let stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| AgentError::new(AgentErrorCode::AgentCrashed, "no stdin on child"))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| AgentError::new(AgentErrorCode::AgentCrashed, "no stdout on child"))?;
-        let stderr = child
-            .stderr
-            .take()
-            .ok_or_else(|| AgentError::new(AgentErrorCode::AgentCrashed, "no stderr on child"))?;
+        let stdin = child.stdin.take().ok_or_else(|| {
+            discard_proc_home();
+            AgentError::new(AgentErrorCode::AgentCrashed, "no stdin on child")
+        })?;
+        let stdout = child.stdout.take().ok_or_else(|| {
+            discard_proc_home();
+            AgentError::new(AgentErrorCode::AgentCrashed, "no stdout on child")
+        })?;
+        let stderr = child.stderr.take().ok_or_else(|| {
+            discard_proc_home();
+            AgentError::new(AgentErrorCode::AgentCrashed, "no stderr on child")
+        })?;
 
         let client = Arc::new(Self {
             child: AsyncMutex::new(Some(child)),
@@ -1101,6 +1129,7 @@ impl AcpClient {
             route_provider_id,
             rewind_supported: ParkingMutex::new(None),
             ssh_alias: ssh_alias.clone(),
+            proc_home: std::sync::Mutex::new(proc_home),
         });
 
         client.start_read_loop(Box::new(stdout));
@@ -1201,6 +1230,7 @@ impl AcpClient {
             route_provider_id: crate::providers::SESSION_PROVIDER_OFFICIAL.to_string(),
             rewind_supported: ParkingMutex::new(None),
             ssh_alias: None,
+            proc_home: std::sync::Mutex::new(None),
         });
         client.start_read_loop(Box::new(read_half));
         Ok((client, event_rx))
@@ -3125,6 +3155,14 @@ impl AcpClient {
         *self.stdin.lock().await = None;
         self.last_update_by_session.lock().clear();
         *self.last_update_unstamped.lock() = None;
+        let proc_home = self
+            .proc_home
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        if let Some(dir) = proc_home {
+            crate::agent_proc_home::discard(&dir);
+        }
     }
 }
 

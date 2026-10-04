@@ -68,12 +68,20 @@ Syncing the file is not enough while multi-session **parked** / **prewarm** CLI 
 | `~/.grok/auth.json` wiped but agent-home mirror still signed-in | Rank mirrors for status + token; heal by copying agent-home → `~/.grok` |
 | mtime-only sync skipped restore of good `~/.grok` over newer empty agent-home | `sync_cli_auth_to_agent_home` compares **bytes** |
 | Process reuse gate used `is_custom_provider_id(modelId)` — custom sessions store **upstream** model ids, so custom processes looked "official" and were reused after auth strip | Store `custom_route` on `AcpClient` at spawn from `active_route()`; gate uses that |
-| Warm reuse skipped `prepare_route_auth` | Shared-mode official warm reuse (`GROK_HOME=~/.grok`) does **not** copy OIDC into agent-home. Every other warm reuse, including independent mode, still runs `prepare_route_auth_for_agent` before `session/load` (no conflict skip). |
+| Warm reuse must not rewrite shared auth | The process `GROK_HOME` is sealed at spawn. Warm reuse does not call `prepare_route_auth`. Shared-mode official still uses `~/.grok`. |
 | Official `authenticate(cached_token)` soft-fail left process with no OIDC | Official path re-syncs auth and **retries authenticate once** |
 
-### Known limitation
+### Per-process GROK_HOME (#1293)
 
-Independent mode: an official chat and a custom chat can be connected at the same time and share `agent-home/auth.json`. Skipping the rewrite on that clash can leave the official chat signed out at `session/load`, so this build does not skip. The durable fix is a per-process `GROK_HOME` snapshot directory (follow-up GitHub issue; not opened with this change).
+Independent official chats and every custom chat would otherwise share `agent-home/auth.json`. Official needs that file (OIDC). Custom must not have it, or Grok Build sends OIDC to the relay. The spawn lock cannot cover a nested tool that reads the file minutes later.
+
+Each ACP process whose home would be agent-home gets `{app data}/agent-proc/<id>/` as `GROK_HOME`:
+
+- `auth.json` is a private copy for official, and absent for custom. It is not a link to the canonical file.
+- `sessions`, `memory`, `skills`, `config.toml`, and the other canonical entries are links, so resume and settings stay on one agent-home.
+- The directory is deleted when the process is killed, and swept at the next app start.
+
+`~/.grok/auth.json` and the agent-home mirror stay the login / heal files. Shared-mode official spawn still uses `GROK_HOME=~/.grok` and does not get a snapshot. Official-aux keeps `agent-home-official`.
 
 ### AUTH_FAILED UI subtypes (Error Deck)
 

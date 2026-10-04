@@ -25,6 +25,8 @@ mod agent_memory_embed;
 
 mod agent_prefs;
 
+mod agent_proc_home;
+
 mod agent_privacy;
 
 mod agent_subagent_wt_snap;
@@ -286,6 +288,9 @@ pub fn run() {
     }
 
     let _ = paths::ensure_app_dirs();
+    // Previous process is gone (single-instance). Drop private GROK_HOME
+    // snapshots it did not get to delete (#1293).
+    agent_proc_home::sweep_orphans();
 
     logging::init();
 

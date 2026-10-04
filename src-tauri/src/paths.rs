@@ -37,6 +37,8 @@ pub fn ensure_app_dirs() -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(root.join("logs"))?;
     // Agent profile (config.toml / optional auth) when session_data_mode=independent.
     std::fs::create_dir_all(root.join("agent-home"))?;
+    // Per-process GROK_HOME snapshots (#1293). Not the canonical profile.
+    std::fs::create_dir_all(root.join("agent-proc"))?;
     // Clipboard paste / picker-written attachment files.
     std::fs::create_dir_all(root.join("attachments").join("paste"))?;
     // Multi-account auth snapshots.

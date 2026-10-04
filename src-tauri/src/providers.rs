@@ -1538,12 +1538,6 @@ pub fn composer_provider_pick(
     }
 }
 
-/// Shared-mode official warm reuse uses `GROK_HOME=~/.grok` and must not copy
-/// OIDC into agent-home. Independent mode still prepares, same as a cold spawn.
-pub fn warm_reuse_should_prepare_auth(session_data_mode: &str, process_is_custom: bool) -> bool {
-    crate::paths::needs_agent_home_spawn_prep(session_data_mode, process_is_custom)
-}
-
 /// `--model` for a process bound to `provider_id`.
 /// Custom routes spawn with the section id. Official routes spawn with a catalog id.
 pub fn spawn_model_for_provider(provider_id: &str, composer_model: &str) -> String {
@@ -4234,19 +4228,5 @@ context_window = "1000000"
             None => std::env::remove_var("GROK_APP_HOME"),
         }
         let _ = std::fs::remove_dir_all(&tmp);
-    }
-
-    #[test]
-    fn warm_reuse_auth_skips_only_shared_official() {
-        assert!(
-            !warm_reuse_should_prepare_auth("shared", false),
-            "shared official uses ~/.grok and must not copy OIDC into agent-home"
-        );
-        assert!(!warm_reuse_should_prepare_auth("SHARED", false));
-        assert!(warm_reuse_should_prepare_auth("shared", true));
-        // Independent mode keeps the cold-spawn prepare, including when the
-        // process is official. A conflict skip would leave session/load signed out.
-        assert!(warm_reuse_should_prepare_auth("independent", false));
-        assert!(warm_reuse_should_prepare_auth("independent", true));
     }
 }

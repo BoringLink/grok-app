@@ -992,23 +992,14 @@ impl SessionManager {
                     reused_process = %reused_process,
                     "connect prewarm reuse (ownerless process, no cross-session sharing)"
                 );
-                // #528: warm reuse skips cold spawn (no prepare_route_auth).
-                // Shared-mode official uses ~/.grok and must not copy OIDC into
-                // agent-home. Independent mode still prepares like a cold spawn
-                // (no conflict skip — skipping can leave the official chat
-                // signed out at session/load).
-                let process_custom = acp.is_custom_route();
-                let mode = store::load_settings().session_data_mode;
-                if crate::providers::warm_reuse_should_prepare_auth(&mode, process_custom) {
-                    let _route_auth = crate::providers::route_auth_lock().lock().await;
-                    crate::providers::prepare_route_auth_for_agent();
-                } else {
-                    tracing::info!(
-                        target: "session",
-                        session = %meta.id,
-                        "connect warm-reuse skipped agent-home auth rewrite (shared official uses ~/.grok)"
-                    );
-                }
+                // #1293: the process GROK_HOME was sealed at spawn. Rewriting the
+                // shared agent-home auth.json here would race the other chat
+                // and does not change what this process reads.
+                tracing::info!(
+                    target: "session",
+                    session = %meta.id,
+                    "connect warm-reuse kept the process agent home"
+                );
                 // P0: bind the live shell to the reused process *before*
                 // session/load. Load replays stream/tool notifications while
                 // open awaits; if live still held a temporary process_id,
