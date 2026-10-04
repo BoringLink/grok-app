@@ -16,10 +16,12 @@ See `docs/llm-wiki/release.md`.
 ### Fixed
 - Custom channels connect again when the channel name and the model id differ. The app tells the CLI the channel name, which is how that CLI finds the key. (#1294)
 - Sending one picture on Windows no longer shows that picture twice. The chat was counting the same file a second time. (#1284)
+- Chat text now uses the font you set under Appearance. Code blocks keep the code font. (#1297)
 
 **中文 · 修复**
 - 通道名称和模型 ID 不同时，自定义通道可以重新连上。应用发给 CLI 的是通道名，CLI 靠它找到密钥。（#1294）
 - 在 Windows 上发送一张图片后，不会再显示成两张。同一文件之前被算了两次。（#1284）
+- 对话正文会使用外观里选的界面字体。代码块仍用代码字体。（#1297）
 
 ## [0.2.38] - 2026-09-30
 
