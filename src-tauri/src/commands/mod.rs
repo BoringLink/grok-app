@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::cli_probe::{self, CliProbeResult};
-use crate::session_manager::{SessionManager, SessionSnapshot};
+use crate::session_manager::{SessionManager, SessionSnapshot, StopReport};
 use crate::store::{self, AppSettings, Project, SessionMeta};
 
 include!("session_p1.rs");

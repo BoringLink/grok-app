@@ -28,6 +28,7 @@ pub fn app_invoke_handler(
         session_api::session_api_reveal_cli_link,
         commands::session_interject,
         commands::session_stop,
+        commands::session_stop_report,
         commands::session_disconnect,
         commands::session_reattach,
         commands::session_resolve_permission,

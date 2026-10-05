@@ -38,12 +38,22 @@ export function buildContinueAgentPrompt(
   return lines.join("\n");
 }
 
-export function isContinuableEndReason(reason: string | null | undefined): boolean {
-  const r = (reason || "").toLowerCase();
-  return r === "host_exit" || r === "agent_exit";
+/** User ended a turn whose model stream was cut off. Not a host restart. */
+export function buildContinueAfterStopPrompt(): string {
+  return [
+    "The previous turn was ended by the user because the model stream was cut off.",
+    "Do not redo steps that already succeeded.",
+    "Check the plan and what is actually on disk.",
+    "Continue from the first unfinished step.",
+  ].join("\n");
 }
 
-/** Last host_exit / agent_exit chip after the last user prompt (or null). */
+export function isContinuableEndReason(reason: string | null | undefined): boolean {
+  const r = (reason || "").toLowerCase();
+  return r === "host_exit" || r === "agent_exit" || r === "user_stop";
+}
+
+/** Last continuable end chip after the last user prompt (or null). */
 export function latestContinuableEndMessageId(
   messages: Array<{
     id: string;

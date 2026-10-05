@@ -14,11 +14,8 @@ import {
   type TasksBindCwdResult,
 } from "@/lib/tasksPanelPro";
 import { settleStoppedSessionInLiveMap } from "@/lib/sessionLiveStore";
-import {
-  stallMessageKey,
-  stallTierFromProgress,
-  normalizeStallTier,
-} from "@/lib/sessionPhase";
+import type { StreamStallView } from "@/lib/streamStallView";
+import { StreamStallBanner } from "@/components/StreamStallBanner";
 import { sessionGoalClear } from "@/lib/goalClear";
 import { goalOrchPhaseLabelKey, type GoalOrchEvent } from "@/lib/goalOrch";
 import { AttachedChatLookupContext, type AttachedChatLookup } from "@/components/AttachedChatLookup";
@@ -47,13 +44,6 @@ import { AgentTasksPanelLive } from "@/components/AgentTasksPanelLive";
 
 type TFn = ReturnType<typeof createT>;
 type TStore = typeof sessionTranscriptStoreInstance;
-type StreamStallView = {
-  sessionId?: string;
-  stallSeconds: number;
-  tier?: string;
-  sawModelOutput?: boolean;
-  sawToolActivity?: boolean;
-} | null;
 
 export type WorkbenchChatStageProps = {
   children: ReactNode;
@@ -116,7 +106,9 @@ export type WorkbenchChatStageProps = {
     comment: string;
     sourceMessageId?: string;
   }) => void;
-  onThreadContinueInterrupted: () => void;
+  onThreadContinueInterrupted: (reason: string) => void;
+  endAndContinueBusy: boolean;
+  onStallEndAndContinue: (sessionId: string) => void;
   onThreadOpenError: (message: string) => void;
   onThreadOpenModifiedPath: (path: string) => void;
   onThreadOpenResource: (target: ResourceOpenTarget) => void;
@@ -155,7 +147,7 @@ export type WorkbenchChatStageProps = {
   showMessageTimestamps: boolean;
   showReplyLength: boolean;
   showToast: (msg: string, ms?: number) => void;
-  stop: () => Promise<void>;
+  stop: (sessionId?: string | null) => Promise<boolean>;
   stopAllBusySessions: (surface?: StopAllSurface) => void;
   stopGate: UiBusyGate;
   stopLatch: StopLatchState;
@@ -206,7 +198,7 @@ export function WorkbenchChatStage(p: WorkbenchChatStageProps) {
     errorBanner, errorDetailOpen, exitPlanMode, gitWorktrees, goalMode, goalOrchSessionChip,
     goalOrchSessionEvents, hasChatTurnError, isSecondaryWindow, journalPending, lastUserMessageId, liveMap,
     locale, mainPane, markSessionWorktree, messageTimeFormat, mode, modelId,
-    onForkFromAssistantMessage, onRewindToUserMessage, onThreadAddAttachmentToComposer, onThreadAddQuote, onThreadContinueInterrupted, onThreadOpenError,
+    onForkFromAssistantMessage, onRewindToUserMessage, onThreadAddAttachmentToComposer, onThreadAddQuote, onThreadContinueInterrupted, endAndContinueBusy, onStallEndAndContinue, onThreadOpenError,
     onThreadOpenModifiedPath, onThreadOpenResource, onThreadOpenSessionChanges, onThreadRemoveEditAttachment, openExternalLinkFromChat, openPlanInResource,
     openReliability, openRequestPlanChanges, openSession, plan, projects, regenerateLastAssistant,
     requestClearLocalGoalOrchTimeline, retryAgentConnect, runErrorBannerAction, session, sessionChanges, sessionJsonSchema, sessionTranscriptStore,
@@ -257,92 +249,21 @@ export function WorkbenchChatStage(p: WorkbenchChatStageProps) {
             </div>
           )}
 
-          {/* I06: soft stall — heal-first Host; soft banner is secondary. Primary = keep waiting. */}
-          {streamStall && mainPane === "chat" && (
-            <div
-              className={`stall-banner error-banner${
-                (() => {
-                  const sid = streamStall.sessionId || session.sessionId || "";
-                  const live = liveMap[sid];
-                  const saw =
-                    !!streamStall.sawModelOutput ||
-                    !!live?.sawModelOutput ||
-                    false;
-                  const tools =
-                    !!streamStall.sawToolActivity ||
-                    !!live?.sawToolActivity ||
-                    false;
-                  const hostTier = normalizeStallTier(streamStall.tier);
-                  const tier =
-                    hostTier ??
-                    stallTierFromProgress({
-                      sawModelOutput: saw,
-                      sawToolActivity: tools,
-                      terminalCandidate: saw && !live?.liveToolId,
-                    });
-                  return tier === "maybe_done" || tier === "post_output"
-                    ? " stall-banner--soft"
-                    : "";
-                })()
-              }`}
-              role="status"
-            >
-              <div className="error-banner__code">STREAM_STALL</div>
-              <div className="error-banner__summary">
-                {(() => {
-                  const sid = streamStall.sessionId || session.sessionId || "";
-                  const live = liveMap[sid];
-                  const saw =
-                    !!streamStall.sawModelOutput || !!live?.sawModelOutput;
-                  const tools =
-                    !!streamStall.sawToolActivity || !!live?.sawToolActivity;
-                  const hostTier = normalizeStallTier(streamStall.tier);
-                  const tier =
-                    hostTier ??
-                    stallTierFromProgress({
-                      sawModelOutput: saw,
-                      sawToolActivity: tools,
-                      terminalCandidate: saw && !live?.liveToolId,
-                    });
-                  const key = stallMessageKey(tier);
-                  if (key === "endOfTurn.stallPreToken") {
-                    return tr("endOfTurn.stallPreToken");
-                  }
-                  if (key === "endOfTurn.stallWorkingTools") {
-                    return tr("endOfTurn.stallWorkingTools");
-                  }
-                  if (key === "endOfTurn.stallMaybeDone") {
-                    return tr("endOfTurn.stallMaybeDone");
-                  }
-                  return tr("error.deck.stall.problem");
-                })()}
-              </div>
-              <div className="error-banner__cause">
-                {tr("error.deck.stall.cause", {
-                  seconds: String(streamStall.stallSeconds),
-                })}
-              </div>
-              <div className="stall-banner__actions error-banner__actions">
-                <button
-                  type="button"
-                  className="btn btn--primary stall-banner__btn"
-                  onClick={() => setStreamStall(null)}
-                >
-                  {tr("agent.streamStallKeepWaiting")}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--ghost stall-banner__btn"
-                  onClick={() => {
-                    setStreamStall(null);
-                    void stop();
-                  }}
-                >
-                  {tr("agent.streamStallEndTurn")}
-                </button>
-              </div>
-            </div>
-          )}
+          {streamStall && mainPane === "chat" ? (
+            <StreamStallBanner
+              stall={streamStall}
+              sessionId={session.sessionId}
+              live={liveMap[streamStall.sessionId || session.sessionId || ""]}
+              tr={tr}
+              busy={endAndContinueBusy}
+              onKeepWaiting={() => setStreamStall(null)}
+              onEndTurn={() => {
+                setStreamStall(null);
+                void stop();
+              }}
+              onEndAndContinue={onStallEndAndContinue}
+            />
+          ) : null}
 
           {mainPane === "chat" && (!plan.barDismissed || goalMode) && (
             <PlanStatusBar

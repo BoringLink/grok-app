@@ -401,6 +401,33 @@ impl SessionManager {
         )
     }
 
+    /// Record a provider `retry_state` without touching stall progress.
+    ///
+    /// Body-decode failures are remembered for the rest of the turn when the
+    /// host owns it. Other reasons still update `provider_retry_attempt` but
+    /// do not set the stall hint. Does not call `touch_stream_progress_locked`.
+    pub(super) fn note_provider_retry(s: &mut LiveSession, attempt: u32, reason: &str) {
+        s.provider_retry_attempt = attempt;
+        if !Self::should_apply_provider_retry_abort(s) {
+            return;
+        }
+        if crate::acp_client::is_stream_decode_retry_reason(reason) {
+            s.last_provider_retry = Some((Instant::now(), reason.to_string()));
+        }
+    }
+
+    pub(super) fn clear_provider_retry_memory(s: &mut LiveSession) {
+        s.provider_retry_attempt = 0;
+        s.provider_retry_aborted = false;
+        s.last_provider_retry = None;
+    }
+
+    pub(super) fn stream_interrupted_this_turn(s: &LiveSession) -> bool {
+        s.last_provider_retry
+            .as_ref()
+            .is_some_and(|(_, reason)| crate::acp_client::is_stream_decode_retry_reason(reason))
+    }
+
     /// Whether connect/respawn must keep the existing agent process.
     ///
     /// Terminal FSM states (`Disconnected` / `Idle`) never preserve the process —
@@ -448,6 +475,7 @@ impl SessionManager {
         s.stall_soft_emits = 0;
         s.saw_model_output = false;
         s.tools_this_turn = 0;
+        Self::clear_provider_retry_memory(s);
     }
 
     /// Park or background the current live session so focus can move.
@@ -708,6 +736,7 @@ impl SessionManager {
             policy: parked.policy,
             provider_retry_attempt: 0,
             provider_retry_aborted: false,
+            last_provider_retry: None,
             needs_history_bootstrap: parked.needs_history_bootstrap,
             pending_plan_rpc_id: None,
             pending_permission_rpc_id: None,

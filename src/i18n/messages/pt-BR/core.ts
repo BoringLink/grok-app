@@ -74,6 +74,8 @@ export const ptBRCore = {
   "agent.streamStallBanner": "Sem progresso de stream ou de ferramentas por cerca de {seconds} s. Continue esperando ou encerre este turno.",
   "agent.streamStallCancel": "Encerrar turno",
   "agent.streamStallEndTurn": "Encerrar turno",
+  "agent.streamStallEndAndContinue": "Encerrar e continuar",
+  "agent.streamStallContinueNotReady": "O turno ainda está terminando — tente Continuar de novo em instantes.",
   "agent.streamStallKeepWaiting": "Continuar esperando",
   "agent.streamStallHardEndToast": "O turno foi encerrado após a recuperação do Host — sua resposta foi mantida.",
   "agent.ghostStreamingHealed": "A mensagem não chegou ao agente. Restaurada no compositor — envie de novo.",

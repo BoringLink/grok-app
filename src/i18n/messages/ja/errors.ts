@@ -50,6 +50,7 @@ export const jaErrors = {
   "error.deck.disconnect.cause": "ターンの途中で RPC チャネルが閉じました。再接続して送り直してください。",
   "error.deck.stall.problem": "ストリームが停滞しています",
   "error.deck.stall.cause": "約 {seconds} 秒間、トークンもツールの進捗もありません。待ち続けるか、このターンを終了してください。",
+  "error.deck.stall.causeStreamInterrupted": "このターンの早い段階でモデルのストリームが切断され、CLI の再試行が再開できていない可能性があります。トークンまたはツールの進展が約 {seconds} 秒ありません。",
   "error.deck.untrusted.problem": "プロジェクトが信頼されていません",
   "error.deck.untrusted.cause": "エージェントが読み書きできるようフォルダーを信頼してください（既定は都度確認のままです）。",
   "error.deck.projectMissing.problem": "プロジェクトフォルダーが利用できません",

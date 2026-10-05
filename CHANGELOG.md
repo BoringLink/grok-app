@@ -18,12 +18,14 @@ See `docs/llm-wiki/release.md`.
 - Sending one picture on Windows no longer shows that picture twice. The chat was counting the same file a second time. (#1284)
 - Chat text now uses the font you set under Appearance. Code blocks keep the code font. (#1297)
 - Official and custom chats no longer share one login file. Each running chat keeps its own copy. (#1293)
+- A stalled reply can be ended and continued in the same chat. The notice says when the model stream was cut off.
 
 **中文 · 修复**
 - 通道名称和模型 ID 不同时，自定义通道可以重新连上。应用发给 CLI 的是通道名，CLI 靠它找到密钥。（#1294）
 - 在 Windows 上发送一张图片后，不会再显示成两张。同一文件之前被算了两次。（#1284）
 - 对话正文会使用外观里选的界面字体。代码块仍用代码字体。（#1297）
 - 独立模式下，官方对话和自定义对话不再共用同一份登录文件。每条正在运行的对话使用自己的副本。（#1293）
+- 输出停住时，可以结束本轮并在同一条对话里接着写。提示会说明模型流是否中途断过。
 
 ## [0.2.38] - 2026-09-30
 

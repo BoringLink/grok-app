@@ -50,6 +50,7 @@ export const filErrors = {
   "error.deck.disconnect.cause": "Nagsara ang RPC channel sa gitna ng turn. Kumonekta ulit at ipadala muli.",
   "error.deck.stall.problem": "Mukhang tahimik ang stream",
   "error.deck.stall.cause": "Walang token o pag-usad ng tool sa loob ng humigit-kumulang {seconds}s. Maghintay pa o tapusin ang turn na ito.",
+  "error.deck.stall.causeStreamInterrupted": "Naputol ang model stream nang mas maaga sa turn na ito at maaaring hindi ito naipagpatuloy ng retry ng CLI. Walang token o progreso ng tool nang humigit-kumulang {seconds}s.",
   "error.deck.untrusted.problem": "Hindi pinagkakatiwalaan ang proyekto",
   "error.deck.untrusted.cause": "Pagkatiwalaan ang folder para makabasa at makasulat doon ang agent (mananatiling default ang pagtatanong).",
   "error.deck.projectMissing.problem": "Hindi available ang folder ng proyekto",

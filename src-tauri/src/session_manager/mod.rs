@@ -65,7 +65,7 @@ use types::*;
 
 pub(crate) use types::{
     extract_tool_input, tool_journal_richer, RewindExecuteResult, RewindPointDto, SessionSnapshot,
-    UiAskUserRequest, UiPermissionRequest, TOOL_OUTPUT_MAX_PUB, TOOL_OUTPUT_SENTINEL,
+    StopReport, UiAskUserRequest, UiPermissionRequest, TOOL_OUTPUT_MAX_PUB, TOOL_OUTPUT_SENTINEL,
 };
 
 pub struct SessionManager {

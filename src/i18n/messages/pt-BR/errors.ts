@@ -50,6 +50,7 @@ export const ptBRErrors = {
   "error.deck.disconnect.cause": "O canal RPC fechou no meio do turno. Reconecte e envie de novo.",
   "error.deck.stall.problem": "O stream parece parado",
   "error.deck.stall.cause": "Sem tokens nem progresso de ferramentas por cerca de {seconds} s. Continue esperando ou encerre este turno.",
+  "error.deck.stall.causeStreamInterrupted": "O fluxo do modelo foi interrompido mais cedo neste turno e a nova tentativa do CLI pode não tê-lo retomado. Sem tokens ou progresso de ferramentas por cerca de {seconds}s.",
   "error.deck.untrusted.problem": "O projeto não é confiável",
   "error.deck.untrusted.cause": "Confie na pasta para que o agente possa ler e escrever nela (perguntar continua sendo o padrão).",
   "error.deck.projectMissing.problem": "Pasta do projeto indisponível",

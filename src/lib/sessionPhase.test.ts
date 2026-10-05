@@ -31,9 +31,9 @@ describe("sessionPhase", () => {
     expect(
       stallTierFromProgress({
         sawModelOutput: true,
-        terminalCandidate: true,
+        sawToolActivity: false,
       }),
-    ).toBe("maybe_done");
+    ).toBe("post_output");
     expect(stallMessageKey("pre_first_token")).toBe("endOfTurn.stallPreToken");
     expect(stallMessageKey("working_tools")).toBe(
       "endOfTurn.stallWorkingTools",

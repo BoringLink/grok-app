@@ -5169,6 +5169,17 @@ pub fn provider_retry_abort_rpc_message(reason: &str) -> String {
     }
 }
 
+/// Mid-stream body decode failure reported by the CLI reqwest client.
+///
+/// This is a flaky SSE break, not a dead socket. The same reason often
+/// recovers and keeps editing, so it must **not** join
+/// [`is_hard_transport_retry_reason`] or fail the turn on attempt 1.
+pub fn is_stream_decode_retry_reason(reason: &str) -> bool {
+    reason
+        .to_ascii_lowercase()
+        .contains("error decoding response body")
+}
+
 /// True when the retry reason looks like a hard transport failure (not a flaky 5xx).
 pub fn is_hard_transport_retry_reason(reason: &str) -> bool {
     let r = reason.to_ascii_lowercase();
@@ -5565,6 +5576,22 @@ mod retry_tests {
         assert!(!is_hard_transport_retry_reason(
             "HTTP 503 Service Unavailable"
         ));
+    }
+
+    #[test]
+    fn stream_decode_error_is_not_a_hard_abort() {
+        let reason =
+            "reqwest error stream: Transport error: error decoding response body";
+        assert!(is_stream_decode_retry_reason(reason));
+        assert!(is_stream_decode_retry_reason(
+            "Transport error: Error decoding response body"
+        ));
+        assert!(!is_stream_decode_retry_reason(
+            "error sending request for url"
+        ));
+        assert!(!is_hard_transport_retry_reason(reason));
+        assert!(!should_abort_provider_retry_ex(1, 15, "retrying", reason));
+        assert!(!should_abort_provider_retry_ex(3, 15, "retrying", reason));
     }
 
     #[test]

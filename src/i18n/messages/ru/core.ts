@@ -74,6 +74,8 @@ export const ruCore = {
   "agent.streamStallBanner": "Нет прогресса потока или инструментов около {seconds} с. Продолжайте ждать или завершите этот ход.",
   "agent.streamStallCancel": "Завершить ход",
   "agent.streamStallEndTurn": "Завершить ход",
+  "agent.streamStallEndAndContinue": "Завершить и продолжить",
+  "agent.streamStallContinueNotReady": "Ход ещё завершается — нажмите «Продолжить» чуть позже.",
   "agent.streamStallKeepWaiting": "Продолжить ожидание",
   "agent.streamStallHardEndToast": "Ход закрыт после восстановления Host — ваш ответ сохранён.",
   "agent.ghostStreamingHealed": "Сообщение не дошло до агента. Восстановлено в поле ввода — отправьте снова.",

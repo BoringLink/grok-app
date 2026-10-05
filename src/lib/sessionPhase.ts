@@ -122,9 +122,7 @@ export type StallTier =
 export function stallTierFromProgress(input: {
   sawModelOutput: boolean;
   sawToolActivity?: boolean;
-  terminalCandidate?: boolean;
 }): StallTier {
-  if (input.terminalCandidate) return "maybe_done";
   if (input.sawModelOutput) return "post_output";
   if (input.sawToolActivity) return "working_tools";
   return "pre_first_token";

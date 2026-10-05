@@ -1,12 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
   currentTurnHasEndMarker,
+  endOfTurnChipShowsContinue,
   endOfTurnMarkerContent,
   isEndOfTurnMarker,
   mapEndOfTurnReason,
   parseEndOfTurnContent,
 } from "./endOfTurn";
 import { applyTurnMarker, type ChatMessage } from "./session";
+
+describe("endOfTurn continue chip", () => {
+  it("shows Continue for host exit, agent exit, and user stop", () => {
+    expect(endOfTurnChipShowsContinue("host_exit")).toBe(true);
+    expect(endOfTurnChipShowsContinue("agent_exit")).toBe(true);
+    expect(endOfTurnChipShowsContinue("user_stop")).toBe(true);
+    expect(endOfTurnChipShowsContinue("stall")).toBe(false);
+    expect(endOfTurnChipShowsContinue("error")).toBe(false);
+  });
+});
 
 describe("endOfTurn", () => {
   it("maps user stop / stall / error", () => {

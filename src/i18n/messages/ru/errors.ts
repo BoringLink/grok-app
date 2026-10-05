@@ -50,6 +50,7 @@ export const ruErrors = {
   "error.deck.disconnect.cause": "RPC-канал закрылся во время хода. Переподключитесь и отправьте сообщение снова.",
   "error.deck.stall.problem": "Поток ответа неактивен",
   "error.deck.stall.cause": "Около {seconds} с нет новых токенов или прогресса инструментов. Можно продолжить ожидание или завершить ход.",
+  "error.deck.stall.causeStreamInterrupted": "Поток модели оборвался раньше в этом ходе, и повтор CLI мог его не возобновить. Нет токенов или прогресса инструментов около {seconds} с.",
   "error.deck.untrusted.problem": "Проекту не предоставлено доверие",
   "error.deck.untrusted.cause": "Разрешите доступ к папке, чтобы агент мог читать и изменять файлы (Ask остаётся режимом по умолчанию).",
   "error.deck.projectMissing.problem": "Папка проекта недоступна",

@@ -50,6 +50,7 @@ export const esErrors = {
   "error.deck.disconnect.cause": "El canal RPC se cerró a mitad del turno. Reconecta y envía de nuevo.",
   "error.deck.stall.problem": "El flujo parece detenido",
   "error.deck.stall.cause": "Sin tokens ni progreso de herramientas durante unos {seconds} s. Sigue esperando o finaliza este turno.",
+  "error.deck.stall.causeStreamInterrupted": "El flujo del modelo se cortó antes en este turno y el reintento del CLI puede no haberlo reanudado. Sin tokens ni avance de herramientas durante unos {seconds} s.",
   "error.deck.untrusted.problem": "El proyecto no es de confianza",
   "error.deck.untrusted.cause": "Confía en la carpeta para que el agente pueda leer y escribir en ella (preguntar sigue siendo el valor predeterminado).",
   "error.deck.projectMissing.problem": "Carpeta del proyecto no disponible",

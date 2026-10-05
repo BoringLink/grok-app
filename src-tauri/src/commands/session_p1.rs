@@ -185,6 +185,17 @@ pub async fn session_stop(
     mgr.stop(app, session_id).await
 }
 
+/// Stop a turn and report whether `session/cancel` was delivered.
+/// Callers that only need the snapshot stay on [`session_stop`].
+#[tauri::command]
+pub async fn session_stop_report(
+    app: tauri::AppHandle,
+    mgr: State<'_, Arc<SessionManager>>,
+    session_id: Option<String>,
+) -> Result<StopReport, String> {
+    mgr.stop_report(app, session_id).await
+}
+
 /// Approve / revise / abandon pending plan (`_x.ai/exit_plan_mode`).
 #[tauri::command]
 pub async fn session_resolve_plan(

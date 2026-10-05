@@ -74,6 +74,8 @@ export const taCore = {
   "agent.streamStallBanner": "சுமார் {seconds}வி ஸ்ட்ரீம் அல்லது கருவி முன்னேற்றம் இல்லை. காத்திரு அல்லது இந்தச் சுற்றை முடி.",
   "agent.streamStallCancel": "சுற்றை முடி",
   "agent.streamStallEndTurn": "சுற்றை முடி",
+  "agent.streamStallEndAndContinue": "முடித்து தொடரவும்",
+  "agent.streamStallContinueNotReady": "இந்த சுற்று இன்னும் முடிவடைகிறது — சற்று நேரம் கழித்து தொடரவும் என்பதை மீண்டும் அழுத்தவும்.",
   "agent.streamStallKeepWaiting": "காத்திரு",
   "agent.streamStallHardEndToast": "Host மீட்புக்குப் பிறகு சுற்று மூடப்பட்டது — உங்கள் பதில் பாதுகாக்கப்பட்டது.",
   "agent.ghostStreamingHealed": "செய்தி முகவரைச் சென்றடையவில்லை. எழுதிக்கு மீட்டெடுக்கப்பட்டது — மீண்டும் அனுப்பு.",

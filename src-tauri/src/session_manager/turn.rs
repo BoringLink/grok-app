@@ -159,8 +159,7 @@ impl SessionManager {
             s.deferred_prompt_complete = None;
             s.stall_soft_emits = 0;
             s.saw_model_output = false;
-            s.provider_retry_attempt = 0;
-            s.provider_retry_aborted = false;
+            Self::clear_provider_retry_memory(s);
             s.tools_this_turn = 0;
 
             if s.needs_history_bootstrap {
@@ -858,6 +857,19 @@ impl SessionManager {
         app: AppHandle,
         session_id: Option<String>,
     ) -> Result<SessionSnapshot, String> {
+        Ok(self.stop_report(app, session_id).await?.snapshot)
+    }
+
+    /// Same as [`Self::stop`], plus whether `session/cancel` reached the agent.
+    ///
+    /// Ready is published before cancel is awaited. A cancel error still
+    /// returns `Ok` with that snapshot and `cancel_delivered: false`.
+    /// No ACP client, and a handshake abort, count as delivered.
+    pub async fn stop_report(
+        self: &Arc<Self>,
+        app: AppHandle,
+        session_id: Option<String>,
+    ) -> Result<StopReport, String> {
         let target = match session_id {
             Some(sid) => sid,
             None => self
@@ -884,7 +896,10 @@ impl SessionManager {
                 Self::kill_acp_bounded(&acp).await;
             }
             self.emit_for_session(&app, &target);
-            return Ok(self.snapshot());
+            return Ok(StopReport {
+                snapshot: self.snapshot(),
+                cancel_delivered: true,
+            });
         }
         // Also release ask_user / plan reverse-RPCs. Leaving them set kept
         // `live_session_is_busy` true after stop, so Send/park paths stayed
@@ -981,6 +996,8 @@ impl SessionManager {
         };
 
         // Best-effort agent cancel after UI is already unblocked.
+        // No ACP client means there is nothing to deliver.
+        let mut cancel_delivered = true;
         if let Some(acp) = acp {
             // Reply to reverse-RPCs before session/cancel so the agent does not
             // sit forever on an unanswered ask_user_question after Host "stop".
@@ -1020,6 +1037,7 @@ impl SessionManager {
                 Some(ref sid) => acp.cancel_for(sid).await,
                 None => acp.cancel().await,
             } {
+                cancel_delivered = false;
                 tracing::warn!(
                     target: "session",
                     session = %target,
@@ -1028,6 +1046,9 @@ impl SessionManager {
             }
         }
         self.flush_pending_soft_respawn(&app, &target).await;
-        Ok(stopped_snap)
+        Ok(StopReport {
+            snapshot: stopped_snap,
+            cancel_delivered,
+        })
     }
 }

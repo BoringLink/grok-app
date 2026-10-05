@@ -172,6 +172,7 @@ impl SessionManager {
             saw_model_this_turn,
             s.open_tool_ids.len(),
             s.deferred_prompt_complete.is_some(),
+            s.prompt_in_flight,
         );
 
         // 2) Soft banner only — never auto-cancel a user-initiated turn.
@@ -189,12 +190,15 @@ impl SessionManager {
         s.last_stall_emit = Some(now);
         s.stall_soft_emits = s.stall_soft_emits.saturating_add(1);
         let tier = stall_tier_from_evidence(saw_model_for_tier, saw_tools, terminal_candidate);
+        // Sticky for this turn. Copy only — does not change tier or the window.
+        let stream_interrupted = Self::stream_interrupted_this_turn(s);
         Some(StallTickAction::SoftStall {
             session_id: s.app_session_id.clone(),
             stall_seconds: stall_secs,
             tier,
             saw_model_output: saw_model_for_tier,
             saw_tool_activity: saw_tools,
+            stream_interrupted,
         })
     }
 
@@ -284,12 +288,14 @@ impl SessionManager {
                 tier,
                 saw_model_output,
                 saw_tool_activity,
+                stream_interrupted,
             } => {
                 tracing::warn!(
                     target: "session",
                     session = %session_id,
                     stall_seconds,
                     tier = tier.as_str(),
+                    stream_interrupted,
                     "stream soft stall — emitting keep-waiting prompt"
                 );
                 Self::emit_stream_stall(
@@ -299,6 +305,7 @@ impl SessionManager {
                     tier,
                     saw_model_output,
                     saw_tool_activity,
+                    stream_interrupted,
                 );
             }
         }

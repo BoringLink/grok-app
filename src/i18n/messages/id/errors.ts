@@ -50,6 +50,7 @@ export const idErrors = {
   "error.deck.disconnect.cause": "Kanal RPC tertutup di tengah giliran. Sambungkan ulang lalu kirim lagi.",
   "error.deck.stall.problem": "Aliran tampak diam",
   "error.deck.stall.cause": "Tidak ada token atau kemajuan alat selama sekitar {seconds} d. Terus tunggu atau akhiri giliran ini.",
+  "error.deck.stall.causeStreamInterrupted": "Aliran model terputus lebih awal di giliran ini dan percobaan ulang CLI mungkin belum menyambungnya. Tidak ada token atau progres alat selama sekitar {seconds} dtk.",
   "error.deck.untrusted.problem": "Proyek belum tepercaya",
   "error.deck.untrusted.cause": "Percayai folder agar agen dapat membaca dan menulis di sana (bertanya tetap menjadi bawaan).",
   "error.deck.projectMissing.problem": "Folder proyek tidak tersedia",

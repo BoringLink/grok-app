@@ -6,6 +6,7 @@ import { memo, useMemo, type ReactNode } from "react";
 import type { Locale } from "@/i18n";
 import { createT, type MessageKey } from "@/i18n";
 import {
+  endOfTurnChipShowsContinue,
   mapEndOfTurnReason,
   parseEndOfTurnContent,
   type EndOfTurnReason,
@@ -63,16 +64,14 @@ export const EndOfTurnChip = memo(function EndOfTurnChip({
   message?: ChatMessage;
   locale: Locale;
   reasonOverride?: EndOfTurnReason | string | null;
-  onContinue?: () => void;
+  onContinue?: (reason: EndOfTurnReason) => void;
   continueDisabled?: boolean;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
   const raw = resolveRawReason(reasonOverride, message);
   const model = mapEndOfTurnReason(String(raw));
   const label = tr(model.messageKey as MessageKey);
-  const showContinue =
-    !!onContinue &&
-    (model.reason === "host_exit" || model.reason === "agent_exit");
+  const showContinue = !!onContinue && endOfTurnChipShowsContinue(model.reason);
 
   return (
     <div
@@ -90,7 +89,7 @@ export const EndOfTurnChip = memo(function EndOfTurnChip({
           type="button"
           className="lobe-end-turn__continue"
           disabled={continueDisabled}
-          onClick={onContinue}
+          onClick={() => onContinue?.(model.reason)}
         >
           {tr("endOfTurn.continue")}
         </button>

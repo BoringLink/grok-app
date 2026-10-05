@@ -74,6 +74,8 @@ export const zhCore = {
   "agent.streamStallBanner": "约 {seconds} 秒无流式片段或工具活动。可继续等待或结束本轮。",
   "agent.streamStallCancel": "结束本轮",
   "agent.streamStallEndTurn": "结束本轮",
+  "agent.streamStallEndAndContinue": "结束并继续",
+  "agent.streamStallContinueNotReady": "本轮还在结束，请稍后再点继续",
   "agent.streamStallKeepWaiting": "继续等待",
   "agent.streamStallHardEndToast": "Host 已恢复收尾，本轮内容已保留。",
   "agent.ghostStreamingHealed": "消息没有真正发给 Agent。已恢复到输入框，请重新发送。",

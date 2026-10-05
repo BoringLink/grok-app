@@ -74,6 +74,8 @@ export const koCore = {
   "agent.streamStallBanner": "약 {seconds}초 동안 스트림이나 도구 진행이 없습니다. 계속 기다리거나 이 턴을 종료하세요.",
   "agent.streamStallCancel": "턴 종료",
   "agent.streamStallEndTurn": "턴 종료",
+  "agent.streamStallEndAndContinue": "종료하고 계속",
+  "agent.streamStallContinueNotReady": "이 턴이 아직 끝나는 중입니다. 잠시 후 계속을 다시 누르세요.",
   "agent.streamStallKeepWaiting": "계속 기다리기",
   "agent.streamStallHardEndToast": "Host 복구 후 턴이 닫혔습니다 — 응답은 유지되었습니다.",
   "agent.ghostStreamingHealed": "메시지가 에이전트에 도달하지 않았습니다. 작성기로 복원했습니다 — 다시 보내세요.",

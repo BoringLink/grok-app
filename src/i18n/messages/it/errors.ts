@@ -50,6 +50,7 @@ export const itErrors = {
   "error.deck.disconnect.cause": "Il canale RPC si è chiuso a metà turno. Riconnettiti e invia di nuovo.",
   "error.deck.stall.problem": "Lo stream sembra fermo",
   "error.deck.stall.cause": "Nessun token né progresso degli strumenti da circa {seconds} s. Continua ad attendere oppure termina questo turno.",
+  "error.deck.stall.causeStreamInterrupted": "Il flusso del modello si è interrotto prima in questo turno e il nuovo tentativo della CLI potrebbe non averlo ripreso. Nessun token o avanzamento degli strumenti per circa {seconds}s.",
   "error.deck.untrusted.problem": "Il progetto non è attendibile",
   "error.deck.untrusted.cause": "Rendi attendibile la cartella così l’agente può leggerla e scriverla (la richiesta resta il comportamento predefinito).",
   "error.deck.projectMissing.problem": "Cartella del progetto non disponibile",

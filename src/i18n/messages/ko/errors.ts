@@ -50,6 +50,7 @@ export const koErrors = {
   "error.deck.disconnect.cause": "턴 도중 RPC 채널이 닫혔습니다. 다시 연결한 뒤 보내세요.",
   "error.deck.stall.problem": "스트림이 조용합니다",
   "error.deck.stall.cause": "약 {seconds}초 동안 토큰이나 도구 진행이 없습니다. 계속 기다리거나 이 턴을 종료하세요.",
+  "error.deck.stall.causeStreamInterrupted": "이 턴 초반에 모델 스트림이 끊겼고 CLI 재시도가 이어지지 않았을 수 있습니다. 약 {seconds}초 동안 토큰이나 도구 진행이 없습니다.",
   "error.deck.untrusted.problem": "프로젝트가 신뢰되지 않았습니다",
   "error.deck.untrusted.cause": "에이전트가 읽고 쓸 수 있도록 폴더를 신뢰하세요 (기본값은 매번 확인입니다).",
   "error.deck.projectMissing.problem": "프로젝트 폴더를 사용할 수 없습니다",

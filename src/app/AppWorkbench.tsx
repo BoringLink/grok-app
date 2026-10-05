@@ -49,7 +49,7 @@ import {
   shouldSkipHtml5AfterNative,
 } from "@/lib/fileDrop";
 import { writeOpenTargetStorage } from "@/lib/openEditorHonesty";
-import { buildContinueAgentPrompt } from "@/lib/continueInterruptedTurn";
+import { useEndAndContinue } from "@/hooks/useEndAndContinue";
 import {
   APP_CLOSE_REQUESTED_EVENT,
   loadAlwaysQuitWithoutAskingPref,
@@ -9615,18 +9615,21 @@ export function AppWorkbench() {
     welcomeSession,
   ]);
 
-  const stop = async () => {
+  const stop = async (explicitSessionId?: string | null): Promise<boolean> => {
     const now = Date.now();
     // Composer Stop scope = current viewed chat only (not global Stop-all).
     // Preferring the Host live slot cancelled a foreign turn whenever the
     // viewed chat had been demoted to background.
+    // An explicit id (end-and-continue) stays on that chat after a switch.
     const sid =
+      explicitSessionId?.trim() ||
       resolveStopTargets({
         scope: "current",
         currentSessionId:
           viewingSessionIdRef.current || liveHostRef.current.sessionId || null,
         busySessionIds: [],
-      })[0] ?? null;
+      })[0] ||
+      null;
     const armed = armStopLatch(stopLatchRef.current, sid, now);
     stopLatchRef.current = armed;
     setStopLatch(armed);
@@ -9702,8 +9705,9 @@ export function AppWorkbench() {
         forceUnlockLocal(id, "force");
       }
     }, STOP_LATCH_MS + 50);
+    let cancelDelivered = false;
     try {
-      await api.sessionStop(sid);
+      cancelDelivered = (await api.sessionStopReport(sid)).cancelDelivered === true;
       setRetryStatus(null);
       setStreamStall(null);
       clearTurnClock(sid);
@@ -9734,6 +9738,7 @@ export function AppWorkbench() {
       const settled = settleStopLatchAfterSessionStop(stopLatchRef.current);
       stopLatchRef.current = settled;
       setStopLatch(settled);
+      return cancelDelivered;
     } catch (e) {
       // Host stop can fail ("no active session") while UI still shows thinking.
       // Always finish local unlock so Stop never leaves a dead busy shell.
@@ -9742,6 +9747,7 @@ export function AppWorkbench() {
       stopLatchRef.current = settled;
       setStopLatch(settled);
       setLocalError(String(e));
+      return false;
     }
   };
 
@@ -11553,28 +11559,17 @@ export function AppWorkbench() {
     ],
   );
 
-  const onThreadContinueInterrupted = useCallback(() => {
-    const sid = session.sessionId;
-    if (!sid) return;
-    if (
-      session.state === "streaming" ||
-      session.state === "awaiting_permission" ||
-      session.state === "connecting"
-    ) {
-      return;
-    }
-    void (async () => {
-      const ctx = await api.sessionInterruptContext(sid);
-      const journal = tr("endOfTurn.continuePrompt");
-      await executeSendLatestRef.current({
-        storedDisplay: journal,
-        att: [],
-        goalMode: false,
-        targetSessionId: sid,
-        agentTextOverride: buildContinueAgentPrompt(ctx),
-      });
-    })();
-  }, [session.sessionId, session.state, tr]);
+  const { endAndContinueBusy, endAndContinue, onThreadContinueInterrupted } =
+    useEndAndContinue({
+      stop,
+      sendContinue: (args) => executeSendLatestRef.current(args),
+      showToast,
+      tr,
+      readHostState: (sid) =>
+        liveMapRef.current[sid]?.state ||
+        (liveHostRef.current.sessionId === sid ? liveHostRef.current.state : null),
+      readViewedSessionId: () => session.sessionId,
+    });
 
   const onThreadAddQuote = useCallback(
     (quote: { text: string; comment: string; sourceMessageId?: string }) => {
@@ -12619,6 +12614,10 @@ export function AppWorkbench() {
             onThreadAddAttachmentToComposer={onThreadAddAttachmentToComposer}
             onThreadAddQuote={onThreadAddQuote}
             onThreadContinueInterrupted={onThreadContinueInterrupted}
+            endAndContinueBusy={endAndContinueBusy}
+            onStallEndAndContinue={(sid) => {
+              void endAndContinue(sid);
+            }}
             onThreadOpenError={onThreadOpenError}
             onThreadOpenModifiedPath={onThreadOpenModifiedPath}
             onThreadOpenResource={onThreadOpenResource}

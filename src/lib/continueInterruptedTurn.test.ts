@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildContinueAfterStopPrompt,
   buildContinueAgentPrompt,
   isContinuableEndReason,
   latestContinuableEndMessageId,
@@ -28,7 +29,13 @@ describe("continueInterruptedTurn", () => {
   it("marks host_exit and agent_exit as continuable", () => {
     expect(isContinuableEndReason("host_exit")).toBe(true);
     expect(isContinuableEndReason("agent_exit")).toBe(true);
-    expect(isContinuableEndReason("user_stop")).toBe(false);
+    expect(isContinuableEndReason("user_stop")).toBe(true);
+  });
+
+  it("does not tell the agent the host restarted after a user stop", () => {
+    const text = buildContinueAfterStopPrompt();
+    expect(text).toMatch(/model stream was cut off/i);
+    expect(text).not.toMatch(/host process restarted/i);
   });
 });
 
@@ -52,5 +59,19 @@ describe("latestContinuableEndMessageId", () => {
       { id: "a2", role: "assistant" },
     ]);
     expect(id).toBeNull();
+  });
+
+  it("returns the latest user_stop chip and drops it after a later user turn", () => {
+    const before = latestContinuableEndMessageId([
+      { id: "u1", role: "user" },
+      { id: "stop", role: "tool", marker: "turn_end", content: "turn_end|user_stop", toolStatus: "user_stop" },
+    ]);
+    expect(before).toBe("stop");
+    const after = latestContinuableEndMessageId([
+      { id: "u1", role: "user" },
+      { id: "stop", role: "tool", marker: "turn_end", content: "turn_end|user_stop", toolStatus: "user_stop" },
+      { id: "u2", role: "user", content: "continue" },
+    ]);
+    expect(after).toBeNull();
   });
 });

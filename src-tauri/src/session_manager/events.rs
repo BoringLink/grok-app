@@ -1114,7 +1114,7 @@ impl SessionManager {
                 let abort = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
-                        s.provider_retry_attempt = attempt;
+                        Self::note_provider_retry(s, attempt, &reason);
                         // Reconnect / session/load residual retries (and shared-
                         // process noise while idle) must not fail the shell or
                         // append NETWORK_PROVIDER rows without a host-owned turn.

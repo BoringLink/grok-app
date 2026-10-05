@@ -49,6 +49,7 @@ export const zhTWErrors = {
   "error.deck.disconnect.problem": "與 Agent 的連線已中斷",
   "error.deck.stall.problem": "輸出似乎卡住了",
   "error.deck.stall.cause": "約 {seconds} 秒沒有新的內容或工具進度。可取消本輪或繼續等待。",
+  "error.deck.stall.causeStreamInterrupted": "本輪早些時候模型流被中斷，CLI 的重試可能沒有接上；已約 {seconds} 秒沒有 token 或工具進展",
   "error.deck.disconnect.cause": "傳輸通道在回合中關閉。請重新連線後再傳送。",
   "error.deck.untrusted.problem": "專案尚未信任",
   "error.deck.untrusted.cause": "信任該資料夾後 Agent 才可讀寫（預設仍為 Ask 審批）。",

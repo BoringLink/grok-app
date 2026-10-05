@@ -74,6 +74,8 @@ export const filCore = {
   "agent.streamStallBanner": "Walang stream o pag-usad ng tool sa loob ng humigit-kumulang {seconds}s. Maghintay pa o tapusin ang turn na ito.",
   "agent.streamStallCancel": "Tapusin ang turn",
   "agent.streamStallEndTurn": "Tapusin ang turn",
+  "agent.streamStallEndAndContinue": "Tapusin at magpatuloy",
+  "agent.streamStallContinueNotReady": "Hindi pa tapos ang pagtatapos ng turn — subukan ulit ang Magpatuloy pagkalipas ng ilang sandali.",
   "agent.streamStallKeepWaiting": "Maghintay pa",
   "agent.streamStallHardEndToast": "Isinara ang turn pagkatapos ng recovery ng Host — napanatili ang iyong sagot.",
   "agent.ghostStreamingHealed": "Hindi nakarating sa agent ang mensahe. Naibalik sa composer — ipadala ulit.",

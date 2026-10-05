@@ -50,6 +50,7 @@ export const frErrors = {
   "error.deck.disconnect.cause": "Le canal RPC s’est fermé en plein tour. Reconnectez-vous et renvoyez.",
   "error.deck.stall.problem": "Le flux semble silencieux",
   "error.deck.stall.cause": "Aucun jeton ni progression d’outil depuis environ {seconds} s. Continuez d’attendre ou terminez ce tour.",
+  "error.deck.stall.causeStreamInterrupted": "Le flux du modèle a été coupé plus tôt dans ce tour et la nouvelle tentative du CLI ne l’a peut-être pas repris. Aucun jeton ni progression d’outil depuis environ {seconds} s.",
   "error.deck.untrusted.problem": "Projet non approuvé",
   "error.deck.untrusted.cause": "Approuvez le dossier pour que l’agent puisse y lire et écrire (la demande reste le comportement par défaut).",
   "error.deck.projectMissing.problem": "Dossier de projet indisponible",

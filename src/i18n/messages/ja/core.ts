@@ -74,6 +74,8 @@ export const jaCore = {
   "agent.streamStallBanner": "約 {seconds} 秒間、ストリームもツールの進捗もありません。待ち続けるか、このターンを終了してください。",
   "agent.streamStallCancel": "ターンを終了",
   "agent.streamStallEndTurn": "ターンを終了",
+  "agent.streamStallEndAndContinue": "終了して続ける",
+  "agent.streamStallContinueNotReady": "このターンはまだ終了中です。しばらくしてから続行を押してください。",
   "agent.streamStallKeepWaiting": "待ち続ける",
   "agent.streamStallHardEndToast": "ホスト復旧後にターンを閉じました — 返信は保持されています。",
   "agent.ghostStreamingHealed": "メッセージがエージェントに届きませんでした。コンポーザーに戻しました — もう一度送信してください。",

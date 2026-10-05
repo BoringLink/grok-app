@@ -50,6 +50,7 @@ export const deErrors = {
   "error.deck.disconnect.cause": "Der RPC-Kanal wurde mitten im Vorgang geschlossen. Neu verbinden und erneut senden.",
   "error.deck.stall.problem": "Der Stream wirkt still",
   "error.deck.stall.cause": "Seit rund {seconds} s keine Tokens oder Werkzeugfortschritte. Weiter warten oder diesen Vorgang beenden.",
+  "error.deck.stall.causeStreamInterrupted": "Der Modell-Stream wurde in diesem Vorgang früher unterbrochen, und der CLI-Wiederholungsversuch hat ihn möglicherweise nicht fortgesetzt. Seit etwa {seconds}s keine Token oder Werkzeugfortschritte.",
   "error.deck.untrusted.problem": "Projekt ist nicht vertrauenswürdig",
   "error.deck.untrusted.cause": "Vertraue dem Ordner, damit der Agent dort lesen und schreiben darf (Nachfragen bleibt Standard).",
   "error.deck.projectMissing.problem": "Projektordner nicht verfügbar",

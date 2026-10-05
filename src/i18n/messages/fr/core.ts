@@ -74,6 +74,8 @@ export const frCore = {
   "agent.streamStallBanner": "Aucun flux ni progression d’outil depuis environ {seconds} s. Continuez d’attendre ou terminez ce tour.",
   "agent.streamStallCancel": "Terminer le tour",
   "agent.streamStallEndTurn": "Terminer le tour",
+  "agent.streamStallEndAndContinue": "Terminer et continuer",
+  "agent.streamStallContinueNotReady": "Le tour est encore en cours d’arrêt — réessayez Continuer dans un instant.",
   "agent.streamStallKeepWaiting": "Continuer d’attendre",
   "agent.streamStallHardEndToast": "Le tour a été fermé après récupération de l’hôte — votre réponse a été conservée.",
   "agent.ghostStreamingHealed": "Le message n’a jamais atteint l’agent. Restauré dans la zone de saisie — renvoyez.",

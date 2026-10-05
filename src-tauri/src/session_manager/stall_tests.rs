@@ -95,6 +95,7 @@ fn streaming_session(now: Instant, mut patch: impl FnMut(&mut LiveSession)) -> L
         policy: PermissionPolicy::default(),
         provider_retry_attempt: 0,
         provider_retry_aborted: false,
+        last_provider_retry: None,
         needs_history_bootstrap: false,
         pending_plan_rpc_id: None,
         pending_permission_rpc_id: None,
@@ -178,12 +179,13 @@ fn maybe_done_soft_silence_prompts_never_auto_ends() {
         let action = SessionManager::tick_stream_stall_on_session(&mut s, None, None, 180, now);
         match action {
             Some(StallTickAction::SoftStall {
-                tier: crate::stream_stall::StallTier::MaybeDone,
+                tier: crate::stream_stall::StallTier::PostOutput,
                 stall_seconds: 180,
                 saw_model_output: true,
+                stream_interrupted: false,
                 ..
             }) => {}
-            other => panic!("expected maybe_done soft stall, got {other:?}"),
+            other => panic!("expected post_output soft stall while prompt is in flight, got {other:?}"),
         }
         assert_eq!(s.fsm.state(), SessionState::Streaming);
         assert!(s.prompt_in_flight);
@@ -213,9 +215,10 @@ fn no_auto_end_without_this_turn_body() {
 }
 
 #[test]
-fn orphan_open_tools_pruned_then_maybe_done_soft_only() {
-    // Leaked open tool ids age out (TOOL_ORPHAN_SECONDS); then soft maybe-done
-    // banner — still never auto-cancel while prompt_in_flight.
+fn orphan_open_tools_pruned_then_post_output_soft_only() {
+    // Leaked open tool ids age out (TOOL_ORPHAN_SECONDS); then a soft
+    // post-output banner — still never auto-cancel while prompt_in_flight.
+    // In-flight body is not maybe_done.
     with_temp_app_home(|| {
         let t0 = Instant::now();
         let mut s = streaming_session(t0, |s| {
@@ -230,14 +233,101 @@ fn orphan_open_tools_pruned_then_maybe_done_soft_only() {
         let action = SessionManager::tick_stream_stall_on_session(&mut s, None, None, 180, now);
         match action {
             Some(StallTickAction::SoftStall {
-                tier: crate::stream_stall::StallTier::MaybeDone,
+                tier: crate::stream_stall::StallTier::PostOutput,
+                stream_interrupted: false,
                 ..
             }) => {}
-            other => panic!("expected maybe_done soft after orphan prune, got {other:?}"),
+            other => panic!("expected post_output soft after orphan prune, got {other:?}"),
         }
         assert!(s.open_tool_ids.is_empty());
         assert_eq!(s.fsm.state(), SessionState::Streaming);
         assert!(s.prompt_in_flight);
+    });
+}
+
+const DECODE_REASON: &str =
+    "reqwest error stream: Transport error: error decoding response body";
+
+#[test]
+fn decode_retry_sticks_through_later_tokens_and_marks_stall() {
+    // A later token must not clear the decode memory, and must not reset
+    // progress as a side effect of recording the retry.
+    with_temp_app_home(|| {
+        let t0 = Instant::now();
+        let mut s = streaming_session(t0, |s| {
+            s.saw_model_output = true;
+            s.tools_this_turn = 4;
+            s.prompt_in_flight = true;
+            s.stream_buf = "partial".into();
+        });
+        let progress_before = s.last_stream_progress;
+        SessionManager::note_provider_retry(&mut s, 1, DECODE_REASON);
+        assert_eq!(s.last_stream_progress, progress_before);
+        assert!(s.last_provider_retry.is_some());
+        let t1 = t0 + Duration::from_secs(10);
+        s.last_stream_progress = t1;
+        s.last_activity = t1;
+        assert!(SessionManager::stream_interrupted_this_turn(&s));
+        let now = t1 + Duration::from_secs(180);
+        let action = SessionManager::tick_stream_stall_on_session(&mut s, None, None, 180, now);
+        match action {
+            Some(StallTickAction::SoftStall {
+                tier: crate::stream_stall::StallTier::PostOutput,
+                stream_interrupted: true,
+                ..
+            }) => {}
+            other => panic!("expected interrupted post_output stall, got {other:?}"),
+        }
+        assert_eq!(s.fsm.state(), SessionState::Streaming);
+        assert!(s.prompt_in_flight);
+    });
+}
+
+#[test]
+fn non_decode_retry_does_not_mark_stream_interrupted() {
+    with_temp_app_home(|| {
+        let t0 = Instant::now();
+        let mut s = streaming_session(t0, |s| {
+            s.prompt_in_flight = true;
+        });
+        SessionManager::note_provider_retry(&mut s, 1, "upstream quota exceeded");
+        assert_eq!(s.provider_retry_attempt, 1);
+        assert!(s.last_provider_retry.is_none());
+        assert!(!SessionManager::stream_interrupted_this_turn(&s));
+    });
+}
+
+#[test]
+fn clear_provider_retry_memory_drops_decode_hint() {
+    with_temp_app_home(|| {
+        let t0 = Instant::now();
+        let mut s = streaming_session(t0, |s| {
+            s.prompt_in_flight = true;
+            s.provider_retry_aborted = true;
+        });
+        SessionManager::note_provider_retry(&mut s, 2, DECODE_REASON);
+        assert!(s.last_provider_retry.is_some());
+        SessionManager::clear_provider_retry_memory(&mut s);
+        assert!(s.last_provider_retry.is_none());
+        assert_eq!(s.provider_retry_attempt, 0);
+        assert!(!s.provider_retry_aborted);
+        assert!(!SessionManager::stream_interrupted_this_turn(&s));
+    });
+}
+
+#[test]
+fn note_provider_retry_ignores_decode_when_turn_is_not_host_owned() {
+    with_temp_app_home(|| {
+        let t0 = Instant::now();
+        let mut s = streaming_session(t0, |_| {});
+        let _ = s.fsm.end_stream();
+        s.streaming_message_id = None;
+        s.prompt_in_flight = false;
+        s.open_tool_ids.clear();
+        s.deferred_prompt_complete = None;
+        SessionManager::note_provider_retry(&mut s, 1, DECODE_REASON);
+        assert_eq!(s.provider_retry_attempt, 1);
+        assert!(s.last_provider_retry.is_none());
     });
 }
 

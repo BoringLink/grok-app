@@ -796,6 +796,7 @@ impl SessionManager {
         tier: StallTier,
         saw_model_output: bool,
         saw_tool_activity: bool,
+        stream_interrupted: bool,
     ) {
         let _ = app.emit(
             "session://stream_stall",
@@ -807,6 +808,7 @@ impl SessionManager {
                 "tier": tier.as_str(),
                 "sawModelOutput": saw_model_output,
                 "sawToolActivity": saw_tool_activity,
+                "streamInterrupted": stream_interrupted,
             }),
         );
     }
@@ -1619,6 +1621,7 @@ mod stream_emit_lock_tests {
             policy: PermissionPolicy::default(),
             provider_retry_attempt: 0,
             provider_retry_aborted: false,
+            last_provider_retry: None,
             needs_history_bootstrap: false,
             pending_plan_rpc_id: None,
             pending_permission_rpc_id: None,

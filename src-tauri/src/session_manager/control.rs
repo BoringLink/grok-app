@@ -534,8 +534,7 @@ impl SessionManager {
                 s.pending_permission_options = None;
                 s.pending_permission_tool_name = None;
                 s.pending_permission_ui = None;
-                s.provider_retry_attempt = 0;
-                s.provider_retry_aborted = false;
+                Self::clear_provider_retry_memory(s);
                 // Leave AwaitingPermission / Streaming so UI busy clears after recycle.
                 if matches!(
                     s.fsm.state(),
@@ -1593,6 +1592,7 @@ mod recycle_tests {
             policy: PermissionPolicy::default(),
             provider_retry_attempt: 0,
             provider_retry_aborted: false,
+            last_provider_retry: None,
             needs_history_bootstrap: false,
             pending_plan_rpc_id: None,
             pending_permission_rpc_id: None,
@@ -1705,6 +1705,7 @@ mod recycle_tests {
             policy: PermissionPolicy::default(),
             provider_retry_attempt: 0,
             provider_retry_aborted: false,
+            last_provider_retry: None,
             needs_history_bootstrap: false,
             pending_plan_rpc_id: None,
             pending_permission_rpc_id: None,

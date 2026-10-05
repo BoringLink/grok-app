@@ -470,8 +470,8 @@ export interface ConversationThreadProps {
     comment: string;
     sourceMessageId?: string;
   }) => void;
-  /** Resume after host_exit / agent_exit (new prompt; not permission RPC). */
-  onContinueInterrupted?: () => void;
+  /** Resume after host_exit / agent_exit / user_stop (new prompt; not permission RPC). */
+  onContinueInterrupted?: (reason: string) => void;
   attachLabels: {
     open: string;
     reveal: string;

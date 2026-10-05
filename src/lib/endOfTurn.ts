@@ -20,6 +20,10 @@ export type EndOfTurnReason =
   | "cancelled"
   | "unknown";
 
+export function endOfTurnChipShowsContinue(reason: EndOfTurnReason): boolean {
+  return reason === "host_exit" || reason === "agent_exit" || reason === "user_stop";
+}
+
 export interface EndOfTurnChipModel {
   reason: EndOfTurnReason;
   /** i18n message key under activity.* / endOfTurn.* */

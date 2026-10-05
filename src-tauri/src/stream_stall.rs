@@ -194,14 +194,22 @@ pub fn stall_tier_from_evidence(
 
 /// Whether soft silence looks “maybe done” for stall **UI tier** only.
 ///
-/// True when tools are idle and this turn already has assistant body.
+/// True when tools are idle, this turn already has assistant body, and the
+/// prompt RPC is **not** still in flight. An in-flight agent turn that has
+/// already spoken (then kept thinking or editing) must not be labeled
+/// finished — the host cannot see a completed RPC yet.
+///
 /// Callers must **not** force-end the turn from this alone — only the user
 /// may End turn; Host may still silent-heal when the RPC already finished.
 pub fn is_maybe_done_candidate(
     saw_model_output: bool,
     open_tool_count: usize,
     deferred_prompt_complete: bool,
+    prompt_in_flight: bool,
 ) -> bool {
+    if prompt_in_flight {
+        return false;
+    }
     saw_model_output && open_tool_count == 0 && !deferred_prompt_complete
 }
 
@@ -212,8 +220,14 @@ pub fn should_auto_end_maybe_done(
     saw_model_output: bool,
     open_tool_count: usize,
     deferred_prompt_complete: bool,
+    prompt_in_flight: bool,
 ) -> bool {
-    is_maybe_done_candidate(saw_model_output, open_tool_count, deferred_prompt_complete)
+    is_maybe_done_candidate(
+        saw_model_output,
+        open_tool_count,
+        deferred_prompt_complete,
+        prompt_in_flight,
+    )
 }
 
 /// Whether an open tool id should be pruned as orphaned.
@@ -402,11 +416,14 @@ mod tests {
 
     #[test]
     fn maybe_done_candidate_requires_body_and_idle_tools() {
-        assert!(is_maybe_done_candidate(true, 0, false));
-        assert!(!is_maybe_done_candidate(false, 0, false));
-        assert!(!is_maybe_done_candidate(true, 1, false));
-        assert!(!is_maybe_done_candidate(true, 0, true));
+        assert!(is_maybe_done_candidate(true, 0, false, false));
+        assert!(!is_maybe_done_candidate(false, 0, false, false));
+        assert!(!is_maybe_done_candidate(true, 1, false, false));
+        assert!(!is_maybe_done_candidate(true, 0, true, false));
+        // In-flight prompt: body + idle tools is the normal mid-agent shape.
+        assert!(!is_maybe_done_candidate(true, 0, false, true));
         // Alias kept for older call sites — same predicate, never force-ends.
-        assert!(should_auto_end_maybe_done(true, 0, false));
+        assert!(should_auto_end_maybe_done(true, 0, false, false));
+        assert!(!should_auto_end_maybe_done(true, 0, false, true));
     }
 }

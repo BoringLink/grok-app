@@ -50,6 +50,7 @@ export const zhErrors = {
   "error.deck.disconnect.cause": "传输通道在回合中关闭。请重新连接后再发送。",
   "error.deck.stall.problem": "输出暂时停住了",
   "error.deck.stall.cause": "约 {seconds} 秒没有新的内容或工具进度。可继续等待或结束本轮。",
+  "error.deck.stall.causeStreamInterrupted": "本轮早些时候模型流被中断，CLI 的重试可能没有接上；已约 {seconds} 秒没有 token 或工具进展",
   "error.deck.untrusted.problem": "项目尚未信任",
   "error.deck.untrusted.cause": "信任该文件夹后 Agent 才可读写（默认仍为 Ask 审批）。",
   "error.deck.projectMissing.problem": "项目文件夹不可用",

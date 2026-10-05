@@ -50,6 +50,7 @@ export const enErrors = {
   "error.deck.disconnect.cause": "The RPC channel closed mid-turn. Reconnect and send again.",
   "error.deck.stall.problem": "Stream looks quiet",
   "error.deck.stall.cause": "No tokens or tool progress for about {seconds}s. Keep waiting or end this turn.",
+  "error.deck.stall.causeStreamInterrupted": "The model stream was cut off earlier in this turn and the CLI's retry may not have resumed it. No tokens or tool progress for about {seconds}s.",
   "error.deck.untrusted.problem": "Project is not trusted",
   "error.deck.untrusted.cause": "Trust the folder so the agent may read and write there (Ask remains the default).",
   "error.deck.projectMissing.problem": "Project folder unavailable",

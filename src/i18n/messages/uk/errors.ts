@@ -50,6 +50,7 @@ export const ukErrors = {
   "error.deck.disconnect.cause": "Канал RPC закрився посеред ходу. Підключіться знову та надішліть повторно.",
   "error.deck.stall.problem": "Потік мовчить",
   "error.deck.stall.cause": "Близько {seconds} с немає ані токенів, ані поступу інструментів. Продовжуйте чекати або завершіть цей хід.",
+  "error.deck.stall.causeStreamInterrupted": "Потік моделі обірвався раніше в цьому ході, і повтор CLI міг його не відновити. Немає токенів або прогресу інструментів близько {seconds} с.",
   "error.deck.untrusted.problem": "Проєкт не є довіреним",
   "error.deck.untrusted.cause": "Позначте теку довіреною, щоб агент міг читати та писати в ній (запит лишається типовою поведінкою).",
   "error.deck.projectMissing.problem": "Тека проєкту недоступна",

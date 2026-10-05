@@ -240,7 +240,7 @@ export type WorkbenchComposerColumnProps = {
   slashCatalogCount: number;
   slashKindCounts: SlashKindCounts;
   slashKindFilter: SlashKindFilter;
-  stop: () => Promise<void>;
+  stop: (sessionId?: string | null) => Promise<boolean>;
   switchToWorktree: (wt: GitWorktreeEntry) => Promise<void>;
   switchToBranch: (branch: GitBranchEntry) => Promise<void>;
   toggleVoice: () => void;
