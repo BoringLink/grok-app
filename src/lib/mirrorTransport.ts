@@ -50,6 +50,7 @@ const CMD_TO_METHOD: Record<string, string> = {
   session_connect: "session.connect",
   session_send: "session.send",
   session_stop: "session.stop",
+  session_stop_report: "session.stopReport",
   session_create: "session.create",
   session_rename: "session.rename",
   session_auto_title: "session.autoTitle",

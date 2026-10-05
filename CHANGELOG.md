@@ -14,6 +14,14 @@ See `docs/llm-wiki/release.md`.
 ## [Unreleased]
 
 ### Fixed
+- Opening the app again no longer clears login files for chats already running.
+- Stopping a chat from the phone mirror stops the agent again.
+- File references in the Markdown composer are sent as file paths.
+- The composer editor choice stays after a restart.
+- Code in the Markdown composer keeps its backslashes.
+- A slash command replaces the one at the cursor.
+- Dictation in the Markdown composer lands at the cursor.
+- A typed link keeps the space after it.
 - Custom channels connect again when the channel name and the model id differ. The app tells the CLI the channel name, which is how that CLI finds the key. (#1294)
 - Sending one picture on Windows no longer shows that picture twice. The chat was counting the same file a second time. (#1284)
 - Chat text now uses the font you set under Appearance. Code blocks keep the code font. (#1297)
@@ -21,6 +29,14 @@ See `docs/llm-wiki/release.md`.
 - A stalled reply can be ended and continued in the same chat. The notice says when the model stream was cut off.
 
 **中文 · 修复**
+- 再次打开应用时，不会清掉已经在跑的对话的登录文件。
+- 在手机镜像里点停止，会再次停住这条对话。
+- Markdown 输入框里的文件引用会按文件路径发出去。
+- 输入框编辑器的选择在重启后仍然保留。
+- Markdown 输入框里的代码会保留反斜杠。
+- 选择斜杠命令时，替换的是光标处的那一个。
+- 在 Markdown 输入框里听写，文字落在光标处。
+- 敲出来的链接会保留后面的空格。
 - 通道名称和模型 ID 不同时，自定义通道可以重新连上。应用发给 CLI 的是通道名，CLI 靠它找到密钥。（#1294）
 - 在 Windows 上发送一张图片后，不会再显示成两张。同一文件之前被算了两次。（#1284）
 - 对话正文会使用外观里选的界面字体。代码块仍用代码字体。（#1297）

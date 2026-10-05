@@ -369,6 +369,10 @@ pub struct AppSettings {
     /// Remember model / effort / mode / permission at global | project | session.
     #[serde(default = "default_composer_prefs_scope")]
     pub composer_prefs_scope: String,
+    /// Composer editor id: `legacy` (built-in) or `tiptap` (Markdown). Unknown
+    /// values load as `legacy`.
+    #[serde(default = "default_composer_editor")]
+    pub composer_editor: String,
     /// **API mode.** When set (`host:port`), sessions connect to a remote ACP
     /// server over TCP instead of spawning the local `grok agent stdio` — the
     /// agent can run in WSL, a container, or on another host. Empty/unset uses
@@ -843,6 +847,19 @@ fn default_session_data_mode() -> String {
     "shared".into()
 }
 
+fn default_composer_editor() -> String {
+    "legacy".into()
+}
+
+/// Persist only the two composer editor ids. Anything else is the built-in editor.
+pub fn normalize_composer_editor(raw: &str) -> &'static str {
+    if raw.trim() == "tiptap" {
+        "tiptap"
+    } else {
+        "legacy"
+    }
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -867,6 +884,7 @@ impl Default for AppSettings {
             auth_setup_deferred: false,
             default_open_target: default_open_target(),
             composer_prefs_scope: default_composer_prefs_scope(),
+            composer_editor: default_composer_editor(),
             acp_server_addr: None,
             max_concurrent_agents: default_max_concurrent_agents(),
             agent_idle_minutes: default_agent_idle_minutes(),
@@ -4111,6 +4129,24 @@ mod tests {
             resolve_sandbox_profile("  WorkSpace  ", Some("  DEVBOX  ")),
             "devbox"
         );
+    }
+
+    #[test]
+    fn composer_editor_defaults_legacy_and_round_trips() {
+        let missing: AppSettings =
+            serde_json::from_str(legacy_settings_json()).expect("deserialize");
+        assert_eq!(missing.composer_editor, "legacy");
+        assert_eq!(normalize_composer_editor("tiptap"), "tiptap");
+        assert_eq!(normalize_composer_editor("nope"), "legacy");
+
+        let s = AppSettings {
+            composer_editor: "tiptap".into(),
+            ..AppSettings::default()
+        };
+        let json = serde_json::to_string(&s).expect("serialize");
+        assert!(json.contains("\"composerEditor\":\"tiptap\""));
+        let back: AppSettings = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.composer_editor, "tiptap");
     }
 
     #[test]

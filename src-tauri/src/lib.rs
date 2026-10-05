@@ -288,9 +288,6 @@ pub fn run() {
     }
 
     let _ = paths::ensure_app_dirs();
-    // Previous process is gone (single-instance). Drop private GROK_HOME
-    // snapshots it did not get to delete (#1293).
-    agent_proc_home::sweep_orphans();
 
     logging::init();
 
@@ -547,6 +544,9 @@ pub fn run() {
         })
 
         .setup(|app| {
+            // Plugin setup already exited any second process. Sweep only here,
+            // so a relaunch cannot delete the running chats' agent-proc homes.
+            agent_proc_home::sweep_orphans();
 
             crate::path_scope::refresh_from_store();
 

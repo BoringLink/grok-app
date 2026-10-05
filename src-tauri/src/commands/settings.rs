@@ -17,6 +17,8 @@ pub async fn settings_set(
 ) -> Result<AppSettings, String> {
     let prev = store::load_settings_async().await;
     let mut settings = settings;
+    settings.composer_editor =
+        store::normalize_composer_editor(&settings.composer_editor).to_string();
     settings.wallpaper_x_search_mode =
         store::normalize_wallpaper_x_search_mode(&settings.wallpaper_x_search_mode).into();
     // Normalize denylist / allowlist so spawn / equality see stable lists.

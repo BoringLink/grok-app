@@ -54,6 +54,7 @@ import {
 import {
   isDraftEmpty,
   parseStoredContent,
+  parseStoredContentWithRefs,
   serializeForAgent,
 } from "@/lib/draftDoc";
 import { pluginSkillsMap, type SkillInfo } from "@/lib/slashCatalog";
@@ -286,7 +287,9 @@ const executeSend = async (opts: {
   const { storedDisplay, att, goalMode: useGoal, fromQueue } = opts;
   const quotesForSend = opts.quotes ?? [];
   await awaitComposerSendBarrier(!!fromQueue, effortApplyRef.current);
-  const segments = parseStoredContent(storedDisplay);
+  // Keep [[file:]] / [[url:]] segments so serializeForAgent emits @path.
+  // parseStoredContent drops them to literal token text.
+  const segments = parseStoredContentWithRefs(storedDisplay);
   if (isDraftEmpty(segments) && !att.length && !quotesForSend.length) {
     sendInFlightRef.current = false;
     return false;

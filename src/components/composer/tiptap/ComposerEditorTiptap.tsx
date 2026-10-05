@@ -20,6 +20,7 @@ import {
   type Ref,
 } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { buildComposerExtensions } from "@/components/composer/tiptap/composerExtensions";
 import { matchPastedUrl } from "@/lib/composerRefToken";
 import {
@@ -47,6 +48,7 @@ import {
   editorTextBeforePos,
   editorTextOffsetForDocPos,
   locateSlashRangeInMarkdown,
+  markdownOffsetForDocPos,
   normalizeSerializedMarkdown,
 } from "@/lib/composerMarkdown";
 import {
@@ -70,7 +72,12 @@ const editorsByDom = new WeakMap<HTMLElement, Editor>();
  * `storage` 类型成空的。这里按需收窄到我们真正要读的那一格 —— 不用 `any`，
  * 也不关类型检查规则。
  */
-type MarkdownStorage = { markdown?: { getMarkdown?: () => unknown } };
+type MarkdownStorage = {
+  markdown?: {
+    getMarkdown?: () => unknown;
+    serializer?: { serialize?: (node: ProseMirrorNode) => string };
+  };
+};
 
 function readMarkdown(editor: { storage: unknown }): string {
   try {
@@ -78,6 +85,20 @@ function readMarkdown(editor: { storage: unknown }): string {
     return typeof md === "string" ? md : "";
   } catch {
     return "";
+  }
+}
+
+function serializeMarkdownNode(
+  editor: { storage: unknown },
+  node: ProseMirrorNode,
+): string | null {
+  try {
+    const raw = (editor.storage as MarkdownStorage | undefined)?.markdown?.serializer?.serialize?.(
+      node,
+    );
+    return typeof raw === "string" ? raw : null;
+  } catch {
+    return null;
   }
 }
 
@@ -116,14 +137,25 @@ export function serializeDom(el: HTMLElement): string {
   return normalizedMarkdown(editor);
 }
 
-/** Caret offset as editor-text length before the caret (voice dictation). */
+/**
+ * Caret offset in the stored Markdown draft (voice dictation).
+ * Editor-text length drops `**` and other marks, so it cannot index the draft.
+ */
 export function getComposerCaretOffset(
   el: HTMLElement | null | undefined,
 ): number | null {
   const editor = el ? editorsByDom.get(el) : undefined;
   if (!editor || editor.isDestroyed) return null;
   const { from } = editor.state.selection;
-  return editorTextOffsetForDocPos(editor.state.doc, from);
+  try {
+    return markdownOffsetForDocPos(editor.state.doc, from, (node) => {
+      const raw = serializeMarkdownNode(editor, node);
+      if (raw == null) throw new Error("markdown serializer missing");
+      return raw;
+    });
+  } catch {
+    return editorTextOffsetForDocPos(editor.state.doc, from);
+  }
 }
 
 /**
@@ -263,7 +295,22 @@ export const ComposerEditor = memo(function ComposerEditor({
       return;
     }
     const md = normalizedMarkdown(ed);
-    const range = locateSlashRangeInMarkdown(md, detected.query);
+    // 只在光标前的 Markdown 里找，避免全文里更靠后的同名 /query 被换掉。
+    let caret = md.length;
+    try {
+      caret = markdownOffsetForDocPos(
+        ed.state.doc,
+        ed.state.selection.from,
+        (node) => {
+          const raw = serializeMarkdownNode(ed, node);
+          if (raw == null) throw new Error("markdown serializer missing");
+          return raw;
+        },
+      );
+    } catch {
+      caret = md.length;
+    }
+    const range = locateSlashRangeInMarkdown(md, detected.query, caret);
     if (!range) {
       report(null);
       return;

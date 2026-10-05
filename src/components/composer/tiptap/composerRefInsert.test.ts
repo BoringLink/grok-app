@@ -221,3 +221,35 @@ describe("removeRangeInto", () => {
     expect(markdownOf(editor)).toBe("abc");
   });
 });
+
+describe("typed URL chip keeps the triggering space", () => {
+  let editor: Editor | null = null;
+  let host: HTMLDivElement | null = null;
+
+  afterEach(() => {
+    editor?.destroy();
+    editor = null;
+    host?.remove();
+    host = null;
+  });
+
+  it("turns the URL into a chip and leaves the space before the next word", () => {
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    editor = new Editor({
+      element: host,
+      extensions: buildComposerExtensions({ showPlaceholderWhenEditable: false }),
+      content: "",
+      editable: true,
+    });
+    const view = editor.view;
+    for (const ch of "https://example.com next") {
+      const { from, to } = view.state.selection;
+      const handled = view.someProp("handleTextInput", (f) =>
+        f(view, from, to, ch, () => view.state.tr.insertText(ch, from, to)),
+      );
+      if (!handled) view.dispatch(view.state.tr.insertText(ch, from, to));
+    }
+    expect(markdownOf(editor)).toBe("[[url:https://example.com]] next");
+  });
+});

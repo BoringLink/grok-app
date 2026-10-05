@@ -371,7 +371,7 @@ import {
   applySkillAtSlash,
   isDraftEmpty,
   detectSlashRangeOnStored,
-  parseStoredContent,
+  parseStoredContent, parseStoredContentWithRefs,
   serializeForAgent,
 } from "@/lib/draftDoc";
 import {
@@ -7534,7 +7534,7 @@ export function AppWorkbench() {
         return;
       }
       const quotesForGuide = item.quotes ?? [];
-      const segments = parseStoredContent(item.storedDisplay);
+      const segments = parseStoredContentWithRefs(item.storedDisplay);
       const agentBody = serializeQuotesForAgent(
         quotesForGuide,
         serializeForAgent(segments, { goalMode: item.goalMode }),
@@ -11298,7 +11298,7 @@ export function AppWorkbench() {
         showToast(tr(opts?.busyToastKey ?? "message.editBusy"));
         return;
       }
-      const segments = parseStoredContent(storedDisplay);
+      const segments = parseStoredContentWithRefs(storedDisplay);
       if (isDraftEmpty(segments) && !att.length) return;
 
       const agentBody = serializeForAgent(segments, { goalMode });

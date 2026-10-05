@@ -176,11 +176,15 @@ export const RefTokenNode = Node.create({
           const hit = matchTypedUrl(match[0] ?? "");
           if (!hit) return null;
           const start = range.from + hit.start;
-          state.tr.replaceWith(
+          const urlEnd = start + hit.url.length;
+          // The triggering space is not in the document yet; handleTextInput
+          // swallows it when this rule matches. Put that space back after the chip.
+          const tr = state.tr.replaceWith(
             start,
-            start + hit.url.length,
+            urlEnd,
             this.type.create({ kind: "url", value: hit.url }),
           );
+          tr.insertText(" ", tr.mapping.map(range.to));
           return;
         },
       }),

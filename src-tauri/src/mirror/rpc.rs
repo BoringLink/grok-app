@@ -17,6 +17,7 @@ pub const PROTOCOL_VERSION: u32 = 1;
 pub const WRITE_METHODS: &[&str] = &[
     "session.send",
     "session.stop",
+    "session.stopReport",
     "session.create",
     "session.resolvePermission",
     "session.answerAskUser",
@@ -288,6 +289,16 @@ pub async fn dispatch(
             let session_id = param_string(&params, &["sessionId", "session_id"]);
             let snap = mgr.stop(app, session_id).await.map_err(RpcError::host)?;
             Ok(serde_json::to_value(snap).map_err(|e| RpcError::host(e.to_string()))?)
+        }
+        "session.stopReport" => {
+            let app = app.ok_or_else(RpcError::no_ctx)?.clone();
+            let mgr = mgr.ok_or_else(RpcError::no_ctx)?.clone();
+            let session_id = param_string(&params, &["sessionId", "session_id"]);
+            let report = mgr
+                .stop_report(app, session_id)
+                .await
+                .map_err(RpcError::host)?;
+            Ok(serde_json::to_value(report).map_err(|e| RpcError::host(e.to_string()))?)
         }
 
         // ── Interactive gates (Slice 6) ──────────────────────────────────

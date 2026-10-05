@@ -166,25 +166,47 @@ export function editorTextBeforePos(
 
 /**
  * 在 Markdown 源码中定位 `/query` 的范围（存储空间坐标）。
- * 要求 `/` 位于行首或空白之后，且匹配是文档中最后一个合法出现。
+ * `/` 必须在行首或空白之后。
+ *
+ * `searchEnd` 是光标在存储空间里的偏移。只在这个前缀里找最后一次合法出现，
+ * 这样全文里更靠后的同名 `/query` 不会被当成光标处的那一个。
+ * 缺省搜全文，供没有光标的调用使用。
  */
 export function locateSlashRangeInMarkdown(
   md: string,
   query: string,
+  searchEnd: number = md.length,
 ): { start: number; end: number } | null {
+  const end = Math.max(0, Math.min(searchEnd, md.length));
+  const window = md.slice(0, end);
   const needle = `/${query}`;
-  let idx = md.lastIndexOf(needle);
+  let idx = window.lastIndexOf(needle);
   const isBoundary = (c: string | undefined) =>
     c === undefined || /\s/.test(c);
   while (idx >= 0) {
-    const before = idx === 0 ? undefined : md[idx - 1];
-    const after = md[idx + needle.length];
+    const before = idx === 0 ? undefined : window[idx - 1];
+    const after = window[idx + needle.length];
     if (isBoundary(before) && isBoundary(after)) {
       return { start: idx, end: idx + needle.length };
     }
-    idx = md.lastIndexOf(needle, idx - 1);
+    idx = window.lastIndexOf(needle, idx - 1);
   }
   return null;
+}
+
+/**
+ * 光标的存储空间偏移：把光标前的文档序列化成 Markdown 再量长度。
+ * 编辑器文本空间不含 `**` 这类标记，不能直接拿去切 draft。
+ */
+export function markdownOffsetForDocPos(
+  doc: ProseMirrorNode,
+  pos: number,
+  serialize: (node: ProseMirrorNode) => string,
+): number {
+  const at = Math.max(0, Math.min(pos, doc.content.size));
+  if (at <= 0) return 0;
+  const node = at >= doc.content.size ? doc : doc.cut(0, at);
+  return normalizeSerializedMarkdown(serialize(node)).length;
 }
 
 /**
@@ -194,13 +216,81 @@ export function locateSlashRangeInMarkdown(
  * - 反向转义 prosemirror-markdown 对 `` ` * _ [ ] ~ `` 的防御性转义——
  *   这些转义只会污染 draft 存储（用户字面文本应原样保留），此处还原后
  *   再解析仍是字面文本，round-trip 稳定；
+ * - 围栏代码块和行内代码按原文保留：序列化器不会给它们加防御性转义，
+ *   全局反转义会吃掉代码里的反斜杠；
  * - 去掉尾随换行（draft 存储约定）。
  */
 export function normalizeSerializedMarkdown(md: string): string {
-  return md
-    .replace(/\\([\\`*_[\]~])/g, "$1")
-    .replace(/\\\n/g, "\n")
-    .replace(/\n+$/, "");
+  let i = 0;
+  let out = "";
+  let plain = "";
+  const flush = () => {
+    if (!plain) return;
+    out += plain
+      .replace(/\\([\\`*_[\]~])/g, "$1")
+      .replace(/\\\n/g, "\n");
+    plain = "";
+  };
+  while (i < md.length) {
+    const fence = fenceCharAt(md, i);
+    if (fence) {
+      flush();
+      const end = consumeFence(md, i, fence);
+      out += md.slice(i, end);
+      i = end;
+      continue;
+    }
+    const inlineEnd = md[i] === "`" ? consumeInlineCode(md, i) : null;
+    if (inlineEnd != null) {
+      flush();
+      out += md.slice(i, inlineEnd);
+      i = inlineEnd;
+      continue;
+    }
+    plain += md[i];
+    i += 1;
+  }
+  flush();
+  return out.replace(/\n+$/, "");
+}
+
+/** 行首的围栏记号。序列化器只产出顶格 ``` / ~~~。 */
+function fenceCharAt(md: string, i: number): "`" | "~" | null {
+  if (i > 0 && md[i - 1] !== "\n") return null;
+  if (md.startsWith("```", i)) return "`";
+  if (md.startsWith("~~~", i)) return "~";
+  return null;
+}
+
+function consumeFence(md: string, i: number, ch: "`" | "~"): number {
+  const fence = ch.repeat(3);
+  const lineEnd = md.indexOf("\n", i);
+  if (lineEnd === -1) return md.length;
+  let j = lineEnd + 1;
+  while (j < md.length) {
+    if ((j === 0 || md[j - 1] === "\n") && md.startsWith(fence, j)) {
+      let k = j + fence.length;
+      while (k < md.length && (md[k] === " " || md[k] === "\t")) k += 1;
+      if (k === md.length || md[k] === "\n") {
+        return md[k] === "\n" ? k + 1 : k;
+      }
+    }
+    const next = md.indexOf("\n", j);
+    if (next === -1) return md.length;
+    j = next + 1;
+  }
+  return md.length;
+}
+
+/** 成对的行内反引号（含 `` ` `` 的多反引号形式）。未闭合则返回 null。 */
+function consumeInlineCode(md: string, i: number): number | null {
+  let n = 0;
+  while (i + n < md.length && md[i + n] === "`") n += 1;
+  if (n === 0) return null;
+  const closer = "`".repeat(n);
+  const close = md.indexOf(closer, i + n);
+  if (close === -1) return null;
+  return close + n;
 }
 
 /** draft（Markdown 源码 + token）是否为空（仅空白且无 token）。 */

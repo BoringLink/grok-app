@@ -10,6 +10,7 @@ import {
   editorTextOffsetForDocPos,
   isStoredMarkdownEmpty,
   locateSlashRangeInMarkdown,
+  markdownOffsetForDocPos,
   normalizeSerializedMarkdown,
 } from "./composerMarkdown";
 
@@ -161,12 +162,47 @@ describe("editor-text space mapping", () => {
     );
   });
 
+  it("maps a caret to stored markdown, including marks the editor text drops", () => {
+    editor?.destroy();
+    editor = makeEditor("**bold** tail");
+    const doc = editor.state.doc;
+    const serialize = (node: typeof doc) => {
+      const raw = (
+        editor!.storage as {
+          markdown?: { serializer?: { serialize?: (n: typeof doc) => string } };
+        }
+      ).markdown?.serializer?.serialize?.(node);
+      if (typeof raw !== "string") throw new Error("serializer missing");
+      return raw;
+    };
+    const end = doc.content.size;
+    expect(markdownOffsetForDocPos(doc, end, serialize)).toBe(
+      "**bold** tail".length,
+    );
+    expect(editorTextOffsetForDocPos(doc, end)).toBeLessThan(
+      "**bold** tail".length,
+    );
+  });
+
   it("builds the caret prefix for slash detection", () => {
     // Act
     const doc = editor!.state.doc;
     const prefix = editorTextBeforePos(doc, doc.content.size);
     // Assert：token 以存储形式出现，段落间为空行
     expect(prefix).toBe("one two\n\n[[skill:foo]] tail");
+  });
+});
+
+describe("normalizeSerializedMarkdown", () => {
+  it("unescapes marks in prose and keeps code backslashes", () => {
+    expect(normalizeSerializedMarkdown("say \\*star\\*")).toBe("say *star*");
+    expect(normalizeSerializedMarkdown("line1\\\nline2")).toBe("line1\nline2");
+    const fenced = "```js\nconst r = /\\\\/;\n```";
+    expect(normalizeSerializedMarkdown(fenced)).toBe(fenced);
+    const inline = "use `const r = /\\\\/;` here";
+    expect(normalizeSerializedMarkdown(inline)).toBe(inline);
+    const continued = "```\na\\\nb\n```";
+    expect(normalizeSerializedMarkdown(continued)).toBe(continued);
   });
 });
 
@@ -189,6 +225,18 @@ describe("locateSlashRangeInMarkdown", () => {
 
   it("returns null when the query is absent", () => {
     expect(locateSlashRangeInMarkdown("plain text", "rev")).toBeNull();
+  });
+
+  it("stops at the caret when the same query appears later", () => {
+    const md = "/review earlier /review";
+    expect(locateSlashRangeInMarkdown(md, "review", "/review".length)).toEqual({
+      start: 0,
+      end: 7,
+    });
+    expect(locateSlashRangeInMarkdown(md, "review")).toEqual({
+      start: md.lastIndexOf("/review"),
+      end: md.length,
+    });
   });
 });
 
