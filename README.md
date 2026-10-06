@@ -316,7 +316,7 @@ Contributions, bug reports, and suggestions are warmly welcomed!
 ## 👥 Contributors
 
 <!-- CONTRIBUTORS:START -->
-Thanks to everyone who has contributed to Grok App. All human GitHub contributors (by commit count, updated 2026-09-30).
+Thanks to everyone who has contributed to Grok App. All human GitHub contributors (by commit count, updated 2026-10-06).
 
 <p align="center">
   <a href="https://github.com/RongleCat" title="RongleCat"><img src="https://github.com/RongleCat.png?size=96" width="72" height="72" alt="RongleCat" style="border-radius:50%" /></a>
@@ -356,6 +356,7 @@ Thanks to everyone who has contributed to Grok App. All human GitHub contributor
   <a href="https://github.com/KronixDev" title="KronixDev"><img src="https://github.com/KronixDev.png?size=96" width="72" height="72" alt="KronixDev" style="border-radius:50%" /></a>
   <a href="https://github.com/MaxxxDong" title="MaxxxDong"><img src="https://github.com/MaxxxDong.png?size=96" width="72" height="72" alt="MaxxxDong" style="border-radius:50%" /></a>
   <a href="https://github.com/praxstack" title="praxstack"><img src="https://github.com/praxstack.png?size=96" width="72" height="72" alt="praxstack" style="border-radius:50%" /></a>
+  <a href="https://github.com/qaz2461477-coder" title="qaz2461477-coder"><img src="https://github.com/qaz2461477-coder.png?size=96" width="72" height="72" alt="qaz2461477-coder" style="border-radius:50%" /></a>
   <a href="https://github.com/rkhrkh" title="rkhrkh"><img src="https://github.com/rkhrkh.png?size=96" width="72" height="72" alt="rkhrkh" style="border-radius:50%" /></a>
   <a href="https://github.com/RocStone" title="RocStone"><img src="https://github.com/RocStone.png?size=96" width="72" height="72" alt="RocStone" style="border-radius:50%" /></a>
   <a href="https://github.com/Sixmin" title="Sixmin"><img src="https://github.com/Sixmin.png?size=96" width="72" height="72" alt="Sixmin" style="border-radius:50%" /></a>
