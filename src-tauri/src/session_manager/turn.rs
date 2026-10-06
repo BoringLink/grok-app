@@ -94,6 +94,9 @@ impl SessionManager {
         // A delayed reconcile from the preceding turn performs a journal
         // read-modify-write. Keep this user append mutually exclusive with
         // each reconcile attempt so neither can overwrite the other's rows.
+        // Capture this send's `/goal` before attach, history, or the lookup
+        // hint are prepended. Those blocks can contain the same line.
+        let (goal_cmd, request_text) = detach_current_goal_command(&stripped_text);
         let journal_lock = self.post_turn_journal_lock(&app_sid);
         let journal_guard = journal_lock.lock().await;
         let open = self.with_session_mut(&app_sid, |s| {
@@ -118,7 +121,7 @@ impl SessionManager {
             }
 
             let mut agent_prompt = crate::session_attach::agent_prompt_after_attach(
-                &stripped_text,
+                &request_text,
                 &attached,
                 &s.app_session_id,
                 &crate::session_attach::StoreAttachJournal,
@@ -345,7 +348,13 @@ impl SessionManager {
             vision_progress,
         )
         .await;
-        let agent_prompt = prep.prompt;
+        // CLI slash commands run only at byte 0. Put this send's `/goal`
+        // back in front of the host wrappers. Do not search those wrappers
+        // for another `/goal` line.
+        let agent_prompt = match goal_cmd {
+            Some(cmd) => prefix_goal_command(&cmd, &prep.prompt),
+            None => prep.prompt,
+        };
         if let Some((id, title)) = host_tool_id {
             let status = if prep.ok { "completed" } else { "failed" };
             // Keep full description in detail for expand / journal (not "识别完成").
@@ -1050,5 +1059,327 @@ impl SessionManager {
             snapshot: stopped_snap,
             cancel_delivered,
         })
+    }
+}
+
+struct OpenFence {
+    ch: char,
+    len: usize,
+}
+
+/// CommonMark fence opener. Closing lines are handled separately.
+fn opening_fence(line: &str) -> Option<OpenFence> {
+    let indent = line.chars().take_while(|c| *c == ' ').count();
+    if indent > 3 {
+        return None;
+    }
+    let rest = &line[indent..];
+    let ch = rest.chars().next()?;
+    if ch != '`' && ch != '~' {
+        return None;
+    }
+    let len = rest.chars().take_while(|c| *c == ch).count();
+    if len < 3 {
+        return None;
+    }
+    let info = rest[len..].trim();
+    if ch == '`' && info.contains('`') {
+        return None;
+    }
+    Some(OpenFence { ch, len })
+}
+
+fn closes_fence(line: &str, open: &OpenFence) -> bool {
+    let trimmed = line.trim_end();
+    let indent = trimmed.chars().take_while(|c| *c == ' ').count();
+    if indent > 3 {
+        return false;
+    }
+    let marks = &trimmed[indent..];
+    !marks.is_empty() && marks.chars().all(|c| c == open.ch) && marks.chars().count() >= open.len
+}
+
+/// `/goal`, or `/goal` plus one of clear/status/pause/resume.
+/// Any other same-line text is the objective and must stay in the body so
+/// host vision still sees image paths.
+fn quote_opener(line: &str) -> Option<usize> {
+    let trimmed = line.trim();
+    if trimmed.chars().count() >= 3 && trimmed.chars().all(|c| c == '"') {
+        Some(trimmed.chars().count())
+    } else {
+        None
+    }
+}
+
+fn quote_closer(line: &str, open_len: usize) -> bool {
+    quote_opener(line).is_some_and(|len| len >= open_len)
+}
+
+fn split_goal_command(line: &str) -> Option<(String, Option<String>)> {
+    let Some(rest) = line.strip_prefix("/goal") else {
+        return None;
+    };
+    if !rest.is_empty() && !rest.chars().next().is_some_and(|c| c.is_whitespace()) {
+        return None;
+    }
+    let objective = rest.trim();
+    if objective.is_empty() {
+        return Some(("/goal".to_string(), None));
+    }
+    let mut words = objective.split_whitespace();
+    let first = words.next().unwrap_or("");
+    let single = words.next().is_none();
+    if single && matches!(first, "clear" | "status" | "pause" | "resume") {
+        return Some((format!("/goal {first}"), None));
+    }
+    Some(("/goal".to_string(), Some(objective.to_string())))
+}
+
+/// Take this send's `/goal` command out of the current request.
+///
+/// History bootstrap and attach transcripts are added later and may contain
+/// the same line. Only a column-0 command outside fences and quote blocks
+/// counts. A same-line objective stays in the request so image references
+/// still reach host vision. When there is no command, the text is unchanged.
+fn detach_current_goal_command(user_text: &str) -> (Option<String>, String) {
+    let normalized = user_text.replace("\r\n", "\n").replace('\r', "\n");
+    let parts: Vec<&str> = normalized.split('\n').collect();
+    let mut fence: Option<OpenFence> = None;
+    let mut quote_len: Option<usize> = None;
+    let mut prev = "";
+    let mut found = None;
+    for (i, line) in parts.iter().enumerate() {
+        if let Some(open) = fence.as_ref() {
+            if closes_fence(line, open) {
+                fence = None;
+            }
+            prev = line;
+            continue;
+        }
+        // A quote can contain an unmatched fence. Do not let that fence
+        // outlive the quote and swallow the real command.
+        if let Some(len) = quote_len {
+            if quote_closer(line, len) {
+                quote_len = None;
+            }
+            prev = line;
+            continue;
+        }
+        if let Some(open) = opening_fence(line) {
+            fence = Some(open);
+            prev = line;
+            continue;
+        }
+        // Only the composer quote block opens this region, and its fence is
+        // longer than any quote-only line inside the excerpt.
+        if prev.trim() == "Quoted excerpt:" {
+            if let Some(len) = quote_opener(line) {
+                quote_len = Some(len);
+                prev = line;
+                continue;
+            }
+        }
+        if split_goal_command(line).is_none() {
+            prev = line;
+            continue;
+        }
+        found = Some(i);
+        break;
+    }
+    let Some(idx) = found else {
+        return (None, user_text.to_string());
+    };
+    let (cmd, same_line) = split_goal_command(parts[idx]).expect("found a command");
+    let mut kept = Vec::with_capacity(parts.len());
+    for (i, line) in parts.iter().enumerate() {
+        if i == idx {
+            if let Some(objective) = same_line.clone() {
+                kept.push(objective);
+            }
+            continue;
+        }
+        kept.push((*line).to_string());
+    }
+    (Some(cmd), kept.join("\n"))
+}
+
+/// Put a command captured from the current send at byte 0.
+fn prefix_goal_command(cmd: &str, body: &str) -> String {
+    if body.trim().is_empty() {
+        cmd.to_string()
+    } else {
+        format!("{cmd}\n{body}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{detach_current_goal_command, prefix_goal_command};
+
+    fn place(current: &str, wrapped_body: &str) -> String {
+        match detach_current_goal_command(current) {
+            (Some(cmd), _) => prefix_goal_command(&cmd, wrapped_body),
+            (None, _) => wrapped_body.to_string(),
+        }
+    }
+
+    #[test]
+    fn detaches_a_leading_goal_and_prefixes_it_again() {
+        let (cmd, rest) = detach_current_goal_command("/goal\nfix the bug");
+        assert_eq!(cmd.as_deref(), Some("/goal"));
+        assert_eq!(rest, "fix the bug");
+        assert_eq!(
+            prefix_goal_command(cmd.as_deref().unwrap(), &rest),
+            "/goal\nfix the bug"
+        );
+    }
+
+    #[test]
+    fn bare_goal_has_no_extra_newline() {
+        let (cmd, rest) = detach_current_goal_command("/goal\n");
+        assert_eq!(cmd.as_deref(), Some("/goal"));
+        assert!(rest.trim().is_empty());
+        assert_eq!(prefix_goal_command("/goal", &rest), "/goal");
+        assert_eq!(prefix_goal_command("/goal clear", "\n"), "/goal clear");
+    }
+
+    #[test]
+    fn hoists_the_current_goal_above_history_without_taking_history_command() {
+        let current = "/goal\nfix the bug";
+        let (_, rest) = detach_current_goal_command(current);
+        let wrapped = format!("[Prior conversation context]\nUser: /goal clear\nold\n{rest}");
+        let out = place(current, &wrapped);
+        let body = out.strip_prefix("/goal\n").expect("current command leads");
+        assert!(body.contains("User: /goal clear\nold"));
+        assert!(
+            body.find("[Prior conversation context]").unwrap() < body.find("fix the bug").unwrap()
+        );
+        assert!(!body.starts_with("/goal"));
+    }
+
+    #[test]
+    fn leaves_a_normal_send_alone_when_history_contains_goal() {
+        let current = "what does this mean?";
+        let (cmd, rest) = detach_current_goal_command(current);
+        assert!(cmd.is_none());
+        assert_eq!(rest, current);
+        let wrapped = "[Prior]\n/goal\nold objective\nwhat does this mean?";
+        assert_eq!(place(current, wrapped), wrapped);
+    }
+
+    #[test]
+    fn hoists_goal_buried_under_quotes_or_schema_in_the_current_send() {
+        let current = "\
+[Structured output]
+Respond as JSON.
+
+Quoted excerpt:
+\"\"\"
+> quoted line
+\"\"\"
+
+/goal
+ship it";
+        let (cmd, rest) = detach_current_goal_command(current);
+        assert_eq!(cmd.as_deref(), Some("/goal"));
+        assert!(rest.contains("[Structured output]"));
+        assert!(rest.contains("> quoted line"));
+        assert!(rest.contains("ship it"));
+        assert!(!rest.lines().any(|line| line == "/goal"));
+        let out = prefix_goal_command("/goal", &format!("[Prior]\n{rest}"));
+        assert!(out.starts_with("/goal\n[Prior]\n"));
+    }
+
+    #[test]
+    fn does_not_take_goal_from_a_quote_block() {
+        let current = "\
+Quoted excerpt:
+\"\"\"
+/goal
+quoted objective
+\"\"\"
+
+please explain";
+        let (cmd, rest) = detach_current_goal_command(current);
+        assert!(cmd.is_none());
+        assert_eq!(rest, current);
+    }
+
+    #[test]
+    fn quote_with_an_unmatched_fence_does_not_hide_the_real_command() {
+        let current = "\
+Quoted excerpt:
+\"\"\"
+```
+partial fence
+\"\"\"
+
+/goal
+ship it
+```
+/goal clear
+```
+";
+        let (cmd, rest) = detach_current_goal_command(current);
+        assert_eq!(cmd.as_deref(), Some("/goal"));
+        assert!(rest.contains("ship it"));
+        assert!(rest.contains("/goal clear"));
+        assert!(!rest.lines().any(|line| line == "/goal"));
+    }
+
+    #[test]
+    fn does_not_take_goal_from_a_docstring_inside_a_quote() {
+        let current = "\
+Quoted excerpt:
+\"\"\"\"
+def f():
+    \"\"\"
+/goal clear
+    \"\"\"
+\"\"\"\"
+
+explain";
+        let (cmd, rest) = detach_current_goal_command(current);
+        assert!(cmd.is_none(), "{rest}");
+        assert_eq!(rest, current);
+    }
+
+    #[test]
+    fn keeps_a_same_line_objective_for_host_vision() {
+        let (cmd, rest) = detach_current_goal_command("/goal describe @/tmp/image.png");
+        assert_eq!(cmd.as_deref(), Some("/goal"));
+        assert_eq!(rest, "describe @/tmp/image.png");
+        assert_eq!(
+            prefix_goal_command("/goal", &rest),
+            "/goal\ndescribe @/tmp/image.png"
+        );
+    }
+
+    #[test]
+    fn detaches_goal_clear_and_keeps_a_later_status_line() {
+        let (cmd, rest) = detach_current_goal_command("note\n/goal clear\n");
+        assert_eq!(cmd.as_deref(), Some("/goal clear"));
+        assert_eq!(rest, "note\n");
+        let (cmd, rest) = detach_current_goal_command("/goal\nfix it\n/goal status\n");
+        assert_eq!(cmd.as_deref(), Some("/goal"));
+        assert_eq!(rest, "fix it\n/goal status\n");
+    }
+
+    #[test]
+    fn does_not_treat_samples_or_lookalikes_as_commands() {
+        for sample in [
+            "check /goals before shipping",
+            "the /goalkeeper file\n/goalkeeper",
+            "see /goal/readme\n",
+            "please run /goal now\r\n",
+            "before\n    /goal\nafter",
+            "```\n/goal\ndo it\n```\nfix the bug",
+            "~~~\n/goal clear\n~~~\nexplain",
+            "````\n```\n/goal clear\n```\n````\nexplain this sample",
+        ] {
+            let (cmd, rest) = detach_current_goal_command(sample);
+            assert!(cmd.is_none(), "{sample}");
+            assert_eq!(rest, sample);
+        }
     }
 }

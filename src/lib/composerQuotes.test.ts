@@ -77,6 +77,15 @@ describe("serializeQuotesForAgent", () => {
     expect(out.startsWith("please rewrite")).toBe(false);
   });
 
+  it("lengthens the fence when the excerpt contains a quote-only line", () => {
+    const out = serializeQuotesForAgent(
+      [q('def f():\n    """\n/goal clear\n    """')],
+      "explain",
+    );
+    expect(out).toContain('""""\ndef f():\n    """\n/goal clear\n    """\n""""');
+    expect(out.endsWith("explain")).toBe(true);
+  });
+
   it("sends quote-only when the composer body is empty", () => {
     const out = serializeQuotesForAgent([q("only this")], "  ");
     expect(out).toContain("only this");

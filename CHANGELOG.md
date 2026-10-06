@@ -13,7 +13,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.39] - 2026-10-06
+
+> **Highlight:** Goal mode reaches the CLI, and a stalled reply can continue in the same chat.
+>
+> **中文 · 亮点：** 目标模式会交给 CLI，卡住的回复也可以在同一条对话里接着写。
+
 ### Fixed
+- Goal mode keeps /goal at the start of the message the CLI receives. Earlier context stays in the objective.
 - Opening the app again no longer clears login files for chats already running.
 - Stopping a chat from the phone mirror stops the agent again.
 - File references in the Markdown composer are sent as file paths.
@@ -29,6 +36,7 @@ See `docs/llm-wiki/release.md`.
 - A stalled reply can be ended and continued in the same chat. The notice says when the model stream was cut off.
 
 **中文 · 修复**
+- 打开目标模式后，发给 CLI 的内容仍以 /goal 开头。前面的历史和引用留在目标正文里。
 - 再次打开应用时，不会清掉已经在跑的对话的登录文件。
 - 在手机镜像里点停止，会再次停住这条对话。
 - Markdown 输入框里的文件引用会按文件路径发出去。

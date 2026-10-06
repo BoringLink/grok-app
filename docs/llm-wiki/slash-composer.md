@@ -22,7 +22,7 @@ Gate: `showComposerProjectRow = !phoneLayout` in `AppWorkbench` (do not require 
   - Skills → `/name` tokens (Grok Build invocable form), then plain text.
   - Plugin chips → all enabled + user-invocable skills in that pack, then plain text.
   - Chat tokens are **not** sent as agent text. Host `session_attach` expands ids into a compact transcript prefix (max 3 chats). Source journals are unchanged.
-  - Goal task on → prefix `/goal\n` (finite objective until done — **not** a scheduled timer; copy says 目标任务 / Goal task).
+  - Goal task on → prefix `/goal\n` (finite objective until done — **not** a scheduled timer; copy says 目标任务 / Goal task). Before history bootstrap, attach transcripts, or the session-lookup hint are prepended, the host takes that command from the current request and puts it back at byte 0. `clear` / `status` / `pause` / `resume` stay on the command line. Any other same-line text stays in the body so host vision still sees image paths. A `/goal` line inside prior context, an attached chat, a quote block, or a backtick/tilde fence is left where it is. The CLI runs `/goal` only when it is the first line.
   - Attachments still append `@/abs/path` lines via `buildAgentPrompt`.
 - Goal chip + schedule: with Goal on, normal sends do **not** enter silent automation-setup wrap (unless the session is sticky “Create with AI”). Unexpected `grok-automation` fences confirm before create — see [automations.md](./automations.md).
 

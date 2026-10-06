@@ -137,6 +137,16 @@ export function parseQuotesFromContent(content: string): {
   return { text: rest, quotes };
 }
 
+/** Fence longer than any quote-only line in the excerpt, so a docstring cannot close it. */
+function quoteFence(text: string): string {
+  let longest = 2;
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (/^"+$/.test(trimmed) && trimmed.length > longest) longest = trimmed.length;
+  }
+  return '"'.repeat(longest + 1);
+}
+
 /** Agent-facing body: quotes stay structured, not mixed into the typed prompt. */
 export function serializeQuotesForAgent(
   quotes: readonly ComposerQuote[],
@@ -146,7 +156,8 @@ export function serializeQuotesForAgent(
   for (const q of quotes) {
     const n = normalizeComposerQuote(q);
     if (!n) continue;
-    const chunk = [`Quoted excerpt:`, `"""`, n.text, `"""`];
+    const fence = quoteFence(n.text);
+    const chunk = [`Quoted excerpt:`, fence, n.text, fence];
     if (n.comment.trim()) {
       chunk.push(`Comment: ${n.comment.trim()}`);
     }
