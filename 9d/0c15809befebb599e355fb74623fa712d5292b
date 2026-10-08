@@ -1,0 +1,19 @@
+src-tauri/src/agent_home_config.rs
+  s_7a99e5b4c344b6::t_22f74505316249 82-112,123,125,127,656-696
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "9d0c15809befebb599e355fb74623fa712d5292b",
+  "prompts": {},
+  "sessions": {
+    "s_7a99e5b4c344b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c450bdc-c2b0-43f8-9399-61535e3d1296",
+        "model": "claude-sonnet-5.5"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
