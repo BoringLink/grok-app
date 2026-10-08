@@ -120,6 +120,7 @@ import {
 } from "@/lib/session";
 import {
   INITIAL_CONTEXT_USAGE,
+  formatTokenCount,
   resolveContextUsageDisplay,
   type ContextUsageState,
 } from "@/lib/contextUsage";
@@ -449,6 +450,16 @@ import {
   flattenFilteredCatalog,
   type SlashItem,
 } from "@/lib/slashCatalog";
+import { parseContextInfoPayload } from "@/lib/contextInfoSnapshot";
+import {
+  contextWindowSlashFeedback,
+  leftoverContextWindowArgs,
+  positiveContextWindows,
+  resolveContextWindowCommand,
+  formatWindowLabel,
+  selectableContextWindows,
+  stripContextWindowSlashFromDraft,
+} from "@/lib/contextWindowCommand";
 import {
   leftoverWorkflowArgs,
   resolveWorkflowSlashAction,
@@ -2427,6 +2438,7 @@ export function AppWorkbench() {
                 source: m.source,
                 isDefault: m.isDefault,
                 contextWindow: m.contextWindow ?? null,
+                contextWindows: positiveContextWindows(m.contextWindows),
               }))
             : GROK_BUILD_MODELS;
         setAvailableModels(catalog);
@@ -2595,6 +2607,7 @@ export function AppWorkbench() {
                 isDefault: m.isDefault,
                 reasoningEfforts: efforts,
                 contextWindow: m.contextWindow ?? null,
+                contextWindows: positiveContextWindows(m.contextWindows),
               };
             })
           : GROK_BUILD_MODELS;
@@ -5616,6 +5629,8 @@ export function AppWorkbench() {
     sessionGoalClear.flush(session.sessionId, session.state);
   }, [session.sessionId, session.state]);
 
+  const contextWindowSlashRef = useRef<(args: string) => void>(() => {});
+  const contextSlashRef = useRef<(announce: boolean) => void>(() => {});
   const {
     executeSend,
     send,
@@ -5670,6 +5685,12 @@ export function AppWorkbench() {
     getDraft,
     requestComposerFocus,
     openWorkflowsSettings,
+    onContextWindowSlash: (args) => {
+      contextWindowSlashRef.current(args);
+    },
+    onContextSlash: () => {
+      contextSlashRef.current(true);
+    },
     applySessionTitle,
     restartTurnClock,
     syncViewedTurnClock,
@@ -8798,6 +8819,36 @@ export function AppWorkbench() {
         return;
       }
 
+      if (item.kind === "action" && item.action === "context-window") {
+        const stored = getDraft();
+        const leftover = q ? leftoverContextWindowArgs(stored, q.end) : "";
+        if (q) {
+          setDraft((d) =>
+            stripContextWindowSlashFromDraft(d, q.start, q.end),
+          );
+          requestComposerStoredCaret(q.start);
+        }
+        const fromQuery = (q?.query ?? "")
+          .replace(/^context-window\s*/i, "")
+          .trim();
+        contextWindowSlashRef.current(leftover || fromQuery);
+        return;
+      }
+
+      if (item.kind === "action" && item.action === "context") {
+        if (q) {
+          const stored = getDraft();
+          const lineEnd = stored.slice(q.end).search(/[\r\n]/);
+          const cut = lineEnd === -1 ? stored.length : q.end + lineEnd;
+          setDraft((d) =>
+            (d.slice(0, q.start) + d.slice(cut)).replace(/[ \t]+$/u, ""),
+          );
+          requestComposerStoredCaret(q.start);
+        }
+        contextSlashRef.current(true);
+        return;
+      }
+
       if (item.kind === "skill" || item.kind === "plugin") {
         const applyAtSlash =
           item.kind === "plugin" ? applyPluginAtSlash : applySkillAtSlash;
@@ -9068,6 +9119,10 @@ export function AppWorkbench() {
   // welcome logo paints immediately — the SVG itself is inline, not a fetch.
   const [cachedBrandKind, setCachedBrandKind] =
     useState<SuperGrokBrandKind | null>(() => loadCachedSuperGrokBrand());
+  /** Window picked on the new-chat composer, before a chat row exists. */
+  const [draftContextWindow, setDraftContextWindow] = useState<number | null>(
+    null,
+  );
   /** Active inference channel: custom relay identity replaces official account chrome. */
   const [activeCustomProvider, setActiveCustomProvider] =
     useState<api.CustomProvider | null>(null);
@@ -9087,13 +9142,18 @@ export function AppWorkbench() {
         modelId,
         models: availableModels,
         // Prefer live agent occupancy denominator (Grok Build 1.0 → 500k).
-        agentContextWindow: contextUsage.agentContextWindow,
+        // A new chat has no agent yet; the draft choice is what the menu shows.
+        agentContextWindow:
+          contextUsage.agentContextWindow ??
+          (session.sessionId ? null : draftContextWindow),
       }),
     [
       activeCustomProvider,
       modelId,
       availableModels,
       contextUsage.agentContextWindow,
+      draftContextWindow,
+      session.sessionId,
     ],
   );
   useEffect(() => {
@@ -9131,6 +9191,9 @@ export function AppWorkbench() {
                   m.contextWindow != null && m.contextWindow > 0
                     ? m.contextWindow
                     : (prior?.contextWindow ?? null),
+                contextWindows:
+                  positiveContextWindows(m.contextWindows) ??
+                  prior?.contextWindows,
               };
             });
           });
@@ -9139,16 +9202,19 @@ export function AppWorkbench() {
     }
   }, [session.state, session.sessionId]);
   /** Context usage chip label/state from compact events + message estimate. */
-  const contextUsageDisplay = useMemo(
-    () =>
-      resolveContextUsageDisplay(
-        contextUsage,
-        messages,
-        locale,
-        currentModelWindow,
-      ),
-    [contextUsage, messages, locale, currentModelWindow],
-  );
+  const contextUsageDisplay = useMemo(() => {
+    const base = resolveContextUsageDisplay(
+      contextUsage,
+      messages,
+      locale,
+      currentModelWindow,
+    );
+    return {
+      ...base,
+      contextInfo: contextUsage.contextInfo ?? null,
+      contextInfoNonce: contextUsage.contextInfoNonce ?? 0,
+    };
+  }, [contextUsage, messages, locale, currentModelWindow]);
   const sessionSpend = useSessionSpend(session.sessionId);
   /** Full provider list for composer model menu groups. */
   const [customProviders, setCustomProviders] = useState<api.CustomProvider[]>(
@@ -9477,30 +9543,136 @@ export function AppWorkbench() {
   );
   const handleContextWindow = useCallback(
     async (tokens: number) => {
-      if (!api.isTauri() || !activeCustomProvider) return;
+      if (!api.isTauri()) return false;
+      if (activeCustomProvider) {
+        try {
+          await api.providersUpsert({
+            id: activeCustomProvider.id,
+            model: activeCustomProvider.model,
+            baseUrl: activeCustomProvider.baseUrl,
+            name: activeCustomProvider.name,
+            apiBackend: activeCustomProvider.apiBackend,
+            models: withModelContextWindow(
+              activeCustomProvider.models,
+              activeCustomProvider.model,
+              tokens,
+            ),
+            efforts: activeCustomProvider.efforts,
+            setAsDefault: false,
+            contextWindow: tokens,
+          });
+          await refreshProviderRoute();
+          return true;
+        } catch (e) {
+          showToast(String(e), 4000);
+          return false;
+        }
+      }
+      const model = availableModels.find((m) => m.id === modelId);
+      const options = selectableContextWindows(model);
+      if (!options.includes(tokens)) {
+        showToast(
+          tr("slash.contextWindowUnknown", {
+            token: String(tokens),
+            options: options.map((n) => formatWindowLabel(n)).join(", "),
+          }),
+          4000,
+        );
+        return false;
+      }
       try {
-        await api.providersUpsert({
-          id: activeCustomProvider.id,
-          model: activeCustomProvider.model,
-          baseUrl: activeCustomProvider.baseUrl,
-          name: activeCustomProvider.name,
-          apiBackend: activeCustomProvider.apiBackend,
-          models: withModelContextWindow(
-            activeCustomProvider.models,
-            activeCustomProvider.model,
-            tokens,
-          ),
-          efforts: activeCustomProvider.efforts,
-          setAsDefault: false,
-          contextWindow: tokens,
+        await api.sessionSetContextWindow(tokens, {
+          sessionId: session.sessionId,
         });
-        await refreshProviderRoute();
+        if (!session.sessionId) setDraftContextWindow(tokens);
+        setContextUsage((prev) => ({
+          ...prev,
+          agentContextWindow: tokens,
+        }));
+        return true;
       } catch (e) {
         showToast(String(e), 4000);
+        return false;
       }
     },
-    [activeCustomProvider, refreshProviderRoute, showToast],
+    [
+      activeCustomProvider,
+      availableModels,
+      modelId,
+      refreshProviderRoute,
+      session.sessionId,
+      showToast,
+      tr,
+    ],
   );
+  const runContextWindowSlash = useCallback(
+    async (args: string) => {
+      const model = availableModels.find((m) => m.id === modelId);
+      const result = resolveContextWindowCommand({
+        args,
+        hasModel: Boolean(modelId),
+        hasSession: Boolean(session.sessionId),
+        options: activeCustomProvider ? [] : selectableContextWindows(model),
+        current: currentModelWindow,
+      });
+      if (result.kind === "switch") {
+        const ok = await handleContextWindow(result.window);
+        if (ok) {
+          showToast(
+            tr("slash.contextWindowSwitched", {
+              size: formatTokenCount(result.window, locale),
+            }),
+            2500,
+          );
+        }
+        return;
+      }
+      const feedback = contextWindowSlashFeedback(result);
+      showToast(tr(feedback.key, feedback.vars), 4000);
+    },
+    [
+      activeCustomProvider,
+      availableModels,
+      currentModelWindow,
+      handleContextWindow,
+      locale,
+      modelId,
+      session.sessionId,
+      showToast,
+      tr,
+    ],
+  );
+  contextWindowSlashRef.current = runContextWindowSlash;
+  const runContextSlash = useCallback(
+    async (announce: boolean) => {
+      if (!api.isTauri() || !session.sessionId) {
+        if (announce) showToast(tr("slash.contextNoSession"), 4000);
+        return;
+      }
+      try {
+        const raw = await api.sessionContextInfo(session.sessionId);
+        const view = parseContextInfoPayload(raw);
+        if (!view) {
+          if (announce) showToast(tr("slash.contextUnavailable"), 4000);
+          return;
+        }
+        setContextUsage((prev) => ({
+          ...prev,
+          knownTokens: view.used,
+          agentContextWindow:
+            view.total > 0 ? view.total : prev.agentContextWindow,
+          agentPercentage: null,
+          lastCompactMessageId: null,
+          contextInfo: view,
+          contextInfoNonce: (prev.contextInfoNonce ?? 0) + 1,
+        }));
+      } catch (e) {
+        if (announce) showToast(String(e), 4000);
+      }
+    },
+    [session.sessionId, showToast, tr],
+  );
+  contextSlashRef.current = runContextSlash;
   const liveBrandKind = useMemo(
     () =>
       superGrokBrandKind(
@@ -12723,6 +12895,9 @@ export function AppWorkbench() {
             confirmRemoveWorktree={confirmRemoveWorktree}
             connecting={connecting}
             contextUsageDisplay={contextUsageDisplay}
+            refreshContextInfo={() => {
+              contextSlashRef.current(false);
+            }}
             currentModelWindow={currentModelWindow}
             customRouteActive={customRouteActive}
             cycleAttachedChatScope={cycleAttachedChatScope}

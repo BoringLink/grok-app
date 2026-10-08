@@ -275,6 +275,8 @@ export interface AvailableModel {
   reasoningEfforts?: ReasoningEffort[];
   /** Model context window in tokens (live-merged from `initialize` first). */
   contextWindow?: number | null;
+  /** Selectable windows from CLI `info.context_windows` (catalog order). */
+  contextWindows?: number[] | null;
 }
 
 export interface AvailableModelsResult {
@@ -366,6 +368,29 @@ export async function sessionSetModel(
     modelId,
     projectId: opts?.projectId ?? null,
     sessionId: opts?.sessionId ?? null,
+  });
+}
+
+/**
+ * Set the live session's context window (`session/set_model` `_meta.contextWindow`).
+ * Does not change the stored model or reasoning effort. Official routes only.
+ */
+export async function sessionSetContextWindow(
+  tokens: number,
+  opts?: { sessionId?: string | null },
+) {
+  if (!isTauri()) return;
+  return invoke<void>("session_set_context_window", {
+    tokens,
+    sessionId: opts?.sessionId ?? null,
+  });
+}
+
+/** Live `x.ai/session/info` payload for `/context`. */
+export async function sessionContextInfo(sessionId?: string | null) {
+  if (!isTauri()) return null;
+  return invoke<unknown>("session_context_info", {
+    sessionId: sessionId ?? null,
   });
 }
 

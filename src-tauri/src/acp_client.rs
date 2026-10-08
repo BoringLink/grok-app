@@ -2662,16 +2662,18 @@ impl AcpClient {
         .await
     }
 
-    /// Switch model on the live agent session (`session/set_model`).
-    /// Switch model on the live agent session (`session/set_model`).
-    /// Uses the process's most recently bound agent session id.
-    pub async fn set_model(&self, model_id: &str) -> Result<(), String> {
-        let sid = self
-            .agent_session_id
-            .lock()
-            .clone()
-            .ok_or_else(|| "no agent session".to_string())?;
-        self.set_model_for(&sid, model_id).await
+    /// `x.ai/session/info` — the payload behind the pager `/context` view.
+    /// Live stdio registers the underscore form; older agents use the bare name.
+    pub async fn session_info(&self, session_id: &str) -> Result<Value, String> {
+        let params = json!({ "sessionId": session_id });
+        let raw = match self.request("_x.ai/session/info", params.clone()).await {
+            Ok(v) => v,
+            Err(e) if rpc_looks_like_method_not_found(&e) => {
+                self.request("x.ai/session/info", params).await?
+            }
+            Err(e) => return Err(e),
+        };
+        unwrap_session_info(raw)
     }
 
     /// Switch model on an explicit session (`session/set_model`).
@@ -2679,20 +2681,50 @@ impl AcpClient {
     /// mean — the process-level "recently bound" id may belong to another
     /// App session on the same process.
     pub async fn set_model_for(&self, session_id: &str, model_id: &str) -> Result<(), String> {
+        self.set_model_for_inner(session_id, model_id, None).await
+    }
+
+    /// Same as [`Self::set_model_for`], plus `_meta.contextWindow`.
+    /// Reasoning effort is omitted so the CLI keeps the current effort.
+    pub async fn set_context_window_for(
+        &self,
+        session_id: &str,
+        model_id: &str,
+        context_window: u64,
+    ) -> Result<(), String> {
+        if context_window == 0 {
+            return Err("context window must be positive".into());
+        }
+        self.set_model_for_inner(session_id, model_id, Some(context_window))
+            .await
+    }
+
+    async fn set_model_for_inner(
+        &self,
+        session_id: &str,
+        model_id: &str,
+        context_window: Option<u64>,
+    ) -> Result<(), String> {
         let model_id = model_id.trim();
         if model_id.is_empty() {
             return Err("model id empty".into());
         }
         let sid = session_id.to_string();
         // ACP SetSessionModelRequest: sessionId + modelId (+ optional meta).
+        // Absent `_meta` preserves effort and the selected window.
+        let params = match context_window {
+            Some(window) => json!({
+                "sessionId": sid,
+                "modelId": model_id,
+                "_meta": { "contextWindow": window },
+            }),
+            None => json!({
+                "sessionId": sid,
+                "modelId": model_id,
+            }),
+        };
         let result = self
-            .request(
-                "session/set_model",
-                json!({
-                    "sessionId": sid,
-                    "modelId": model_id,
-                }),
-            )
+            .request("session/set_model", params)
             .await
             .map_err(|e| format!("session/set_model: {e}"))?;
         // Best-effort: some agents echo currentModelId.
@@ -3246,6 +3278,57 @@ pub fn wire_session_interject_params(session_id: &str, text: &str) -> Value {
         "sessionId": session_id,
         "text": text,
     })
+}
+
+/// Pull the session-info object out of an ext-method result.
+///
+/// Grok Build wraps it as `{ "result": SessionInfoResponse, "error"?: ... }`.
+/// Some agents return the object itself, or either form as a JSON string.
+pub(crate) fn unwrap_session_info(raw: Value) -> Result<Value, String> {
+    let value = coerce_session_info_json(raw);
+    if let Some(err) = value.get("error").filter(|e| !e.is_null()) {
+        let has_body = value.get("result").is_some_and(|r| r.is_object());
+        if !has_body {
+            return Err(session_info_error_text(err));
+        }
+    }
+    let body = value
+        .get("result")
+        .filter(|r| r.is_object())
+        .cloned()
+        .unwrap_or(value);
+    if body.get("context").is_some()
+        || body.get("sessionId").is_some()
+        || body.get("session_id").is_some()
+    {
+        return Ok(body);
+    }
+    Err("invalid session info response".into())
+}
+
+fn coerce_session_info_json(raw: Value) -> Value {
+    match raw {
+        Value::String(s) => serde_json::from_str(&s).unwrap_or(Value::Null),
+        Value::Object(map) => {
+            if let Some(Value::String(s)) = map.get("result") {
+                if let Ok(parsed) = serde_json::from_str::<Value>(s) {
+                    return parsed;
+                }
+            }
+            Value::Object(map)
+        }
+        other => other,
+    }
+}
+
+fn session_info_error_text(err: &Value) -> String {
+    if let Some(s) = err.as_str() {
+        return s.to_string();
+    }
+    err.get("message")
+        .and_then(|m| m.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| err.to_string())
 }
 
 /// Whether an ACP RPC error indicates the method name is unknown on this agent.
@@ -6550,6 +6633,29 @@ fn json_id_u64(v: Option<&Value>) -> Option<u64> {
 #[cfg(test)]
 mod cached_token_route_tests {
     use super::*;
+
+    #[test]
+    fn unwrap_session_info_reads_the_pager_envelope() {
+        let raw = serde_json::json!({
+            "result": {
+                "sessionId": "s1",
+                "model": "grok-4.7",
+                "context": { "used": 3300, "total": 500000 }
+            }
+        });
+        let body = unwrap_session_info(raw).unwrap();
+        assert_eq!(body["model"], "grok-4.7");
+        assert_eq!(body["context"]["total"], 500000);
+    }
+
+    #[test]
+    fn unwrap_session_info_reads_a_string_envelope_and_surfaces_errors() {
+        let raw =
+            serde_json::json!(r#"{"result":{"sessionId":"s","context":{"used":1,"total":2}}}"#);
+        assert!(unwrap_session_info(raw).is_ok());
+        let err = unwrap_session_info(serde_json::json!({ "error": "no session" })).unwrap_err();
+        assert_eq!(err, "no session");
+    }
 
     #[test]
     fn rewind_unsupported_error_matches_method_not_found() {

@@ -203,6 +203,22 @@ export function builtinSlashItems(): SlashItem[] {
       action: "compact",
     },
     {
+      id: "context",
+      kind: "action",
+      name: "context",
+      titleKey: "slash.context",
+      descriptionKey: "slash.contextDesc",
+      action: "context",
+    },
+    {
+      id: "context-window",
+      kind: "action",
+      name: "context-window",
+      titleKey: "slash.contextWindow",
+      descriptionKey: "slash.contextWindowDesc",
+      action: "context-window",
+    },
+    {
       id: "status",
       kind: "action",
       name: "status",

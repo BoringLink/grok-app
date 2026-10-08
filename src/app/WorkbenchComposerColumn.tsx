@@ -117,6 +117,7 @@ export type WorkbenchComposerColumnProps = {
   confirmRemoveWorktree: (wt: GitWorktreeEntry) => void;
   connecting: boolean;
   contextUsageDisplay: ContextUsageDisplay;
+  refreshContextInfo: () => void;
   currentModelWindow: number | null;
   customRouteActive: boolean;
   cycleAttachedChatScope: (id: string) => void;
@@ -137,7 +138,7 @@ export type WorkbenchComposerColumnProps = {
   goalMode: boolean;
   guideQueuedMessage: (item: QueuedSend) => Promise<void>;
   guidingQueueItemId: string | null;
-  handleContextWindow: (tokens: number) => Promise<void>;
+  handleContextWindow: (tokens: number) => Promise<boolean>;
   handleEffortPick: (nextEffort: string) => void;
   handleModelPick: (pick: ComposerModelPick) => Promise<void>;
   layout: LayoutPrefs;

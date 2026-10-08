@@ -14,6 +14,13 @@ use crate::store::{self};
 
 use super::*;
 
+fn catalog_advertises_context_window(tokens: u64) -> bool {
+    crate::models_catalog::list_available_models()
+        .models
+        .iter()
+        .any(|model| crate::models_catalog::model_supports_context_window(model, tokens))
+}
+
 impl SessionManager {
     #[allow(dead_code)]
     pub fn set_permission_policy(&self, policy: PermissionPolicy) {
@@ -777,6 +784,116 @@ impl SessionManager {
             acp.set_model_for(&sid, &agent_model).await?;
         }
         Ok(())
+    }
+
+    /// Set the live session's context window without changing the stored model.
+    ///
+    /// Wire shape matches Grok Build: `session/set_model` with
+    /// `_meta.contextWindow` only, so reasoning effort is preserved. The size
+    /// must be the model's catalog default or one of its advertised windows.
+    /// A chat that does not own the live slot is not retuned.
+    pub async fn set_context_window(
+        &self,
+        tokens: u64,
+        session_id: Option<&str>,
+    ) -> Result<(), String> {
+        if tokens == 0 {
+            return Err("context window must be positive".into());
+        }
+        let Some(app_session_id) = session_id.map(str::trim).filter(|id| !id.is_empty()) else {
+            // New-chat composer: the CLI already has a process, but this app
+            // has not called session/new. Remember the size and send it with
+            // the first set_model. Grok Build can switch immediately because
+            // its TUI creates that session at startup.
+            if !catalog_advertises_context_window(tokens) {
+                return Err(format!(
+                    "context window {tokens} is not one of the advertised sizes"
+                ));
+            }
+            *self.pending_context_window.lock() = Some(tokens);
+            return Ok(());
+        };
+        let (acp, agent_sid, model_id) = {
+            let guard = self.inner.lock();
+            let Some(s) = guard.as_ref() else {
+                return Err("No active session yet; retry once it starts".into());
+            };
+            if s.app_session_id != app_session_id {
+                return Err("No active session yet; retry once it starts".into());
+            }
+            let model = s
+                .model_id
+                .clone()
+                .or_else(|| s.meta.model_id.clone())
+                .filter(|m| !m.trim().is_empty());
+            (
+                s.acp.clone(),
+                s.meta
+                    .agent_session_id
+                    .clone()
+                    .filter(|sid| !sid.is_empty()),
+                model,
+            )
+        };
+        let (Some(acp), Some(agent_sid)) = (acp, agent_sid) else {
+            return Err("No active session yet; retry once it starts".into());
+        };
+        let Some(model_id) = model_id else {
+            return Err("No active model".into());
+        };
+        let stored_provider = crate::store::load_sessions_index()
+            .into_iter()
+            .find(|s| s.id == app_session_id)
+            .and_then(|s| s.provider_id);
+        let provider =
+            stored_provider.unwrap_or_else(|| crate::providers::session_route_provider_id(None));
+        let agent_model = crate::providers::session_set_model_id_for(&provider, &model_id);
+        let catalog = crate::models_catalog::list_available_models();
+        let supported = catalog
+            .models
+            .iter()
+            .find(|m| m.id == agent_model || m.id == model_id)
+            .is_some_and(|m| crate::models_catalog::model_supports_context_window(m, tokens));
+        if !supported {
+            return Err(format!(
+                "model '{agent_model}' does not support context window {tokens}"
+            ));
+        }
+        acp.set_context_window_for(&agent_sid, &agent_model, tokens)
+            .await?;
+        *self.pending_context_window.lock() = None;
+        Ok(())
+    }
+
+    /// Live `x.ai/session/info`. `/context` reads `context` from this object.
+    /// A chat that does not own the live slot has nothing to show.
+    pub async fn session_context_info(
+        &self,
+        session_id: Option<&str>,
+    ) -> Result<serde_json::Value, String> {
+        let Some(app_session_id) = session_id.map(str::trim).filter(|id| !id.is_empty()) else {
+            return Err("No active session".into());
+        };
+        let (acp, agent_sid) = {
+            let guard = self.inner.lock();
+            let Some(s) = guard.as_ref() else {
+                return Err("No active session".into());
+            };
+            if s.app_session_id != app_session_id {
+                return Err("No active session".into());
+            }
+            (
+                s.acp.clone(),
+                s.meta
+                    .agent_session_id
+                    .clone()
+                    .filter(|sid| !sid.is_empty()),
+            )
+        };
+        let (Some(acp), Some(agent_sid)) = (acp, agent_sid) else {
+            return Err("No active session".into());
+        };
+        acp.session_info(&agent_sid).await
     }
 
     /// Apply product mode via session/set_mode; soft-respawn if agent rejects.
