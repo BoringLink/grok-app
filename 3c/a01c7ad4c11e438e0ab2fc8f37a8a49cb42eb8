@@ -1,0 +1,44 @@
+src-tauri/src/session_manager/control.rs
+  s_72db73f5d2fe1d::t_cf501a02da3de1 869,915,917,887
+  s_1ed624be4f7b23::t_bdfeffb8f375dd 870-875,876,881
+  s_72db73f5d2fe1d::t_47d2d8faa155bd 905,909-910,931-932
+  s_72db73f5d2fe1d::t_529e49484893b4 908,921-927
+  s_72db73f5d2fe1d::t_922dea9b659690 17-23
+src-tauri/src/commands/settings.rs
+  s_72db73f5d2fe1d::t_1cd43ec6d8fd2c 428
+  s_72db73f5d2fe1d::t_edf32d96d0e0f4 515
+src-tauri/src/session_manager/mod.rs
+  s_45d8babae69c99::t_85d32acf3bd2df 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "3ca01c7ad4c11e438e0ab2fc8f37a8a49cb42eb8",
+  "prompts": {},
+  "sessions": {
+    "s_1ed624be4f7b23": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0ca66-184a-75a0-ba8e-c4531e2f8c8a",
+        "model": "ada-anthropic"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    },
+    "s_45d8babae69c99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0677b74-ac92-453a-b6ba-9b663586b75d",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    },
+    "s_72db73f5d2fe1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7ea6558-084f-4e4a-b144-6021874c8e7c",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}

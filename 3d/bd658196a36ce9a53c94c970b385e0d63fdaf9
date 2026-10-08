@@ -1,0 +1,19 @@
+src-tauri/src/commands/providers.rs
+  s_8ee45656e8516f::t_bd1bebce4ef484 119-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "3dbd658196a36ce9a53c94c970b385e0d63fdaf9",
+  "prompts": {},
+  "sessions": {
+    "s_8ee45656e8516f": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a0c89a-26ae-7ec2-afc3-ce9017d5c222",
+        "model": "ada-anthropic"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}

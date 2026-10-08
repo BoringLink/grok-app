@@ -1,0 +1,23 @@
+src-tauri/src/session_manager/events.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 864
+src-tauri/src/session_manager/connect.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 414-416,418,604,1040,1069-1075,1082-1095,1589
+src-tauri/src/session_manager/events_bg.rs
+  s_45d8babae69c99::t_6289a86d65ad7e 794
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "aa30c1595d0b8c83e2323ee819785d501920e79c",
+  "prompts": {},
+  "sessions": {
+    "s_45d8babae69c99": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0677b74-ac92-453a-b6ba-9b663586b75d",
+        "model": "ep-s52bpjk9"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
