@@ -1,0 +1,19 @@
+src-tauri/src/commands/providers.rs
+  s_7a99e5b4c344b6::t_48afd8e52d960f 58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "60fea805208e71117bd40556d352dcd71d826466",
+  "prompts": {},
+  "sessions": {
+    "s_7a99e5b4c344b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c450bdc-c2b0-43f8-9399-61535e3d1296",
+        "model": "claude-sonnet-5.5"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
