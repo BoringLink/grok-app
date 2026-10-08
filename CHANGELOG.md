@@ -13,8 +13,17 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+- Official models can use another context length when the model offers more than one.
+- The usage chip can show the CLI's own context breakdown.
+
+**中文 · 新增**
+- 官方模型如果提供多种上下文长度，可以改用其中一种。
+- 用量条可以显示 CLI 自己算出的上下文明细。
+
 ### Fixed
 - File names in the @ menu stay whole, and overflow ends with an ellipsis.
+- Windows plugin sign-in no longer waits until the attempt times out.
 - A model name with brackets no longer erases the provider listed above it.
 - A chat file link cannot leave the project through a parent folder.
 - A torn account list is kept aside instead of being replaced with an empty one.
@@ -25,6 +34,7 @@ See `docs/llm-wiki/release.md`.
 
 **中文 · 修复**
 - @ 菜单里的文件名会完整显示，放不下时末尾才出现省略号。
+- Windows 上的插件登录不再一直等到这次尝试超时。
 - 模型名字里带方括号时，不会再清掉它上面的那个供应商。
 - 对话里的文件链接不能顺着上级目录跑出当前项目。
 - 写到一半的账号列表会被挪到旁边，而不会换成一份空列表。
