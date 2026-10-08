@@ -1,0 +1,47 @@
+src/i18n/messages/pt-BR/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/it/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/ta/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/zh/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 273-274
+src/i18n/messages/fil/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/en/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 273-274
+src/i18n/messages/fr/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/es/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/id/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/ja/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/ko/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/uk/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/ru/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/de/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 250-251
+src/i18n/messages/zh-TW/settings.ts
+  s_7a99e5b4c344b6::t_ab5cf671396cf1 274-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "04360cdf3e506addcecba422028d86fcec0315c2",
+  "prompts": {},
+  "sessions": {
+    "s_7a99e5b4c344b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c450bdc-c2b0-43f8-9399-61535e3d1296",
+        "model": "claude-sonnet-5.5"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
