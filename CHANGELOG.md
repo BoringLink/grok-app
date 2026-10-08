@@ -13,6 +13,26 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+- File names in the @ menu stay whole, and overflow ends with an ellipsis.
+- A model name with brackets no longer erases the provider listed above it.
+- A chat file link cannot leave the project through a parent folder.
+- A torn account list is kept aside instead of being replaced with an empty one.
+- A renamed file shows up under its new name.
+- Closing goal mode tries again if the first clear does not go through.
+- Continue shows for the same stopped turns the status line already marks.
+- The same Windows file stays one attachment when only the slashes differ.
+
+**中文 · 修复**
+- @ 菜单里的文件名会完整显示，放不下时末尾才出现省略号。
+- 模型名字里带方括号时，不会再清掉它上面的那个供应商。
+- 对话里的文件链接不能顺着上级目录跑出当前项目。
+- 写到一半的账号列表会被挪到旁边，而不会换成一份空列表。
+- 重命名后的文件会显示在新名字下面。
+- 关闭目标模式时，如果第一次清除没有发出去，会再试一次。
+- 继续按钮会出现在状态行已经标成可继续的回合上。
+- 同一个 Windows 文件只是斜杠不同时，仍然只算一个附件。
+
 ## [0.2.39] - 2026-10-06
 
 > **Highlight:** Goal mode reaches the CLI, and a stalled reply can continue in the same chat.
