@@ -1,0 +1,19 @@
+docs/plans/GOAL-composer-wysiwyg-and-session-model-isolation.md
+  s_7a99e5b4c344b6::t_62001f4009ef0e 1-55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.45-trip",
+  "base_commit_sha": "9fae45b7cf0ab4615e43bbe098f3cad599ecbf9f",
+  "prompts": {},
+  "sessions": {
+    "s_7a99e5b4c344b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c450bdc-c2b0-43f8-9399-61535e3d1296",
+        "model": "claude-sonnet-5.5"
+      },
+      "human_author": "Soren <boweilin@trip.com>"
+    }
+  }
+}
