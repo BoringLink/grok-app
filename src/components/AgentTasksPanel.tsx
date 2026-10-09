@@ -57,6 +57,8 @@ import {
   type TasksPanelStatusFilter,
 } from "@/lib/tasksPanelPro";
 import { resolveAgentsRailEmptyState } from "@/lib/agentsRail";
+import { useSubagents } from "@/hooks/useSubagents";
+import { SubagentSection } from "@/components/AgentTasksPanelSubagents";
 import {
   IconChevronDown,
   IconChevronRight,
@@ -99,6 +101,8 @@ export type AgentTasksPanelProps = {
   ) => void | TasksBindCwdResult | Promise<void | TasksBindCwdResult>;
   /** Current chat project path — used to mark cwd as already active. */
   activeCwd?: string | null;
+  /** Current chat session id — scopes the subagent telemetry section. */
+  currentSessionId?: string | null;
   /**
    * When true, CLI subagent worktree snapshot mode is on
    * (`subagent_worktree_snapshot_enabled`, CLI 0.2.117+). Shows a short note.
@@ -594,6 +598,7 @@ export function AgentTasksPanel({
   onOpenDashboard,
   onOpenCwd,
   activeCwd = null,
+  currentSessionId = null,
   subagentWorktreeSnapshotEnabled = false,
   variant = "default",
   sessionBusy = false,
@@ -602,6 +607,8 @@ export function AgentTasksPanel({
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] =
     useState<TasksPanelStatusFilter>("all");
+
+  const subagentRuns = useSubagents(currentSessionId);
 
   const tasks = useMemo(() => {
     const act = buildTurnActivity(messages);
@@ -699,7 +706,10 @@ export function AgentTasksPanel({
   }, []);
 
   const showFullEmpty =
-    !!emptyState && otherSessions.length === 0 && !hasTaskRows;
+    !!emptyState &&
+    otherSessions.length === 0 &&
+    !hasTaskRows &&
+    subagentRuns.length === 0;
   const showFilterEmptyInBody =
     !!emptyState &&
     emptyState.kind === "filter_empty" &&
@@ -835,6 +845,7 @@ export function AgentTasksPanel({
         </div>
       ) : (
         <div className="agent-tasks__body">
+          <SubagentSection runs={subagentRuns} t={t} />
           {otherSessions.length > 0 ? (
             <div className="agent-tasks__section">
               <h3 className="agent-tasks__section-title">
