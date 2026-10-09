@@ -31,6 +31,8 @@ See `docs/llm-wiki/release.md`.
 - Closing goal mode tries again if the first clear does not go through.
 - Continue shows for the same stopped turns the status line already marks.
 - The same Windows file stays one attachment when only the slashes differ.
+- A non-text file token no longer blanks the whole chat.
+- A finished tool turn no longer looks like the app restarted.
 
 **中文 · 修复**
 - @ 菜单里的文件名会完整显示，放不下时末尾才出现省略号。
@@ -42,6 +44,8 @@ See `docs/llm-wiki/release.md`.
 - 关闭目标模式时，如果第一次清除没有发出去，会再试一次。
 - 继续按钮会出现在状态行已经标成可继续的回合上。
 - 同一个 Windows 文件只是斜杠不同时，仍然只算一个附件。
+- 文件路径如果不是文字，整段对话不再因此变空白。
+- 已经做完的工具回合，切换对话时不再显示成应用重启。
 
 ## [0.2.39] - 2026-10-06
 
