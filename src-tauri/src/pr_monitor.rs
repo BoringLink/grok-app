@@ -158,20 +158,6 @@ pub struct PrMonitorPollResult {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PrMonitorStatus {
-    pub running: bool,
-    pub tick_interval_secs: u64,
-    pub watched_count: u64,
-    /// Always false — polling does not need a visible window.
-    pub window_required: bool,
-    /// Always true — fully quitting stops monitoring.
-    pub process_required: bool,
-    /// Short honesty note (English; UI has translated copy).
-    pub honesty: String,
-}
-
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
 /// JSON fields for the single `gh pr view` call a poll makes.
@@ -451,10 +437,23 @@ async fn poll_watcher(app: &AppHandle, id: &str) -> Result<bool, String> {
     let snapshot = match result {
         Ok(s) => s,
         Err(e) => {
+            // Never silent: a broken `gh` auth or a missing repo would otherwise
+            // look like "no changes forever".
+            warn!(
+                target: "pr_monitor",
+                watcher = %id,
+                error = %e,
+                "PR poll failed; keeping the previous snapshot"
+            );
             w.last_error = Some(e);
             return Ok(false);
         }
     };
+    // A re-mount for a different PR can land while `gh` was running; the old
+    // PR's snapshot must not become the new watcher's baseline.
+    if w.pr_number != pr_number {
+        return Ok(false);
+    }
     w.last_error = None;
 
     let Some((prev, next)) = advance_baseline(&mut w.baseline, &snapshot) else {
@@ -526,20 +525,6 @@ pub fn start(app: AppHandle) {
             tokio::time::sleep(TICK).await;
         }
     });
-}
-
-/// Snapshot for UI / diagnostics. Safe to call before `start`.
-pub fn status() -> PrMonitorStatus {
-    PrMonitorStatus {
-        running: STARTED.load(Ordering::Relaxed),
-        tick_interval_secs: TICK.as_secs(),
-        watched_count: lock_watchers().len() as u64,
-        window_required: false,
-        process_required: true,
-        honesty: "Watches run only while this app process is alive (main window or tray). \
-                  Mounts are not persisted and there is no separate background daemon."
-            .into(),
-    }
 }
 
 // ── Tauri commands ──────────────────────────────────────────────────────────
@@ -685,12 +670,6 @@ pub async fn pr_monitor_consume_pending(
     let id = watcher_id(&project_path, &branch);
     let mut guard = lock_watchers();
     guard.get_mut(&id).and_then(|w| w.pending.take())
-}
-
-/// Scheduler snapshot (honest about process-lifetime scope).
-#[tauri::command]
-pub fn pr_monitor_status() -> PrMonitorStatus {
-    status()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -872,15 +851,6 @@ mod tests {
         let later = snapshot_from_gh_json(&sample_view("Live monitor", "OPEN", 1, "c2")).unwrap();
         assert!(advance_baseline(&mut baseline, &later).is_some());
         assert!(advance_baseline(&mut baseline, &later).is_none());
-    }
-
-    #[test]
-    fn status_reports_process_scope() {
-        let s = status();
-        assert_eq!(s.tick_interval_secs, TICK.as_secs());
-        assert!(!s.window_required);
-        assert!(s.process_required);
-        assert!(s.honesty.contains("not persisted"));
     }
 
     /// Live `gh` round trip through the shipped poll path: argv, runner, parse

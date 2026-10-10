@@ -305,7 +305,6 @@ pub fn app_invoke_handler(
         pr_monitor::pr_monitor_list,
         pr_monitor::pr_monitor_poll_now,
         pr_monitor::pr_monitor_consume_pending,
-        pr_monitor::pr_monitor_status,
         cli_worktrees::cli_worktrees_list,
         cli_worktrees::cli_worktree_db_path,
         cli_worktrees::cli_worktree_db_stats,
