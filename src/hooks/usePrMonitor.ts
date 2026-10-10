@@ -227,8 +227,9 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
     }
 
     const updates = diffPrSnapshots(event.prev, event.next);
-    // Keep the chip honest when the event belongs to what is on screen.
-    if (sameProjectPath(event.projectPath, currentProject ?? "")) {
+    // Chip / menu state only mirrors what is on screen right now.
+    const onScreen = sameProjectPath(event.projectPath, currentProject ?? "");
+    if (onScreen) {
       setPr((current) =>
         current && current.number === event.prNumber
           ? {
@@ -250,7 +251,7 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
     }
 
     seenRef.current = rememberWakeKey(seenRef.current, key);
-    setLastUpdates(updates);
+    if (onScreen) setLastUpdates(updates);
     if (optsRef.current.sessionBusy) {
       // Feedback that the follow-up is queued, not lost.
       optsRef.current.notify?.(
