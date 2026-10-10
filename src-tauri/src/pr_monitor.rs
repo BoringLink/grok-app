@@ -883,9 +883,9 @@ mod tests {
         assert!(s.honesty.contains("not persisted"));
     }
 
-    /// Live `gh` round trip through the shipped poll path (argv + runner + parse
-    /// + fingerprint). Needs network and an authenticated `gh`, so it is ignored
-    /// by default and CI stays hermetic:
+    /// Live `gh` round trip through the shipped poll path: argv, runner, parse
+    /// and fingerprint. It needs network plus an authenticated `gh`, so it stays
+    /// ignored unless asked for and CI remains hermetic:
     ///
     /// `PR_MONITOR_LIVE_PR=1316 cargo test live_gh_round_trip -- --ignored --nocapture`
     #[test]
