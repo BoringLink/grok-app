@@ -853,6 +853,65 @@ mod tests {
         assert!(advance_baseline(&mut baseline, &later).is_none());
     }
 
+    /// Live registry round trip over the shipped commands on a real repo with
+    /// an authenticated `gh`: mount → list → drain → unmount.
+    ///
+    /// `PR_MONITOR_LIVE_PR=1316 cargo test live_watch_round_trip -- --ignored --nocapture`
+    #[test]
+    #[ignore = "live gh: needs a real repo and authenticated gh"]
+    fn live_watch_round_trip() {
+        let Ok(number) =
+            std::env::var("PR_MONITOR_LIVE_PR").map(|v| v.trim().parse::<u64>().unwrap_or(0))
+        else {
+            eprintln!("skipped: set PR_MONITOR_LIVE_PR=<number>");
+            return;
+        };
+        if number == 0 {
+            eprintln!("skipped: set PR_MONITOR_LIVE_PR=<number>");
+            return;
+        }
+        let project = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repo root")
+            .to_string_lossy()
+            .to_string();
+        let branch = "pr-monitor-live-test".to_string();
+
+        tauri::async_runtime::block_on(async {
+            let mounted = pr_monitor_watch(
+                project.clone(),
+                branch.clone(),
+                number,
+                Some("live-session".into()),
+                Some(5),
+            )
+            .await;
+            assert!(mounted.ok, "mount failed: {:?}", mounted.error);
+            let info = mounted.watcher.expect("watcher info");
+            assert_eq!(info.pr_number, number);
+            // Interval is clamped even when the caller asks for something silly.
+            assert_eq!(info.interval_secs, MIN_INTERVAL_SECS);
+
+            let rows = pr_monitor_list().await;
+            let mine = rows
+                .iter()
+                .find(|w| w.branch == branch)
+                .expect("mounted watcher is listed");
+            assert_eq!(mine.session_id.as_deref(), Some("live-session"));
+            assert_eq!(mine.polls, 0);
+
+            // Nothing has been delivered yet, so there is nothing to drain.
+            assert!(pr_monitor_consume_pending(project.clone(), branch.clone())
+                .await
+                .is_none());
+
+            let removed = pr_monitor_unwatch(project.clone(), branch.clone()).await;
+            assert!(removed.removed);
+            assert!(pr_monitor_list().await.iter().all(|w| w.branch != branch));
+            println!("LIVE watch round trip ok (PR #{number})");
+        });
+    }
+
     /// Live `gh` round trip through the shipped poll path: argv, runner, parse
     /// and fingerprint. It needs network plus an authenticated `gh`, so it stays
     /// ignored unless asked for and CI remains hermetic:
