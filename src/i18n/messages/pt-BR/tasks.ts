@@ -250,6 +250,6 @@ export const ptBRTasks = {
   "tasks.subagentFailed": "Falhou",
   "tasks.subagentCancelled": "Cancelado",
   "tasks.subagentFinished": "Finalizado",
-  "tasks.subagentMeta": "{turns} turnos · {tools} ferramentas · {context} · {duration}",
+  "tasks.subagentMeta": "{turns} turnos · {tools} ferramentas · {tokens} tokens · {duration}",
   "tasks.subagentOutput": "Saída",
 };

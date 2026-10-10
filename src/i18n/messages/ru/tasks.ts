@@ -250,6 +250,6 @@ export const ruTasks = {
   "tasks.subagentFailed": "Ошибка",
   "tasks.subagentCancelled": "Отменено",
   "tasks.subagentFinished": "Окончено",
-  "tasks.subagentMeta": "{turns} ходов · {tools} инструментов · {context} · {duration}",
+  "tasks.subagentMeta": "{turns} ходов · {tools} инструментов · {tokens} токенов · {duration}",
   "tasks.subagentOutput": "Результат",
 };

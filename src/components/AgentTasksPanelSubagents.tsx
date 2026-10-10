@@ -8,9 +8,10 @@
 
 import { useState } from "react";
 import type { Locale, MessageKey } from "@/i18n";
-import { formatTokenCount } from "@/lib/contextUsage";
 import {
+  formatSubagentCount,
   formatSubagentDuration,
+  formatSubagentTokens,
   subagentContextOccupancy,
   subagentDisplayLabel,
   subagentDisplayStatus,
@@ -36,24 +37,6 @@ function subagentStatusLabelKey(status: SubagentDisplayStatus): MessageKey {
   }
 }
 
-/** Counts render as-is; a genuinely absent counter stays an honest unknown. */
-function formatSubagentCount(n: number | undefined): string {
-  return n === undefined ? "—" : String(n);
-}
-
-/**
- * Context term for the meta line: `used / window (pct)`. Falls back to `—` when
- * the CLI reported only one side of the ratio, rather than showing a percentage
- * derived from a missing window.
- */
-function formatSubagentContext(run: SubagentRun, locale: Locale): string {
-  const occupancy = subagentContextOccupancy(run);
-  if (!occupancy) return "—";
-  const used = formatTokenCount(occupancy.used, locale);
-  const window = formatTokenCount(occupancy.window, locale);
-  return `${used} / ${window} (${occupancy.percent}%)`;
-}
-
 /**
  * One subagent telemetry row. Shows description / type / status and the
  * progress counters the CLI reported; a finished run with output expands to
@@ -74,6 +57,7 @@ function SubagentRow({
   const hasOutput = run.finished && !!run.output;
   const hasMeta =
     subagentContextOccupancy(run) !== null ||
+    run.tokensUsed !== undefined ||
     run.turnCount !== undefined ||
     run.toolCallCount !== undefined ||
     run.durationMs !== undefined;
@@ -137,7 +121,7 @@ function SubagentRow({
           {t("tasks.subagentMeta", {
             turns: formatSubagentCount(run.turnCount),
             tools: formatSubagentCount(run.toolCallCount),
-            context: formatSubagentContext(run, locale),
+            tokens: formatSubagentTokens(run, locale),
             duration: formatSubagentDuration(run.durationMs),
           })}
         </p>

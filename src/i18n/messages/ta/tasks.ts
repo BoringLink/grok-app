@@ -250,6 +250,6 @@ export const taTasks = {
   "tasks.subagentFailed": "தோல்வி",
   "tasks.subagentCancelled": "ரத்து செய்யப்பட்டது",
   "tasks.subagentFinished": "நிறைவடைந்தது",
-  "tasks.subagentMeta": "{turns} சுற்றுகள் · {tools} கருவிகள் · {context} · {duration}",
+  "tasks.subagentMeta": "{turns} சுற்றுகள் · {tools} கருவிகள் · {tokens} டோக்கன்கள் · {duration}",
   "tasks.subagentOutput": "வெளியீடு",
 };

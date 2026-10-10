@@ -250,6 +250,6 @@ export const ukTasks = {
   "tasks.subagentFailed": "Помилка",
   "tasks.subagentCancelled": "Скасовано",
   "tasks.subagentFinished": "Закінчено",
-  "tasks.subagentMeta": "{turns} кроків · {tools} інструментів · {context} · {duration}",
+  "tasks.subagentMeta": "{turns} кроків · {tools} інструментів · {tokens} токенів · {duration}",
   "tasks.subagentOutput": "Результат",
 };

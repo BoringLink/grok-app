@@ -250,6 +250,6 @@ export const koTasks = {
   "tasks.subagentFailed": "실패",
   "tasks.subagentCancelled": "취소됨",
   "tasks.subagentFinished": "종료됨",
-  "tasks.subagentMeta": "{turns}턴 · {tools}개 도구 · {context} · {duration}",
+  "tasks.subagentMeta": "{turns}턴 · {tools}개 도구 · {tokens} 토큰 · {duration}",
   "tasks.subagentOutput": "출력",
 };

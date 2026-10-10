@@ -250,6 +250,6 @@ export const filTasks = {
   "tasks.subagentFailed": "Nabigo",
   "tasks.subagentCancelled": "Kinansela",
   "tasks.subagentFinished": "Natapos",
-  "tasks.subagentMeta": "{turns} turn · {tools} tool · {context} · {duration}",
+  "tasks.subagentMeta": "{turns} turn · {tools} tool · {tokens} token · {duration}",
   "tasks.subagentOutput": "Output",
 };

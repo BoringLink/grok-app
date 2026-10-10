@@ -16,7 +16,10 @@
  * the payload, the merge and the type.
  */
 
-import { contextPercentCliStyle } from "@/lib/contextUsage";
+import {
+  contextPercentCliStyle,
+  formatTokenCount,
+} from "@/lib/contextUsage";
 
 /** Which lifecycle update a payload carries. */
 export type SubagentPhase = "spawned" | "progress" | "finished";
@@ -213,4 +216,27 @@ export function subagentContextOccupancy(
   const percent = contextPercentCliStyle(used, window);
   if (percent === null) return null;
   return { used, window, percent };
+}
+
+/** Counts render as-is; a genuinely absent counter stays an honest unknown. */
+export function formatSubagentCount(n: number | undefined): string {
+  return n === undefined ? "—" : String(n);
+}
+
+/**
+ * Token term for the meta line. With a reported window this is the occupancy
+ * `used / window (pct)`; without one it falls back to the token count the CLI
+ * did report, so a run it never gave a denominator for (a subagent that died
+ * before its first turn sends no progress frame) still shows what it spent
+ * rather than a dash. Unknown on both counts stays `—`.
+ */
+export function formatSubagentTokens(
+  run: SubagentRun,
+  locale: string,
+): string {
+  const occupancy = subagentContextOccupancy(run);
+  if (!occupancy) return formatSubagentCount(run.tokensUsed);
+  const used = formatTokenCount(occupancy.used, locale);
+  const window = formatTokenCount(occupancy.window, locale);
+  return `${used} / ${window} (${occupancy.percent}%)`;
 }

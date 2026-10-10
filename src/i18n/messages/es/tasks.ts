@@ -250,6 +250,6 @@ export const esTasks = {
   "tasks.subagentFailed": "Fallido",
   "tasks.subagentCancelled": "Cancelado",
   "tasks.subagentFinished": "Finalizado",
-  "tasks.subagentMeta": "{turns} turnos · {tools} herramientas · {context} · {duration}",
+  "tasks.subagentMeta": "{turns} turnos · {tools} herramientas · {tokens} tokens · {duration}",
   "tasks.subagentOutput": "Resultado",
 };

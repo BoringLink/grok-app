@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   applySubagentEvent,
+  formatSubagentCount,
   formatSubagentDuration,
+  formatSubagentTokens,
   subagentContextOccupancy,
   subagentDisplayLabel,
   subagentDisplayStatus,
@@ -270,6 +272,42 @@ describe("subagentContextOccupancy", () => {
         run({ tokensUsed: 2000000, contextWindowTokens: 1000000 }),
       )?.percent,
     ).toBe(100);
+  });
+});
+
+describe("formatSubagentCount", () => {
+  it("renders a count as-is and an absent one as unknown", () => {
+    expect(formatSubagentCount(0)).toBe("0");
+    expect(formatSubagentCount(3)).toBe("3");
+    expect(formatSubagentCount(undefined)).toBe("—");
+  });
+});
+
+describe("formatSubagentTokens", () => {
+  const run = (payload: SubagentEventPayload): SubagentRun =>
+    applySubagentEvent([], {
+      phase: "progress",
+      subagentId: "a1",
+      ...payload,
+    })[0]!;
+
+  it("shows the occupancy ratio when the CLI reported a window", () => {
+    expect(
+      formatSubagentTokens(
+        run({ tokensUsed: 24863, contextWindowTokens: 1000000 }),
+        "en",
+      ),
+    ).toBe("24.9K / 1M (2%)");
+  });
+
+  it("falls back to the reported token count when there is no window", () => {
+    // A subagent that died before its first turn sends no progress frame, so
+    // there is no denominator — the count it did report must still show.
+    expect(formatSubagentTokens(run({ tokensUsed: 24863 }), "en")).toBe("24863");
+  });
+
+  it("stays unknown when the CLI reported neither side", () => {
+    expect(formatSubagentTokens(run({}), "en")).toBe("—");
   });
 });
 

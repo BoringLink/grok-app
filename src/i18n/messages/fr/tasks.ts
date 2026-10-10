@@ -250,6 +250,6 @@ export const frTasks = {
   "tasks.subagentFailed": "Échec",
   "tasks.subagentCancelled": "Annulé",
   "tasks.subagentFinished": "Achevé",
-  "tasks.subagentMeta": "{turns} tours · {tools} outils · {context} · {duration}",
+  "tasks.subagentMeta": "{turns} tours · {tools} outils · {tokens} tokens · {duration}",
   "tasks.subagentOutput": "Résultat",
 };

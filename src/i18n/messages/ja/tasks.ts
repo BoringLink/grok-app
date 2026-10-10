@@ -250,6 +250,6 @@ export const jaTasks = {
   "tasks.subagentFailed": "失敗",
   "tasks.subagentCancelled": "キャンセル",
   "tasks.subagentFinished": "終了",
-  "tasks.subagentMeta": "{turns} ターン · {tools} ツール · {context} · {duration}",
+  "tasks.subagentMeta": "{turns} ターン · {tools} ツール · {tokens} トークン · {duration}",
   "tasks.subagentOutput": "出力",
 };

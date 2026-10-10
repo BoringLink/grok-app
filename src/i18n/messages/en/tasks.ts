@@ -250,6 +250,6 @@ export const enTasks = {
   "tasks.subagentFailed": "Failed",
   "tasks.subagentCancelled": "Cancelled",
   "tasks.subagentFinished": "Finished",
-  "tasks.subagentMeta": "{turns} turns · {tools} tools · {context} · {duration}",
+  "tasks.subagentMeta": "{turns} turns · {tools} tools · {tokens} tokens · {duration}",
   "tasks.subagentOutput": "Output",
 } as const;

@@ -250,6 +250,6 @@ export const zhTWTasks = {
   "tasks.subagentFailed": "失敗",
   "tasks.subagentCancelled": "已取消",
   "tasks.subagentFinished": "已結束",
-  "tasks.subagentMeta": "{turns} 輪 · {tools} 次工具 · {context} · {duration}",
+  "tasks.subagentMeta": "{turns} 輪 · {tools} 次工具 · {tokens} tokens · {duration}",
   "tasks.subagentOutput": "輸出",
 };
