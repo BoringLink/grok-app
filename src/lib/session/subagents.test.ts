@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   applySubagentEvent,
   formatSubagentDuration,
+  subagentContextOccupancy,
   subagentDisplayLabel,
   subagentDisplayStatus,
+  type SubagentEventPayload,
   type SubagentRun,
 } from "./subagents";
 
@@ -16,7 +18,6 @@ describe("applySubagentEvent", () => {
       subagentId: "a1",
       subagentType: "general-purpose",
       description: "count files",
-      model: "claude-sonnet-5",
     };
     const progress = {
       sessionId: "s1",
@@ -26,8 +27,7 @@ describe("applySubagentEvent", () => {
       turnCount: 1,
       toolCallCount: 1,
       tokensUsed: 24863,
-      toolsUsed: ["run_terminal_command"],
-      errorCount: 0,
+      contextWindowTokens: 1000000,
     };
     const finished = {
       sessionId: "s1",
@@ -52,14 +52,15 @@ describe("applySubagentEvent", () => {
     expect(run.subagentType).toBe("general-purpose");
     expect(run.turnCount).toBe(1);
     expect(run.toolCallCount).toBe(1);
-    expect(run.toolsUsed).toEqual(["run_terminal_command"]);
     expect(run.durationMs).toBe(9336);
     expect(run.tokensUsed).toBe(25178);
-    expect(run.phase).toBe("finished");
     expect(run.finished).toBe(true);
     expect(run.status).toBe("completed");
     expect(run.output).toBe("3 files.");
     expect(subagentDisplayStatus(run)).toBe("completed");
+    // The progress frame's denominator survives the finished frame, which
+    // reports `tokens_used` without a window.
+    expect(subagentContextOccupancy(run)?.window).toBe(1000000);
   });
 
   it("keeps spawn order and isolates distinct subagents", () => {
@@ -102,7 +103,7 @@ describe("applySubagentEvent", () => {
       ...seeded[0]!,
       turnCount: 2,
       tokensUsed: 100,
-      toolsUsed: ["read_file"],
+      contextWindowTokens: 200000,
     };
 
     // Act — progress carries only a duration; other counters are absent.
@@ -111,14 +112,13 @@ describe("applySubagentEvent", () => {
       phase: "progress",
       subagentId: "a1",
       durationMs: 500,
-      toolsUsed: [],
     });
 
     // Assert
     const run = next[0]!;
     expect(run.turnCount).toBe(2);
     expect(run.tokensUsed).toBe(100);
-    expect(run.toolsUsed).toEqual(["read_file"]);
+    expect(run.contextWindowTokens).toBe(200000);
     expect(run.durationMs).toBe(500);
     expect(run.description).toBe("seeded");
   });
@@ -181,7 +181,6 @@ describe("applySubagentEvent", () => {
     });
 
     // Assert
-    expect(stale[0]!.phase).toBe("finished");
     expect(stale[0]!.finished).toBe(true);
     // A stale progress push must not reopen the terminal row.
     expect(subagentDisplayStatus(stale[0]!)).toBe("completed");
@@ -236,6 +235,41 @@ describe("subagentDisplayLabel", () => {
     expect(
       subagentDisplayLabel({ ...base, subagentType: "general", description: "d" }),
     ).toBe("d");
+  });
+});
+
+describe("subagentContextOccupancy", () => {
+  const run = (payload: SubagentEventPayload): SubagentRun =>
+    applySubagentEvent([], {
+      phase: "progress",
+      subagentId: "a1",
+      ...payload,
+    })[0]!;
+
+  it("derives the CLI-style percentage from the reported counters", () => {
+    // Arrange / Act
+    const occupancy = subagentContextOccupancy(
+      run({ tokensUsed: 24863, contextWindowTokens: 1000000 }),
+    );
+
+    // Assert — matches the CLI's own `context_usage_pct` for this frame.
+    expect(occupancy).toEqual({ used: 24863, window: 1000000, percent: 2 });
+  });
+
+  it("stays unknown when the CLI reported only one side of the ratio", () => {
+    expect(subagentContextOccupancy(run({ tokensUsed: 24863 }))).toBeNull();
+    expect(
+      subagentContextOccupancy(run({ contextWindowTokens: 1000000 })),
+    ).toBeNull();
+    expect(subagentContextOccupancy(run({}))).toBeNull();
+  });
+
+  it("caps at 100 percent instead of reporting over-full context", () => {
+    expect(
+      subagentContextOccupancy(
+        run({ tokensUsed: 2000000, contextWindowTokens: 1000000 }),
+      )?.percent,
+    ).toBe(100);
   });
 });
 

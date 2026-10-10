@@ -203,31 +203,27 @@ impl SubagentPhase {
 /// One subagent run as reported by the CLI. Every field beyond `subagent_id`
 /// is optional: the CLI omits what it does not know, and the UI must show an
 /// honest empty state rather than a fabricated value.
+///
+/// Only what the Tasks panel renders is carried. The CLI also sends
+/// `parent_session_id`, `model`, `tools_used`, `error_count`, `will_wake` and
+/// friends; the golden fixture keeps pinning that wire shape, but decoding a
+/// field nothing reads just widens the payload and the type for no one.
 #[derive(Debug, Clone)]
 pub struct SubagentUpdate {
     pub phase: SubagentPhase,
     pub subagent_id: String,
-    pub parent_session_id: Option<String>,
-    pub child_session_id: Option<String>,
-    pub parent_prompt_id: Option<String>,
-    pub attempt_id: Option<String>,
     pub subagent_type: Option<String>,
     pub description: Option<String>,
-    pub model: Option<String>,
     /// Terminal status on `subagent_finished` (`completed` / `failed` / …).
     pub status: Option<String>,
     pub duration_ms: Option<u64>,
     pub turn_count: Option<u64>,
     pub tool_call_count: Option<u64>,
     pub tokens_used: Option<u64>,
+    /// Denominator for the row's occupancy percentage.
     pub context_window_tokens: Option<u64>,
-    pub context_usage_pct: Option<f64>,
-    pub tools_used: Vec<String>,
-    pub error_count: Option<u64>,
     /// Final subagent answer (only on `subagent_finished`).
     pub output: Option<String>,
-    /// True when the finished subagent can still be resumed / woken.
-    pub will_wake: Option<bool>,
 }
 
 /// Host circuit-breaker: after this many provider retries, cancel the turn.
@@ -4084,13 +4080,8 @@ pub fn parse_subagent_update(kind: &str, update: &Value) -> Option<AcpEvent> {
     Some(AcpEvent::Subagent(SubagentUpdate {
         phase,
         subagent_id,
-        parent_session_id: str_field(&["parent_session_id", "parentSessionId"]),
-        child_session_id: str_field(&["child_session_id", "childSessionId"]),
-        parent_prompt_id: str_field(&["parent_prompt_id", "parentPromptId"]),
-        attempt_id: str_field(&["attempt_id", "attemptId"]),
         subagent_type: str_field(&["subagent_type", "subagentType"]),
         description: str_field(&["description", "summary"]),
-        model: str_field(&["model", "model_id", "modelId"]),
         status: str_field(&["status"]),
         duration_ms: num_field(&["duration_ms", "durationMs"]),
         // `subagent_finished` reports the counters as `turns` / `tool_calls`;
@@ -4100,27 +4091,7 @@ pub fn parse_subagent_update(kind: &str, update: &Value) -> Option<AcpEvent> {
         tool_call_count: num_field(&["tool_call_count", "toolCallCount", "tool_calls"]),
         tokens_used: num_field(&["tokens_used", "tokensUsed"]),
         context_window_tokens: num_field(&["context_window_tokens", "contextWindowTokens"]),
-        context_usage_pct: update
-            .get("context_usage_pct")
-            .or_else(|| update.get("contextUsagePct"))
-            .and_then(|v| v.as_f64()),
-        tools_used: update
-            .get("tools_used")
-            .or_else(|| update.get("toolsUsed"))
-            .and_then(|v| v.as_array())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str())
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default(),
-        error_count: num_field(&["error_count", "errorCount"]),
         output: str_field(&["output", "result"]),
-        will_wake: update
-            .get("will_wake")
-            .or_else(|| update.get("willWake"))
-            .and_then(|v| v.as_bool()),
     }))
 }
 
@@ -4132,24 +4103,15 @@ impl SubagentUpdate {
             "sessionId": app_session_id,
             "phase": self.phase.as_str(),
             "subagentId": self.subagent_id,
-            "parentSessionId": self.parent_session_id,
-            "childSessionId": self.child_session_id,
-            "parentPromptId": self.parent_prompt_id,
-            "attemptId": self.attempt_id,
             "subagentType": self.subagent_type,
             "description": self.description,
-            "model": self.model,
             "status": self.status,
             "durationMs": self.duration_ms,
             "turnCount": self.turn_count,
             "toolCallCount": self.tool_call_count,
             "tokensUsed": self.tokens_used,
             "contextWindowTokens": self.context_window_tokens,
-            "contextUsagePct": self.context_usage_pct,
-            "toolsUsed": self.tools_used,
-            "errorCount": self.error_count,
             "output": self.output,
-            "willWake": self.will_wake,
         })
     }
 }

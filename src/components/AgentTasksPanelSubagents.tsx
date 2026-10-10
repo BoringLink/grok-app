@@ -7,9 +7,11 @@
  */
 
 import { useState } from "react";
-import type { MessageKey } from "@/i18n";
+import type { Locale, MessageKey } from "@/i18n";
+import { formatTokenCount } from "@/lib/contextUsage";
 import {
   formatSubagentDuration,
+  subagentContextOccupancy,
   subagentDisplayLabel,
   subagentDisplayStatus,
   type SubagentDisplayStatus,
@@ -40,19 +42,40 @@ function formatSubagentCount(n: number | undefined): string {
 }
 
 /**
+ * Context term for the meta line: `used / window (pct)`. Falls back to `—` when
+ * the CLI reported only one side of the ratio, rather than showing a percentage
+ * derived from a missing window.
+ */
+function formatSubagentContext(run: SubagentRun, locale: Locale): string {
+  const occupancy = subagentContextOccupancy(run);
+  if (!occupancy) return "—";
+  const used = formatTokenCount(occupancy.used, locale);
+  const window = formatTokenCount(occupancy.window, locale);
+  return `${used} / ${window} (${occupancy.percent}%)`;
+}
+
+/**
  * One subagent telemetry row. Shows description / type / status and the
  * progress counters the CLI reported; a finished run with output expands to
  * reveal it. Never draws a counter the payload did not carry.
  */
-function SubagentRow({ run, t }: { run: SubagentRun; t: TFn }) {
+function SubagentRow({
+  run,
+  t,
+  locale,
+}: {
+  run: SubagentRun;
+  t: TFn;
+  locale: Locale;
+}) {
   const [open, setOpen] = useState(false);
   const status = subagentDisplayStatus(run);
   const label = subagentDisplayLabel(run);
   const hasOutput = run.finished && !!run.output;
   const hasMeta =
+    subagentContextOccupancy(run) !== null ||
     run.turnCount !== undefined ||
     run.toolCallCount !== undefined ||
-    run.tokensUsed !== undefined ||
     run.durationMs !== undefined;
 
   return (
@@ -114,7 +137,7 @@ function SubagentRow({ run, t }: { run: SubagentRun; t: TFn }) {
           {t("tasks.subagentMeta", {
             turns: formatSubagentCount(run.turnCount),
             tools: formatSubagentCount(run.toolCallCount),
-            tokens: formatSubagentCount(run.tokensUsed),
+            context: formatSubagentContext(run, locale),
             duration: formatSubagentDuration(run.durationMs),
           })}
         </p>
@@ -137,9 +160,11 @@ function SubagentRow({ run, t }: { run: SubagentRun; t: TFn }) {
 export function SubagentSection({
   runs,
   t,
+  locale,
 }: {
   runs: readonly SubagentRun[];
   t: TFn;
+  locale: Locale;
 }) {
   if (runs.length === 0) return null;
   return (
@@ -149,7 +174,7 @@ export function SubagentSection({
       </h3>
       <ul className="agent-tasks__list">
         {runs.map((run) => (
-          <SubagentRow key={run.subagentId} run={run} t={t} />
+          <SubagentRow key={run.subagentId} run={run} t={t} locale={locale} />
         ))}
       </ul>
     </div>

@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useMemo, useState, type MouseEvent } from "react";
-import type { MessageKey } from "@/i18n";
+import type { Locale, MessageKey } from "@/i18n";
 import type { ChatMessage } from "@/lib/session";
 import * as api from "@/lib/api";
 import { pathsEqual } from "@/lib/gitWorktree";
@@ -76,6 +76,8 @@ export type AgentTasksPanelVariant = "default" | "rail";
 export type AgentTasksPanelProps = {
   messages: ChatMessage[];
   t: TFn;
+  /** Number formatting locale (compact token counts in the subagent rows). */
+  locale: Locale;
   onClose?: () => void;
   /** Bump to force re-derive (optional; messages already drive updates). */
   refreshKey?: number;
@@ -602,6 +604,7 @@ export function AgentTasksPanel({
   subagentWorktreeSnapshotEnabled = false,
   variant = "default",
   sessionBusy = false,
+  locale,
 }: AgentTasksPanelProps) {
   const isRail = variant === "rail";
   const [query, setQuery] = useState("");
@@ -845,7 +848,7 @@ export function AgentTasksPanel({
         </div>
       ) : (
         <div className="agent-tasks__body">
-          <SubagentSection runs={subagentRuns} t={t} />
+          <SubagentSection runs={subagentRuns} t={t} locale={locale} />
           {otherSessions.length > 0 ? (
             <div className="agent-tasks__section">
               <h3 className="agent-tasks__section-title">

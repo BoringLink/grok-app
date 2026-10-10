@@ -540,12 +540,11 @@ fn subagent_payload_matches_fixture_expectations() {
         .collect();
 
     let spawned = &payloads[0];
-    for key in ["phase", "subagentId", "parentSessionId", "parentPromptId"] {
+    for key in ["phase", "subagentId"] {
         assert_eq!(spawned[key], expected["spawned"][key], "spawned.{key}");
     }
     assert_eq!(spawned["subagentType"], expected["spawned"]["subagentType"]);
     assert_eq!(spawned["description"], expected["spawned"]["description"]);
-    assert_eq!(spawned["model"], expected["spawned"]["model"]);
     assert!(spawned["output"].is_null(), "spawned has no output yet");
     assert!(
         spawned["status"].is_null(),
@@ -560,9 +559,6 @@ fn subagent_payload_matches_fixture_expectations() {
         "toolCallCount",
         "tokensUsed",
         "contextWindowTokens",
-        "contextUsagePct",
-        "toolsUsed",
-        "errorCount",
     ] {
         assert_eq!(progress[key], expected["progress"][key], "progress.{key}");
     }
@@ -580,7 +576,6 @@ fn subagent_payload_matches_fixture_expectations() {
         "toolCallCount",
         "tokensUsed",
         "output",
-        "willWake",
     ] {
         assert_eq!(finished[key], expected["finished"][key], "finished.{key}");
     }

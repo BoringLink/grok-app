@@ -250,6 +250,6 @@ export const deTasks = {
   "tasks.subagentFailed": "Fehlgeschlagen",
   "tasks.subagentCancelled": "Abgebrochen",
   "tasks.subagentFinished": "Beendet",
-  "tasks.subagentMeta": "{turns} Runden · {tools} Tools · {tokens} Tokens · {duration}",
+  "tasks.subagentMeta": "{turns} Runden · {tools} Tools · {context} · {duration}",
   "tasks.subagentOutput": "Ausgabe",
 };

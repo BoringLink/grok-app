@@ -250,6 +250,6 @@ export const idTasks = {
   "tasks.subagentFailed": "Gagal",
   "tasks.subagentCancelled": "Dibatalkan",
   "tasks.subagentFinished": "Berakhir",
-  "tasks.subagentMeta": "{turns} giliran · {tools} alat · {tokens} token · {duration}",
+  "tasks.subagentMeta": "{turns} giliran · {tools} alat · {context} · {duration}",
   "tasks.subagentOutput": "Keluaran",
 };
