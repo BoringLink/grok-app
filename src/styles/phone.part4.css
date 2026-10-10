@@ -1,4 +1,4 @@
-/* domain CSS chunk (move-only split; selectors unchanged) */
+/* domain CSS chunk (split out of the main sheet; rules appended since) */
 
 .agent-tasks__dot--completed {
   background: var(--ok, #3daa6d);

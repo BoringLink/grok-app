@@ -3,7 +3,7 @@
  *
  * Selection only — the `session://subagent` subscription itself lives app-level
  * in `useSessionHostEvents`, so runs that start before the panel opens are
- * still there when it does. Mirrors {@link ./usePendingModelSwitch}.
+ * still there when it does.
  */
 import { useSyncExternalStore } from "react";
 import { subagentStore } from "@/lib/subagentStore";
