@@ -49,7 +49,7 @@ Tracker: Linear（本环境不可达，见「Further Notes」）—— 工单见
   - 每个 watcher 到期时执行一次 `gh pr view <n> --json …`（单次调用同时覆盖 PR 字段与 comments/reviews，复用既有解析器）。
   - **去重靠指纹**：把 PR 快照归一化为一个稳定指纹字符串（序号 / 标题 / state / draft / mergeable / updatedAt / checks 计数 / 评论 id 集合）。指纹未变则不产生任何事件；变了才发事件。
   - 事件 `pr-monitor://update` 负载包含 `{watcherId, projectPath, branch, prNumber, url, title, prev, next, at}`——同时给出前后两个快照，让 TS 侧做权威的细粒度 diff。
-  - 命令：`pr_monitor_watch` / `pr_monitor_unwatch` / `pr_monitor_list` / `pr_monitor_status`。
+  - 命令：`pr_monitor_watch` / `pr_monitor_unwatch` / `pr_monitor_list` / `pr_monitor_poll_now` / `pr_monitor_consume_pending`（挂载种子、漏事件回收）；不提供 status 命令，`pr_monitor_list` 已给出每个 watch 的轮询/更新/错误状态。
   - Host **不做**语义 diff、**不**构造跟进文案（i18n 与复用既有 prompt builder 都在 TS 侧）。
 - TS 纯逻辑模块 `prMonitor`：
   - `bindPrToBranch(prs, branch)`：git 原生绑定——取 `headRefName` 等于当前分支的 PR（去掉 `refs/heads/` 前缀、大小写敏感、忽略已合并/关闭的候选、优先 open）。分支为空或 detached 时不绑定。
