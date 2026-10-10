@@ -17,13 +17,14 @@ import {
   diffPrSnapshots,
   formatChecksLine,
   formatPrChipLabel,
-  isSessionBusyForWake,
   isTerminalPrState,
   isWakeKeySeen,
   normalizeBranchRef,
   prWakeKey,
   rememberWakeKey,
   shouldAutoUnwatch,
+  shouldFlushPending,
+  shouldRetryWake,
   truncatePrTitle,
   type PrMonitorCommentBrief,
   type PrMonitorSnapshot,
@@ -413,12 +414,62 @@ describe("buildPrUpdatePrompt", () => {
     const prompt = buildPrUpdatePrompt({
       prNumber: 1316,
       title: after.title,
+      url: after.url,
       updates: diffPrSnapshots(before, after),
       tr,
     });
     expect(prompt).toContain("PR state: OPEN → MERGED");
     expect(prompt).not.toContain("## Comment");
     expect(prompt).not.toContain("## Failed checks");
+    // A wake with no comment / CI block still carries the PR URL.
+    expect(prompt).toContain(after.url);
+  });
+
+  it("keeps the composed turn multi-line (headings stay on their own lines)", () => {
+    const before = snapshot();
+    const after = snapshot({
+      updatedAt: "2026-10-10T09:30:00Z",
+      comments: [brief({ id: "c2", excerpt: "Please rebase on main." }), brief()],
+    });
+    const prompt = buildPrUpdatePrompt({
+      prNumber: 1316,
+      title: after.title,
+      url: after.url,
+      updates: diffPrSnapshots(before, after),
+      newestComment: {
+        author: "RongleCat",
+        body: "Please rebase on main.\n\nSecond paragraph.",
+        kind: "comment",
+      },
+      tr,
+    });
+    const lines = prompt.split("\n");
+    expect(lines[0]).toContain("[PR update] #1316");
+    expect(lines).toContain("## Comment");
+    expect(lines).toContain("### Body");
+    expect(lines).toContain("- Author: RongleCat");
+    expect(lines).toContain("Please rebase on main.");
+    expect(lines).toContain("Second paragraph.");
+    // The task instruction is its own section, not glued to the previous line.
+    expect(lines.some((l) => l.startsWith("Follow up on this PR update now"))).toBe(
+      true,
+    );
+    expect(prompt).toContain("\n\n");
+  });
+
+  it("omits the URL header suffix when the URL is unknown", () => {
+    const before = snapshot();
+    const after = snapshot({ mergeable: "CONFLICTING", updatedAt: "2026-10-10T12:00:00Z" });
+    const prompt = buildPrUpdatePrompt({
+      prNumber: 1316,
+      title: after.title,
+      url: "",
+      updates: diffPrSnapshots(before, after),
+      tr,
+    });
+    expect(prompt.split("\n")[0]).toBe(
+      "[PR update] #1316 feat(tasks): follow live subagent runs in the Tasks panel",
+    );
   });
 
   it("returns an empty string when there is nothing to follow up on", () => {
@@ -464,11 +515,16 @@ describe("buildPrUpdatePrompt", () => {
   });
 });
 
-describe("isSessionBusyForWake", () => {
-  it("treats a streaming or permission-pending session as busy", () => {
-    expect(isSessionBusyForWake("streaming")).toBe(true);
-    expect(isSessionBusyForWake("awaiting_permission")).toBe(true);
-    expect(isSessionBusyForWake("ready")).toBe(false);
-    expect(isSessionBusyForWake(null)).toBe(false);
+describe("wake delivery policy", () => {
+  it("flushes only when the session is idle and something is queued", () => {
+    expect(shouldFlushPending(true, 2)).toBe(false);
+    expect(shouldFlushPending(false, 0)).toBe(false);
+    expect(shouldFlushPending(false, 1)).toBe(true);
+  });
+
+  it("retries a failed wake once, then gives up", () => {
+    expect(shouldRetryWake(0)).toBe(true);
+    expect(shouldRetryWake(1)).toBe(false);
+    expect(shouldRetryWake(5)).toBe(false);
   });
 });

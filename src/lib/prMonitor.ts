@@ -168,15 +168,24 @@ export function bindPrToBranch(
 
 // ── Chip label ──────────────────────────────────────────────────────────────
 
-function clampText(raw: string | null | undefined, max: number): string {
+/** Single-line clamp: whitespace collapsed (titles, chip labels). */
+function clampSingleLine(raw: string | null | undefined, max: number): string {
+  return clampMultiline(String(raw ?? "").replace(/\s+/g, " "), max);
+}
+
+/**
+ * Multi-line clamp: keeps newlines so a composed prompt keeps its structure
+ * (the shipped PR builders rely on blank lines and `##` headings).
+ */
+function clampMultiline(raw: string | null | undefined, max: number): string {
   const s = String(raw ?? "")
-    .replace(/\s+/g, " ")
+    .replace(/\r\n/g, "\n")
     .trim();
   const limit = Math.max(1, Math.trunc(max));
   const chars = Array.from(s);
   if (chars.length <= limit) return s;
   if (limit === 1) return "…";
-  return chars.slice(0, limit - 1).join("").trimEnd() + "…";
+  return chars.slice(0, limit - 1).join("").replace(/\s+$/, "") + "…";
 }
 
 /** Whitespace-collapsed PR title, ellipsized past `max` code points. */
@@ -184,7 +193,7 @@ export function truncatePrTitle(
   title: string | null | undefined,
   max: number = PR_CHIP_TITLE_MAX,
 ): string {
-  return clampText(title, max);
+  return clampSingleLine(title, max);
 }
 
 /** `#1316 Fix the thing…` — empty when the PR number is unusable. */
@@ -338,10 +347,17 @@ export function shouldAutoUnwatch(
   return isTerminalPrState(next?.state);
 }
 
-/** True when the session cannot take another turn right now. */
-export function isSessionBusyForWake(state: string | null | undefined): boolean {
-  const s = String(state ?? "").trim();
-  return s === "streaming" || s === "awaiting_permission";
+/** True when a wake can be delivered right now. */
+export function shouldFlushPending(
+  sessionBusy: boolean,
+  pendingCount: number,
+): boolean {
+  return !sessionBusy && pendingCount > 0;
+}
+
+/** Retry a failed wake once — a reconnect may have been mid-flight. */
+export function shouldRetryWake(attempts: number): boolean {
+  return attempts < 1;
 }
 
 /**
@@ -427,7 +443,6 @@ export type PrWakePromptInput = {
   newestComment?: PrWakeComment | null;
   /** Failed check rows, when the caller could fetch them. */
   failedChecks?: readonly GitPrCheckEntry[] | null;
-  checksSummary?: PrChecksSummary | null;
   tr: TFn;
 };
 
@@ -445,14 +460,14 @@ export function buildPrUpdatePrompt(input: PrWakePromptInput): string {
   if (updates.length === 0) return "";
 
   const tr = input.tr;
-  const title = clampText(input.title, 200) || `#${n}`;
+  const title = clampSingleLine(input.title, 200) || `#${n}`;
   const url = String(input.url ?? "").trim();
 
-  const lines: string[] = [
-    tr("prMonitor.promptHeader", { number: n, title, url }),
-    "",
-    tr("prMonitor.promptUpdates"),
-  ];
+  // The URL only appears in the header when it is actually known.
+  const header = url
+    ? tr("prMonitor.promptHeaderUrl", { number: n, title, url })
+    : tr("prMonitor.promptHeader", { number: n, title });
+  const lines: string[] = [header, "", tr("prMonitor.promptUpdates")];
   for (const update of updates) {
     lines.push(`- ${describePrUpdate(update, tr)}`);
   }
@@ -495,7 +510,7 @@ export function buildPrUpdatePrompt(input: PrWakePromptInput): string {
   }
 
   lines.push("", tr("prMonitor.promptTask"));
-  return clampText(lines.join("\n"), PR_REVIEW_PROMPT_TOTAL_CAP);
+  return clampMultiline(lines.join("\n"), PR_REVIEW_PROMPT_TOTAL_CAP);
 }
 
 /** Cap on retained wake keys (dedup memory); oldest are dropped first. */

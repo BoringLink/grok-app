@@ -40,7 +40,8 @@ import { ComposerProjectMenu } from "@/components/ComposerProjectMenu";
 import { ComposerRemoteMenu } from "@/components/ComposerRemoteMenu";
 import { ComposerWorktreeMenu } from "@/components/ComposerWorktreeMenu";
 import { usePrMonitor } from "@/hooks/usePrMonitor";
-import { describePrUpdate, formatChecksLine, isSessionBusyForWake } from "@/lib/prMonitor";
+import { describePrUpdate, formatChecksLine } from "@/lib/prMonitor";
+import { isSessionBusy } from "@/lib/session";
 import { buildPrHubDeepLink } from "@/lib/prHubDeepLink";
 import { pathsEqual } from "@/lib/gitWorktree";
 import { AskUserBar } from "@/components/AskUserBar";
@@ -390,7 +391,7 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
     branch: activeBranch,
     sessionId: session.sessionId ?? null,
     locale,
-    sessionBusy: isSessionBusyForWake(session.state),
+    sessionBusy: isSessionBusy(session.state),
     notify: (message, tone) => showToast(message, tone === "error" ? 5000 : 3200),
   });
   const prChip = prMonitor.pr
@@ -843,12 +844,16 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                       prOpenHub: tr("prMonitor.openHub"),
                       prChipTip: tr("prMonitor.chipTip"),
                       prPendingWakes: tr("prMonitor.pendingWakes"),
+                      prWatchingLabel: tr("prMonitor.watching"),
+                      prLastUpdate: tr("prMonitor.lastUpdate"),
+                      prUnavailable: tr("prMonitor.unavailable"),
                     }}
                     pr={prChip}
                     prWatching={prMonitor.watching}
                     prBusy={prMonitor.busy}
                     prUpdates={prUpdateLines}
                     prPendingWakes={prMonitor.pendingCount}
+                    prWatchError={prMonitor.watchError}
                     onTogglePrWatch={prMonitor.toggleWatch}
                     onOpenPrHub={openPrHubForNumber}
                     onSwitch={(wt) => {

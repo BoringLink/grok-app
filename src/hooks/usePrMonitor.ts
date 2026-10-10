@@ -25,6 +25,8 @@ import {
   prWakeKey,
   rememberWakeKey,
   shouldAutoUnwatch,
+  shouldFlushPending,
+  shouldRetryWake,
   type PrMonitorUpdateEvent,
   type PrMonitorWatcherInfo,
   type PrUpdate,
@@ -66,6 +68,8 @@ export type UsePrMonitorResult = {
   lastUpdates: PrUpdate[] | null;
   /** Wakes waiting for an idle session. */
   pendingCount: number;
+  /** Last host poll failure for this watch, or `null` when healthy / no watch. */
+  watchError: string | null;
   /** Mount or unmount the watch for the bound PR. */
   toggleWatch: () => void;
 };
@@ -98,7 +102,7 @@ function sameWatch(
  * body and the failed-check rows come from the shipped PR commands — falling
  * back to the excerpt when a fetch does not work.
  */
-export async function buildWakePrompt(
+async function buildWakePrompt(
   item: QueuedWake,
   projectPath: string,
   tr: Tr,
@@ -159,7 +163,6 @@ export async function buildWakePrompt(
     updates,
     newestComment,
     failedChecks,
-    checksSummary: event.next.checks ?? null,
     tr,
   });
 }
@@ -198,42 +201,69 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
     await api.sessionSend(text, null, sid);
   }, []);
 
-  /** Fold a host update into UI state and queue a wake for a real change. */
+  /**
+   * Fold a host update into UI state and queue a wake for a real change.
+   *
+   * The event names the session the watch was mounted for; that session is the
+   * wake target, so switching chats or branches cannot re-route a follow-up.
+   */
   const handleUpdate = useCallback((event: PrMonitorUpdateEvent) => {
     const currentProject = projectRef.current;
-    const currentBranch = branchRef.current;
-    if (!event || !currentProject || !currentBranch) return;
-    if (!sameProjectPath(event.projectPath, currentProject)) return;
-    if (event.branch !== currentBranch) return;
+    if (!event) return;
+    // A mount is a per-session subscription: keep delivering while a project
+    // context exists, even if the user has since switched branch or chat.
+    if (!currentProject && !event.sessionId) return;
 
     const key = prWakeKey(event);
-    if (!key || isWakeKeySeen(seenRef.current, key)) return;
+    if (!key) return;
+    const consume = () => {
+      void api.prMonitorConsumePending(event.projectPath, event.branch);
+    };
+    if (isWakeKeySeen(seenRef.current, key)) {
+      // Already delivered in this UI instance: take it off the host so a later
+      // remount cannot deliver the same change twice.
+      consume();
+      return;
+    }
 
     const updates = diffPrSnapshots(event.prev, event.next);
-    // Keep the chip honest even when there is nothing worth waking for.
-    setPr((current) =>
-      current && current.number === event.prNumber
-        ? { ...current, title: event.next.title || current.title, state: event.next.state }
-        : current,
-    );
-    setWatcher((current) =>
-      current && current.prNumber === event.prNumber
-        ? { ...current, snapshot: event.next, lastUpdateAt: event.at }
-        : current,
-    );
+    // Keep the chip honest when the event belongs to what is on screen.
+    if (sameProjectPath(event.projectPath, currentProject ?? "")) {
+      setPr((current) =>
+        current && current.number === event.prNumber
+          ? {
+              ...current,
+              title: event.next.title || current.title,
+              state: event.next.state,
+            }
+          : current,
+      );
+      setWatcher((current) =>
+        current && current.prNumber === event.prNumber
+          ? { ...current, snapshot: event.next, lastUpdateAt: event.at }
+          : current,
+      );
+    }
     if (updates.length === 0) {
-      void api.prMonitorConsumePending(event.projectPath, event.branch);
+      consume();
       return;
     }
 
     seenRef.current = rememberWakeKey(seenRef.current, key);
     setLastUpdates(updates);
+    if (optsRef.current.sessionBusy) {
+      // Feedback that the follow-up is queued, not lost.
+      optsRef.current.notify?.(
+        tr("prMonitor.wakeQueuedToast", { number: event.prNumber }),
+        "info",
+      );
+    }
     setQueue((current) =>
       current.some((item) => item.key === key)
         ? current
         : [...current, { key, event, updates, attempts: 0 }],
     );
-  }, []);
+  }, [tr]);
 
   const handleUpdateRef = useRef(handleUpdate);
   handleUpdateRef.current = handleUpdate;
@@ -285,8 +315,10 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
   }, [enabled, projectPath, branch]);
 
   // ── Subscribe to host updates while a mount is possible ───────────────────
+  // Gated on the project only: `enabled` also needs a branch and a ready `gh`,
+  // but a watch mounted earlier must keep delivering through either.
   useEffect(() => {
-    if (!enabled || !projectPath || !branch) return;
+    if (!projectPath) return;
     let cancelled = false;
     let unlisten: (() => void) | null = null;
     void (async () => {
@@ -300,54 +332,69 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
       cancelled = true;
       unlisten?.();
     };
-  }, [enabled, projectPath, branch]);
+  }, [projectPath]);
 
   // ── Deliver queued wakes once the session can take a turn ─────────────────
   useEffect(() => {
-    if (queue.length === 0 || sessionBusy || flushingRef.current) return;
+    if (!shouldFlushPending(sessionBusy, queue.length) || flushingRef.current) {
+      return;
+    }
     const item = queue[0];
     const currentProject = projectRef.current;
-    const currentBranch = branchRef.current;
-    if (!currentProject || !currentBranch) return;
+    if (!currentProject && !item.event.sessionId) return;
+    const targetProject = item.event.projectPath || currentProject || "";
 
     flushingRef.current = true;
     void (async () => {
       try {
-        const prompt = await buildWakePrompt(item, currentProject, tr);
+        const prompt = await buildWakePrompt(item, targetProject, tr);
         if (!prompt) {
+          // Nothing actionable: drop it and release the host's copy.
           setQueue((current) => current.filter((q) => q.key !== item.key));
+          void api.prMonitorConsumePending(item.event.projectPath, item.event.branch);
           return;
         }
-        await sendTurn(prompt, sessionRef.current);
+        // The watch knows which chat it was mounted for; fall back to the
+        // chat that is on screen when the mount did not name one.
+        const targetSession = item.event.sessionId ?? sessionRef.current;
+        await sendTurn(prompt, targetSession);
         optsRef.current.notify?.(
           tr("prMonitor.wokeToast", { number: item.event.prNumber }),
           "info",
         );
         setQueue((current) => current.filter((q) => q.key !== item.key));
+        // Delivered: drop the host's copy so a UI remount cannot re-deliver it.
+        void api.prMonitorConsumePending(item.event.projectPath, item.event.branch);
         // A merged/closed PR is done: stop the host polling it forever.
-        if (shouldAutoUnwatch(item.event.next)) {
-          await api.prMonitorUnwatch(currentProject, currentBranch);
-          setWatcher(null);
-          setPr(null);
+        if (
+          shouldAutoUnwatch(item.event.next) &&
+          item.event.projectPath &&
+          item.event.branch
+        ) {
+          await api.prMonitorUnwatch(item.event.projectPath, item.event.branch);
+          if (sameProjectPath(item.event.projectPath, currentProject ?? "")) {
+            setWatcher(null);
+            setPr(null);
+          }
           optsRef.current.notify?.(
             tr("prMonitor.terminal", { state: item.event.next.state }),
             "info",
           );
         }
       } catch (e) {
-        if (item.attempts >= 1) {
-          optsRef.current.notify?.(
-            tr("prMonitor.wakeFailed", { reason: String(e) }),
-            "error",
-          );
-          setQueue((current) => current.filter((q) => q.key !== item.key));
-        } else {
+        if (shouldRetryWake(item.attempts)) {
           // One retry: the transport may have been mid-reconnect.
           setQueue((current) =>
             current.map((q) =>
               q.key === item.key ? { ...q, attempts: q.attempts + 1 } : q,
             ),
           );
+        } else {
+          optsRef.current.notify?.(
+            tr("prMonitor.wakeFailed", { reason: String(e) }),
+            "error",
+          );
+          setQueue((current) => current.filter((q) => q.key !== item.key));
         }
       } finally {
         flushingRef.current = false;
@@ -404,6 +451,8 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
     busy,
     lastUpdates,
     pendingCount: queue.length,
+    /** Last host poll failure for this watch ("" when healthy). */
+    watchError: watcher?.lastError ?? null,
     toggleWatch,
   };
 }

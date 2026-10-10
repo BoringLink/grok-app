@@ -99,6 +99,12 @@ export type ComposerWorktreeMenuLabels = {
   prChipTip?: string;
   /** Follow-ups waiting for an idle session. */
   prPendingWakes?: string;
+  /** Short "watching" tag in the PR section head. */
+  prWatchingLabel?: string;
+  /** `Last update: {summary}` prefix for the change line. */
+  prLastUpdate?: string;
+  /** Shown when the host reported a poll failure for this watch. */
+  prUnavailable?: string;
 };
 
 type Props = {
@@ -168,6 +174,8 @@ type Props = {
   prUpdates?: string[] | null;
   /** Wakes waiting for the session to go idle. */
   prPendingWakes?: number;
+  /** Last host poll failure for this watch (shown as a soft error hint). */
+  prWatchError?: string | null;
   onTogglePrWatch?: () => void;
   onOpenPrHub?: (prNumber: number) => void;
 };
@@ -219,6 +227,7 @@ export function ComposerWorktreeMenu({
   prBusy = false,
   prUpdates = null,
   prPendingWakes = 0,
+  prWatchError = null,
   onTogglePrWatch,
   onOpenPrHub,
 }: Props) {
@@ -415,7 +424,14 @@ export function ComposerWorktreeMenu({
           >
             {showPrSection ? (
               <div className="cwm__pr">
-                <div className="cwm__head">{labels.pr || "Pull request"}</div>
+                <div className="cwm__head cwm__pr-head">
+                  <span>{labels.pr || "Pull request"}</span>
+                  {prWatching && labels.prWatchingLabel ? (
+                    <span className="cwm__pr-tag">
+                      {labels.prWatchingLabel}
+                    </span>
+                  ) : null}
+                </div>
                 {pr ? (
                   <button
                     type="button"
@@ -468,7 +484,16 @@ export function ComposerWorktreeMenu({
                   </Tip>
                 ) : null}
                 {prWatching && prUpdates && prUpdates.length > 0 ? (
-                  <p className="cwm__empty cwm__empty--hint">{prUpdates[0]}</p>
+                  <p className="cwm__empty cwm__empty--hint">
+                    {labels.prLastUpdate
+                      ? labels.prLastUpdate.replace("{summary}", prUpdates[0])
+                      : prUpdates[0]}
+                  </p>
+                ) : null}
+                {prWatching && prWatchError && labels.prUnavailable ? (
+                  <p className="cwm__empty cwm__empty--hint">
+                    {labels.prUnavailable}
+                  </p>
                 ) : null}
                 {pendingLabel ? (
                   <p className="cwm__empty cwm__empty--hint">{pendingLabel}</p>

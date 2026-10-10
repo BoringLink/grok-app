@@ -291,7 +291,7 @@ describe("usePrMonitor", () => {
     expect(noGh.hook.result.current.reason).toBe("gh not available");
   });
 
-  it("stays out of the way on a detached HEAD", async () => {
+  it("stays out of the way on a detached HEAD but keeps the wake channel", async () => {
     const hook = renderHook(() =>
       usePrMonitor({
         enabled: true,
@@ -305,9 +305,10 @@ describe("usePrMonitor", () => {
     await waitFor(() => expect(hook.result.current.ready).toBe(true));
     expect(hook.result.current.pr).toBeNull();
     expect(hook.result.current.watching).toBe(false);
-    // No subscription without a branch, so no host read either.
+    // No branch → nothing to bind to, so no PR read.
     expect(gitPrList).not.toHaveBeenCalled();
-    expect(onPrMonitorUpdate).not.toHaveBeenCalled();
+    // A watch mounted before the checkout is still able to reach its session.
+    await waitFor(() => expect(emit).toBeTypeOf("function"));
   });
 
   it("wakes the session with a prompt aimed at the new comment", async () => {
@@ -327,6 +328,10 @@ describe("usePrMonitor", () => {
     expect(text).toContain("New comment from RongleCat");
     // gh-backed read was used for the full body, not the 200-char excerpt.
     expect(gitPrComments).toHaveBeenCalledWith(PROJECT, 1316);
+    // Delivered → the host's copy is released so a remount cannot re-deliver.
+    await waitFor(() =>
+      expect(prMonitorConsumePending).toHaveBeenCalledWith(PROJECT, BRANCH),
+    );
     await waitFor(() =>
       expect(notify).toHaveBeenCalledWith(
         expect.stringContaining("PR #1316 changed"),
@@ -336,6 +341,19 @@ describe("usePrMonitor", () => {
     expect(hook.result.current.lastUpdates?.map((u) => u.kind)).toEqual([
       "comment",
     ]);
+  });
+
+  it("wakes the session the watch was mounted for, not the focused one", async () => {
+    setup();
+    await waitFor(() => expect(emit).toBeTypeOf("function"));
+
+    const event = { ...newCommentEvent(), sessionId: "session-that-mounted-it" };
+    await act(async () => {
+      emit?.(event);
+    });
+
+    await waitFor(() => expect(sessionSend).toHaveBeenCalledTimes(1));
+    expect(sessionSend.mock.calls[0][2]).toBe("session-that-mounted-it");
   });
 
   it("wakes once per real change, even if the event is replayed", async () => {
@@ -366,22 +384,19 @@ describe("usePrMonitor", () => {
     expect(prMonitorUnwatch).toHaveBeenCalledWith(PROJECT, BRANCH);
   });
 
-  it("ignores updates for another project or branch and for no-op polls", async () => {
+  it("ignores a no-op poll and drops its host copy", async () => {
     const { hook } = setup();
     await waitFor(() => expect(emit).toBeTypeOf("function"));
 
+    const same = snap();
     await act(async () => {
-      emit?.({
-        ...newCommentEvent(),
-        projectPath: "/Users/me/other-repo",
-      });
-      emit?.({ ...newCommentEvent(), branch: "feat/other" });
-      // Same snapshots → nothing changed → no wake.
-      const same = snap();
       emit?.(update(same, same));
     });
     expect(sessionSend).not.toHaveBeenCalled();
     expect(hook.result.current.lastUpdates).toBeNull();
+    await waitFor(() =>
+      expect(prMonitorConsumePending).toHaveBeenCalledWith(PROJECT, BRANCH),
+    );
   });
 
   it("queues a CI failure while the session is busy and delivers it when idle", async () => {
@@ -392,6 +407,11 @@ describe("usePrMonitor", () => {
       emit?.(ciFailedEvent());
     });
     expect(sessionSend).not.toHaveBeenCalled();
+    // The user is told the follow-up is queued, not lost.
+    expect(notify).toHaveBeenCalledWith(
+      expect.stringContaining("will follow up when this chat is free"),
+      "info",
+    );
     await waitFor(() => expect(hook.result.current.pendingCount).toBe(1));
 
     hook.rerender({ sessionBusy: false });

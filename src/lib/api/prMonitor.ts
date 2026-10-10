@@ -24,14 +24,6 @@ export interface PrMonitorPollResultDto {
   error?: string | null;
 }
 
-export interface PrMonitorStatusDto {
-  running: boolean;
-  tickIntervalSecs: number;
-  watchedCount: number;
-  windowRequired: boolean;
-  processRequired: boolean;
-  honesty: string;
-}
 
 export interface PrMonitorWatchInput {
   projectPath: string;
@@ -107,10 +99,6 @@ export async function prMonitorConsumePending(
 }
 
 /** Scheduler snapshot (process-lifetime scope, honest about limits). */
-export async function prMonitorStatus(): Promise<PrMonitorStatusDto | null> {
-  if (!isDesktopHost()) return null;
-  return invoke<PrMonitorStatusDto>("pr_monitor_status");
-}
 
 /**
  * Subscribe to PR updates. Returns an unlisten function; a no-op when no host
