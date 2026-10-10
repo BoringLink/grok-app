@@ -103,6 +103,7 @@ look empty.
 
 ## Related
 
+- Tracker: Linear `BOR-98` (spec) with `BOR-99` … `BOR-102` (tracer-bullet tickets).
 - Reuse, not replacement: `GitPrHubPanel` stays the detail view; the chip opens
   it through `prHubDeepLink`.
 - Prompt reuse: `src/lib/prReviewWorkbench.ts` (`buildFixCiPrompt`,
