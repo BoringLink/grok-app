@@ -429,4 +429,5 @@ export const koComposer = {
   "prMonitor.promptHeaderUrl": "[PR 업데이트] #{number} {title} — {url}",
   "prMonitor.promptUpdates": "변경 사항:",
   "prMonitor.promptTask": "이 PR 업데이트를 지금 처리하세요. 프로젝트 워크스페이스에서 브랜치를 확인하고, 언급된 댓글이나 CI 실패를 읽고, 필요한 최소 변경을 적용하세요(질문이면 답하세요). 한 일을 보고하고, 관찰하지 않은 PR·댓글·CI 정보를 만들어내지 마세요.",
+  "prMonitor.pendingWakes": "이 채팅이 비기를 기다리는 후속 처리 {count}건",
 };

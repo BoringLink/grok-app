@@ -429,4 +429,5 @@ export const zhTWComposer = {
   "prMonitor.promptHeaderUrl": "[PR 更新] #{number} {title} — {url}",
   "prMonitor.promptUpdates": "變更內容：",
   "prMonitor.promptTask": "現在追蹤這次 PR 更新：在專案工作區查看該分支，閱讀上面的留言或 CI 失敗資訊，做出必要的針對性修改（如果是提問就直接回答）。說明你做了什麼，不要編造你沒有觀察到的 PR、留言或 CI 資訊。",
+  "prMonitor.pendingWakes": "{count} 條追蹤等待本工作階段空閒",
 };

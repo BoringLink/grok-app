@@ -429,4 +429,5 @@ export const jaComposer = {
   "prMonitor.promptHeaderUrl": "[PR 更新] #{number} {title} — {url}",
   "prMonitor.promptUpdates": "変更内容:",
   "prMonitor.promptTask": "この PR 更新に今すぐ対応してください。プロジェクトのワークスペースでブランチを確認し、示されたコメントや CI 失敗を読み、必要な最小限の変更を行ってください（質問なら回答してください）。実施内容を報告し、観測していない PR・コメント・CI の情報を捏造しないでください。",
+  "prMonitor.pendingWakes": "このチャットが空くのを待っているフォローアップ: {count} 件",
 };

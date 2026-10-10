@@ -429,4 +429,5 @@ export const frComposer = {
   "prMonitor.promptHeaderUrl": "[Mise à jour PR] #{number} {title} — {url}",
   "prMonitor.promptUpdates": "Ce qui a changé :",
   "prMonitor.promptTask": "Traite maintenant cette mise à jour de PR : examine la branche dans l’espace de travail du projet, lis le commentaire ou l’échec CI cité, et applique la modification ciblée (ou réponds à la question). Indique ce que tu as fait et n’invente aucune donnée de PR, de commentaire ou de CI que tu n’as pas observée.",
+  "prMonitor.pendingWakes": "{count} relance(s) en attente que ce chat soit libre",
 };

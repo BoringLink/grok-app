@@ -429,4 +429,5 @@ export const filComposer = {
   "prMonitor.promptHeaderUrl": "[Update ng PR] #{number} {title} — {url}",
   "prMonitor.promptUpdates": "Ano ang nagbago:",
   "prMonitor.promptTask": "Sundan na ang update na ito ng PR: tingnan ang branch sa project workspace, basahin ang tinutukoy na komento o CI failure, at gawin ang tiyak na pagbabago (o sagutin ang tanong). Iulat ang ginawa mo at huwag mag-imbento ng datos ng PR, komento o CI na hindi mo nakita.",
+  "prMonitor.pendingWakes": "{count} follow-up na naghihintay na maging libre ang chat na ito",
 };

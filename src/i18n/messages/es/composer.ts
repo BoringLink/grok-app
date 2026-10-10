@@ -429,4 +429,5 @@ export const esComposer = {
   "prMonitor.promptHeaderUrl": "[Actualización de PR] #{number} {title} — {url}",
   "prMonitor.promptUpdates": "Qué cambió:",
   "prMonitor.promptTask": "Responde ahora a esta actualización del PR: revisa la rama en el espacio de trabajo del proyecto, lee el comentario o el fallo de CI indicado y aplica el cambio concreto (o responde la pregunta). Informa lo que hiciste y no inventes datos de PR, comentarios o CI que no hayas observado.",
+  "prMonitor.pendingWakes": "{count} respuestas en espera de que este chat esté libre",
 };

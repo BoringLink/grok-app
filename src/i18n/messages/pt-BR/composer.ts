@@ -429,4 +429,5 @@ export const ptBRComposer = {
   "prMonitor.promptHeaderUrl": "[Atualização do PR] #{number} {title} — {url}",
   "prMonitor.promptUpdates": "O que mudou:",
   "prMonitor.promptTask": "Dê seguimento agora a esta atualização do PR: veja o branch no workspace do projeto, leia o comentário ou a falha de CI citada e faça a alteração focada (ou responda à pergunta). Relate o que fez e não invente dados de PR, comentários ou CI que não observou.",
+  "prMonitor.pendingWakes": "{count} acompanhamento(s) aguardando este chat ficar livre",
 };

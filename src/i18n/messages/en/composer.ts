@@ -430,4 +430,5 @@ export const enComposer = {
   "prMonitor.promptHeaderUrl": "[PR update] #{number} {title} — {url}",
   "prMonitor.promptUpdates": "What changed:",
   "prMonitor.promptTask": "Follow up on this PR update now: inspect the branch in the project workspace, read the referenced comment or CI failure, and make the focused change (or answer the question). Report what you did, and do not invent PR, comment or CI data you have not observed.",
+  "prMonitor.pendingWakes": "{count} follow-up(s) waiting for this chat to be free",
 } as const;

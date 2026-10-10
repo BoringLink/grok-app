@@ -429,4 +429,5 @@ export const zhComposer = {
   "prMonitor.promptHeaderUrl": "[PR 更新] #{number} {title} — {url}",
   "prMonitor.promptUpdates": "变更内容：",
   "prMonitor.promptTask": "现在跟进这次 PR 更新：在项目工作区查看该分支，阅读上面的评论或 CI 失败信息，做出必要的针对性改动（如果是提问就直接回答）。说明你做了什么，不要编造你没有观察到的 PR、评论或 CI 信息。",
+  "prMonitor.pendingWakes": "{count} 条跟进等待本会话空闲",
 };

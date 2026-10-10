@@ -429,4 +429,5 @@ export const idComposer = {
   "prMonitor.promptHeaderUrl": "[Pembaruan PR] #{number} {title} — {url}",
   "prMonitor.promptUpdates": "Apa yang berubah:",
   "prMonitor.promptTask": "Tindak lanjuti pembaruan PR ini sekarang: periksa branch di workspace proyek, baca komentar atau kegagalan CI yang disebut, lalu lakukan perubahan yang tepat (atau jawab pertanyaannya). Laporkan apa yang kamu lakukan dan jangan mengarang data PR, komentar, atau CI yang belum kamu amati.",
+  "prMonitor.pendingWakes": "{count} tindak lanjut menunggu chat ini kosong",
 };

@@ -429,4 +429,5 @@ export const deComposer = {
   "prMonitor.promptHeaderUrl": "[PR-Update] #{number} {title} — {url}",
   "prMonitor.promptUpdates": "Was sich geändert hat:",
   "prMonitor.promptTask": "Fasse dieses PR-Update jetzt nach: sieh dir den Branch im Projekt-Arbeitsbereich an, lies den genannten Kommentar bzw. den CI-Fehler und setze die gezielte Änderung um (oder beantworte die Frage). Berichte, was du getan hast, und erfinde keine PR-, Kommentar- oder CI-Daten, die du nicht gesehen hast.",
+  "prMonitor.pendingWakes": "{count} Nachfassen warten, bis dieser Chat frei ist",
 };
