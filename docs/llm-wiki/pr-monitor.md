@@ -41,11 +41,25 @@ change set`, and a key is delivered at most once.
 
 - The follow-up is sent through the shipped `session_send` path, so it appears
   in the chat as a normal user turn and the agent answers it.
-- A running turn is never interrupted: while the session streams or a permission
-  prompt is pending, the wake is queued and delivered when the chat is idle.
-- A merged or closed PR wakes once and then stops being watched (the host would
-  otherwise poll a finished PR forever).
+- The wake goes to the session the watch was **mounted for** (the host records
+  it), so switching chats or branches cannot re-route a follow-up.
+- A running turn is never interrupted: while the session streams, connects or
+  waits on a permission prompt, the wake is queued (with a short notice) and
+  delivered when the chat is idle.
+- Each change is delivered once. Delivering it also clears the host's copy, so
+  a UI remount cannot deliver the same change a second time.
+- Once the PR is merged or closed, that change is delivered and the watch is
+  then stopped — the host would otherwise poll a finished PR forever.
 - Copy is localized (15 locales, `en` is the key authority).
+
+## Mounts are sticky and process-lifetime
+
+- A mount belongs to the session + branch that created it. Switching
+  worktree, branch or chat does **not** drop it: the watched PR keeps waking the
+  session it was mounted for, even when that branch is no longer on screen.
+- Stop a watch from its branch's menu (or let the PR merge/close).
+- Poll failures are logged (`pr_monitor`) and shown as a hint in the branch
+  menu, so a broken `gh` auth never looks like "nothing is happening".
 
 ## Host side
 
@@ -53,13 +67,15 @@ change set`, and a key is delivered at most once.
 
 - in-memory registry keyed by `projectPath` + `branch`; commands
   `pr_monitor_watch` / `pr_monitor_unwatch` / `pr_monitor_list` /
-  `pr_monitor_poll_now` / `pr_monitor_consume_pending` / `pr_monitor_status`;
+  `pr_monitor_poll_now` / `pr_monitor_consume_pending`;
 - one tick loop that works with the window hidden to the tray;
 - fingerprint dedup: mounting seeds the baseline so a mount cannot fire a wake,
   and an unchanged poll emits nothing;
 - one `gh pr view --json` call per poll covering PR fields, comments and reviews;
 - the last unconsumed change is kept per watcher, so a UI that remounted can
-  still drain it (`pr_monitor_consume_pending`) instead of losing the wake.
+  still drain it (`pr_monitor_consume_pending`) instead of losing the wake;
+- a watcher that is re-mounted for a different PR while a poll is in flight
+  discards that stale result instead of seeding the new watcher's baseline.
 
 The host only reports **that** the PR changed and hands over both snapshots. The
 semantic diff and the prompt live in the frontend
@@ -78,6 +94,8 @@ look empty.
   the app stops them, and there is no separate daemon.
 - Mounts are **not persisted**. Reopening the app does not silently resume a
   watch; the chip shows a PR only while that session actually watches it.
+- At most 32 watchers are mounted at once (each costs one `gh` call per
+  interval); mounting past that fails with a soft error.
 - Desktop only (a mirror client has no host poller), and it needs an
   authenticated `gh` on `PATH`.
 - One `gh pr list` read per project/branch change to resolve the bound PR — the
