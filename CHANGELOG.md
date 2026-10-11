@@ -17,11 +17,17 @@ See `docs/llm-wiki/release.md`.
 - Official models can use another context length when the model offers more than one.
 - The usage chip can show the CLI's own context breakdown.
 - The Tasks panel lists live subagent runs, with the counters and output the CLI reports.
+- New official chats start at 500k when the model offers that size.
+- The composer chip shows the pull request for the branch on screen.
+- A pull request update wakes that chat once.
 
 **中文 · 新增**
 - 官方模型如果提供多种上下文长度，可以改用其中一种。
 - 用量条可以显示 CLI 自己算出的上下文明细。
 - 任务面板会列出正在运行的子代理，并显示 CLI 上报的计数与输出。
+- 新的官方对话在模型提供 500k 时，从 500k 开始。
+- 输入框芯片显示当前分支对应的拉取请求。
+- 拉取请求有更新时，对应的对话会被唤醒一次。
 
 ### Fixed
 - File names in the @ menu stay whole, and overflow ends with an ellipsis.
@@ -37,6 +43,7 @@ See `docs/llm-wiki/release.md`.
 - A finished tool turn no longer looks like the app restarted.
 - Changing the context window no longer puts a new chat back on the default model.
 - A file reference can point at a directory, not only a file.
+- Rows on screen stay drawn while the chat scrolls.
 
 **中文 · 修复**
 - @ 菜单里的文件名会完整显示，放不下时末尾才出现省略号。
@@ -52,6 +59,7 @@ See `docs/llm-wiki/release.md`.
 - 已经做完的工具回合，切换对话时不再显示成应用重启。
 - 改上下文窗口时，新开的对话不会再回到默认模型。
 - 文件引用可以指向目录，而不只是文件。
+- 滑动对话时，屏幕上的行保持已绘制。
 
 ## [0.2.39] - 2026-10-06
 
