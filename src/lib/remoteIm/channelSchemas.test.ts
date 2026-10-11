@@ -208,6 +208,17 @@ describe("remoteIm channelSchemas", () => {
     expect(wx.fields.some((f) => f.key === "chat_id")).toBe(true);
   });
 
+  it("iMessage is a local macOS channel with no bot token", () => {
+    const im = getChannelSchema("imessage")!;
+    expect(im.implemented).toBe(true);
+    expect(im.group).toBe("other");
+    expect(im.fields).toEqual([]);
+    expect(im.scanSupport).toBe(false);
+    expect(im.pasteSupport).toBe(false);
+    expect(im.connectionKey).toBe("settings.remoteIm.conn.imessage");
+    expect(validateBindFields(im, {}).ok).toBe(true);
+  });
+
   it("soft-retired WPS channels stay non-implemented", () => {
     expect(getChannelSchema("wps-xiezuo")?.implemented).toBe(false);
     expect(getChannelSchema("wps-agentspace")?.implemented).toBe(false);

@@ -13,6 +13,10 @@ import {
   type ComposerSendKeyPref,
 } from "@/lib/composerSendKey";
 import {
+  loadComposerEnterInsertsLive,
+  COMPOSER_ENTER_INSERTS_LIVE_CHANGED_EVENT,
+} from "@/lib/composerEnterInsertsLive";
+import {
   loadComposerSpellcheck,
   COMPOSER_SPELLCHECK_CHANGED_EVENT,
 } from "@/lib/composerSpellcheck";
@@ -153,6 +157,9 @@ export function useWorkbenchDisplayPrefs() {
   );
   const [composerSendKeyPref, setComposerSendKeyPref] =
     useState<ComposerSendKeyPref>(() => loadComposerSendKeyPref());
+  const [composerEnterInsertsLive, setComposerEnterInsertsLive] = useState(
+    () => loadComposerEnterInsertsLive(),
+  );
   const [showComposerDraftStats, setShowComposerDraftStats] = useState(() =>
     loadComposerDraftStatsPref(),
   );
@@ -225,6 +232,9 @@ export function useWorkbenchDisplayPrefs() {
   useReloadPrefSync(COMPOSER_SEND_KEY_CHANGED_EVENT, () =>
     setComposerSendKeyPref(loadComposerSendKeyPref()),
   );
+  useReloadPrefSync(COMPOSER_ENTER_INSERTS_LIVE_CHANGED_EVENT, () =>
+    setComposerEnterInsertsLive(loadComposerEnterInsertsLive()),
+  );
   useReloadPrefSync(COMPOSER_DRAFT_STATS_CHANGED_EVENT, () =>
     setShowComposerDraftStats(loadComposerDraftStatsPref()),
   );
@@ -294,6 +304,8 @@ export function useWorkbenchDisplayPrefs() {
     setWinTaskbarOverlay,
     composerSendKeyPref,
     setComposerSendKeyPref,
+    composerEnterInsertsLive,
+    setComposerEnterInsertsLive,
     showComposerDraftStats,
     setShowComposerDraftStats,
     composerSpellcheck,

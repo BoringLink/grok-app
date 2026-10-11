@@ -16,6 +16,9 @@
   gap: 8px;
   width: 100%;
   min-width: 0;
+  /* Chip compaction only. Must not wrap .composer__input — see .composer. */
+  container-type: inline-size;
+  container-name: composer;
 }
 
 .composer__chrome > * {
@@ -581,9 +584,8 @@ button.composer__context-item {
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease;
-  /* Size container for compact chips (Codex-style) */
-  container-type: inline-size;
-  container-name: composer;
+  /* Do not set container-type on .composer. It wraps the field, and a size
+   * container makes Windows IME candidate windows jump to (0, 0). */
 }
 
 .composer::before {

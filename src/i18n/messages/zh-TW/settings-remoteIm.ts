@@ -582,6 +582,8 @@ export const zhTWSettingsRemoteIm = {
   "settings.remoteIm.channel.discord": "Discord",
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.imessage": "iMessage",
+  "settings.remoteIm.conn.imessage": "這台 Mac 的「訊息」。僅 macOS：保持已登入，授予完整磁碟取用權限，並允許指定的電話號碼或 Apple ID。沒有機器人權杖。/p 和 /r 用文字傳送。",
   "settings.remoteIm.channel.wpsAgentspace": "WPS 數字員工",
   "settings.remoteIm.security.title": "安全運維",
   "settings.remoteIm.security.subtitle": "遠端安全檢查清單",

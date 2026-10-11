@@ -265,6 +265,8 @@ export const frSettings = {
   "settings.composerSendKeyDesc": "Choisir si Entrée seule envoie, ou insère un saut de ligne (⌘/Ctrl+Entrée envoie alors). S’applique à la zone de saisie du chat et à la boîte de commentaire de citation.",
   "settings.composerSendKey.enter": "Entrée pour envoyer (Maj+Entrée pour nouvelle ligne)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Entrée pour envoyer (Entrée pour nouvelle ligne)",
+  "settings.composerEnterInsertsLive": "Entrée insère dans le tour en cours",
+  "settings.composerEnterInsertsLiveDesc": "Pendant qu’une réponse est en cours, la touche d’envoi insère le brouillon dans ce tour au lieu d’attendre. Maj+Entrée reste un saut de ligne. Quand le chat est au repos, la touche d’envoi envoie toujours. Le bouton de file attend toujours la fin du tour.",
   "settings.composerDraftStats": "Compte de caractères du brouillon",
   "settings.composerDraftStatsDesc": "Afficher un compte de caractères et de mots atténué lorsque la saisie du chat n’est pas vide.",
   "settings.composerSpellcheck": "Vérification orthographique",

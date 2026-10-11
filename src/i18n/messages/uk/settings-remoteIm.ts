@@ -582,6 +582,8 @@ export const ukSettingsRemoteIm = {
   "settings.remoteIm.channel.discord": "Discord",
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.imessage": "iMessage",
+  "settings.remoteIm.conn.imessage": "Повідомлення цього Mac. Лише macOS: залишайтеся в обліковому записі, дайте повний доступ до диска й дозвольте конкретні номери або Apple ID. Токена бота немає. /p і /r — текстом.",
   "settings.remoteIm.channel.wpsAgentspace": "WPS Agentspace",
   "settings.remoteIm.security.title": "Операції безпеки",
   "settings.remoteIm.security.subtitle": "Контрольний список віддаленої безпеки",

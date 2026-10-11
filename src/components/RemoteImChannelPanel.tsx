@@ -334,7 +334,9 @@ export function RemoteImChannelPanel({
       }
 
       const hasNewSecrets = Object.keys(secretPayload).length > 0;
-      const hasCredentials = instance.hasCredentials || hasNewSecrets;
+      const localMessages = channelId === "imessage";
+      const hasCredentials =
+        instance.hasCredentials || hasNewSecrets || localMessages;
       if (!hasCredentials) {
         setFormError(t("settings.remoteIm.err.needSecrets"));
         return false;

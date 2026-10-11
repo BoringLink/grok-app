@@ -265,6 +265,8 @@ export const koSettings = {
   "settings.composerSendKeyDesc": "일반 Enter가 보낼지, 줄 바꿈을 넣을지 선택하세요(대신 ⌘/Ctrl+Enter가 보냄). 채팅 입력과 인용 댓글 상자에 적용됩니다.",
   "settings.composerSendKey.enter": "Enter로 보내기(Shift+Enter는 줄 바꿈)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter로 보내기(Enter는 줄 바꿈)",
+  "settings.composerEnterInsertsLive": "Enter로 진행 중인 턴에 넣기",
+  "settings.composerEnterInsertsLiveDesc": "답장이 진행 중일 때 보내기 키는 초안을 그 턴에 바로 넣습니다. Shift+Enter는 여전히 줄바꿈입니다. 대화가 쉬고 있으면 보내기 키는 그대로 보냅니다. 대기열 버튼은 턴이 끝날 때까지 기다립니다.",
   "settings.composerDraftStats": "초안 글자 수",
   "settings.composerDraftStatsDesc": "채팅 입력이 비어 있지 않을 때 흐린 글자 수와 단어 수를 표시합니다.",
   "settings.composerSpellcheck": "맞춤법 검사",

@@ -4,6 +4,7 @@ pub mod dingtalk;
 pub mod discord;
 pub mod feishu;
 pub mod generic;
+pub mod imessage;
 pub mod line;
 pub mod matrix;
 pub mod qq;
@@ -35,6 +36,7 @@ pub const CATALOG_CHANNELS: &[&str] = &[
     "discord",
     "matrix",
     "line",
+    "imessage",
     "wps-agentspace",
 ];
 
@@ -52,6 +54,7 @@ pub fn protocol_for(channel: &str) -> &'static str {
         "qqbot" => qqbot::protocol_name(),
         "matrix" => matrix::protocol_name(),
         "line" => line::protocol_name(),
+        "imessage" => imessage::protocol_name(),
         "weibo" => weibo::protocol_name(),
         "wps-xiezuo" => wps_xiezuo::protocol_name(),
         "wps-agentspace" => "wps-agentspace-ws-or-poll",
@@ -89,6 +92,7 @@ pub fn spawn_instance(
             "qqbot" => qqbot::run(inst, tx, cancel).await,
             "matrix" => matrix::run(inst, tx, cancel).await,
             "line" => line::run(inst, tx, cancel).await,
+            "imessage" => imessage::run(inst, tx, cancel).await,
             "weibo" => weibo::run(inst, tx, cancel).await,
             "wps-xiezuo" | "wps-agentspace" => wps_xiezuo::run(inst, tx, cancel).await,
             other => generic::run(other, inst, tx, cancel).await,
@@ -125,6 +129,7 @@ mod tests {
                     | "qqbot"
                     | "matrix"
                     | "line"
+                    | "imessage"
                     | "weibo"
                     | "wps-xiezuo"
             ) {

@@ -265,6 +265,8 @@ export const ptBRSettings = {
   "settings.composerSendKeyDesc": "Escolha se o Enter simples envia, ou insere uma nova linha (⌘/Ctrl+Enter envia). Aplica-se ao compositor do chat e à caixa de comentário da citação.",
   "settings.composerSendKey.enter": "Enter para enviar (Shift+Enter para nova linha)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter para enviar (Enter para nova linha)",
+  "settings.composerEnterInsertsLive": "Enter insere no turno em andamento",
+  "settings.composerEnterInsertsLiveDesc": "Enquanto uma resposta está em andamento, a tecla de enviar insere o rascunho nesse turno em vez de esperar. Shift+Enter continua sendo uma nova linha. Com o chat parado, a tecla de enviar continua enviando. O botão da fila continua esperando o fim do turno.",
   "settings.composerDraftStats": "Contagem de caracteres do rascunho",
   "settings.composerDraftStatsDesc": "Mostrar uma contagem discreta de caracteres e palavras quando a entrada do chat não está vazia.",
   "settings.composerSpellcheck": "Verificação ortográfica",

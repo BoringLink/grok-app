@@ -265,6 +265,8 @@ export const ukSettings = {
   "settings.composerSendKeyDesc": "Виберіть, чи простий Enter надсилає чи вставляє новий рядок (натомість ⌘/Ctrl+Enter надсилає). Застосовується до чату й поля коментаря цитати.",
   "settings.composerSendKey.enter": "Enter — надіслати (Shift+Enter — новий рядок)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter — надіслати (Enter — новий рядок)",
+  "settings.composerEnterInsertsLive": "Enter вставляє в поточний хід",
+  "settings.composerEnterInsertsLiveDesc": "Поки відповідь іде, клавіша надсилання вставляє чернетку в цей хід, а не чекає. Shift+Enter і далі переносить рядок. Коли чат вільний, клавіша надсилання і далі надсилає. Кнопка черги і далі чекає кінця ходу.",
   "settings.composerDraftStats": "Лічильник символів чернетки",
   "settings.composerDraftStatsDesc": "Показувати приглушений символ і кількість слів, коли введені дані чату не пусті.",
   "settings.composerSpellcheck": "Перевірка правопису",

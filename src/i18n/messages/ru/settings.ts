@@ -265,6 +265,8 @@ export const ruSettings = {
   "settings.composerSendKeyDesc": "Выберите, отправляет ли обычный Enter сообщение или вставляет новую строку (⌘/Ctrl+Enter — отправка). Действует в поле чата и в комментарии к цитате.",
   "settings.composerSendKey.enter": "Enter — отправить (Shift+Enter — новая строка)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter — отправить (Enter — новая строка)",
+  "settings.composerEnterInsertsLive": "Enter вставляет в текущий ход",
+  "settings.composerEnterInsertsLiveDesc": "Пока ответ идёт, клавиша отправки вставляет черновик в этот ход, а не ждёт. Shift+Enter по-прежнему переносит строку. Когда чат свободен, клавиша отправки по-прежнему отправляет. Кнопка очереди по-прежнему ждёт конца хода.",
   "settings.composerDraftStats": "Счётчик текста черновика",
   "settings.composerDraftStatsDesc": "Показывать ненавязчивый счётчик символов и слов, когда поле ввода не пустое.",
   "settings.composerSpellcheck": "Проверка орфографии",

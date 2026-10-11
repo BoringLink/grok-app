@@ -109,8 +109,10 @@ describe("Weixin text-menu presenter honesty", () => {
     expect(createDefaultInstance("weixin").presenter).toBe("text_only");
     expect(createDefaultInstance("dingtalk").presenter).toBe("auto");
     expect(isPresenterLocked("weixin")).toBe(true);
+    expect(isPresenterLocked("imessage")).toBe(true);
     expect(isPresenterLocked("wecom")).toBe(false);
     expect(resolvePresenterForChannel("weixin", "auto")).toBe("text_only");
+    expect(resolvePresenterForChannel("imessage", "auto")).toBe("text_only");
     expect(resolvePresenterForChannel("dingtalk", "text_only")).toBe(
       "text_only",
     );

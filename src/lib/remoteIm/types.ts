@@ -19,6 +19,7 @@ export type RemoteChannelId =
   | "discord"
   | "matrix"
   | "line"
+  | "imessage"
   | "wps-agentspace";
 
 export type ChannelGroup = "domestic" | "overseas" | "other";

@@ -265,6 +265,8 @@ export const idSettings = {
   "settings.composerSendKeyDesc": "Pilih apakah Enter biasa mengirim, atau menyisipkan baris baru (⌘/Ctrl+Enter mengirim sebagai gantinya). Berlaku untuk composer obrolan dan kotak komentar kutipan.",
   "settings.composerSendKey.enter": "Enter untuk mengirim (Shift+Enter untuk baris baru)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter untuk mengirim (Enter untuk baris baru)",
+  "settings.composerEnterInsertsLive": "Enter menyisipkan ke giliran yang berjalan",
+  "settings.composerEnterInsertsLiveDesc": "Saat balasan masih berjalan, tombol kirim menyisipkan draf ke giliran itu, bukan menunggu. Shift+Enter tetap baris baru. Saat obrolan diam, tombol kirim tetap mengirim. Tombol antrean tetap menunggu sampai giliran selesai.",
   "settings.composerDraftStats": "Hitungan karakter draf",
   "settings.composerDraftStatsDesc": "Tampilkan hitungan karakter dan kata redup saat masukan obrolan tidak kosong.",
   "settings.composerSpellcheck": "Pemeriksaan ejaan",

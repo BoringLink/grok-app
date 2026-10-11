@@ -109,6 +109,7 @@ import {
   loadComposerSendKeyPref,
   type ComposerSendKeyPref,
 } from "@/lib/composerSendKey";
+import { loadComposerEnterInsertsLive } from "@/lib/composerEnterInsertsLive";
 import { formatShortcutHint } from "@/lib/shortcuts";
 import { SHORTCUT_REMAP_CHANGED_EVENT } from "@/lib/shortcutRemap";
 import {
@@ -506,6 +507,9 @@ export function SettingsPage({
   /** Composer Enter vs ⌘/Ctrl+Enter — localStorage only (no Host settings). */
   const [composerSendKeyPref, setComposerSendKeyPref] =
     useState<ComposerSendKeyPref>(() => loadComposerSendKeyPref());
+  const [composerEnterInsertsLive, setComposerEnterInsertsLive] = useState(
+    () => loadComposerEnterInsertsLive(),
+  );
   /** Browser spellcheck on main composer — localStorage only. */
   const [composerSpellcheck, setComposerSpellcheck] = useState(() =>
     loadComposerSpellcheck(),
@@ -1709,6 +1713,8 @@ export function SettingsPage({
     onComposerMinRows,
     composerSendKeyPref,
     setComposerSendKeyPref,
+    composerEnterInsertsLive,
+    setComposerEnterInsertsLive,
     composerSpellcheck,
     setComposerSpellcheck,
     composerDraftStats,

@@ -19,6 +19,10 @@ pub async fn test_connection(
     // password fields in secrets. Merge so doctor matches runtime secret_or_opt.
     let creds = merge_creds(&secrets, &options);
 
+    if channel == "imessage" {
+        return Ok(super::channels::imessage::probe_local());
+    }
+
     if creds.is_empty() {
         let has = config::list_instances()
             .into_iter()

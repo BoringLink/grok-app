@@ -99,6 +99,7 @@ impl OutboundRouter {
             "qqbot" => super::channels::qqbot::send_text(&cred.secrets, chat_id, text).await,
             "matrix" => super::channels::matrix::send_text(&cred.secrets, chat_id, text).await,
             "line" => super::channels::line::send_text(&cred.secrets, chat_id, text).await,
+            "imessage" => super::channels::imessage::send_text(chat_id, text).await,
             "weibo" => super::channels::weibo::send_text(&cred.secrets, chat_id, text).await,
             "wps-xiezuo" => {
                 super::channels::wps_xiezuo::send_text(&cred.secrets, chat_id, text).await

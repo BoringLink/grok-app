@@ -582,6 +582,8 @@ export const ruSettingsRemoteIm = {
   "settings.remoteIm.channel.discord": "Discord",
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.imessage": "iMessage",
+  "settings.remoteIm.conn.imessage": "Сообщения этого Mac. Только macOS: оставайтесь вошедшим, дайте полный доступ к диску и разрешите конкретные номера или Apple ID. Токена бота нет. /p и /r — текстом.",
   "settings.remoteIm.channel.wpsAgentspace": "WPS Agentspace",
   "settings.remoteIm.security.title": "Операции безопасности",
   "settings.remoteIm.security.subtitle": "Чеклист удалённой безопасности",

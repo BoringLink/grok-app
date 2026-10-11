@@ -265,6 +265,8 @@ export const esSettings = {
   "settings.composerSendKeyDesc": "Elige si Intro envía o inserta un salto de línea (⌘/Ctrl+Intro envía). Se aplica al cuadro de mensaje del chat y al comentario de la cita.",
   "settings.composerSendKey.enter": "Intro para enviar (Mayús+Intro para salto de línea)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Intro para enviar (Intro para salto de línea)",
+  "settings.composerEnterInsertsLive": "Intro inserta en el turno en curso",
+  "settings.composerEnterInsertsLiveDesc": "Mientras una respuesta está en curso, la tecla de envío inserta el borrador en ese turno en lugar de esperar. Mayús+Intro sigue siendo un salto de línea. Si el chat está inactivo, la tecla de envío sigue enviando. El botón de cola sigue esperando a que termine el turno.",
   "settings.composerDraftStats": "Recuento de caracteres del borrador",
   "settings.composerDraftStatsDesc": "Muestra un recuento atenuado de caracteres y palabras cuando el campo de chat no está vacío.",
   "settings.composerSpellcheck": "Corrector ortográfico",

@@ -582,6 +582,8 @@ export const ptBRSettingsRemoteIm = {
   "settings.remoteIm.channel.discord": "Discord",
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.imessage": "iMessage",
+  "settings.remoteIm.conn.imessage": "Mensagens deste Mac. Só no macOS: continue conectado, conceda Acesso Total ao Disco e permita números ou Apple IDs específicos. Sem token de bot. /p e /r são texto.",
   "settings.remoteIm.channel.wpsAgentspace": "WPS Agentspace",
   "settings.remoteIm.security.title": "Ops de segurança",
   "settings.remoteIm.security.subtitle": "Checklist de segurança remota",

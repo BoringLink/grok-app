@@ -582,6 +582,8 @@ export const jaSettingsRemoteIm = {
   "settings.remoteIm.channel.discord": "Discord",
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.imessage": "iMessage",
+  "settings.remoteIm.conn.imessage": "この Mac のメッセージ。macOS のみ。メッセージにサインインしたまま、フルディスクアクセスを許可し、電話番号か Apple ID を指定します。ボットトークンはありません。/p と /r は文字で送ります。",
   "settings.remoteIm.channel.wpsAgentspace": "WPS Agentspace",
   "settings.remoteIm.security.title": "セキュリティ運用",
   "settings.remoteIm.security.subtitle": "リモートセキュリティチェックリスト",

@@ -582,6 +582,8 @@ export const esSettingsRemoteIm = {
   "settings.remoteIm.channel.discord": "Discord",
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.imessage": "iMessage",
+  "settings.remoteIm.conn.imessage": "Mensajes de este Mac. Solo macOS: permanece conectado, concede acceso total al disco y permite números o Apple ID concretos. Sin token de bot. /p y /r son texto.",
   "settings.remoteIm.channel.wpsAgentspace": "WPS Agentspace",
   "settings.remoteIm.security.title": "Operaciones de seguridad",
   "settings.remoteIm.security.subtitle": "Lista de seguridad remota",

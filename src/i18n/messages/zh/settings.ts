@@ -288,6 +288,8 @@ export const zhSettings = {
   "settings.composerSendKeyDesc": "选择 Enter 直接发送，还是 Enter 换行、⌘/Ctrl+Enter 发送。对话输入框和划词评论框都生效。",
   "settings.composerSendKey.enter": "Enter 发送（Shift+Enter 换行）",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter 发送（Enter 换行）",
+  "settings.composerEnterInsertsLive": "回车插入正在回复的回合",
+  "settings.composerEnterInsertsLiveDesc": "回复还在进行时，发送键把草稿插进这一回合，而不是先排队。Shift+Enter 仍然换行。对话空闲时，发送键仍然发送。排队按钮仍然等到回合结束。",
   "settings.composerSpellcheck": "拼写检查",
   "settings.composerSpellcheckDesc": "在对话输入框用系统词典标出拼写错误。默认关闭。",
   "settings.composerDraftStats": "草稿字数",

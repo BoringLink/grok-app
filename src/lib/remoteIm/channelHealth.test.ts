@@ -47,6 +47,10 @@ describe("transportForChannel", () => {
     expect(transportForChannel("lark")).toBe("websocket");
     expect(transportForChannel("telegram")).toBe("long_poll");
     expect(transportForChannel("dingtalk")).toBe("stream");
+    expect(transportForChannel("imessage")).toBe("local_messages");
+    expect(transportKeyFor("local_messages")).toBe(
+      "settings.remoteIm.conn.imessage",
+    );
   });
 
   it("wecom respects connect mode", () => {

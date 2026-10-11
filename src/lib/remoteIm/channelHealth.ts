@@ -67,6 +67,7 @@ export type RimChannelTransport =
   | "webhook"
   | "forward_ws"
   | "mixed"
+  | "local_messages"
   | "unknown";
 
 export type RimChannelHealthDetail = {
@@ -241,6 +242,8 @@ export function transportForChannel(
       return "gateway";
     case "line":
       return "webhook";
+    case "imessage":
+      return "local_messages";
     case "qq":
       return "forward_ws";
     case "wecom": {
@@ -270,6 +273,8 @@ export function transportKeyFor(
       return "settings.remoteIm.conn.webhook";
     case "forward_ws":
       return "settings.remoteIm.conn.forwardWs";
+    case "local_messages":
+      return "settings.remoteIm.conn.imessage";
     case "mixed":
       return "settings.remoteIm.conn.wsOrWebhook";
     default:

@@ -41,13 +41,13 @@ export function resolvePresenterForChannel(
   channel: RemoteChannelId,
   requested?: PresenterMode | null,
 ): PresenterMode {
-  if (channel === "weixin") return "text_only";
+  if (channel === "weixin" || channel === "imessage") return "text_only";
   return requested === "text_only" ? "text_only" : "auto";
 }
 
-/** True when the UI must lock the presenter control (Weixin text-menu only). */
+/** True when the UI must lock the presenter control (no button cards). */
 export function isPresenterLocked(channel: RemoteChannelId): boolean {
-  return channel === "weixin";
+  return channel === "weixin" || channel === "imessage";
 }
 
 export function createDefaultInstance(

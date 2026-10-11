@@ -265,6 +265,8 @@ export const filSettings = {
   "settings.composerSendKeyDesc": "Piliin kung magpapadala ang simpleng Enter, o maglalagay ng bagong linya (⌘/Ctrl+Enter ang magpapadala). Naaapply sa composer ng chat at sa comment box ng quote.",
   "settings.composerSendKey.enter": "Enter para magpadala (Shift+Enter para sa bagong linya)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter para magpadala (Enter para sa bagong linya)",
+  "settings.composerEnterInsertsLive": "Ipinapasok ng Enter sa tumatakbong turn",
+  "settings.composerEnterInsertsLiveDesc": "Habang tumatakbo ang sagot, ipinapasok ng send key ang draft sa turn na iyon sa halip na maghintay. Bagong linya pa rin ang Shift+Enter. Kapag idle ang chat, nagpapadala pa rin ang send key. Naghihintay pa rin ang queue button hanggang matapos ang turn.",
   "settings.composerDraftStats": "Bilang ng character ng draft",
   "settings.composerDraftStatsDesc": "Magpakita ng muted na bilang ng character at salita kapag hindi walang laman ang input ng chat.",
   "settings.composerSpellcheck": "Spellcheck",

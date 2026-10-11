@@ -289,6 +289,8 @@ export const zhTWSettings = {
   "settings.composerSendKeyDesc": "選擇 Enter 直接傳送，或 Enter 換行、⌘/Ctrl+Enter 傳送。對話輸入框和劃詞評論框都生效。",
   "settings.composerSendKey.enter": "Enter 傳送（Shift+Enter 換行）",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter 傳送（Enter 換行）",
+  "settings.composerEnterInsertsLive": "Enter 插入正在回覆的回合",
+  "settings.composerEnterInsertsLiveDesc": "回覆還在進行時，傳送鍵把草稿插進這一回合，而不是先排隊。Shift+Enter 仍然換行。對話空閒時，傳送鍵仍然傳送。排隊按鈕仍然等到回合結束。",
   "settings.composerDraftStats": "草稿字數",
   "settings.composerDraftStatsDesc": "輸入框有內容時以低調樣式顯示字元數與詞數。",
   "settings.composerSpellcheck": "拼字檢查",

@@ -106,6 +106,7 @@
 │   Telegram / Slack / Discord  │                                   │
 │   Matrix / LINE               │                                   │
 │ ── 其他 ──                    │                                   │
+│   iMessage（仅 macOS）        │                                   │
 │   WPS 数字员工（可选）        │                                   │
 └───────────────────────────────┴───────────────────────────────────┘
 ```
@@ -582,6 +583,21 @@ Callout：社区桥、风险自负。
 | Webhook 本地端口 | `port` | Num | |
 | 回调路径 | `callback_path` | T | |
 | 公网说明 | — | **强 Callout**：需隧道；提供「推荐 cloudflared」复制片段（辅助） | |
+
+---
+
+### 6.15 iMessage `imessage`（仅 macOS）
+
+本地渠道，不是飞书 / Telegram 那种令牌渠道。没有公开的 iMessage 机器人 API，不接私有 IMCore。
+
+| 连接 | 这台 Mac 的「信息」 |
+|------|---------------------|
+| 平台 | 仅 macOS。Windows / Linux 不能当主机。这台 Mac 必须保持登录「信息」，并且醒着。 |
+| 入站 | 轮询 `~/Library/Messages/chat.db`。需要完全磁盘访问权限。启用或重新打开后，只收光标之后的新文字，不回放历史。 |
+| 出站 | AppleScript 交给「信息」发送。失败时错误出现在渠道状态里。 |
+| 允许名单 | 复用各渠道的 allow-from。填电话号码或 Apple ID（和 `/whoami` 看到的一样）。没有机器人令牌。 |
+| 群聊 | 默认仍要 @。iMessage 没有按钮，`/p` `/r` 用文字。 |
+| 手机 | 手机只用系统「信息」App 给这台 Mac 发消息。不是手机镜像。 |
 
 ---
 

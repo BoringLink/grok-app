@@ -582,6 +582,8 @@ export const koSettingsRemoteIm = {
   "settings.remoteIm.channel.discord": "Discord",
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.imessage": "iMessage",
+  "settings.remoteIm.conn.imessage": "이 Mac의 메시지. macOS 전용입니다. 메시지에 로그인한 채로 전체 디스크 접근을 허용하고, 전화번호나 Apple ID를 지정하세요. 봇 토큰은 없습니다. /p와 /r은 텍스트입니다.",
   "settings.remoteIm.channel.wpsAgentspace": "WPS Agentspace",
   "settings.remoteIm.security.title": "보안 작업",
   "settings.remoteIm.security.subtitle": "원격 보안 체크리스트",

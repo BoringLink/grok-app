@@ -582,6 +582,8 @@ export const zhSettingsRemoteIm = {
   "settings.remoteIm.channel.discord": "Discord",
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.imessage": "iMessage",
+  "settings.remoteIm.conn.imessage": "这台 Mac 的「信息」。仅 macOS：保持已登录，授予完全磁盘访问权限，并允许指定的电话号码或 Apple ID。没有机器人令牌。/p 和 /r 用文字发送。",
   "settings.remoteIm.channel.wpsAgentspace": "WPS 数字员工",
   "settings.remoteIm.security.title": "安全运维",
   "settings.remoteIm.security.subtitle": "远程安全检查清单",

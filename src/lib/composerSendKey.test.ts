@@ -4,6 +4,7 @@ import {
   loadComposerSendKeyPref,
   resolveComposerSubmitAction,
   saveComposerSendKeyPref,
+  sendKeyRedirectsToLiveInsert,
   setComposerControlHeldForTest,
   shouldSendOnKeydown,
   shouldSteerOnKeydown,
@@ -252,5 +253,73 @@ describe("resolveComposerSubmitAction", () => {
         canSteer: true,
       }),
     ).toBe("none");
+  });
+
+  it("off by default: plain Enter still queues while a turn is live", () => {
+    expect(
+      resolveComposerSubmitAction({
+        event: key(),
+        sendPref: "enter",
+        canSteer: true,
+        enterInsertsLive: false,
+      }),
+    ).toBe("send");
+  });
+
+  it("when on, the send key inserts into the live turn", () => {
+    expect(
+      resolveComposerSubmitAction({
+        event: key(),
+        sendPref: "enter",
+        canSteer: true,
+        enterInsertsLive: true,
+      }),
+    ).toBe("steer");
+    expect(
+      sendKeyRedirectsToLiveInsert({
+        event: key(),
+        sendPref: "enter",
+        canSteer: true,
+        enterInsertsLive: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("when on, Shift+Enter stays a newline and an idle send key still sends", () => {
+    expect(
+      resolveComposerSubmitAction({
+        event: key({ shiftKey: true }),
+        sendPref: "enter",
+        canSteer: true,
+        enterInsertsLive: true,
+      }),
+    ).toBe("none");
+    expect(
+      resolveComposerSubmitAction({
+        event: key(),
+        sendPref: "enter",
+        canSteer: false,
+        enterInsertsLive: true,
+      }),
+    ).toBe("send");
+  });
+
+  it("when on, Cmd+Enter with the mod-enter pref inserts instead of queueing", () => {
+    expect(
+      resolveComposerSubmitAction({
+        event: key({ metaKey: true }),
+        sendPref: "mod-enter",
+        canSteer: true,
+        enterInsertsLive: true,
+      }),
+    ).toBe("steer");
+    expect(
+      sendKeyRedirectsToLiveInsert({
+        event: key({ ctrlKey: true }),
+        sendPref: "enter",
+        canSteer: true,
+        enterInsertsLive: true,
+      }),
+    ).toBe(false);
   });
 });

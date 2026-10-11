@@ -907,6 +907,16 @@ export const CHANNEL_SCHEMAS: ChannelSchema[] = [
     fields: LINE_FIELDS,
   },
   {
+    id: "imessage",
+    group: "other",
+    implemented: true,
+    scanSupport: false,
+    pasteSupport: false,
+    connectionKey: "settings.remoteIm.conn.imessage",
+    nameKey: "settings.remoteIm.channel.imessage",
+    fields: [],
+  },
+  {
     id: "wps-agentspace",
     group: "other",
     implemented: false,

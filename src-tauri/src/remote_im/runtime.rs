@@ -57,11 +57,14 @@ pub async fn start_runtime(
     let mut instances = Vec::new();
 
     for dto in list {
-        if !dto.enabled || !dto.has_credentials {
+        let local_messages =
+            crate::remote_im::channels::imessage::runs_without_stored_secrets(&dto.channel);
+        if !dto.enabled || (!dto.has_credentials && !local_messages) {
             continue;
         }
         let secrets = config::get_secrets(&dto.id);
-        if secrets.is_empty() {
+        // iMessage has no bot token. The allow-from list is the gate.
+        if secrets.is_empty() && !local_messages {
             continue;
         }
         // Fail-closed ACL guard (§3.2): a channel without an explicit allow-from

@@ -582,6 +582,8 @@ export const idSettingsRemoteIm = {
   "settings.remoteIm.channel.discord": "Discord",
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.imessage": "iMessage",
+  "settings.remoteIm.conn.imessage": "Messages di Mac ini. Hanya macOS: tetap masuk, beri Akses Disk Penuh, dan izinkan nomor telepon atau Apple ID tertentu. Tidak ada token bot. /p dan /r berupa teks.",
   "settings.remoteIm.channel.wpsAgentspace": "WPS Agentspace",
   "settings.remoteIm.security.title": "Operasi keamanan",
   "settings.remoteIm.security.subtitle": "Daftar periksa keamanan jarak jauh",

@@ -14,6 +14,8 @@ See `docs/llm-wiki/release.md`.
 ## [Unreleased]
 
 ### Added
+- You can make the send key insert into a reply that is still running. Shift+Enter still starts a new line, and the queue button still waits.
+- Remote control can use iMessage on a Mac that is signed into Messages. Allow specific phone numbers or Apple IDs, and grant Full Disk Access.
 - Official models can use another context length when the model offers more than one.
 - The usage chip can show the CLI's own context breakdown.
 - The Tasks panel lists live subagent runs, with the counters and output the CLI reports.
@@ -22,6 +24,8 @@ See `docs/llm-wiki/release.md`.
 - A pull request update wakes that chat once.
 
 **中文 · 新增**
+- 可以让发送键直接插入正在进行的回复。Shift+Enter 仍然换行，排队按钮仍然等到回合结束。
+- 远程控制可以在已登录「信息」的 Mac 上使用 iMessage。允许名单填电话号码或 Apple ID，并授予完全磁盘访问权限。
 - 官方模型如果提供多种上下文长度，可以改用其中一种。
 - 用量条可以显示 CLI 自己算出的上下文明细。
 - 任务面板会列出正在运行的子代理，并显示 CLI 上报的计数与输出。
@@ -44,6 +48,8 @@ See `docs/llm-wiki/release.md`.
 - Changing the context window no longer puts a new chat back on the default model.
 - A file reference can point at a directory, not only a file.
 - Rows on screen stay drawn while the chat scrolls.
+- Windows stays clickable after you drag across chat text. WebView2 155 could ignore the mouse after that drag until the app was opened again.
+- Windows Pinyin stays next to the composer, and Shift switches language again. After the composer sat idle, the candidate could jump to the top-left of the screen.
 
 **中文 · 修复**
 - @ 菜单里的文件名会完整显示，放不下时末尾才出现省略号。
@@ -60,6 +66,8 @@ See `docs/llm-wiki/release.md`.
 - 改上下文窗口时，新开的对话不会再回到默认模型。
 - 文件引用可以指向目录，而不只是文件。
 - 滑动对话时，屏幕上的行保持已绘制。
+- 在 Windows 上拖选对话文字后，窗口仍然能点。WebView2 155 上这次拖选可能让鼠标点不动，直到重新打开应用。
+- Windows 上的拼音候选框留在输入框旁边，Shift 也能重新切换中英文。输入框空闲后再打字时，候选框会跳到屏幕左上角。
 
 ## [0.2.39] - 2026-10-06
 

@@ -55,6 +55,7 @@ mod tests {
                     | "qqbot"
                     | "matrix"
                     | "line"
+                    | "imessage"
                     | "weibo"
                     | "wps-xiezuo"
             ) {
@@ -75,7 +76,7 @@ mod tests {
         // Align with frontend REQUIRED_CHANNEL_IDS (active picker; WPS retired)
         let required = [
             "feishu", "lark", "dingtalk", "wecom", "weixin", "weibo", "qq", "qqbot", "telegram",
-            "slack", "discord", "matrix", "line",
+            "slack", "discord", "matrix", "line", "imessage",
         ];
         for id in required {
             assert!(

@@ -15,6 +15,7 @@ import "./styles/setup-wizard.css";
 // markdown math render (see src/lib/markdownMath.ts) so its fonts stay off
 // the boot critical path. scrollPerfDebug ships only in dev builds.
 import { detectAppPlatform } from "./lib/appPlatform";
+import { installWindowsDragInputGuard } from "./lib/windowsDragInputGuard";
 import {
   applyNativeWindowTheme,
   applyThemeToDocument,
@@ -117,6 +118,9 @@ applySidebarDensity(loadSidebarDensity(localStorage), undefined, false);
 applyMessageActionsVisibility(loadMessageActionsVisibility(localStorage));
 // Composer empty min-height (General → Composer) — html[data-composer-min-rows].
 applyComposerMinRows(loadComposerMinRows(localStorage));
+// Windows WebView2: a page text-drag can stick input until the process restarts.
+installWindowsDragInputGuard();
+
 const petShell =
   typeof window !== "undefined" && isPetShellHash(window.location.hash);
 const themeEditorShell =

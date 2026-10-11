@@ -265,6 +265,8 @@ export const itSettings = {
   "settings.composerSendKeyDesc": "Scegli se Invio semplice invia, oppure inserisce una nuova riga (⌘/Ctrl+Invio invia invece). Si applica al composer della chat e al commento della citazione.",
   "settings.composerSendKey.enter": "Invio per inviare (Maiusc+Invio per nuova riga)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Invio per inviare (Invio per nuova riga)",
+  "settings.composerEnterInsertsLive": "Invio inserisce nel turno in corso",
+  "settings.composerEnterInsertsLiveDesc": "Mentre una risposta è in corso, il tasto di invio inserisce la bozza in quel turno invece di attendere. Maiusc+Invio resta un a capo. A chat ferma, il tasto di invio invia ancora. Il pulsante della coda attende ancora la fine del turno.",
   "settings.composerDraftStats": "Conteggio caratteri della bozza",
   "settings.composerDraftStatsDesc": "Mostra un conteggio caratteri e parole attenuato quando l’input della chat non è vuoto.",
   "settings.composerSpellcheck": "Controllo ortografico",

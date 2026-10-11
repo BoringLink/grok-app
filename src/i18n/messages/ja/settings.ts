@@ -265,6 +265,8 @@ export const jaSettings = {
   "settings.composerSendKeyDesc": "素の Enter で送るか、改行を入れるか（⌘/Ctrl+Enter で送信）。チャット入力と引用コメント欄に適用されます。",
   "settings.composerSendKey.enter": "Enter で送信（Shift+Enter で改行）",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter で送信（Enter で改行）",
+  "settings.composerEnterInsertsLive": "Enter で進行中のターンに挿入",
+  "settings.composerEnterInsertsLiveDesc": "返信の途中では、送信キーが下書きをそのターンに挿入し、待たずに渡します。Shift+Enter は改行のままです。会話が止まっているときは、送信キーはこれまでどおり送信します。キューのボタンはターンが終わるまで待ちます。",
   "settings.composerDraftStats": "下書きの文字数",
   "settings.composerDraftStatsDesc": "チャット入力が空でないとき、控えめな文字数と語数を表示します。",
   "settings.composerSpellcheck": "スペルチェック",

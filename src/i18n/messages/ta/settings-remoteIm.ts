@@ -582,6 +582,8 @@ export const taSettingsRemoteIm = {
   "settings.remoteIm.channel.discord": "Discord",
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.imessage": "iMessage",
+  "settings.remoteIm.conn.imessage": "இந்த Mac-இன் Messages. macOS மட்டும். Messages-இல் உள்நுழைந்திருங்கள், முழு வட்டு அணுகலைக் கொடுங்கள், குறிப்பிட்ட எண்கள் அல்லது Apple ID-களை அனுமதியுங்கள். பாட் டோக்கன் இல்லை. /p மற்றும் /r உரை.",
   "settings.remoteIm.channel.wpsAgentspace": "WPS முகவர்ஸ்பேஸ்",
   "settings.remoteIm.security.title": "பாதுகாப்பு செயலி",
   "settings.remoteIm.security.subtitle": "ரிமோட் பாதுகாப்பு சரிபார்ப்பு பட்டியல்",

@@ -288,6 +288,8 @@ export const enSettings = {
   "settings.composerSendKeyDesc": "Choose whether plain Enter sends, or inserts a newline (⌘/Ctrl+Enter sends instead). Applies to the chat composer and the quote comment box.",
   "settings.composerSendKey.enter": "Enter to send (Shift+Enter for newline)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter to send (Enter for newline)",
+  "settings.composerEnterInsertsLive": "Enter inserts into the live turn",
+  "settings.composerEnterInsertsLiveDesc": "While a reply is running, the send key inserts the draft into that turn instead of waiting. Shift+Enter still starts a new line. When the chat is idle, the send key still sends. The queue button still waits until the turn ends.",
   "settings.composerDraftStats": "Draft character count",
   "settings.composerDraftStatsDesc": "Show a muted character and word count when the chat input is not empty.",
   "settings.composerSpellcheck": "Spellcheck",

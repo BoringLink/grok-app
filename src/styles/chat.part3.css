@@ -792,6 +792,9 @@ html[data-composer-min-rows="8"] .composer__input {
   /* Do not use overflow-x:auto here — it clips absolute/portaled popovers
      and was hiding the model menu (only a bottom shadow was visible). */
   overflow: visible;
+  /* Same named query as the chrome row. The field is a sibling, not a child. */
+  container-type: inline-size;
+  container-name: composer;
 }
 
 .composer__voice.composer__voice--live {

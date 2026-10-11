@@ -582,6 +582,8 @@ export const filSettingsRemoteIm = {
   "settings.remoteIm.channel.discord": "Discord",
   "settings.remoteIm.channel.matrix": "Matrix",
   "settings.remoteIm.channel.line": "LINE",
+  "settings.remoteIm.channel.imessage": "iMessage",
+  "settings.remoteIm.conn.imessage": "Messages sa Mac na ito. macOS lang: manatiling naka-sign in, bigyan ng Full Disk Access, at payagan ang mga numero o Apple ID. Walang bot token. Teksto ang /p at /r.",
   "settings.remoteIm.channel.wpsAgentspace": "WPS Agentspace",
   "settings.remoteIm.security.title": "Mga operasyon ng seguridad",
   "settings.remoteIm.security.subtitle": "Checklist ng remote security",

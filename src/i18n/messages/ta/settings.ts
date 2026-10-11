@@ -265,6 +265,8 @@ export const taSettings = {
   "settings.composerSendKeyDesc": "ப்ளைன் என்டர் அனுப்புகிறதா அல்லது புதிய வரியைச் செருகுகிறதா என்பதைத் தேர்வுசெய்யவும் (⌘/Ctrl+Enter அதற்குப் பதிலாக அனுப்புகிறது). உரையாடல் எழுதிக்கும் மேற்கோள் கருத்துப் பெட்டிக்கும் பொருந்தும்.",
   "settings.composerSendKey.enter": "அனுப்ப உள்ளிடவும் (புதிய வரிக்கு Shift+Enter)",
   "settings.composerSendKey.modEnter": "அனுப்ப ⌘/Ctrl+Enter (புதிய வரிக்கு உள்ளிடவும்)",
+  "settings.composerEnterInsertsLive": "Enter நடப்பு முறைக்குள் செருகும்",
+  "settings.composerEnterInsertsLiveDesc": "பதில் இயங்கும்போது, அனுப்பும் விசை வரைவை அந்த முறைக்குள் செருகும்; காத்திருக்காது. Shift+Enter இன்னும் புதிய வரி. உரையாடல் காலியாக இருக்கும்போது அனுப்பும் விசை அனுப்பும். வரிசை பொத்தான் முறை முடியும் வரை காத்திருக்கும்.",
   "settings.composerDraftStats": "வரைவு எழுத்து எண்ணிக்கை",
   "settings.composerDraftStatsDesc": "உரையாடல் உள்ளீடு காலியாக இல்லாதபோது, ஒலியடக்கப்பட்ட எழுத்து மற்றும் வார்த்தை எண்ணிக்கையைக் காட்டு.",
   "settings.composerSpellcheck": "எழுத்துப்பிழை சோதனை",

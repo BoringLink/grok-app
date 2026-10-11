@@ -25,6 +25,7 @@ export const REQUIRED_CHANNEL_IDS: RemoteChannelId[] = [
   "discord",
   "matrix",
   "line",
+  "imessage",
 ];
 
 export function getChannelSchema(

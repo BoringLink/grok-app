@@ -265,6 +265,8 @@ export const deSettings = {
   "settings.composerSendKeyDesc": "Wählen, ob einfaches Enter sendet oder einen Zeilenumbruch einfügt (⌘/Ctrl+Enter sendet dann). Gilt für den Chat-Composer und das Zitat-Kommentarfeld.",
   "settings.composerSendKey.enter": "Enter zum Senden (Shift+Enter für Zeilenumbruch)",
   "settings.composerSendKey.modEnter": "⌘/Ctrl+Enter zum Senden (Enter für Zeilenumbruch)",
+  "settings.composerEnterInsertsLive": "Enter in die laufende Runde einfügen",
+  "settings.composerEnterInsertsLiveDesc": "Während eine Antwort läuft, fügt die Sendetaste den Entwurf in diese Runde ein, statt zu warten. Shift+Enter beginnt weiter eine neue Zeile. Im Leerlauf sendet die Sendetaste weiter. Die Warteschlangen-Schaltfläche wartet weiter bis zum Rundenende.",
   "settings.composerDraftStats": "Entwurfs-Zeichenzahl",
   "settings.composerDraftStatsDesc": "Gedämpfte Zeichen- und Wortzahl zeigen, wenn die Chat-Eingabe nicht leer ist.",
   "settings.composerSpellcheck": "Rechtschreibprüfung",

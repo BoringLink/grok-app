@@ -194,8 +194,33 @@ export function resolveComposerSubmitAction(opts: {
   sendPref: ComposerSendKeyPref;
   /** Live turn (streaming **or** permission wait). Handler toasts on the gate. */
   canSteer: boolean;
+  /**
+   * Settings → Composer. When on, the send key inserts into the live turn
+   * instead of queueing. Off by default. Does not change Shift+Enter,
+   * an idle send, or the queue button.
+   */
+  enterInsertsLive?: boolean;
 }): ComposerSubmitAction {
   if (shouldSteerOnKeydown(opts.event) && opts.canSteer) return "steer";
-  if (shouldSendOnKeydown(opts.event, opts.sendPref)) return "send";
+  if (shouldSendOnKeydown(opts.event, opts.sendPref)) {
+    if (opts.canSteer && opts.enterInsertsLive) return "steer";
+    return "send";
+  }
   return "none";
+}
+
+/**
+ * The send key was redirected to a live insert. The dedicated Ctrl+Enter
+ * steer chord is not this path: an empty Ctrl+Enter still steers the
+ * queue head, while an empty send key stays a no-op.
+ */
+export function sendKeyRedirectsToLiveInsert(opts: {
+  event: ComposerSendKeyEvent;
+  sendPref: ComposerSendKeyPref;
+  canSteer: boolean;
+  enterInsertsLive: boolean;
+}): boolean {
+  if (!opts.enterInsertsLive || !opts.canSteer) return false;
+  if (shouldSteerOnKeydown(opts.event)) return false;
+  return shouldSendOnKeydown(opts.event, opts.sendPref);
 }

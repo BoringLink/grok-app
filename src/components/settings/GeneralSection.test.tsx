@@ -52,6 +52,24 @@ function renderSection(model: SettingsViewModel): string {
   );
 }
 
+describe("GeneralSection composer", () => {
+  it("shows the live-turn insert switch next to the send key", () => {
+    const html = renderSection(
+      buildModel({
+        activeTab: "composer",
+        composerMinRows: 3,
+        composerSendKeyPref: "enter",
+        composerEnterInsertsLive: false,
+        setComposerEnterInsertsLive: vi.fn(),
+        availableModels: [],
+      }),
+    );
+    expect(html).toContain("settings-anchor-composerEnterInsertsLive");
+    expect(html).toContain("settings.composerEnterInsertsLive");
+    expect(html).toContain('aria-checked="false"');
+  });
+});
+
 describe("GeneralSection voice — custom STT", () => {
   it("shows the engine selector in the voice card", () => {
     const html = renderSection(buildModel());
