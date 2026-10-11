@@ -57,7 +57,7 @@ describe("GeneralSection composer", () => {
     const html = renderSection(
       buildModel({
         activeTab: "composer",
-        composerMinRows: 3,
+        composerMinRows: "3",
         composerSendKeyPref: "enter",
         composerEnterInsertsLive: false,
         setComposerEnterInsertsLive: vi.fn(),
