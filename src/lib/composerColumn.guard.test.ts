@@ -73,8 +73,13 @@ describe("composer column matches chat width", () => {
     expect(chat2).toMatch(
       /\.composer__chip-shell\s*\{[^}]*width:\s*max-content/s,
     );
-    expect(chat1).toMatch(
-      /\.composer-stack\s*\{[^}]*container-name:\s*composer/s,
+    // Named container sits on the chip chrome, not the stack around the field.
+    // A size container on the stack makes Windows Pinyin lose the caret.
+    expect(chat2).toMatch(
+      /\.composer__chrome\s*\{[^}]*container-name:\s*composer/s,
+    );
+    expect(chat1).not.toMatch(
+      /\.composer-stack\s*\{[^}]*container-(?:name|type)\s*:/s,
     );
     expect(app).toContain('className="composer__chrome"');
     expect(app).toContain(
