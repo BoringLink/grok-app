@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.40] - 2026-10-11
+
+> **Highlight:** The send key can join a live reply, and a Mac can answer over iMessage.
+>
+> **中文 · 亮点：** 发送键可以插入正在进行的回复，Mac 也可以通过 iMessage 回复。
+
 ### Added
 - You can make the send key insert into a reply that is still running. Shift+Enter still starts a new line, and the queue button still waits.
 - Remote control can use iMessage on a Mac that is signed into Messages. Allow specific phone numbers or Apple IDs, and grant Full Disk Access.
