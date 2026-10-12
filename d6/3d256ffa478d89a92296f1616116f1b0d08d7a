@@ -1,0 +1,19 @@
+src-tauri/src/extensions.rs
+  s_9cdd078fb9973c::t_6294a4c41e9954 1398
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "d63d256ffa478d89a92296f1616116f1b0d08d7a",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}

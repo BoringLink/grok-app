@@ -1,0 +1,53 @@
+docs/llm-wiki/pr-monitor.md
+  s_9cdd078fb9973c::t_6d6cd19c009835 110-138,150-152,159-163
+docs/plans/2026-10-12-pr-monitor-agent-tool-spec.md
+  s_9cdd078fb9973c::t_9145f3709347ad 1-121
+src-tauri/src/session_manager/connect.rs
+  s_9cdd078fb9973c::t_8ccfd45326d486 1290
+src-tauri/src/official_aux.rs
+  s_9cdd078fb9973c::t_b792b90e8e0d8a 426
+AGENTS.md
+  s_9cdd078fb9973c::t_2e2cda85c1af68 24
+src-tauri/src/extensions.rs
+  s_9cdd078fb9973c::t_21fc24c450ad46 1335-1337,1341
+  s_9cdd078fb9973c::t_b58daa3f415776 1290-1292,1302-1304,1307-1308,1311
+  s_9cdd078fb9973c::t_bcf2957b250216 1394-1406
+  s_9cdd078fb9973c::t_6e133650a6ac0d 1293,1309-1310
+  s_9cdd078fb9973c::t_2e29af7be198f4 1287-1289,1301
+src-tauri/src/session_api.rs
+  s_9cdd078fb9973c::t_3a74138d73c6ca 1069-1118,1121-1163
+  s_9cdd078fb9973c::t_75782ee024930d 14
+  s_9cdd078fb9973c::t_47074c8d6406f8 1119-1120
+  s_9cdd078fb9973c::t_234454aa5d9d1b 1177-1179
+src-tauri/src/pr_monitor/mcp.rs
+  s_9cdd078fb9973c::t_efb5d24279d191 1-59,61-111
+  s_9cdd078fb9973c::t_163e441c0b5b39 60
+scripts/pr-monitor-mcp.mjs
+  s_9cdd078fb9973c::t_4d67241499ce8e 1-290
+src-tauri/src/pr_monitor/mod.rs
+  s_9cdd078fb9973c::t_9616d4d851c243 35-37
+src-tauri/src/acp_client.rs
+  s_9cdd078fb9973c::t_d09f7f72356bd3 425-427
+  s_9cdd078fb9973c::t_a9f9fdd614e4c3 643,2481,2487-2489
+  s_9cdd078fb9973c::t_9a01cddb98bb7a 1287
+  s_9cdd078fb9973c::t_46d345fb085840 497-499,1186
+src-tauri/src/session_manager/control.rs
+  s_9cdd078fb9973c::t_529f3c3ed4e470 951,955
+  s_9cdd078fb9973c::t_a7f4258f1c5bcf 954,956
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "d69a15f6737993a21a8e54188e3844d551bc324d",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
