@@ -11,10 +11,22 @@ import "@/test/jsdomStubs";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ComposerWorktreeMenu } from "@/components/ComposerWorktreeMenu";
+import { composerPrSection } from "@/components/ComposerBranchPrSection";
 import { FLOATING_MENU_Z_INDEX } from "@/lib/floatingMenu";
 import { parseWorktreePorcelain } from "@/lib/gitWorktree";
 
 afterEach(cleanup);
+
+const OTHER = [
+  {
+    projectPath: "/Users/me/typebooks",
+    branch: "feat/other",
+    number: 77,
+    title: "Fix CI on the other branch",
+    state: "OPEN",
+    checksLine: "3 pass",
+  },
+];
 
 const PORCELAIN = `worktree /Users/me/typebooks
 HEAD abcdef0123456789
@@ -96,6 +108,34 @@ function prRows(): HTMLElement[] {
 }
 
 describe("ComposerWorktreeMenu PR section", () => {
+  it("reserves one row per PR and hides the section when there is nothing", () => {
+    const bound = { number: 42, title: "Fix CI" };
+    // No PR anywhere → no section, so the menu does not reserve empty height.
+    expect(
+      composerPrSection({ pr: null, prWatching: false, prOtherWatches: OTHER }),
+    ).toEqual({ visible: false, rows: 0 });
+    expect(
+      composerPrSection({
+        pr: null,
+        prWatching: false,
+        prOtherWatches: OTHER,
+        canStopOther: true,
+      }),
+    ).toEqual({ visible: true, rows: 1 });
+    expect(
+      composerPrSection({
+        pr: bound,
+        prWatching: true,
+        prOtherWatches: OTHER,
+        canStopOther: true,
+      }),
+    ).toEqual({ visible: true, rows: 2 });
+    // A mounted watch with no PR row still shows (it has to be stoppable).
+    expect(
+      composerPrSection({ pr: null, prWatching: true }),
+    ).toEqual({ visible: true, rows: 0 });
+  });
+
   it("keeps the watch control inside the PR's own row", async () => {
     const { onTogglePrWatch } = renderMenu({
       pr: {
@@ -173,14 +213,7 @@ describe("ComposerWorktreeMenu PR section", () => {
       pr: null,
       prWatching: false,
       prOtherWatches: [
-        {
-          projectPath: "/Users/me/typebooks",
-          branch: "feat/other",
-          number: 77,
-          title: "Fix CI on the other branch",
-          state: "OPEN",
-          checksLine: "3 pass",
-        },
+        ...OTHER,
         {
           projectPath: "/Users/me/typebooks",
           branch: "wip/third",
