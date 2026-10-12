@@ -1,0 +1,92 @@
+src-tauri/src/command_registry.rs
+  s_9cdd078fb9973c::t_f3ed8a2d24d4b5 305
+docs/plans/2026-10-12-pr-monitor-session-bound-spec.md
+  s_9cdd078fb9973c::t_68aced6d751b03 1-169
+src/lib/prMonitor.ts
+  s_9cdd078fb9973c::t_2a82d24e3ba32d 2-3,5-8,12,16-19,21,23,38-40,50,53-56,59-62,65-67,69-80,83,85-98,102,111,114,120,122,131,138-142,144-145,147-148,150-151,157,159-160,162-172,174,176-187,189-202,204-208,211-225,227-235,238-264
+AGENTS.md
+  s_9cdd078fb9973c::t_ebe91fee5ad7be 24
+src/app/WorkbenchComposerColumn.tsx
+  s_9cdd078fb9973c::t_86a636c595c919 839
+  s_9cdd078fb9973c::t_ddcdd84a57f662 43
+  s_9cdd078fb9973c::t_71c6a102ce2caf 5
+  s_9cdd078fb9973c::t_9e107bb351823b 375-377,379,385-392
+  s_9cdd078fb9973c::t_948435b5b03901 824,830-831,837-838,841,843,846
+src/components/ComposerWorktreeMenu.pr.test.tsx
+  s_9cdd078fb9973c::t_7c55f1c5897ee8 4-7,16,37,43-44,54-74,80,94,98,103,108,110-112,116,119,126-130,132,134,136-139,147-153,156-163,165-174,176-178,186,191,193-198,200-201,203-204,217-222,225-226,230
+  s_9cdd078fb9973c::t_fdd942a37588cc 208-210
+  s_9cdd078fb9973c::t_747a265bd1e214 205-207,211-216
+  s_9cdd078fb9973c::t_75348485adcad2 135
+  s_9cdd078fb9973c::t_40bc157eb554a7 181-182,192,199,202
+src/components/ComposerWorktreeMenu.test.tsx
+  s_9cdd078fb9973c::t_a6be2fe905ea86 70-74,77,79-80,82-84,86-87,90,92-93,96
+  s_9cdd078fb9973c::t_2a0846b930625e 97
+src/styles/chat.part2.css
+  s_9cdd078fb9973c::t_57f288ac62edee 244-283
+  s_9cdd078fb9973c::t_3d956baadc934f 206-207,214-215,224
+src-tauri/src/lib.rs
+  s_9cdd078fb9973c::t_e072aea122f40e 158-159
+src-tauri/src/remote_im/grok_agent.rs
+  s_9cdd078fb9973c::t_848b3939f6e4e3 734-738
+src-tauri/src/pr_monitor/poll.rs
+  s_9cdd078fb9973c::t_0e304fc2783ee1 160
+src-tauri/src/git_pr_hub.rs
+  s_9cdd078fb9973c::t_bf0892099a2cee 448-453,458-491
+src-tauri/src/pr_monitor_i18n.rs
+  s_9cdd078fb9973c::t_8a290ce2556f53 339
+  s_9cdd078fb9973c::t_ace0062c4a4034 352-360
+src/hooks/usePrMonitor.ts
+  s_9cdd078fb9973c::t_08bd39fdf2c656 230
+  s_9cdd078fb9973c::t_c7cd3ddca03df9 46-47,89,93-99,103,118
+  s_9cdd078fb9973c::t_a375647dd6c12d 2,4-8,14,16-21,25,35,40-45,48-50,52-54,56-61,65,71-74,76,79-80,83-88,90-92,102,104-117,119-124,127-133,136-137,139,142-143,150,152-154,160,163,165,167-181,185,187-196,199-200,204-206,208,211-214,218,221,227-229,231-234,237
+src/lib/api/prMonitor.ts
+  s_9cdd078fb9973c::t_4cef758237bce2 1,3,6-9,22,29,38,41,48,50-51,55-56,60-70,73-77,80-82,84
+docs/llm-wiki/pr-monitor.md
+  s_9cdd078fb9973c::t_e5bd6ef964adf5 1,3-10,14-32,37-38,42-43,48-50,54-69,71-87,91-102,113-118,124-126,128-132
+src/components/ComposerWorktreeMenu.tsx
+  s_9cdd078fb9973c::t_24afe66df74b51 386,394,403-410
+  s_9cdd078fb9973c::t_51eda62dbdb660 260-264,266-267
+  s_9cdd078fb9973c::t_82304a7402f844 222,255-259
+  s_9cdd078fb9973c::t_989436c2378020 339
+  s_9cdd078fb9973c::t_45f32501e0478f 426-432,434-453
+  s_9cdd078fb9973c::t_3b5718edc8ca8d 89,97-101,107
+  s_9cdd078fb9973c::t_5ad2e2f826ea4d 220-221,224,226,230
+  s_9cdd078fb9973c::t_f44085bc2deafa 3-5,41-45
+  s_9cdd078fb9973c::t_ddd34da1fce174 171-172
+  s_9cdd078fb9973c::t_e1942efe317f1a 358-368
+  s_9cdd078fb9973c::t_062379878ec366 169-170
+  s_9cdd078fb9973c::t_8b67adb4f80dad 165-168,173-175,177-179,181,183-184
+src/i18n/messages/en/composer.ts
+  s_9cdd078fb9973c::t_816824143e26a1 408-409,411
+src/lib/prMonitor.test.ts
+  s_9cdd078fb9973c::t_84f92d96c0f38f 104-107
+  s_9cdd078fb9973c::t_ec303ba34d78de 278,280
+  s_9cdd078fb9973c::t_0306854a1e2818 2-3,5-7,12,14-15,17-21,23-25,30,32-39,43,48,53-54,59,61,64-70,74,76-81,84-85,88-91,94-98,101-103,111-114,116-119,123,125-131,135-138,141-143,147-170,173-176,178-183,186-189,193,195-199,202-221,223,225,227-230,232-244,248-251,255,257-258,261,263-267,270-272,275-277,279
+docs/adr/0005-pr-monitor-is-session-bound.md
+  s_9cdd078fb9973c::t_a00001df0a2fa7 1-41
+src/components/ComposerPrListSection.tsx
+  s_9cdd078fb9973c::t_16d3443f864b2b 1-60,67-70,72-73,75-188
+  s_9cdd078fb9973c::t_1599d4fe105fe6 61-66,71,74
+src/hooks/usePrMonitor.test.tsx
+  s_9cdd078fb9973c::t_a60d5a15cf3a25 271,278-305
+  s_9cdd078fb9973c::t_67495080f14ff4 4,6-9,12,14-15,17,20-21,25,28-30,36,38-39,41,49,54,56-57,60-63,66-68,75,77,80-86,90,92-100,107-111,113-126,132,136,139,141-142,145-148,150-158,161-164,166-167,169-171,174-190,192-199,201-211,213,216-220,222-229,231,233-235,238-241,243,245-248,250,253-258,260,262,265,272-277,306-311,313-317,319-325
+  s_9cdd078fb9973c::t_1706b83352e3e9 11
+src-tauri/src/pr_monitor/types.rs
+  s_9cdd078fb9973c::t_edf9a5c6e8cc02 256-259
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "928425b57fe5a1ff7dafed376abce8e39a3c0238",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "unknown"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
