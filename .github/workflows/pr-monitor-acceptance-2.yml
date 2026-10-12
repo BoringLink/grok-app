@@ -1,0 +1,16 @@
+name: pr-monitor-acceptance-2
+
+# 只用于验收「多 PR 监视」的最小检查：待更新事项未完成时刻意失败，完成后通过。
+# 该文件只存在于验收分支上，随分支删除而消失。
+# 与 `pr-monitor-acceptance`（PR #1 的检查）互相独立，便于区分唤醒来自哪个 PR。
+
+on:
+  pull_request:
+
+jobs:
+  pr-monitor-acceptance-2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 待更新事项必须完成
+        run: "grep -q 'STATUS-2: DONE' docs/pr-monitor-wake-test-2.md"
