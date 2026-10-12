@@ -1,0 +1,15 @@
+name: pr-monitor-acceptance
+
+# 只用于验收的最小检查：待更新事项未完成时刻意失败，完成后通过。
+# 该文件只存在于验收分支上，随分支删除而消失。
+
+on:
+  pull_request:
+
+jobs:
+  pr-monitor-acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 待更新事项必须完成
+        run: "grep -q 'STATUS: DONE' docs/pr-monitor-wake-test.md"
