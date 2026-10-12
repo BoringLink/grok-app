@@ -1,0 +1,23 @@
+docs/plans/2026-10-12-pr-monitor-agent-tool-spec.md
+  s_9cdd078fb9973c::t_9145f3709347ad 1-3,5-80,83-104,106,108,113-119,111-112
+  s_9cdd078fb9973c::t_cf2ac7cca80d8f 105,107,109-110
+docs/llm-wiki/pr-monitor.md
+  s_9cdd078fb9973c::t_6d6cd19c009835 110-132,138,150-152,159-161
+  s_9cdd078fb9973c::t_e5bd6ef964adf5 162-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "a7f5243c03b61578e4675838925bef2ceab17afb",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}

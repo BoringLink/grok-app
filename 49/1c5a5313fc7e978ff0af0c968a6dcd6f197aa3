@@ -1,0 +1,24 @@
+src-tauri/src/extensions.rs
+  s_9cdd078fb9973c::t_2e29af7be198f4 1287-1288,1298
+  s_9cdd078fb9973c::t_6e133650a6ac0d 1290,1306-1307
+  s_9cdd078fb9973c::t_b58daa3f415776 1299-1301,1304-1305,1308
+  s_9cdd078fb9973c::t_21fc24c450ad46 1332-1334,1338
+  s_9cdd078fb9973c::t_bcf2957b250216 1391-1394,1396-1403
+  s_9cdd078fb9973c::t_6294a4c41e9954 1395
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "491c5a5313fc7e978ff0af0c968a6dcd6f197aa3",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}

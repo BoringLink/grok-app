@@ -1,0 +1,26 @@
+src-tauri/src/official_aux.rs
+  s_9cdd078fb9973c::t_b792b90e8e0d8a 426
+  s_9cdd078fb9973c::t_72310317d00a0f 1195-1200
+src-tauri/src/pr_monitor/mcp.rs
+  s_9cdd078fb9973c::t_efb5d24279d191 1-49,51-55,58-75,85-103,156,155
+  s_9cdd078fb9973c::t_163e441c0b5b39 57
+  s_9cdd078fb9973c::t_687e1e040cbf60 56
+  s_9cdd078fb9973c::t_d9c9e8e9881e43 76-84,105-109,112-115,125-127,129-136,138-147,149-154
+  s_9cdd078fb9973c::t_f74244d3a3a226 110-111,116-124,128,137,148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "8d2e104bb90ae7c07c70e4b70a0ac240233ae22f",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}

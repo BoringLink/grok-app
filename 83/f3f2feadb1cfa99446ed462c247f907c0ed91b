@@ -1,0 +1,19 @@
+src/components/ComposerPrListSection.tsx
+  s_9cdd078fb9973c::t_3ff2f6ba2e24e7 144-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "83f3f2feadb1cfa99446ed462c247f907c0ed91b",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
