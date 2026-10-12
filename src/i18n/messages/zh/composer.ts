@@ -409,6 +409,7 @@ export const zhComposer = {
   "prMonitor.noPr": "当前分支没有拉取请求",
   "prMonitor.unavailable": "拉取请求不可用（gh 未就绪）",
   "prMonitor.watchFailed": "无法监视该 PR：{reason}",
+  "prMonitor.unwatchFailed": "无法停止监视该 PR：{reason}",
   "prMonitor.wokeToast": "PR #{number} 有更新 — Agent 正在跟进",
   "prMonitor.wakeQueuedToast": "PR #{number} 有更新 — 本会话空闲后跟进",
   "prMonitor.wakeFailed": "无法唤醒本次会话：{reason}",

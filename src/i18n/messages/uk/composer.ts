@@ -409,6 +409,7 @@ export const ukComposer = {
   "prMonitor.noPr": "Для цієї гілки немає pull request",
   "prMonitor.unavailable": "Pull request недоступні (gh не готовий)",
   "prMonitor.watchFailed": "Не вдалося стежити за PR: {reason}",
+  "prMonitor.unwatchFailed": "Не вдалося припинити стеження за PR: {reason}",
   "prMonitor.wokeToast": "PR #{number} змінився — агент продовжує",
   "prMonitor.wakeQueuedToast": "PR #{number} змінився — продовжить, коли чат звільниться",
   "prMonitor.wakeFailed": "Не вдалося розбудити цей чат: {reason}",

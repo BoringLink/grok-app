@@ -1,13 +1,14 @@
 /**
  * @vitest-environment jsdom
  *
- * Branch-chip PR section: the PR row, the watch toggle, the "no PR" state and
- * the portal/material contract (dialogs.md: never a transparent or clipped
- * menu). Drives the shipped component through a real click.
+ * Branch-chip PR section: the compact one-row-per-PR list, the per-row watch
+ * control, the "no PR" state and the portal/material contract (dialogs.md:
+ * never a transparent or clipped menu). Drives the shipped component through a
+ * real click.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@/test/jsdomStubs";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ComposerWorktreeMenu } from "@/components/ComposerWorktreeMenu";
 import { FLOATING_MENU_Z_INDEX } from "@/lib/floatingMenu";
@@ -53,6 +54,7 @@ function renderMenu(
 ) {
   const onTogglePrWatch = vi.fn();
   const onOpenPrHub = vi.fn();
+  const onUnwatchPr = vi.fn();
   render(
     <ComposerWorktreeMenu
       variant="context"
@@ -66,10 +68,11 @@ function renderMenu(
       onGc={vi.fn()}
       onTogglePrWatch={onTogglePrWatch}
       onOpenPrHub={onOpenPrHub}
+      onUnwatchPr={onUnwatchPr}
       {...extra}
     />,
   );
-  return { onTogglePrWatch, onOpenPrHub };
+  return { onTogglePrWatch, onOpenPrHub, onUnwatchPr };
 }
 
 async function open() {
@@ -80,8 +83,20 @@ async function open() {
   return user;
 }
 
+/** Body-level pop (the menu is portaled, never nested in the chip). */
+function pop(): HTMLElement {
+  return document.body.querySelector<HTMLElement>(":scope > .cwm__pop")!;
+}
+
+/** PR rows in the section, in render order. */
+function prRows(): HTMLElement[] {
+  return Array.from(
+    pop().querySelectorAll<HTMLElement>(".cwm__list--pr > .cwm__row"),
+  );
+}
+
 describe("ComposerWorktreeMenu PR section", () => {
-  it("shows the bound PR, the watching tag and the watch toggle", async () => {
+  it("keeps the watch control inside the PR's own row", async () => {
     const { onTogglePrWatch } = renderMenu({
       pr: {
         number: 1316,
@@ -94,24 +109,30 @@ describe("ComposerWorktreeMenu PR section", () => {
       prPendingWakes: 2,
     });
 
-    await open();
+    const user = await open();
 
     // Portal contract: material class on a body-level pop, never transparent.
-    const pop = document.body.querySelector<HTMLElement>(
-      ":scope > .cmm__pop",
-    );
-    expect(pop).not.toBeNull();
-    expect(pop!.className).toContain("cmm__pop--portal");
-    expect(pop!.className).toContain("cwm__pop");
-    expect(pop!.style.position).toBe("fixed");
-    expect(pop!.style.zIndex).toBe(String(FLOATING_MENU_Z_INDEX));
+    const el = pop();
+    expect(el).not.toBeNull();
+    expect(el.className).toContain("cmm__pop--portal");
+    expect(el.className).toContain("cwm__pop");
+    expect(el.style.position).toBe("fixed");
+    expect(el.style.zIndex).toBe(String(FLOATING_MENU_Z_INDEX));
 
     const row = screen.getByRole("menuitem", { name: /#1316/ });
     expect(row.textContent).toContain("OPEN · 4 pass");
     // Menu rows are wider than the chip, so the long title is kept here.
     expect(row.textContent).toContain("feat(tasks): follow live subagent runs");
 
-    const toggle = screen.getByRole("menuitem", { name: /Stop watching/ });
+    // One row for one PR: no full-width toggle row under the PR.
+    const section = el.querySelector<HTMLElement>(".cwm__pr")!;
+    expect(section.querySelector(".cwm__action")).toBeNull();
+    expect(prRows().length).toBe(1);
+
+    const toggle = within(row.parentElement as HTMLElement).getByRole(
+      "button",
+      { name: "Stop watching" },
+    );
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
 
     expect(screen.getByText("Watching")).toBeTruthy();
@@ -120,8 +141,10 @@ describe("ComposerWorktreeMenu PR section", () => {
     ).toBeTruthy();
     expect(screen.getByText("2 follow-up(s) waiting")).toBeTruthy();
 
-    await userEvent.setup().click(toggle);
+    await user.click(toggle);
     expect(onTogglePrWatch).toHaveBeenCalledTimes(1);
+    // The menu stays open so several mounts can be managed in one pass.
+    expect(pop()).not.toBeNull();
   });
 
   it("offers to start watching and opens the PR hub", async () => {
@@ -131,21 +154,76 @@ describe("ComposerWorktreeMenu PR section", () => {
     });
 
     const user = await open();
-    const toggle = screen.getByRole("menuitem", { name: /Watch this PR/ });
+    const toggle = screen.getByRole("button", { name: "Watch this PR" });
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     // Not watching → no watching tag and no change line.
     expect(screen.queryByText("Watching")).toBeNull();
 
-    // Each action closes the menu, so reopen between them.
     await user.click(toggle);
     expect(onTogglePrWatch).toHaveBeenCalledTimes(1);
 
-    const user2 = await open();
-    await user2.click(screen.getByRole("menuitem", { name: /#42/ }));
+    // The PR row itself still opens the hub (and closes the menu).
+    await user.click(screen.getByRole("menuitem", { name: /#42/ }));
     await waitFor(() => expect(onOpenPrHub).toHaveBeenCalledWith(42));
+    expect(document.body.querySelector(":scope > .cwm__pop")).toBeNull();
   });
 
-  it("renders no PR section at all when the branch has no PR", async () => {
+  it("lists this chat's other watches, each with its own control", async () => {
+    const { onUnwatchPr } = renderMenu({
+      pr: null,
+      prWatching: false,
+      prOtherWatches: [
+        {
+          projectPath: "/Users/me/typebooks",
+          branch: "feat/other",
+          number: 77,
+          title: "Fix CI on the other branch",
+          state: "OPEN",
+          checksLine: "3 pass",
+        },
+        {
+          projectPath: "/Users/me/typebooks",
+          branch: "wip/third",
+          number: 78,
+          title: "Third branch work",
+          state: "OPEN",
+          checksLine: "",
+          busy: true,
+        },
+      ],
+    });
+
+    const user = await open();
+
+    const rows = prRows();
+    expect(rows.length).toBe(2);
+
+    const first = within(rows[0]);
+    const firstRow = first.getByRole("menuitem");
+    expect(firstRow.textContent).toContain("#77");
+    // The row names the branch it belongs to, so several mounts stay tellable apart.
+    expect(firstRow.textContent).toContain("OPEN · 3 pass · feat/other");
+    await user.click(first.getByRole("button", { name: "Stop watching" }));
+    expect(onUnwatchPr).toHaveBeenCalledWith(
+      expect.objectContaining({ branch: "feat/other", number: 77 }),
+    );
+
+    const second = within(rows[1]);
+    expect(second.getByRole("menuitem").textContent).toContain("#78");
+    // A stop call in flight disables that row only.
+    expect(
+      second.getByRole("button", { name: "Stop watching" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      first.getByRole("button", { name: "Stop watching" }).hasAttribute("disabled"),
+    ).toBe(false);
+
+    // Other mounts are watched, so the section says so and shows no "no PR" note.
+    expect(screen.getByText("Watching")).toBeTruthy();
+    expect(screen.queryByText("No pull request for this branch")).toBeNull();
+  });
+
+  it("renders no PR section at all when the branch has no PR and nothing is watched", async () => {
     renderMenu({ pr: null, prWatching: false });
     await open();
 

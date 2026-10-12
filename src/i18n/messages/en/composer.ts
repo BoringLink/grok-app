@@ -410,6 +410,7 @@ export const enComposer = {
   "prMonitor.noPr": "No pull request for this branch",
   "prMonitor.unavailable": "Pull requests unavailable (gh not ready)",
   "prMonitor.watchFailed": "Could not watch this PR: {reason}",
+  "prMonitor.unwatchFailed": "Could not stop watching this PR: {reason}",
   "prMonitor.wokeToast": "PR #{number} changed — the agent is following up",
   "prMonitor.wakeQueuedToast": "PR #{number} changed — will follow up when this chat is free",
   "prMonitor.wakeFailed": "Could not wake this chat: {reason}",

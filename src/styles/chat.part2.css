@@ -248,6 +248,46 @@ button.composer__context-item {
   white-space: nowrap;
 }
 
+/* One row per PR: the watch control rides in its own row, so a chat that
+   watches several PRs stays a compact list and each bell sits on its PR. */
+.cwm__list--pr {
+  min-height: 0;
+}
+
+.cwm__row-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 36px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+
+.cwm__row-toggle:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cwm__row-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cwm__row-toggle.is-on {
+  color: var(--text-secondary, inherit);
+}
+
+.cwm__row-toggle svg {
+  flex-shrink: 0;
+}
+
 .cwm__pr-head {
   display: flex;
   align-items: center;

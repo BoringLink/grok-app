@@ -409,6 +409,7 @@ export const idComposer = {
   "prMonitor.noPr": "Tidak ada pull request untuk branch ini",
   "prMonitor.unavailable": "Pull request tidak tersedia (gh belum siap)",
   "prMonitor.watchFailed": "Tidak bisa memantau PR ini: {reason}",
+  "prMonitor.unwatchFailed": "Tidak bisa berhenti memantau PR ini: {reason}",
   "prMonitor.wokeToast": "PR #{number} berubah — agen menindaklanjuti",
   "prMonitor.wakeQueuedToast": "PR #{number} berubah — ditindaklanjuti saat chat ini kosong",
   "prMonitor.wakeFailed": "Tidak bisa membangunkan chat ini: {reason}",

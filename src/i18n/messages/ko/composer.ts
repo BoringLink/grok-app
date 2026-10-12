@@ -409,6 +409,7 @@ export const koComposer = {
   "prMonitor.noPr": "이 브랜치에 풀 리퀘스트가 없습니다",
   "prMonitor.unavailable": "풀 리퀘스트를 사용할 수 없습니다(gh 준비 안 됨)",
   "prMonitor.watchFailed": "이 PR을 감시할 수 없습니다: {reason}",
+  "prMonitor.unwatchFailed": "이 PR의 감시를 중지할 수 없습니다: {reason}",
   "prMonitor.wokeToast": "PR #{number} 변경됨 — 에이전트가 이어서 처리합니다",
   "prMonitor.wakeQueuedToast": "PR #{number} 변경됨 — 이 채팅이 비면 이어서 처리합니다",
   "prMonitor.wakeFailed": "이 채팅을 깨울 수 없습니다: {reason}",

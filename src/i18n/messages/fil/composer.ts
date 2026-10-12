@@ -409,6 +409,7 @@ export const filComposer = {
   "prMonitor.noPr": "Walang pull request para sa branch na ito",
   "prMonitor.unavailable": "Hindi available ang pull request (hindi pa ready ang gh)",
   "prMonitor.watchFailed": "Hindi mabantayan ang PR na ito: {reason}",
+  "prMonitor.unwatchFailed": "Hindi maitigil ang pagbantay sa PR na ito: {reason}",
   "prMonitor.wokeToast": "Nagbago ang PR #{number} — sumusunod na ang agent",
   "prMonitor.wakeQueuedToast": "Nagbago ang PR #{number} — susunod kapag libre na ang chat na ito",
   "prMonitor.wakeFailed": "Hindi magising ang chat na ito: {reason}",

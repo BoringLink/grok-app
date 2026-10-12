@@ -409,6 +409,7 @@ export const deComposer = {
   "prMonitor.noPr": "Kein Pull Request für diesen Branch",
   "prMonitor.unavailable": "Pull Requests nicht verfügbar (gh nicht bereit)",
   "prMonitor.watchFailed": "PR konnte nicht verfolgt werden: {reason}",
+  "prMonitor.unwatchFailed": "PR konnte nicht mehr verfolgt werden: {reason}",
   "prMonitor.wokeToast": "PR #{number} hat sich geändert — der Agent folgt nach",
   "prMonitor.wakeQueuedToast": "PR #{number} hat sich geändert — Nachfassen, sobald dieser Chat frei ist",
   "prMonitor.wakeFailed": "Chat konnte nicht geweckt werden: {reason}",

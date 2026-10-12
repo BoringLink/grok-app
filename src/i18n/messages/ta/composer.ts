@@ -409,6 +409,7 @@ export const taComposer = {
   "prMonitor.noPr": "இந்த கிளைக்கு pull request இல்லை",
   "prMonitor.unavailable": "Pull request கிடைக்கவில்லை (gh தயாராக இல்லை)",
   "prMonitor.watchFailed": "இந்த PR-ஐ கண்காணிக்க முடியவில்லை: {reason}",
+  "prMonitor.unwatchFailed": "இந்த PR-ஐ கண்காணிப்பதை நிறுத்த முடியவில்லை: {reason}",
   "prMonitor.wokeToast": "PR #{number} மாறியது — முகவர் தொடர்கிறது",
   "prMonitor.wakeQueuedToast": "PR #{number} மாறியது — இந்த அரட்டை காலியானதும் தொடரும்",
   "prMonitor.wakeFailed": "இந்த அரட்டையை எழுப்ப முடியவில்லை: {reason}",

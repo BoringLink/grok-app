@@ -409,6 +409,7 @@ export const jaComposer = {
   "prMonitor.noPr": "このブランチのプルリクエストはありません",
   "prMonitor.unavailable": "プルリクエストを利用できません（gh 未準備）",
   "prMonitor.watchFailed": "この PR を監視できません: {reason}",
+  "prMonitor.unwatchFailed": "この PR の監視を停止できません: {reason}",
   "prMonitor.wokeToast": "PR #{number} が更新 — エージェントが対応します",
   "prMonitor.wakeQueuedToast": "PR #{number} が更新 — このチャットが空いたら対応します",
   "prMonitor.wakeFailed": "このチャットを起こせません: {reason}",

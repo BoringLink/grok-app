@@ -20,7 +20,9 @@ import {
   isTerminalPrState,
   isWakeKeySeen,
   normalizeBranchRef,
+  otherWatchesFor,
   prWakeKey,
+  prWatchKey,
   rememberWakeKey,
   shouldAutoUnwatch,
   shouldFlushPending,
@@ -29,6 +31,7 @@ import {
   type PrMonitorCommentBrief,
   type PrMonitorSnapshot,
   type PrMonitorUpdateEvent,
+  type PrMonitorWatcherInfo,
 } from "@/lib/prMonitor";
 
 const tr = createT("en");
@@ -515,8 +518,64 @@ describe("buildPrUpdatePrompt", () => {
   });
 });
 
-describe("wake delivery policy", () => {
-  it("flushes only when the session is idle and something is queued", () => {
+describe("other watches of one chat", () => {
+  function watcher(over: Partial<PrMonitorWatcherInfo> = {}): PrMonitorWatcherInfo {
+    return {
+      watcherId: "/repo\u001ffeat/a",
+      projectPath: "/repo",
+      branch: "feat/a",
+      prNumber: 11,
+      sessionId: "s1",
+      intervalSecs: 60,
+      mountedAt: "2026-10-10T09:00:00Z",
+      polls: 1,
+      updates: 0,
+      terminal: false,
+      ...over,
+    };
+  }
+
+  it("keys a mount by project and branch", () => {
+    expect(prWatchKey("/repo", "feat/a")).toBe("/repo\u001ffeat/a");
+    expect(prWatchKey("/repo", "feat/a")).not.toBe(prWatchKey("/repo", "feat/b"));
+  });
+
+  it("lists this chat's mounts on other branches, newest first", () => {
+    const rows = otherWatchesFor(
+      [
+        watcher({ branch: "feat/old", prNumber: 7, mountedAt: "2026-10-09T08:00:00Z" }),
+        watcher({ branch: "feat/new", prNumber: 9, mountedAt: "2026-10-11T08:00:00Z" }),
+      ],
+      { branch: "feat/here", sessionId: "s1" },
+    );
+    expect(rows.map((w) => w.branch)).toEqual(["feat/new", "feat/old"]);
+  });
+
+  it("leaves out the branch on screen and every other chat's mounts", () => {
+    const rows = otherWatchesFor(
+      [
+        watcher({ branch: "feat/here", prNumber: 5 }),
+        watcher({ branch: "feat/mine", prNumber: 6 }),
+        watcher({ branch: "feat/theirs", prNumber: 8, sessionId: "s2" }),
+        watcher({ branch: "feat/ownerless", prNumber: 4, sessionId: null }),
+      ],
+      { branch: "refs/heads/feat/here", sessionId: "s1" },
+    );
+    expect(rows.map((w) => w.prNumber)).toEqual([6]);
+  });
+
+  it("claims nothing when the chat is unknown or the list is empty", () => {
+    expect(
+      otherWatchesFor([watcher({ branch: "feat/mine" })], {
+        branch: null,
+        sessionId: null,
+      }),
+    ).toEqual([]);
+    expect(otherWatchesFor(null, { branch: "feat/a", sessionId: "s1" })).toEqual([]);
+  });
+});
+
+describe("wake delivery policy", () => {  it("flushes only when the session is idle and something is queued", () => {
     expect(shouldFlushPending(true, 2)).toBe(false);
     expect(shouldFlushPending(false, 0)).toBe(false);
     expect(shouldFlushPending(false, 1)).toBe(true);

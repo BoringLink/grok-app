@@ -42,6 +42,7 @@ import {
   PR_CHIP_TITLE_MAX,
   PR_MENU_TITLE_MAX,
   formatPrChipLabel,
+  prWatchKey,
   truncatePrTitle,
 } from "@/lib/prMonitor";
 import type { CliWorktreeEntry, GitWorktreeEntry } from "@/lib/api";
@@ -178,6 +179,13 @@ type Props = {
   prWatchError?: string | null;
   onTogglePrWatch?: () => void;
   onOpenPrHub?: (prNumber: number) => void;
+  /**
+   * Other PRs this chat watches on other branches, so one menu owns every mount
+   * the chat holds (`pr_monitor_list` is the host's truth for these).
+   */
+  prOtherWatches?: PrWatchEntry[] | null;
+  /** Stop a watch this chat mounted on another branch. */
+  onUnwatchPr?: (watch: PrWatchEntry) => void;
 };
 
 /** Minimal PR shape the branch chip needs to render. */
@@ -189,9 +197,24 @@ export type PrChipEntry = {
   checksLine?: string | null;
 };
 
+/** One mounted PR the branch menu lists next to the bound one. */
+export type PrWatchEntry = {
+  /** Mount identity (`projectPath` + `branch`), for stopping that watch. */
+  projectPath: string;
+  branch: string;
+  number: number;
+  title: string;
+  state?: string | null;
+  /** Localized checks rollup ("" when unknown). */
+  checksLine?: string | null;
+  /** A stop-watching call is in flight for this mount. */
+  busy?: boolean;
+};
+
 const LIST_MAX_H = 200;
 const BRANCH_LIST_MAX_H = 200;
 const CLI_LIST_MAX_H = 160;
+const PR_LIST_MAX_H = 160;
 
 export function ComposerWorktreeMenu({
   activePath,
@@ -230,6 +253,8 @@ export function ComposerWorktreeMenu({
   prWatchError = null,
   onTogglePrWatch,
   onOpenPrHub,
+  prOtherWatches = null,
+  onUnwatchPr,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [branchQuery, setBranchQuery] = useState("");
@@ -254,10 +279,14 @@ export function ComposerWorktreeMenu({
       cliWorktrees.length > 0 ||
       !!onCliRefresh);
   const showBranchesSection = !!onSwitchBranch && !!labels.branches;
-  const showPrSection = !!pr || prWatching;
+  const otherPrRows = onUnwatchPr ? (prOtherWatches ?? []) : [];
+  const showPrSection = !!pr || prWatching || otherPrRows.length > 0;
+  // One compact row per PR (bound PR first, then this chat's other mounts);
+  // the watch control rides inside its own row instead of a full-width button.
+  const prRowCount = (pr ? 1 : 0) + otherPrRows.length;
   // Reserve the PR section's height so first paint matches the final layout.
   const prSectionHeight = showPrSection
-    ? 28 + 36 + (onTogglePrWatch && pr ? 36 : 0)
+    ? 28 + Math.min(PR_LIST_MAX_H, prRowCount * 36 + 8)
     : 0;
   const filteredBranches = showBranchesSection
     ? capGitBranchesForMenu(
@@ -330,6 +359,7 @@ export function ComposerWorktreeMenu({
       cliWorktrees.length,
       showCliSection,
       showPrSection,
+      prRowCount,
       filteredBranches.rows.length,
       showBranchesSection,
     ],
@@ -367,6 +397,9 @@ export function ComposerWorktreeMenu({
     prPendingWakes > 0 && labels.prPendingWakes
       ? labels.prPendingWakes.replace("{count}", String(prPendingWakes))
       : "";
+  // Watched PRs in this section, bound row included: the head tag says the chat
+  // is following something, each row's bell says whether that PR is followed.
+  const watchedCount = (prWatching && pr ? 1 : 0) + otherPrRows.length;
 
   return (
     <div
@@ -426,63 +459,133 @@ export function ComposerWorktreeMenu({
               <div className="cwm__pr">
                 <div className="cwm__head cwm__pr-head">
                   <span>{labels.pr || "Pull request"}</span>
-                  {prWatching && labels.prWatchingLabel ? (
+                  {watchedCount > 0 && labels.prWatchingLabel ? (
                     <span className="cwm__pr-tag">
                       {labels.prWatchingLabel}
                     </span>
                   ) : null}
                 </div>
-                {pr ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="cmm__opt cwm__item cwm__pr-row"
-                    title={labels.prOpenHub ? `${pr.title}\n${labels.prOpenHub}` : pr.title}
-                    onClick={() => {
-                      setOpen(false);
-                      onOpenPrHub?.(pr.number);
-                    }}
+                {pr || otherPrRows.length > 0 ? (
+                  <ul
+                    className="cwm__list cwm__list--pr"
+                    style={{ maxHeight: PR_LIST_MAX_H }}
                   >
-                    <span className="cwm__item-main">
-                      <span className="cwm__item-name">
-                        {formatPrChipLabel(pr, PR_MENU_TITLE_MAX)}
-                      </span>
-                      {prMeta ? (
-                        <span className="cwm__item-meta">{prMeta}</span>
-                      ) : null}
-                    </span>
-                  </button>
+                    {pr ? (
+                      <li className="cwm__row">
+                        <div className="cwm__row-inner">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="cmm__opt cwm__item cwm__pr-row"
+                            title={
+                              labels.prOpenHub
+                                ? `${pr.title}\n${labels.prOpenHub}`
+                                : pr.title
+                            }
+                            onClick={() => {
+                              setOpen(false);
+                              onOpenPrHub?.(pr.number);
+                            }}
+                          >
+                            <span className="cwm__item-main">
+                              <span className="cwm__item-name">
+                                {formatPrChipLabel(pr, PR_MENU_TITLE_MAX)}
+                              </span>
+                              {prMeta ? (
+                                <span className="cwm__item-meta">{prMeta}</span>
+                              ) : null}
+                            </span>
+                          </button>
+                          {onTogglePrWatch ? (
+                            <Tip
+                              label={
+                                prWatching
+                                  ? labels.prUnwatchTip
+                                  : labels.prWatchTip
+                              }
+                            >
+                              <button
+                                type="button"
+                                className={
+                                  "cwm__row-toggle" +
+                                  (prWatching ? " is-on" : "")
+                                }
+                                aria-pressed={prWatching}
+                                aria-label={
+                                  prWatching
+                                    ? labels.prUnwatch || "Stop watching"
+                                    : labels.prWatch || "Watch this PR"
+                                }
+                                disabled={disabled || prBusy}
+                                onClick={() => onTogglePrWatch()}
+                              >
+                                {prWatching ? (
+                                  <IconBellOff size={14} aria-hidden />
+                                ) : (
+                                  <IconBell size={14} aria-hidden />
+                                )}
+                              </button>
+                            </Tip>
+                          ) : null}
+                        </div>
+                      </li>
+                    ) : null}
+                    {otherPrRows.map((w) => {
+                      const key = prWatchKey(w.projectPath, w.branch);
+                      const meta = [
+                        String(w.state ?? "").trim(),
+                        String(w.checksLine ?? "").trim(),
+                        w.branch,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
+                      const title = [w.title, w.branch, labels.prOpenHub]
+                        .filter(Boolean)
+                        .join("\n");
+                      return (
+                        <li className="cwm__row" key={key}>
+                          <div className="cwm__row-inner">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="cmm__opt cwm__item cwm__pr-row"
+                              title={title}
+                              onClick={() => {
+                                setOpen(false);
+                                onOpenPrHub?.(w.number);
+                              }}
+                            >
+                              <span className="cwm__item-main">
+                                <span className="cwm__item-name">
+                                  {formatPrChipLabel(w, PR_MENU_TITLE_MAX)}
+                                </span>
+                                {meta ? (
+                                  <span className="cwm__item-meta">{meta}</span>
+                                ) : null}
+                              </span>
+                            </button>
+                            <Tip label={labels.prUnwatchTip}>
+                              <button
+                                type="button"
+                                className="cwm__row-toggle is-on"
+                                aria-pressed
+                                aria-label={labels.prUnwatch || "Stop watching"}
+                                disabled={disabled || !!w.busy}
+                                onClick={() => onUnwatchPr?.(w)}
+                              >
+                                <IconBellOff size={14} aria-hidden />
+                              </button>
+                            </Tip>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 ) : (
                   <p className="cwm__empty">
                     {labels.prEmpty || "No pull request for this branch"}
                   </p>
                 )}
-                {onTogglePrWatch && pr ? (
-                  <Tip label={prWatching ? labels.prUnwatchTip : labels.prWatchTip}>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="cwm__action"
-                      aria-pressed={prWatching}
-                      disabled={disabled || prBusy}
-                      onClick={() => {
-                        setOpen(false);
-                        onTogglePrWatch();
-                      }}
-                    >
-                      {prWatching ? (
-                        <IconBellOff size={14} aria-hidden />
-                      ) : (
-                        <IconBell size={14} aria-hidden />
-                      )}
-                      <span>
-                        {prWatching
-                          ? labels.prUnwatch || "Stop watching"
-                          : labels.prWatch || "Watch this PR"}
-                      </span>
-                    </button>
-                  </Tip>
-                ) : null}
                 {prWatching && prUpdates && prUpdates.length > 0 ? (
                   <p className="cwm__empty cwm__empty--hint">
                     {labels.prLastUpdate

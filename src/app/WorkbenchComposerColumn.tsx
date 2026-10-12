@@ -405,6 +405,17 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
   const prUpdateLines = prMonitor.lastUpdates
     ? prMonitor.lastUpdates.map((u) => describePrUpdate(u, tr))
     : null;
+  // Mounts this chat holds on other branches: the branch menu is the one place
+  // that lists them and where each can be stopped.
+  const prOtherWatchRows = prMonitor.otherWatches.map((w) => ({
+    projectPath: w.projectPath,
+    branch: w.branch,
+    number: w.number,
+    title: w.title,
+    state: w.state,
+    checksLine: formatChecksLine(w.checks ?? null, tr),
+    busy: w.busy,
+  }));
   // The PR hub already owns the PR detail view: reuse its deep link (Settings →
   // runtime/tools focused on that row) instead of building a second surface.
   const openPrHubForNumber = (prNumber: number) => {
@@ -854,7 +865,11 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                     prUpdates={prUpdateLines}
                     prPendingWakes={prMonitor.pendingCount}
                     prWatchError={prMonitor.watchError}
+                    prOtherWatches={prOtherWatchRows}
                     onTogglePrWatch={prMonitor.toggleWatch}
+                    onUnwatchPr={(w) =>
+                      prMonitor.unwatchAt(w.projectPath, w.branch)
+                    }
                     onOpenPrHub={openPrHubForNumber}
                     onSwitch={(wt) => {
                       void switchToWorktree(wt);

@@ -16,13 +16,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createT, type Locale } from "@/i18n";
 import * as api from "@/lib/api";
-import type { GitPrCheckEntry, GitPrHubEntry } from "@/lib/gitPrHub";
+import type {
+  GitPrCheckEntry,
+  GitPrHubEntry,
+  PrChecksSummary,
+} from "@/lib/gitPrHub";
 import {
   bindPrToBranch,
   buildPrUpdatePrompt,
   diffPrSnapshots,
   isWakeKeySeen,
+  otherWatchesFor,
   prWakeKey,
+  prWatchKey,
   rememberWakeKey,
   shouldAutoUnwatch,
   shouldFlushPending,
@@ -72,6 +78,25 @@ export type UsePrMonitorResult = {
   watchError: string | null;
   /** Mount or unmount the watch for the bound PR. */
   toggleWatch: () => void;
+  /** Mounts this chat holds on other branches, newest mount first. */
+  otherWatches: PrWatchRow[];
+  /** Stop watching a mount this chat holds on another branch. */
+  unwatchAt: (projectPath: string, branch: string) => void;
+};
+
+/** One mounted PR a chat can see and stop from the branch menu. */
+export type PrWatchRow = {
+  /** Mount identity — what the host needs to stop that watch. */
+  projectPath: string;
+  branch: string;
+  number: number;
+  /** Snapshot title (`""` until the host has polled the PR once). */
+  title: string;
+  /** OPEN | MERGED | CLOSED ("" when not polled yet). */
+  state: string | null;
+  checks: PrChecksSummary | null;
+  /** A stop-watching call is in flight for this mount. */
+  busy: boolean;
 };
 
 type QueuedWake = {
@@ -179,6 +204,11 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
   const [busy, setBusy] = useState(false);
   const [lastUpdates, setLastUpdates] = useState<PrUpdate[] | null>(null);
   const [queue, setQueue] = useState<QueuedWake[]>([]);
+  // Every mount the host holds, so the branch menu can list this chat's other
+  // watches (it is the only place a mount can be stopped from).
+  const [watches, setWatches] = useState<PrMonitorWatcherInfo[]>([]);
+  const [unwatching, setUnwatching] = useState<readonly string[]>([]);
+  const unwatchingRef = useRef<readonly string[]>([]);
 
   // Delivery memory + live refs (event handlers must not re-subscribe per render).
   const seenRef = useRef<readonly string[]>([]);
@@ -199,6 +229,19 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
       return;
     }
     await api.sessionSend(text, null, sid);
+  }, []);
+
+  /**
+   * Re-read the host registry: mounts live in the host process, so it — not our
+   * state — decides what this chat is still watching.
+   */
+  const refreshWatches = useCallback(async () => {
+    try {
+      const list = await api.prMonitorList();
+      setWatches(Array.isArray(list) ? list : []);
+    } catch {
+      // Soft read: the rows keep showing the last registry the host reported.
+    }
   }, []);
 
   /**
@@ -227,6 +270,15 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
     }
 
     const updates = diffPrSnapshots(event.prev, event.next);
+    // A mount on a different branch (or project): keep its row current, since
+    // the bound-row state below only follows the watch of the branch on screen.
+    const boundBranch = branchRef.current;
+    if (
+      !sameProjectPath(event.projectPath, currentProject ?? "") ||
+      event.branch !== boundBranch
+    ) {
+      void refreshWatches();
+    }
     // Chip / menu state only mirrors what is on screen right now.
     const onScreen = sameProjectPath(event.projectPath, currentProject ?? "");
     if (onScreen) {
@@ -264,7 +316,7 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
         ? current
         : [...current, { key, event, updates, attempts: 0 }],
     );
-  }, [tr]);
+  }, [refreshWatches, tr]);
 
   const handleUpdateRef = useRef(handleUpdate);
   handleUpdateRef.current = handleUpdate;
@@ -284,7 +336,7 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
     }
     void (async () => {
       try {
-        const [list, watches] = await Promise.all([
+        const [list, mine] = await Promise.all([
           api.gitPrList(projectPath, { limit: 30, state: "open" }),
           api.prMonitorList(),
         ]);
@@ -292,12 +344,14 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
         setAvailable(!!list.available);
         setReason(list.reason ?? null);
         setPr(bindPrToBranch(list.prs ?? [], branch));
-        const mine =
-          (watches ?? []).find((w) => sameWatch(w, projectPath, branch)) ?? null;
-        setWatcher(mine);
+        const mounted = Array.isArray(mine) ? mine : [];
+        setWatches(mounted);
+        const bound =
+          mounted.find((w) => sameWatch(w, projectPath, branch)) ?? null;
+        setWatcher(bound);
         // A change that arrived while the UI was not listening is still here.
-        if (mine?.pending) {
-          handleUpdateRef.current(mine.pending);
+        if (bound?.pending) {
+          handleUpdateRef.current(bound.pending);
           void api.prMonitorConsumePending(projectPath, branch);
         }
       } catch (e) {
@@ -306,6 +360,7 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
         setReason(String(e));
         setPr(null);
         setWatcher(null);
+        setWatches([]);
       } finally {
         if (!cancelled) setReady(true);
       }
@@ -373,6 +428,7 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
           item.event.branch
         ) {
           await api.prMonitorUnwatch(item.event.projectPath, item.event.branch);
+          void refreshWatches();
           if (sameProjectPath(item.event.projectPath, currentProject ?? "")) {
             setWatcher(null);
             setPr(null);
@@ -401,7 +457,7 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
         flushingRef.current = false;
       }
     })();
-  }, [queue, sessionBusy, sendTurn, tr]);
+  }, [queue, refreshWatches, sessionBusy, sendTurn, tr]);
 
   const toggleWatch = useCallback(() => {
     const currentProject = projectRef.current;
@@ -414,6 +470,7 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
           await api.prMonitorUnwatch(currentProject, currentBranch);
           setWatcher(null);
           setQueue([]);
+          void refreshWatches();
           return;
         }
         const bound = pr;
@@ -432,6 +489,7 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
         // first scheduled tick cannot look like a change.
         const polled = await api.prMonitorPollNow(currentProject, currentBranch);
         if (polled.watcher) setWatcher(polled.watcher);
+        void refreshWatches();
       } catch (e) {
         optsRef.current.notify?.(
           tr("prMonitor.watchFailed", { reason: String(e) }),
@@ -441,7 +499,56 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
         setBusy(false);
       }
     })();
-  }, [busy, pr, tr, watcher]);
+  }, [busy, pr, refreshWatches, tr, watcher]);
+
+  /** Stop a mount this chat holds on another branch. */
+  const unwatchAt = useCallback(
+    (projectPath: string, branch: string) => {
+      const key = prWatchKey(projectPath, branch);
+      if (!projectPath || !branch || unwatchingRef.current.includes(key)) return;
+      const pending = [...unwatchingRef.current, key];
+      unwatchingRef.current = pending;
+      setUnwatching(pending);
+      // Stopped means stopped: a wake still queued for that mount is dropped.
+      setQueue((current) =>
+        current.filter(
+          (q) => prWatchKey(q.event.projectPath, q.event.branch) !== key,
+        ),
+      );
+      void (async () => {
+        try {
+          await api.prMonitorUnwatch(projectPath, branch);
+        } catch (e) {
+          optsRef.current.notify?.(
+            tr("prMonitor.unwatchFailed", { reason: String(e) }),
+            "error",
+          );
+        } finally {
+          const left = unwatchingRef.current.filter((k) => k !== key);
+          unwatchingRef.current = left;
+          setUnwatching(left);
+          await refreshWatches();
+        }
+      })();
+    },
+    [refreshWatches, tr],
+  );
+
+  // Mounts this chat holds elsewhere: the branch menu lists them next to the
+  // bound PR, so every mount this chat owns can be stopped from one place.
+  const otherWatches = useMemo<PrWatchRow[]>(
+    () =>
+      otherWatchesFor(watches, { branch, sessionId }).map((w) => ({
+        projectPath: w.projectPath,
+        branch: w.branch,
+        number: w.prNumber,
+        title: String(w.snapshot?.title ?? ""),
+        state: w.snapshot?.state ?? null,
+        checks: w.snapshot?.checks ?? null,
+        busy: unwatching.includes(prWatchKey(w.projectPath, w.branch)),
+      })),
+    [watches, branch, sessionId, unwatching],
+  );
 
   return {
     ready,
@@ -455,5 +562,7 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
     /** Last host poll failure for this watch ("" when healthy). */
     watchError: watcher?.lastError ?? null,
     toggleWatch,
+    otherWatches,
+    unwatchAt,
   };
 }

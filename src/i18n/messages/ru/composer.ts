@@ -409,6 +409,7 @@ export const ruComposer = {
   "prMonitor.noPr": "Для этой ветки нет pull request",
   "prMonitor.unavailable": "Pull request недоступны (gh не готов)",
   "prMonitor.watchFailed": "Не удалось следить за PR: {reason}",
+  "prMonitor.unwatchFailed": "Не удалось прекратить слежение за PR: {reason}",
   "prMonitor.wokeToast": "PR #{number} изменился — агент продолжает работу",
   "prMonitor.wakeQueuedToast": "PR #{number} изменился — продолжит, когда чат освободится",
   "prMonitor.wakeFailed": "Не удалось разбудить этот чат: {reason}",

@@ -409,6 +409,7 @@ export const zhTWComposer = {
   "prMonitor.noPr": "目前分支沒有拉取請求",
   "prMonitor.unavailable": "拉取請求不可用（gh 未就緒）",
   "prMonitor.watchFailed": "無法監視該 PR：{reason}",
+  "prMonitor.unwatchFailed": "無法停止監視該 PR：{reason}",
   "prMonitor.wokeToast": "PR #{number} 有更新 — Agent 正在追蹤",
   "prMonitor.wakeQueuedToast": "PR #{number} 有更新 — 本工作階段空閒後追蹤",
   "prMonitor.wakeFailed": "無法喚醒本次工作階段：{reason}",

@@ -207,6 +207,45 @@ export function formatPrChipLabel(
   return title ? `#${n} ${title}` : `#${n}`;
 }
 
+// ── Mounted watches (one chat can hold several) ─────────────────────────────
+
+/**
+ * Identity of one mounted watch — the host keys its registry the same way
+ * (`projectPath` + unit separator + `branch`).
+ */
+export function prWatchKey(
+  projectPath: string | null | undefined,
+  branch: string | null | undefined,
+): string {
+  return `${String(projectPath ?? "").trim()}\u001f${String(branch ?? "").trim()}`;
+}
+
+/**
+ * Mounts this chat owns on *other* branches, newest first.
+ *
+ * Only mounts that name this chat count: a watch another chat mounted is that
+ * chat's to manage, and a mount without a session cannot be attributed here.
+ * The mount for the branch on screen is excluded — that one is the bound PR row.
+ */
+export function otherWatchesFor(
+  watches: readonly PrMonitorWatcherInfo[] | null | undefined,
+  opts: { branch: string | null | undefined; sessionId: string | null | undefined },
+): PrMonitorWatcherInfo[] {
+  const sid = String(opts.sessionId ?? "").trim();
+  if (!sid) return [];
+  const here = normalizeBranchRef(opts.branch);
+  return (Array.isArray(watches) ? watches : [])
+    .filter((w) => w && String(w.sessionId ?? "").trim() === sid)
+    .filter((w) => !(here && normalizeBranchRef(w.branch) === here))
+    .slice()
+    .sort((a, b) => {
+      const at = String(a.mountedAt ?? "");
+      const bt = String(b.mountedAt ?? "");
+      if (at !== bt) return at < bt ? 1 : -1;
+      return num(a.prNumber) - num(b.prNumber);
+    });
+}
+
 // ── Snapshot diff ───────────────────────────────────────────────────────────
 
 function timeMs(raw: string | null | undefined): number {

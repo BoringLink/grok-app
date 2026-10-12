@@ -409,6 +409,7 @@ export const itComposer = {
   "prMonitor.noPr": "Nessuna pull request per questo branch",
   "prMonitor.unavailable": "Pull request non disponibili (gh non pronto)",
   "prMonitor.watchFailed": "Impossibile monitorare questa PR: {reason}",
+  "prMonitor.unwatchFailed": "Impossibile interrompere il monitoraggio di questa PR: {reason}",
   "prMonitor.wokeToast": "La PR #{number} è cambiata — l’agente sta proseguendo",
   "prMonitor.wakeQueuedToast": "La PR #{number} è cambiata — proseguirà appena la chat è libera",
   "prMonitor.wakeFailed": "Impossibile risvegliare questa chat: {reason}",

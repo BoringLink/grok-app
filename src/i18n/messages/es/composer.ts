@@ -409,6 +409,7 @@ export const esComposer = {
   "prMonitor.noPr": "No hay pull request para esta rama",
   "prMonitor.unavailable": "Pull requests no disponibles (gh no está listo)",
   "prMonitor.watchFailed": "No se pudo vigilar este PR: {reason}",
+  "prMonitor.unwatchFailed": "No se pudo dejar de vigilar este PR: {reason}",
   "prMonitor.wokeToast": "El PR #{number} cambió — el agente está respondiendo",
   "prMonitor.wakeQueuedToast": "El PR #{number} cambió — responderá cuando este chat esté libre",
   "prMonitor.wakeFailed": "No se pudo despertar este chat: {reason}",

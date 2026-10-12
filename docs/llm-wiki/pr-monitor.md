@@ -12,9 +12,18 @@ mounted, wakes the chat when the PR really changes.
 - The chip shows the PR only while it is **watched**: `branch` then
   `#1316 Feat title truncated…` (title capped at 36 code points, ellipsized,
   whitespace collapsed, never split mid surrogate pair).
-- The branch menu gains a **Pull request** section: the PR row (state + checks
-  rollup, opens the PR hub deep link), the watch toggle, the last change that
-  woke the session, and how many follow-ups are waiting.
+- The branch menu gains a **Pull request** section: one compact row per PR — the
+  branch-bound PR first, then every other PR this chat watches on another branch.
+  A row shows the PR (state + checks rollup, opens the PR hub deep link; the
+  other rows also name their branch) and carries its own watch toggle as a
+  trailing bell icon. Never a full-width button under the PR: a chat that watches
+  several PRs stays a short list, and each bell sits on the PR it controls. The
+  toggle leaves the menu open, so several mounts can be handled in one pass. The
+  section also shows the last change that woke the session and how many
+  follow-ups are waiting.
+- Mounts on other branches are stopped from that same section: the rows come
+  from `pr_monitor_list`, re-read after every mount, stop and update, so the menu
+  lists the host's mounts instead of a local guess.
 - No PR, `gh` missing, not a git repo, no project, or detached HEAD → the branch
   area shows the branch only. The app never invents a PR.
 
@@ -57,7 +66,8 @@ change set`, and a key is delivered at most once.
 - A mount belongs to the session + branch that created it. Switching
   worktree, branch or chat does **not** drop it: the watched PR keeps waking the
   session it was mounted for, even when that branch is no longer on screen.
-- Stop a watch from its branch's menu (or let the PR merge/close).
+- Stop a watch from the branch menu of any branch — the row for a mount on
+  another branch carries its own bell — or let the PR merge/close.
 - Poll failures are logged (`pr_monitor`) and shown as a hint in the branch
   menu, so a broken `gh` auth never looks like "nothing is happening".
 

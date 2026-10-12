@@ -469,8 +469,92 @@ describe("usePrMonitor", () => {
     expect(hook.result.current.watching).toBe(false);
   });
 
-  it("drains a change the UI missed while unmounted", async () => {
-    const pending = newCommentEvent();
+  it("lists this chat's other mounts and stops one on request", async () => {
+    prMonitorList.mockResolvedValue([
+      {
+        watcherId: `${PROJECT}\u001fother-branch`,
+        projectPath: PROJECT,
+        branch: "feat/other",
+        prNumber: 1200,
+        sessionId: SESSION,
+        intervalSecs: 60,
+        mountedAt: "2026-10-10T08:00:00Z",
+        polls: 2,
+        updates: 0,
+        terminal: false,
+        snapshot: snap({ number: 1200, title: "Other branch work", state: "OPEN" }),
+      },
+      // Another chat's mount is that chat's to manage, not ours.
+      {
+        watcherId: `${PROJECT}\u001fnot-mine`,
+        projectPath: PROJECT,
+        branch: "feat/not-mine",
+        prNumber: 999,
+        sessionId: "some-other-session",
+        intervalSecs: 60,
+        mountedAt: "2026-10-10T07:00:00Z",
+        polls: 1,
+        updates: 0,
+        terminal: false,
+      },
+    ]);
+    const { hook } = setup();
+    await waitFor(() => expect(hook.result.current.ready).toBe(true));
+
+    await waitFor(() =>
+      expect(hook.result.current.otherWatches.map((w) => w.number)).toEqual([
+        1200,
+      ]),
+    );
+    expect(hook.result.current.otherWatches[0]).toMatchObject({
+      branch: "feat/other",
+      title: "Other branch work",
+      state: "OPEN",
+      busy: false,
+    });
+
+    prMonitorUnwatch.mockResolvedValue({ ok: true, removed: true });
+    prMonitorList.mockResolvedValue([]);
+    await act(async () => {
+      hook.result.current.unwatchAt(PROJECT, "feat/other");
+    });
+    expect(prMonitorUnwatch).toHaveBeenCalledWith(PROJECT, "feat/other");
+    await waitFor(() => expect(hook.result.current.otherWatches).toEqual([]));
+  });
+
+  it("reports a failed stop instead of leaving the row looking watched", async () => {
+    prMonitorList.mockResolvedValue([
+      {
+        watcherId: `${PROJECT}\u001fother-branch`,
+        projectPath: PROJECT,
+        branch: "feat/other",
+        prNumber: 1200,
+        sessionId: SESSION,
+        intervalSecs: 60,
+        mountedAt: "2026-10-10T08:00:00Z",
+        polls: 2,
+        updates: 0,
+        terminal: false,
+      },
+    ]);
+    prMonitorUnwatch.mockRejectedValue(new Error("host offline"));
+    const { hook, notify } = setup();
+    await waitFor(() =>
+      expect(hook.result.current.otherWatches.length).toBe(1),
+    );
+
+    await act(async () => {
+      hook.result.current.unwatchAt(PROJECT, "feat/other");
+    });
+    await waitFor(() =>
+      expect(notify).toHaveBeenCalledWith(
+        expect.stringContaining("host offline"),
+        "error",
+      ),
+    );
+  });
+
+  it("drains a change the UI missed while unmounted", async () => {    const pending = newCommentEvent();
     prMonitorList.mockResolvedValue([
       {
         watcherId: `${PROJECT}\u001f${BRANCH}`,

@@ -409,6 +409,7 @@ export const ptBRComposer = {
   "prMonitor.noPr": "Nenhum pull request para este branch",
   "prMonitor.unavailable": "Pull requests indisponíveis (gh não está pronto)",
   "prMonitor.watchFailed": "Não foi possível monitorar este PR: {reason}",
+  "prMonitor.unwatchFailed": "Não foi possível parar de monitorar este PR: {reason}",
   "prMonitor.wokeToast": "O PR #{number} mudou — o agente está dando seguimento",
   "prMonitor.wakeQueuedToast": "O PR #{number} mudou — segue quando este chat estiver livre",
   "prMonitor.wakeFailed": "Não foi possível acordar este chat: {reason}",
