@@ -1,0 +1,22 @@
+docs/plans/2026-10-12-pr-monitor-agent-tool-spec.md
+  s_9cdd078fb9973c::t_9145f3709347ad 111-112
+  s_9cdd078fb9973c::t_cf2ac7cca80d8f 105,107,109-110
+docs/llm-wiki/pr-monitor.md
+  s_9cdd078fb9973c::t_e5bd6ef964adf5 162-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "22bf613c60c62494aa626bc84a612a58e15540bc",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "unknown"
+      },
+      "human_author": null
+    }
+  }
+}
