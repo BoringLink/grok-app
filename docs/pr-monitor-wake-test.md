@@ -24,6 +24,20 @@ STATUS: PENDING
 点开关不再关闭菜单；同一区里还会列出本会话在其他分支挂着的 PR，每行自带铃铛，可直接停掉。
 细节见 `docs/llm-wiki/pr-monitor.md`。
 
+### 后续修复：新 UI 真机上的三处渲染问题
+
+按新 UI 在应用里走一遍，发现三处渲染问题，都已修掉：
+
+| 现象 | 根因 | 修法 |
+| --- | --- | --- |
+| PR 行只剩汇总 `state · checks · branch`，看不到 PR 标题 | 汇总码住整行宽度，标题被压到 0 宽 | 标题留 40% 下限，汇总最多 `calc(60% - 8px)` 并自己省略 |
+| 鼠标停在铃铛上，tooltip 画在菜单下面 | `.ui-tip` 用 10050，低于它要盖住的浮层（12000–14000 档） | tip 抬到顶层 14100，删掉会把 tip 压到 13050 的 `.ui-tip--modal` |
+| tooltip 文案被截断 | 15 个语言里这句都偏长，tip 本身又不换行 | 铃铛的 tip 加 `.ui-tip--wrap`，同时把这句文案缩短 |
+
+渲染已在运行中的应用里手动验证：标题与汇总各占其位、铃铛的 tooltip 压在菜单之上且文案完整。
+两条守卫测试把约束钉住：`src/styles/worktreeMenuRowLayout.test.ts`、
+`src/styles/tooltipLayer.guard.test.ts`。
+
 仍然可以继续优化的点：
 
 - 该区只列**本会话**的挂载，其他会话的挂载仍没有统一入口。
