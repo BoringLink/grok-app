@@ -1,0 +1,35 @@
+src/styles/chat.part2.css
+  s_9cdd078fb9973c::t_787962ece39605 245-248,250
+  s_9cdd078fb9973c::t_659af9d75a9626 447,449-450,452-453
+  s_9cdd078fb9973c::t_b8ba61c0e5d8b6 256-262
+  s_9cdd078fb9973c::t_53d796a8e237ea 445-446,451
+src/styles/worktreeMenuRowLayout.test.ts
+  s_9cdd078fb9973c::t_3edd655eff1d08 1-71
+docs/llm-wiki/pr-monitor.md
+  s_bcdc30a7fb4f60::t_9ab4f2ad26faf5 29
+  s_bcdc30a7fb4f60::t_e9ffb1f9681d9b 27-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "cc5733371da234ff6341191dd1dd5cc4d9530ea7",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_bcdc30a7fb4f60": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a13436-ee93-7913-bebd-638306c87689",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
