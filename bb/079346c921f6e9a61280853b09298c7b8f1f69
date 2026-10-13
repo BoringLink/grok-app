@@ -1,0 +1,49 @@
+src/i18n/messages/zh-TW/composer.ts
+  s_9cdd078fb9973c::t_084d6261f792ca 401
+  s_9cdd078fb9973c::t_7ea9e667d30359 403
+src/i18n/messages/ta/composer.ts
+  s_9cdd078fb9973c::t_7ea9e667d30359 403
+src/i18n/messages/zh/composer.ts
+  s_9cdd078fb9973c::t_7ea9e667d30359 403
+  s_9cdd078fb9973c::t_084d6261f792ca 401
+src/i18n/messages/ru/composer.ts
+  s_9cdd078fb9973c::t_7ea9e667d30359 403
+src/i18n/messages/es/composer.ts
+  s_9cdd078fb9973c::t_7ea9e667d30359 403
+src/i18n/messages/ko/composer.ts
+  s_9cdd078fb9973c::t_7ea9e667d30359 403
+src/i18n/messages/it/composer.ts
+  s_9cdd078fb9973c::t_7ea9e667d30359 403
+src/i18n/messages/ja/composer.ts
+  s_9cdd078fb9973c::t_2c671f0fd490d5 403
+src/i18n/messages/fr/composer.ts
+  s_9cdd078fb9973c::t_2c671f0fd490d5 403
+src/i18n/messages/en/composer.ts
+  s_9cdd078fb9973c::t_7ea9e667d30359 404
+src/i18n/messages/de/composer.ts
+  s_9cdd078fb9973c::t_2c671f0fd490d5 403
+src/i18n/messages/id/composer.ts
+  s_9cdd078fb9973c::t_2c671f0fd490d5 403
+src/i18n/messages/pt-BR/composer.ts
+  s_9cdd078fb9973c::t_7ea9e667d30359 403
+src/i18n/messages/fil/composer.ts
+  s_9cdd078fb9973c::t_2c671f0fd490d5 403
+src/i18n/messages/uk/composer.ts
+  s_9cdd078fb9973c::t_7ea9e667d30359 403
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "bb079346c921f6e9a61280853b09298c7b8f1f69",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
