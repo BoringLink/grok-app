@@ -1,0 +1,38 @@
+name: pr-monitor-ci-run
+
+# 只用于验收：让一个检查长时间停在 in progress，随后失败，便于在 CI
+# **运行期间**挂上 Monitor，观察 running → fail 的迁移与唤醒文本。
+# 该文件只存在于验收分支上，随分支删除而消失。
+
+on:
+  pull_request:
+
+jobs:
+  ci-slow-fail:
+    name: ci-slow-fail
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 先跑够时间，好让「CI 正在运行」这个状态被看到、被挂上 Monitor。
+      - name: Stay in progress
+        run: |
+          for i in 1 2 3 4 5 6; do
+            echo "still running $i/6 at $(date -u +%H:%M:%S)"
+            sleep 30
+          done
+      - name: Fail while the fixture marker says ON
+        run: |
+          if grep -q 'CI-FAIL: OFF' docs/pr-monitor-ci-run-test.md; then
+            echo "fixture marker is OFF — this check passes"
+          else
+            echo "::error::intentional failure while docs/pr-monitor-ci-run-test.md says CI-FAIL: ON"
+            exit 1
+          fi
+
+  ci-quick-pass:
+    name: ci-quick-pass
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 让 checks 汇总里同时有 pass 与 fail，而不是清一色红。
+      - run: echo "passes so the checks rollup shows pass + fail"
