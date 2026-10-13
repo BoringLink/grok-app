@@ -1,0 +1,19 @@
+docs/pr-monitor-wake-test.md
+  s_bcdc30a7fb4f60::t_64babaddb1ec2c 27-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "f90082418a3e7016215a346e73c7176ea6b6c741",
+  "prompts": {},
+  "sessions": {
+    "s_bcdc30a7fb4f60": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a13436-ee93-7913-bebd-638306c87689",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
