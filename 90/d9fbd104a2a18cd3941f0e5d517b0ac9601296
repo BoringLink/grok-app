@@ -1,0 +1,35 @@
+docs/llm-wiki/dialogs.md
+  s_bcdc30a7fb4f60::t_10508af9da34d6 62
+src/styles/sidebar.part1.css
+  s_9cdd078fb9973c::t_f48897254deb83 120-126
+src/components/workbench-modals/CompactModal.tsx
+  s_9cdd078fb9973c::t_4a578bde1d2775 70
+src/styles/tooltipLayer.guard.test.ts
+  s_9cdd078fb9973c::t_592bd7a97f6469 1-70
+src/components/ComposerBranchPrSection.tsx
+  s_9cdd078fb9973c::t_4b4d15c9f3047f 172-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "90d9fbd104a2a18cd3941f0e5d517b0ac9601296",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_bcdc30a7fb4f60": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a13436-ee93-7913-bebd-638306c87689",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
