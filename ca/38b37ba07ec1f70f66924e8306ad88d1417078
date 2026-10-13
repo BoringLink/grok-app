@@ -1,0 +1,31 @@
+src-tauri/src/cli_sessions.rs
+  s_9cdd078fb9973c::t_f9ec1b4212cf75 1288-1297
+  s_9cdd078fb9973c::t_1a0f09d911a4f9 1965,1970
+src/lib/session/types.ts
+  s_9cdd078fb9973c::t_f9eebd489543e9 344-352,356
+  s_9cdd078fb9973c::t_265d2198842c59 353-355
+src-tauri/src/lib.rs
+  s_9cdd078fb9973c::t_887b477bde7442 68-71
+src/lib/sessionPromptMarkers.test.ts
+  s_9cdd078fb9973c::t_dca935384151ba 1-38
+src-tauri/src/pr_monitor/mod.rs
+  s_9cdd078fb9973c::t_22ee9fd00215d3 410-413
+src-tauri/src/injected_prompts.rs
+  s_9cdd078fb9973c::t_cd4b068490491e 1-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "ca38b37ba07ec1f70f66924e8306ad88d1417078",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
