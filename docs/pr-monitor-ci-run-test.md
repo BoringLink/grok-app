@@ -38,8 +38,8 @@
 
 ## 待更新事项
 
-- [ ] **待更新项**：把下面 `CI-FAIL` 的值由 `ON` 改成 `OFF` 后提交并推送，`ci-slow-fail` 即变为通过。
+- [x] **待更新项**：把下面 `CI-FAIL` 的值由 `ON` 改成 `OFF` 后提交并推送，`ci-slow-fail` 即变为通过。
 
 ```
-CI-FAIL: ON
+CI-FAIL: OFF
 ```
