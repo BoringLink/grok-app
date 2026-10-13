@@ -1,0 +1,19 @@
+docs/llm-wiki/i18n.md
+  s_9cdd078fb9973c::t_599d80a119722b 38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "d89d574ed1a6228b743dd40b0a522f3e000fbbd2",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
