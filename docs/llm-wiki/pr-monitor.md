@@ -24,6 +24,9 @@ mounted, wakes the chat when the PR really changes.
 - Mounts on other branches are stopped from that same section: the rows come
   from `pr_monitor_list`, re-read after every mount, stop and update, so the menu
   lists the host's mounts instead of a local guess.
+- A row never loses its title to its own rollup: the title keeps a 40% floor and
+  the rollup (`state · checks · branch`) ellipsizes into what is left, so a row
+  always names the PR and the trailing bell stays clear.
 - No PR, `gh` missing, not a git repo, no project, or detached HEAD → the branch
   area shows the branch only. The app never invents a PR.
 
