@@ -59,7 +59,7 @@
 |------|------|
 | **Portal 到 `document.body`** | 下拉 / 右键 / 浮层优先 `createPortal(..., document.body)`，避免被 `overflow: hidden` 父级裁切（参考 `Select`、`ContextMenu`、`useFloatingMenu`）。 |
 | **定位用 floating 工具** | 优先 `useFloatingMenu` / `clampContextMenuPos`，处理视口边缘、翻转、宽度匹配；禁止写死坐标导致菜单飞出屏幕或压住错误区域。 |
-| **z-index 分层** | 沿用既有档位（toast / modal / menu 各自区间）；新浮层不要随意 `z-index: 99999` 压过 modal，也不要用过低值沉到聊天层下。 |
+| **z-index 分层** | 沿用既有档位（toast / modal / menu 各自区间）；新浮层不要随意 `z-index: 99999` 压过 modal，也不要用过低值沉到聊天层下。`.ui-tip` 是顶层（14100）：tooltip 也是 portal 到 `document.body`，DOM 顺序压不住它锚定的菜单 / modal / toast，只能靠档位；`.ui-tip--*` 变体只许抬高、不许下沉（`src/styles/tooltipLayer.guard.test.ts` 守着这一档）。 |
 | **点击穿透** | 面板需可接收点击；必要时 `onMouseDown={(e) => e.stopPropagation()}`（`Select` 已示范），避免点选项时被外层当作「点外部关闭」或拖动。 |
 | **与原生 WebView 叠层** | 若浮层可能盖住内嵌 webview，走 `useFloatingMenu` 已接的 native cover 路径，不要手写半截遮罩。 |
 | **多菜单互斥** | 同时只应有一个业务菜单打开（打开 A 关 B）；子菜单用 `ContextMenu` 的 `children` flyout，不要平行叠两个全透明兄弟面板。 |

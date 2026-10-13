@@ -169,6 +169,9 @@ export function ComposerBranchPrSection({
                 {onTogglePrWatch ? (
                   <Tip
                     label={prWatching ? labels.prUnwatchTip : labels.prWatchTip}
+                    /* The tip says what watching does, so it must not be cut:
+                       several locales need a second line for that. */
+                    className="ui-tip--wrap"
                   >
                     <button
                       type="button"
