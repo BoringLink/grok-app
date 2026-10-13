@@ -1,0 +1,21 @@
+.github/workflows/pr-monitor-ci-run.yml
+  s_bcdc30a7fb4f60::t_fd655d99a2ab70 1-38
+docs/pr-monitor-ci-run-test.md
+  s_bcdc30a7fb4f60::t_57305e11a92ceb 1-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "1c57c972a7a63b57dc9486588b4dd66782cc7bd9",
+  "prompts": {},
+  "sessions": {
+    "s_bcdc30a7fb4f60": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a13436-ee93-7913-bebd-638306c87689",
+        "model": "unknown"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
