@@ -1,0 +1,23 @@
+src-tauri/src/injected_prompts.rs
+  s_9cdd078fb9973c::t_ed2794e13f610f 3-11,14-15,33-35,63-65,72-75,95,98-100,102,109-110,126-127,134-135,137-140,142
+src-tauri/src/session_api.rs
+  s_9cdd078fb9973c::t_cfbc8b8b307725 897
+docs/llm-wiki/pr-monitor.md
+  s_9cdd078fb9973c::t_647aa5c6558274 55-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.49-trip",
+  "base_commit_sha": "bb956337684d530c59ccef768fd3e6ecceb7d474",
+  "prompts": {},
+  "sessions": {
+    "s_9cdd078fb9973c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a12eb3-5ffb-7d30-9ec4-c4259963a212",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
