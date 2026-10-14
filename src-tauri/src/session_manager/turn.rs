@@ -192,7 +192,10 @@ impl SessionManager {
                 created_at: chrono::Utc::now(),
                 is_error: false,
                 attachments: journal_attachments.clone(),
-                marker: None,
+                // A prompt the Host injected (PR-monitor wake, external send) is
+                // not the user speaking: `dispatch_turn` armed this chat just
+                // before sending, and taking the arm is what marks the row.
+                marker: crate::injected_prompts::take_armed_marker(&s.app_session_id),
             };
             if let Err(e) = store::append_message(&s.app_session_id, user_row.clone()) {
                 let _ = s.fsm.end_stream();

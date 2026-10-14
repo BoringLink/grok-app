@@ -52,8 +52,19 @@ the baseline so a mount cannot fire a wake.
 ## Delivery rules
 
 - The turn is delivered through the same host path the local session API uses
-  (`session_api::prepare_send` + `dispatch_turn`), so it appears in the chat as a
-  normal user turn and the agent answers it.
+  (`session_api::prepare_send` + `dispatch_turn`), and the agent answers it.
+- It is **marked as injected**, not shown as the user's own message. The origin
+  travels with the turn, never with its text: `dispatch_turn` arms the chat
+  (`injected_prompts`, origin `pr_monitor` for a wake, `external` for the session
+  API) and the turn runner takes the arm while it writes the user row, so the row
+  wears `marker: "auto_wake"`. Nothing is matched by text — a user who later types
+  or pastes the same words still gets a normal user row — and an arm whose turn
+  never went out is dropped. `isInjectedPromptMarker` (`auto_wake` + the older
+  `interjection`)
+  keeps such a row **inside the turn before it** — it opens no new turn, so the
+  answer reads as a continuation — and the thread draws one quiet line
+  (`.lobe-chat-auto-wake`, first line of the prompt, full text on hover) instead
+  of a user bubble.
 - A chat with **no live agent process** (never connected, or recycled after
   idling) is connected first, so a wake really reaches the chat it was mounted
   for.

@@ -287,7 +287,7 @@ pub async fn drain_ready_external_queues(app: &AppHandle, mgr: &Arc<SessionManag
         let Some(head) = take_persisted_head(&item.session_id) else {
             continue;
         };
-        let prepared = match prepare_send(&head.session_id, &head.prompt) {
+        let prepared = match prepare_send(&head.session_id, &head.prompt, "external") {
             Ok(p) => p,
             Err(e) => {
                 if e.status == TurnStatus::NotFound {
@@ -826,7 +826,14 @@ pub fn classify_send_error(err: &str) -> TurnStatus {
     TurnStatus::Error
 }
 
-pub fn prepare_send(session_id: &str, prompt: &str) -> Result<PreparedSend, Box<TurnResult>> {
+/// Check a session can take a turn and build the request for it. `origin` names
+/// who asked (`pr_monitor`, `external`): an injected prompt is remembered so the
+/// transcript can show an automatic follow-up instead of the user's own words.
+pub fn prepare_send(
+    session_id: &str,
+    prompt: &str,
+    origin: &'static str,
+) -> Result<PreparedSend, Box<TurnResult>> {
     let prompt = prompt.trim();
     if prompt.is_empty() {
         return Err(Box::new(TurnResult::fail(
@@ -887,6 +894,7 @@ pub fn prepare_send(session_id: &str, prompt: &str) -> Result<PreparedSend, Box<
         session_id: meta.id,
         project_path,
         prompt: prompt.to_string(),
+        origin,
     })
 }
 
@@ -894,6 +902,9 @@ pub struct PreparedSend {
     pub session_id: String,
     pub project_path: Option<String>,
     pub prompt: String,
+    /// Who asked for this turn (`pr_monitor`, `external`): a prompt the Host
+    /// injected is marked (`auto_wake`) instead of reading as the user's.
+    pub origin: &'static str,
 }
 
 pub async fn with_dispatch_timeout_for<F>(
@@ -930,6 +941,10 @@ pub async fn dispatch_turn(
     req: PreparedSend,
 ) -> TurnResult {
     let sid = req.session_id.clone();
+    // Armed for the whole dispatch: the turn runner takes it while it writes the
+    // user row, which also covers a turn that has to queue (its row is written
+    // when the queue drains and the chat is free again).
+    crate::injected_prompts::arm(&sid, req.origin);
     // Mid-turn (drawing / tools / permission): do not connect-steal or send.
     // Push onto the same composer follow-up queue the GUI already shows.
     if mgr.session_turn_busy(&sid) {
@@ -939,6 +954,7 @@ pub async fn dispatch_turn(
         .connect(app.clone(), req.project_path, Some(sid.clone()), None, None)
         .await
     {
+        crate::injected_prompts::disarm(&sid);
         return TurnResult::fail(TurnStatus::Error, sid, format!("connect failed: {e}"));
     }
     // Connect can race a new turn; treat that as queue, never interrupt.
@@ -960,6 +976,7 @@ pub async fn dispatch_turn(
             if classify_send_error(&e) == TurnStatus::Busy {
                 return enqueue_while_busy(app, &sid, &req.prompt);
             }
+            crate::injected_prompts::disarm(&sid);
             TurnResult::fail(classify_send_error(&e), sid, e)
         }
     }
@@ -986,7 +1003,7 @@ async fn handle_turn(
             return (status_for(&prev.status), Json(prev));
         }
     }
-    let prepared = match prepare_send(session_id, &body.prompt) {
+    let prepared = match prepare_send(session_id, &body.prompt, "external") {
         Ok(p) => p,
         Err(mut r) => {
             r.idempotency_key = key.clone();
