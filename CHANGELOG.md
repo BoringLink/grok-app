@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.41] - 2026-10-14
+
+> **Highlight:** One chat can follow several pull requests, and an update continues it.
+>
+> **中文 · 亮点：** 一个对话可以盯上多条拉取请求，有更新时会自己接着写。
+
 ### Added
 - A chat can watch several open pull requests from the branch menu. The chip shows how many are watched. (#1325)
 - The agent can watch and unwatch those pull requests itself. (#1327)
