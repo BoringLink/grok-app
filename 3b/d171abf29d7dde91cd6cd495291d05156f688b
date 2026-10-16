@@ -1,0 +1,24 @@
+src-tauri/src/commands/mod.rs
+  s_84a681a2070668::t_a899fddae2cff2 22
+src-tauri/src/commands/chat_trace.rs
+  s_84a681a2070668::t_1da4b9d0ee10dd 1-9,31
+  s_84a681a2070668::t_0e8ae2c0fdb2ec 10-30,32-33
+src-tauri/src/command_registry.rs
+  s_84a681a2070668::t_72052baa2d171c 185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "3bd171abf29d7dde91cd6cd495291d05156f688b",
+  "prompts": {},
+  "sessions": {
+    "s_84a681a2070668": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a143e4-0c85-77a1-9beb-1455128cd7e4",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
