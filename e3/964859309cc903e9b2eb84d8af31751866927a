@@ -1,0 +1,22 @@
+src/hooks/useChatViewportTraceProbe.ts
+  s_84a681a2070668::t_b887dc705e020e 38,42-43,45
+  s_84a681a2070668::t_09bb8e1a0b3c58 11-14,23,39-41,44,85-88,91-104,109,121-122,134,138-143,157-179,184-189,195-219,224-225
+src/lib/chatViewportTrace.ts
+  s_84a681a2070668::t_170ed8b69c55ab 206-219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "e3964859309cc903e9b2eb84d8af31751866927a",
+  "prompts": {},
+  "sessions": {
+    "s_84a681a2070668": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a143e4-0c85-77a1-9beb-1455128cd7e4",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
