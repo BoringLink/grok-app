@@ -1,0 +1,63 @@
+src-tauri/src/commands/chat_trace.rs
+  s_84a681a2070668::t_c6afd70f1f4ad4 1-33
+src/components/lobe-chat/ConversationThread.tsx
+  s_869526b38febfc::t_7d87da6c3d20bd 1831-1838,1858,1873-1875,1881-1886,2718-2747
+  s_84a681a2070668::t_50d9060ad97389 117,2146,2148-2154,2161,2212
+  s_84a681a2070668::t_c6afd70f1f4ad4 116,2711-2716
+  s_869526b38febfc::t_e0ed7d4328eb16 102-103
+  s_869526b38febfc::t_830fd747c23ac6 1857
+  s_84a681a2070668::t_e31b954dafe94b 2717,2748
+src/hooks/useStickToBottom.ts
+  s_84a681a2070668::t_c6afd70f1f4ad4 48,181
+  s_869526b38febfc::t_2a79f86444cdeb 27
+  s_869526b38febfc::t_0fd8bc58bbfa41 355-371
+  s_869526b38febfc::t_1d98c5d511e9b6 41,115-119,715-718
+src/lib/chatViewportTrace.test.ts
+  s_84a681a2070668::t_f3f11db21765ee 6,173-201
+  s_84a681a2070668::t_4fed7fb913189c 11,17,96-125,218-235
+  s_84a681a2070668::t_bb72b5fd01b971 1-5,7-10,12-16,18-95,126-172,202-217,236-246
+src/lib/chatViewportTrace.ts
+  s_84a681a2070668::t_426e9029c59bea 1-34,41-48,52-116,139-140,142-203,241-252
+  s_84a681a2070668::t_534122ff66b4c4 129-134,136
+  s_84a681a2070668::t_164c8627e374bd 35-40
+  s_84a681a2070668::t_4fed7fb913189c 49-51,204-240
+  s_84a681a2070668::t_7a90e70d7f93bb 117-128,135,137-138,141
+src/lib/stickToBottom.test.ts
+  s_869526b38febfc::t_78c28c8230d075 31-32,315-353
+src/hooks/useChatViewportTraceProbe.ts
+  s_84a681a2070668::t_4fed7fb913189c 6-14,23-24,33-46,81,86-89,99-119,121-125,130-131,144,148-153,163-183,186-189,193-197,205-210,226,228-243,245-252,255-257,263-266
+  s_84a681a2070668::t_6d0dba728980c1 91-98,141,162,184-185,204,213-222,244,258
+  s_84a681a2070668::t_f37ebd2de66a6f 1-5,15-22,25-32,47-80,82-85,90,120,126-129,132-140,142-143,145-147,154-161,190-192,198-203,211-212,223-225,227,253-254,259-262,267-269
+src/hooks/useChatMessageVirtualizer.ts
+  s_84a681a2070668::t_c6afd70f1f4ad4 36,337,675,789
+src/lib/stickToBottom.core.test.ts
+  s_869526b38febfc::t_e07e16d113839f 18,314-340
+src/lib/stickToBottom.ts
+  s_869526b38febfc::t_11355c3828bf46 80-97
+  s_869526b38febfc::t_360e909608a834 192-215
+  s_869526b38febfc::t_1e6d7ef6175302 73-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "1f165d69955e5d7bdde74011c8a0641ecee852ea",
+  "prompts": {},
+  "sessions": {
+    "s_84a681a2070668": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a143e4-0c85-77a1-9beb-1455128cd7e4",
+        "model": "unknown"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_869526b38febfc": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a148cf-6da8-7111-a900-75ff15049656",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
