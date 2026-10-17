@@ -99,6 +99,8 @@ import {
   shouldBumpStickOnBusyEdge,
   shouldFollowPinnedMediaReveal,
   shouldSnapToTailOnTurnSettle,
+  shouldSnapToTailOnFinalAssistantCommit,
+  STICK_FINAL_ASSISTANT_SETTLE_MS,
   stabilizeStickUserId,
   transcriptStickIdentity,
 } from "@/lib/stickToBottom";
@@ -111,6 +113,8 @@ import {
   TRANSCRIPT_OPEN_REVEAL_TIMEOUT_MS,
 } from "@/lib/transcriptOpenReveal";
 import { useChatMessageVirtualizer } from "@/hooks/useChatMessageVirtualizer";
+import { useChatViewportTraceProbe } from "@/hooks/useChatViewportTraceProbe";
+import { applyScrollTopTraced, traceViewport } from "@/lib/chatViewportTrace";
 import {
   estimateChatRowHeight,
   splitVirtSpacerHeights,
@@ -1824,6 +1828,14 @@ export function ConversationThread({
     }
     return null;
   }, [messages]);
+  const finalAssistantCommitKey = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (!m || m.role !== "assistant" || m.marker) continue;
+      return `${m.id}:${m.content ?? ""}:${m.streaming ? "streaming" : "done"}`;
+    }
+    return null;
+  }, [messages]);
 
   const {
     viewportRef: scrollRef,
@@ -1842,6 +1854,8 @@ export function ConversationThread({
    * tail. A user who left the bottom mid-stream is not yanked.
    */
   const pinnedThroughTurnRef = useRef(true);
+  const finalAssistantSettleUntilRef = useRef(0);
+  const finalAssistantCommitRef = useRef<string | null>(null);
   if (turnBusyForStick) pinnedThroughTurnRef.current = isPinnedRef.current;
   const prevBusyForSettleRef = useRef(turnBusyForStick);
   useLayoutEffect(() => {
@@ -1856,12 +1870,20 @@ export function ConversationThread({
     ) {
       return;
     }
+    finalAssistantSettleUntilRef.current =
+      performance.now() + STICK_FINAL_ASSISTANT_SETTLE_MS;
+    finalAssistantCommitRef.current = finalAssistantCommitKey;
     scrollToBottom("instant");
     const raf = requestAnimationFrame(() => {
       if (isPinnedRef.current) scrollToBottom("instant");
     });
     return () => cancelAnimationFrame(raf);
-  }, [turnBusyForStick, scrollToBottom, isPinnedRef]);
+  }, [
+    finalAssistantCommitKey,
+    turnBusyForStick,
+    scrollToBottom,
+    isPinnedRef,
+  ]);
 
   const [backBottomAlways, setBackBottomAlways] = useState(() =>
     loadBackBottomAlwaysPref(),
@@ -2121,14 +2143,22 @@ export function ConversationThread({
 
       // Align to the upper band so tall previous messages leave the focus line.
       // Instant first — smooth often no-ops when the row is already partially on screen.
+      const beforeAlignScroll = viewport.scrollTop;
       root.scrollIntoView({ block: "start", behavior: "instant" });
+      // `scrollIntoView` moves every scrollable ancestor, so the transcript
+      // viewport can move without any `scrollTop` assignment to instrument.
+      traceViewport("locate:scrollIntoView", {
+        nodeId: node.id,
+        before: Math.round(beforeAlignScroll),
+        after: Math.round(viewport.scrollTop),
+      });
       // Nudge: keep a small top inset so the bubble isn't under chrome.
       const vr = viewport.getBoundingClientRect();
       const rr = root.getBoundingClientRect();
       const desiredTop = vr.top + Math.min(48, viewport.clientHeight * 0.1);
       const delta = rr.top - desiredTop;
       if (Math.abs(delta) > 2) {
-        viewport.scrollTop += delta;
+        applyScrollTopTraced("thread:locateNudge", viewport, viewport.scrollTop + delta);
       }
 
       if (locateClearTimerRef.current) clearTimeout(locateClearTimerRef.current);
@@ -2179,7 +2209,7 @@ export function ConversationThread({
             );
       const prevBehavior = viewport.style.scrollBehavior;
       viewport.style.scrollBehavior = "auto";
-      viewport.scrollTop = approx;
+      applyScrollTopTraced("thread:nodeEstimate", viewport, approx);
       if (prevBehavior) viewport.style.scrollBehavior = prevBehavior;
       else viewport.style.removeProperty("scroll-behavior");
 
@@ -2677,6 +2707,44 @@ export function ConversationThread({
     forceIndices: forceVirtualIndices,
     enabled: chatVirtualScroll,
   });
+
+  // DEV-only: records a cause chain when the viewport moves to an older message
+  // while still following the tail. Off unless localStorage grok.chatTrace = 1.
+  useChatViewportTraceProbe({
+    viewportRef: scrollRef,
+    isPinnedRef,
+    contentRef,
+  });
+
+  useLayoutEffect(() => {
+    const pending = performance.now() < finalAssistantSettleUntilRef.current;
+    const commitChanged =
+      finalAssistantCommitRef.current !== finalAssistantCommitKey;
+    const assistantStreaming = finalAssistantCommitKey?.endsWith(":streaming") ?? false;
+    if (
+      !shouldSnapToTailOnFinalAssistantCommit({
+        pending,
+        pinned: isPinnedRef.current,
+        escaped: !isPinnedRef.current,
+        commitChanged,
+        assistantStreaming,
+      })
+    ) {
+      return;
+    }
+    finalAssistantCommitRef.current = finalAssistantCommitKey;
+    scrollToBottom("instant");
+  }, [
+    finalAssistantCommitKey,
+    isPinnedRef,
+    scrollToBottom,
+    virtStart,
+    virtEnd,
+    paddingTop,
+    paddingBottom,
+    richStart,
+    richEnd,
+  ]);
 
   const openMediaCount = useMemo(() => {
     let n = 0;

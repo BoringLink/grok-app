@@ -28,6 +28,8 @@ import {
   transcriptStickIdentity,
   shouldFollowPinnedMediaReveal,
   shouldSnapToTailOnTurnSettle,
+  shouldSnapToTailOnFinalAssistantCommit,
+  STICK_FINAL_ASSISTANT_SETTLE_MS,
   STICK_MEDIA_FOLLOW_DELAY_MS,
   STICK_MEDIA_HEIGHT_PX,
   STICK_OPEN_FOLLOW_MS,
@@ -307,6 +309,48 @@ describe("shouldSnapToTailOnTurnSettle", () => {
       "utf8",
     );
     expect(src).toContain("shouldSnapToTailOnTurnSettle");
+  });
+});
+
+describe("shouldSnapToTailOnFinalAssistantCommit", () => {
+  it("restores the tail for a late final-body commit while pinned", () => {
+    expect(
+      shouldSnapToTailOnFinalAssistantCommit({
+        pending: true,
+        pinned: true,
+        escaped: false,
+        commitChanged: true,
+        assistantStreaming: false,
+      }),
+    ).toBe(true);
+    expect(STICK_FINAL_ASSISTANT_SETTLE_MS).toBe(300);
+  });
+
+  it("does not restore after expiry, user escape, or while streaming", () => {
+    const base = {
+      pinned: true,
+      escaped: false,
+      commitChanged: true,
+      assistantStreaming: false,
+    };
+    expect(
+      shouldSnapToTailOnFinalAssistantCommit({ ...base, pending: false }),
+    ).toBe(false);
+    expect(
+      shouldSnapToTailOnFinalAssistantCommit({
+        ...base,
+        pending: true,
+        pinned: false,
+        escaped: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldSnapToTailOnFinalAssistantCommit({
+        ...base,
+        pending: true,
+        assistantStreaming: true,
+      }),
+    ).toBe(false);
   });
 });
 

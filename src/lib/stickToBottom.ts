@@ -70,6 +70,31 @@ export const STICK_BOTTOM_REBOUND_INTENT_MS = 320;
 
 /** Quiet window after the last rebound scroll event before snapping to max. */
 export const STICK_BOTTOM_REBOUND_SETTLE_MS = 96;
+/**
+ * Window in which synthetic scroll events from a thought/tool collapse are
+ * treated as layout recovery. A collapse can emit one browser clamp event and
+ * a second virtual-list correction after `scrollHeight` has already settled.
+ */
+export const STICK_COLLAPSE_RECOVERY_MS = 250;
+
+/**
+ * Whether a scroll event belongs to the short layout-recovery window after a
+ * pinned activity block collapses. Explicit wheel/touch escapes set `escaped`
+ * before the native scroll event arrives, so they still win.
+ */
+export function shouldIgnorePinnedLayoutScroll(input: {
+  pinned: boolean;
+  escaped: boolean;
+  now: number;
+  recoveryUntil: number;
+}): boolean {
+  return (
+    input.pinned &&
+    !input.escaped &&
+    Number.isFinite(input.now) &&
+    input.now < input.recoveryUntil
+  );
+}
 
 /** True when the upward scroll is large enough to intentionally leave the bottom. */
 export function isMeaningfulScrollUp(
@@ -162,6 +187,30 @@ export function shouldSnapToTailOnTurnSettle(input: {
   wasPinned: boolean;
 }): boolean {
   return input.wasBusy && !input.nowBusy && input.wasPinned;
+}
+
+/** Maximum time to absorb late final-body commits after a turn settles. */
+export const STICK_FINAL_ASSISTANT_SETTLE_MS = 300;
+
+/**
+ * Whether a late final assistant-body commit should reassert the tail.
+ * The caller supplies a short-lived window armed at turn settle. A current
+ * pin check keeps an explicit user scroll-up from being overridden.
+ */
+export function shouldSnapToTailOnFinalAssistantCommit(input: {
+  pending: boolean;
+  pinned: boolean;
+  escaped: boolean;
+  commitChanged: boolean;
+  assistantStreaming: boolean;
+}): boolean {
+  return (
+    input.pending &&
+    input.pinned &&
+    !input.escaped &&
+    input.commitChanged &&
+    !input.assistantStreaming
+  );
 }
 
 /**

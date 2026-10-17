@@ -15,6 +15,7 @@ import {
   markProgrammaticStickScroll,
   nextStickPinState,
   shouldEscapePinnedScroll,
+  shouldIgnorePinnedLayoutScroll,
   shouldIgnoreProgrammaticStickLeave,
   shouldReleaseStickOnScrollUp,
   shouldReleaseStickOnSlowScrollUp,
@@ -305,6 +306,38 @@ describe("shouldEscapePinnedScroll", () => {
         previousScrollTop: 600,
         scrollHeight: 1000,
         clientHeight: ch,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("collapse layout recovery", () => {
+  it("ignores synthetic scrolls while a pinned collapse is recovering", () => {
+    expect(
+      shouldIgnorePinnedLayoutScroll({
+        pinned: true,
+        escaped: false,
+        now: 100,
+        recoveryUntil: 250,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not block an explicit user escape or an expired recovery", () => {
+    expect(
+      shouldIgnorePinnedLayoutScroll({
+        pinned: true,
+        escaped: true,
+        now: 100,
+        recoveryUntil: 250,
+      }),
+    ).toBe(false);
+    expect(
+      shouldIgnorePinnedLayoutScroll({
+        pinned: true,
+        escaped: false,
+        now: 250,
+        recoveryUntil: 250,
       }),
     ).toBe(false);
   });

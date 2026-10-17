@@ -33,6 +33,7 @@ import {
   type ChatVirtualWindow,
 } from "@/lib/chatVirtualList";
 import { planChatVirtualWindowCommit } from "@/lib/chatVirtualCommit";
+import { applyScrollTopTraced } from "@/lib/chatViewportTrace";
 import { scrollPerfDebug } from "@/lib/scrollPerfDebug";
 import {
   isStreamPerfActive,
@@ -333,7 +334,7 @@ export function useChatMessageVirtualizer(
         pendingAnchorOffsetRef.current = 0;
         if (Math.abs(flushOffset) > 0.5) {
           ignoreScrollAdjustRef.current = true;
-          el.scrollTop += flushOffset;
+          applyScrollTopTraced("virt:flushAnchorOffset", el, el.scrollTop + flushOffset);
           scrollTopWasWritten = true;
         }
       }
@@ -671,7 +672,7 @@ export function useChatMessageVirtualizer(
     ) {
       ignoreScrollAdjustRef.current = true;
       markProgrammaticStickScroll(v, desired);
-      v.scrollTop = desired;
+      applyScrollTopTraced("virt:pinnedWindowSnap", v, desired);
     }
     // Placeholder windows use totalHeight 0; keep the flag until the real
     // spacer commit so leftover distance cannot skip the tail snap.
@@ -785,7 +786,7 @@ export function useChatMessageVirtualizer(
             pendingAnchorOffsetRef.current += shift;
           } else {
             ignoreScrollAdjustRef.current = true;
-            viewport.scrollTop = desiredTop;
+            applyScrollTopTraced("virt:rowAnchorShift", viewport, desiredTop);
           }
         }
       }

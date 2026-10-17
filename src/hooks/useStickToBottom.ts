@@ -24,6 +24,7 @@ import {
   STICK_ESCAPE_WHEEL_DELTA,
   STICK_BOTTOM_REBOUND_INTENT_MS,
   STICK_BOTTOM_REBOUND_SETTLE_MS,
+  STICK_COLLAPSE_RECOVERY_MS,
   STICK_OPEN_FOLLOW_MS,
   STICK_TO_BOTTOM_THRESHOLD_PX,
   bottomScrollTop,
@@ -37,12 +38,14 @@ import {
   shouldClampPinnedOverscroll,
   shouldClampPinnedStreamDrift,
   shouldEscapePinnedScroll,
+  shouldIgnorePinnedLayoutScroll,
   shouldIgnoreProgrammaticStickLeave,
   shouldPreventPinnedBottomWheel,
   shouldRestorePinnedFollowOnViewportReady,
   shouldSettleBottomRebound,
   takeProgrammaticStickScroll,
 } from "@/lib/stickToBottom";
+import { applyScrollTopTraced } from "@/lib/chatViewportTrace";
 
 
 export type UseStickToBottomOptions = {
@@ -109,6 +112,11 @@ export function useStickToBottom(
   const ignoreScrollTopRef = useRef<number | undefined>(undefined);
   /** Non-zero while a content resize is being applied (race with scroll). */
   const resizeDifferenceRef = useRef(0);
+  /**
+   * Collapse can produce multiple synthetic upward scroll events: browser
+   * clamp first, virtual-window correction second. Keep pin through both.
+   */
+  const collapseRecoveryUntilRef = useRef(0);
   const thresholdRef = useRef(thresholdPx);
   thresholdRef.current = thresholdPx;
   const enabledRef = useRef(enabled);
@@ -170,7 +178,7 @@ export function useStickToBottom(
     // Force instant assignment even if CSS scroll-behavior is smooth.
     const prev = el.style.scrollBehavior;
     el.style.scrollBehavior = "auto";
-    el.scrollTop = top;
+    applyScrollTopTraced("stick:applyScrollTop", el, top);
     ignoreScrollTopRef.current = el.scrollTop;
     lastScrollTopRef.current = el.scrollTop;
     lastScrollHeightRef.current = el.scrollHeight;
@@ -344,6 +352,23 @@ export function useStickToBottom(
         scheduleBottomReboundSettle();
         return;
       }
+
+      // A finished thought/tool phase may first trigger a browser clamp and
+      // then a virtual-list anchor correction. Once the first event updates
+      // lastScrollHeightRef, the second event no longer looks like a shrink;
+      // keep it classified as layout recovery until the short window expires.
+      if (
+        shouldIgnorePinnedLayoutScroll({
+          pinned: isPinnedRef.current,
+          escaped: escapedRef.current,
+          now: stickNowMs(),
+          recoveryUntil: collapseRecoveryUntilRef.current,
+        })
+      ) {
+        applyScrollTop(bottomScrollTop(el.scrollHeight, el.clientHeight));
+        return;
+      }
+
       // Default 10px event + slow-trackpad accumulation from the locked
       // bottom. Never use a sub-pixel minDelta: thinking / tool collapse and
       // the next body round routinely move 2–8px off hard bottom, and that
@@ -687,6 +712,10 @@ export function useStickToBottom(
         return;
       }
       resizeDifferenceRef.current = difference;
+      if (difference < -0.5 && isPinnedRef.current && !escapedRef.current) {
+        collapseRecoveryUntilRef.current =
+          stickNowMs() + STICK_COLLAPSE_RECOVERY_MS;
+      }
 
       // Browser can leave scrollTop past max after a shrink — clamp without
       // treating it as a user scroll (would thrash pin / jump to top).
