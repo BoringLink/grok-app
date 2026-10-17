@@ -1,0 +1,21 @@
+src/lib/stickToBottom.ts
+  s_84a681a2070668::t_a1231dab7116c4 74-92
+src/lib/stickToBottom.test.ts
+  s_84a681a2070668::t_d8f0f03bc14530 688
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "e2cd58a1977ee3e0d29df4881c5a4fa1ce801628",
+  "prompts": {},
+  "sessions": {
+    "s_84a681a2070668": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a143e4-0c85-77a1-9beb-1455128cd7e4",
+        "model": "unknown"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
