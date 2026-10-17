@@ -1,0 +1,19 @@
+docs/llm-wiki/chat-viewport-trace.md
+  s_a143f0c36aa686::t_067e3770c1089c 1-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "b2741c3fa1490b9ae1e6ba5d10f41a0a6b793c84",
+  "prompts": {},
+  "sessions": {
+    "s_a143f0c36aa686": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14afa-e747-7da3-bafc-8a963e13f2f1",
+        "model": "claude-DeepSeek-V4-Flash[1M]"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
