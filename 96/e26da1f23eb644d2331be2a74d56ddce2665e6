@@ -1,0 +1,19 @@
+src/hooks/useChatViewportTraceProbe.ts
+  s_84a681a2070668::t_d5f049ece9e807 91-98,141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "96e26da1f23eb644d2331be2a74d56ddce2665e6",
+  "prompts": {},
+  "sessions": {
+    "s_84a681a2070668": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a143e4-0c85-77a1-9beb-1455128cd7e4",
+        "model": "unknown"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
