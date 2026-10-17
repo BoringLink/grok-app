@@ -1,0 +1,48 @@
+src/hooks/useChatViewportTraceProbe.ts
+  s_869526b38febfc::t_08a92fb4d6ab34 137-142,156-168
+  s_869526b38febfc::t_7e99589e1bec99 73
+  s_869526b38febfc::t_2eb4dd5294871b 143-155,210,235
+  s_869526b38febfc::t_1e3e673c526f7c 90
+  s_869526b38febfc::t_1b26d16ea1b42d 264-266,270-271,276-277,284-323,350,355
+src/components/lobe-chat/ConversationThread.tsx
+  s_9bb823e8f89ea8::t_e875d3d557f4a7 2368
+  s_869526b38febfc::t_4f4942b5a1d6a0 2351-2363
+  s_869526b38febfc::t_0c5b3f12ab91bd 2369-2380
+  s_9bb823e8f89ea8::t_faa9d6c85d55f2 2365-2367
+  s_869526b38febfc::t_554fef25ed7377 118-121,3154-3166
+  s_869526b38febfc::t_8a1b3d2a6ba138 1849
+  s_9bb823e8f89ea8::t_8c3051df247709 2395
+  s_9bb823e8f89ea8::t_77699bc7dc0c37 2382-2388
+  s_869526b38febfc::t_5947adfce9d971 2761
+  s_9bb823e8f89ea8::t_c63dd6a489a88d 2108-2111
+src/lib/chatViewportTrace.test.ts
+  s_869526b38febfc::t_70840a54a13c3e 17
+  s_869526b38febfc::t_4aadfdfc7aec9f 238-260
+src/lib/chatViewportTrace.ts
+  s_869526b38febfc::t_60a93ee6dda331 282,284
+  s_869526b38febfc::t_6180e64e84a573 278-281,283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "a8c83d4d829bd8d397e3c30e827a7f61eb1ad118",
+  "prompts": {},
+  "sessions": {
+    "s_869526b38febfc": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a148cf-6da8-7111-a900-75ff15049656",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": null
+    },
+    "s_9bb823e8f89ea8": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a149a0-d713-7b11-9401-2451306c81a0",
+        "model": "claude-DeepSeek-V4-Flash[1M]"
+      },
+      "human_author": null
+    }
+  }
+}
