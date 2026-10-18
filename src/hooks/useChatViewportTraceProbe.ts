@@ -31,6 +31,7 @@ import {
   setChatViewportTracePinned,
   traceViewport,
   visibleBandShift,
+  visibleTopRowShift,
   type ViewportTraceEvent,
   type VisibleRowPosition,
 } from "@/lib/chatViewportTrace";
@@ -151,6 +152,8 @@ export function useChatViewportTraceProbe(input: {
     /** Latest frame metrics, surfaced on the heartbeat so the log reads out. */
     let lastDistFromBottom = 0;
     let lastVisibleShift: number | null = null;
+    /** Latest escaped-anchor displacement (px), the C3 read-out. */
+    let lastAnchorShift: number | null = null;
     let lastWriteSource: string | null = null;
     let prevWriteCount = chatViewportWriteStats().writes;
     let writesSinceHeartbeat = 0;
@@ -178,6 +181,7 @@ export function useChatViewportTraceProbe(input: {
       clientHeight: Math.round(viewport.clientHeight),
       distFromBottom: Math.round(lastDistFromBottom),
       visibleShiftPx: lastVisibleShift,
+      anchorShiftPx: lastAnchorShift,
       pinned: !!isPinnedRef.current,
       escaped: !!escapedRef?.current,
       writeSource: lastWriteSource,
@@ -269,6 +273,12 @@ export function useChatViewportTraceProbe(input: {
       );
       const index = positions[0]?.index ?? null;
       const shift = visibleBandShift(prevPositions, positions);
+      // C3 read-out: while escaped the top visible row is the anchor, so its
+      // on-screen displacement is the quantity the ≤ 0.5px bound is judged on.
+      const anchorShift = escaped
+        ? visibleTopRowShift(prevPositions, positions)
+        : null;
+      lastAnchorShift = anchorShift;
       // AC2: no shell may sit inside the visible band. Judged here, at the
       // paint boundary, on the same rows the C2 shift metric uses.
       const viewTop = viewport.getBoundingClientRect().top;
@@ -315,7 +325,11 @@ export function useChatViewportTraceProbe(input: {
         index !== prevIndex ||
         pinned !== prevPinned ||
         Math.abs(dTop) >= GEOMETRY_EPSILON_PX ||
-        Math.abs(dHeight) >= GEOMETRY_EPSILON_PX;
+        Math.abs(dHeight) >= GEOMETRY_EPSILON_PX ||
+        // A ≤ 0.5px C3 bound is below the geometry noise floor, so an escaped
+        // anchor drift must itself count as "moved" or it would never reach the
+        // ring and the manual pass could not read it.
+        (anchorShift != null && Math.abs(anchorShift) > 0.5);
 
       if (moved) {
         lastDTop = dTop;
@@ -330,6 +344,7 @@ export function useChatViewportTraceProbe(input: {
           ch: Math.round(clientHeight),
           d: Math.round(distFromBottom),
           v: shift,
+          a: anchorShift,
           dt: Math.round(dTop),
           dh: Math.round(dHeight),
           dm: dMutations,

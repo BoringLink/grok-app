@@ -26,6 +26,7 @@ import {
   traceViewport,
   VIEWPORT_JUMP_MIN_PX,
   visibleBandShift,
+  visibleTopRowShift,
 } from "./chatViewportTrace";
 
 afterEach(() => {
@@ -389,6 +390,46 @@ describe("visibleBandShift", () => {
       visibleBandShift([{ index: 1, top: 0 }], [{ index: 2, top: 0 }]),
     ).toBeNull();
     expect(visibleBandShift([], [{ index: 2, top: 0 }])).toBeNull();
+  });
+});
+
+describe("visibleTopRowShift", () => {
+  it("reports the top row's own displacement, not the band average", () => {
+    // Arrange — the anchor (row 10) moved 2px while the lower rows moved 20px.
+    const previous = [
+      { index: 10, top: 100 },
+      { index: 11, top: 200 },
+      { index: 12, top: 300 },
+    ];
+    const current = [
+      { index: 10, top: 102 },
+      { index: 11, top: 222 },
+      { index: 12, top: 322 },
+    ];
+
+    // Act
+    const shift = visibleTopRowShift(previous, current);
+
+    // Assert
+    expect(shift).toBe(2);
+    expect(visibleBandShift(previous, current)).toBe(15.33);
+  });
+
+  it("returns null when the current top row was not visible before", () => {
+    // Arrange — the frame jumped so far that the new top row is fresh.
+    const previous = [
+      { index: 10, top: 100 },
+      { index: 11, top: 200 },
+    ];
+    const current = [{ index: 14, top: 50 }];
+
+    // Act + Assert
+    expect(visibleTopRowShift(previous, current)).toBeNull();
+  });
+
+  it("returns null for an empty current frame", () => {
+    // Arrange + Act + Assert
+    expect(visibleTopRowShift([{ index: 1, top: 0 }], [])).toBeNull();
   });
 });
 

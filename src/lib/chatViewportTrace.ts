@@ -500,6 +500,27 @@ export function visibleBandShift(
 }
 
 /**
+ * On-screen displacement (px) of the topmost row present in both frames — the
+ * escaped reader's anchor displacement, the quantity C3 is measured on.
+ *
+ * `visibleBandShift` averages every visible row, which can dilute the one row
+ * whose position defines "what the user is reading". This follows that row and
+ * matches it by index, so a row that merely reused the slot is not counted.
+ * Returns null when the current frame's top row was not visible on the previous
+ * frame (nothing to compare against).
+ */
+export function visibleTopRowShift(
+  previous: readonly VisibleRowPosition[],
+  current: readonly VisibleRowPosition[],
+): number | null {
+  const top = current[0];
+  if (!top) return null;
+  const before = previous.find((row) => row.index === top.index);
+  if (!before) return null;
+  return round2(top.top - before.top);
+}
+
+/**
  * Normalize a pin/escape flip into one of {@link PinFlipCause}.
  *
  * The reason's prefix wins where it already names a gesture (`wheel-*`,

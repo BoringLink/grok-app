@@ -37,7 +37,20 @@ recorded sample is stamped with `by`: `"raf"` is a paint-boundary sample,
 `"fallback"` frames as liveness evidence, not draw evidence.
 
 A `sample` is only recorded when something changed (index, pin, or a geometry
-move past the 4px noise floor), so an idle viewport does not fill the ring.
+move past the 4px noise floor), so an idle viewport does not fill the ring. While
+escaped, an anchor shift past 0.5px also counts as a change: the C3 bound is
+below that noise floor, so the anchor drift would otherwise never reach the ring.
+
+### C3 read-out (escaped reader)
+
+While escaped the element at the viewport top is the anchor (`CONTEXT.md`). The
+per-frame `a` field is that element's on-screen displacement, so the C3 bound
+(≤ 0.5px across a height-changing batch) reads directly off `a` on the escaped
+`by: "raf"` frames of a real stream — a fold, a re-growth, continuous output, or
+a media element finishing decode. `a` is `null` while pinned (the anchor is then
+the content end, judged by `d`). The media-decode case carries no DOM mutation
+with the new size, so it appears as a `sample` whose `dh`/`dm` show a content
+height change with `dm: 0`.
 
 ### Sample key legend
 
@@ -51,6 +64,7 @@ frames as the Host line budget allows (see `dumpChatViewportTrace`). One
 | `st` / `sh` / `ch` | `scrollTop` / `scrollHeight` / `clientHeight` |
 | `d` | **distance to the content end** (px); 0 at the hard bottom (C1) |
 | `v` | **visible-band shift** (px): mean on-screen displacement of rows present in both frames, matched by `data-virt-index` (C2). `null` = no row persisted |
+| `a` | **escaped-anchor shift** (px): on-screen displacement of the top visible row (the anchor) between frames, matched by `data-virt-index` (C3). Only sampled while escaped; `null` while pinned or when the top row did not persist |
 | `dt` / `dh` | per-frame `scrollTop` / content-height delta |
 | `dm` | DOM mutations since the previous frame (reflow vs external scroll) |
 | `p` / `e` | `pinned` / `escaped` — the C3/C4 follow state |
