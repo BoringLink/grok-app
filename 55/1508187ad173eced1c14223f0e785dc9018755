@@ -1,0 +1,29 @@
+scripts/measure-chat-first-frame.mjs
+  s_e4ea3552f322ba::t_edae1fd505bf2a 18-20
+  s_e4ea3552f322ba::t_e996c7aae6e8ae 177-184
+  s_e4ea3552f322ba::t_def771ab9b5724 1-17,21-30,32-54,63-64,66-74,76,78-80,82-91,93-94,105-113,115-116,131-151,156-163,168-176,185-196,198-199,204-206,213-214,216-221,253-276,278-283,285-294,296,316-323
+  s_e4ea3552f322ba::t_5fd12a9c878ce2 277,284,295,297,299-300,302-308,310-315
+  s_e4ea3552f322ba::t_32c9656d6c2dd0 222-252
+  s_e4ea3552f322ba::t_76e2c1bc447634 152-155
+  s_e4ea3552f322ba::t_78fd8df413ac71 31,55-62,65,75,77,81,92,95-104,114,117-130
+  s_e4ea3552f322ba::t_6bbf582b0e894f 197,200-203,215
+  s_e4ea3552f322ba::t_08b825747e5db5 298,301,309
+  s_e4ea3552f322ba::t_7cbf977bd8205e 207-212
+  s_e4ea3552f322ba::t_f79636f4092ec9 164-167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "551508187ad173eced1c14223f0e785dc9018755",
+  "prompts": {},
+  "sessions": {
+    "s_e4ea3552f322ba": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f2b-17c5-7622-87e0-3bd161420d7c",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
