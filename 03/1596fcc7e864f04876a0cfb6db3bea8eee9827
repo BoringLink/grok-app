@@ -1,0 +1,37 @@
+src/hooks/useChatViewportTraceProbe.ts
+  s_520bc38b3b2881::t_3e6b86db7f5f66 133-135,159-161
+  s_520bc38b3b2881::t_6ae25b52ef8a73 375-376
+  s_520bc38b3b2881::t_600818de2c5e56 24
+  s_520bc38b3b2881::t_d5bbcdb4d1a4dd 449
+  s_520bc38b3b2881::t_a42c413ee59da1 220-227,229,232,247-248,251,267,269-284,287,294,314,316,332,341
+src/hooks/useChatViewportTraceProbe.guard.test.ts
+  s_520bc38b3b2881::t_d4dd561c4bcc1d 43-55
+src/lib/chatViewportTrace.ts
+  s_520bc38b3b2881::t_0efd682c01e279 48-54
+  s_520bc38b3b2881::t_602735f39037a8 161-162
+  s_520bc38b3b2881::t_2c6d8ef0ac208b 504-514
+  s_520bc38b3b2881::t_be412c2693838e 543-544
+  s_520bc38b3b2881::t_2c046dca51c1a9 265-266,268,270,273-275,277
+  s_520bc38b3b2881::t_ee8d614f185ea6 458,460-464
+src/lib/chatViewportTrace.test.ts
+  s_520bc38b3b2881::t_e2cf202f10aa2a 10
+  s_520bc38b3b2881::t_5d6e5487bc9a02 514,520-523
+  s_520bc38b3b2881::t_7ad55e4bffa75f 511-513,515-519,524-528,533-534,539,544-545
+  s_520bc38b3b2881::t_70bda74be45a74 562-610
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "031596fcc7e864f04876a0cfb6db3bea8eee9827",
+  "prompts": {},
+  "sessions": {
+    "s_520bc38b3b2881": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f13-b072-74d3-ab9a-b71d7fcca06e",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
