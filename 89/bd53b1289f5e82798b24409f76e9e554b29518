@@ -1,0 +1,27 @@
+src/lib/chatViewportLedger.test.ts
+  s_b3a8cb43f04be9::t_39ee5a4cb8428d 302-309,312,320-321,329-332,335,337-338,342-343,345-351
+  s_b3a8cb43f04be9::t_e7c4ddbc4bed5a 313,316-319,322-325,336
+  s_b3a8cb43f04be9::t_e884ef9cd4d9b8 1-68,70,72-301,310-311,314-315,326-328,333-334,339-341,344,352-550
+  s_b3a8cb43f04be9::t_c6aad40fe44702 69,71
+src/lib/chatViewportLedger.ts
+  s_b3a8cb43f04be9::t_b3d7c0b79a318d 278,282
+  s_b3a8cb43f04be9::t_89f0916e77c1e6 1-185,187-277,279-281,283-312,314-319,321-341
+  s_b3a8cb43f04be9::t_cb5104fb2bb8d5 313,320
+  s_b3a8cb43f04be9::t_3ae118c8e30cec 186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "89bd53b1289f5e82798b24409f76e9e554b29518",
+  "prompts": {},
+  "sessions": {
+    "s_b3a8cb43f04be9": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14e74-f7c0-7853-889b-dd065014aef7",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
