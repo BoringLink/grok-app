@@ -1,0 +1,25 @@
+docs/llm-wiki/README.md
+  s_e49d6188cd724a::t_512950c2d0233b 14
+docs/llm-wiki/chat-viewport-invariants.md
+  s_e49d6188cd724a::t_4ea990b872e7a9 1-229
+docs/llm-wiki/session-continuity.md
+  s_e49d6188cd724a::t_fefd928683bae8 330-336
+AGENTS.md
+  s_e49d6188cd724a::t_c5cbc3cf439124 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "229070630c1d304cfa03584f94e3261ec79b9cbc",
+  "prompts": {},
+  "sessions": {
+    "s_e49d6188cd724a": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15061-ecc1-7bd0-9493-9932f6061665",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
