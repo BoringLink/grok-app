@@ -1,0 +1,26 @@
+src-tauri/src/lib.rs
+  s_ea3a0627a24ff2::t_899c0d768151e1 793-795
+  s_ea3a0627a24ff2::t_bcd0d14ef85d0b 809-811
+  s_ea3a0627a24ff2::t_8b9e3510a23b1c 276
+src-tauri/src/chat_viewport_occlusion.rs
+  s_ea3a0627a24ff2::t_60772dcbad5a42 1-6,11-18,20-40,42-114,118-130
+  s_ea3a0627a24ff2::t_db16ed40ed11c6 7-10
+  s_ea3a0627a24ff2::t_4434c25d398aa6 41,115-117
+  s_ea3a0627a24ff2::t_cf2463baa71156 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "1aba11c74797f743cee5c3b713c7efe90def5315",
+  "prompts": {},
+  "sessions": {
+    "s_ea3a0627a24ff2": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f74-a604-78d2-9232-d696a242f304",
+        "model": "auto(free)"
+      },
+      "human_author": null
+    }
+  }
+}
