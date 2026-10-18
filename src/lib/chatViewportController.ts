@@ -1,0 +1,323 @@
+/**
+ * Explicit chat transcript viewport controller — pure decision core.
+ *
+ * The transcript's position has exactly one decision maker (ADR 0006): this
+ * module plans *where* the viewport must sit and *which* state transition the
+ * position implies. It never touches the DOM and never writes `scrollTop`; the
+ * hook that owns the element (`useChatViewportController`) applies the plan
+ * through a single write point.
+ *
+ * Two states, from `CONTEXT.md`:
+ *   pinned  — the viewport sits at the content end and stays there while the
+ *             conversation grows.
+ *   escaped — the user chose to read history; the element at the top of the
+ *             viewport keeps its on-screen position under any height change.
+ *
+ * Only a user intent (wheel / touch / keyboard / scrollbar drag) can move
+ * `pinned → escaped`. A gesture-less upward move is layout clamping: it must
+ * not change the state, and the same batch must put the viewport back on the
+ * end. Two consecutive gesture-less upward moves at an unchanged height are
+ * the one exception — a scrollbar drag produces exactly that signature, so it
+ * upgrades to a real escape.
+ *
+ * Geometry offsets come from the layout ledger (几何账本) so the planner never
+ * re-derives whole-conversation math from the DOM.
+ */
+
+import type { LayoutLedger } from "@/lib/chatViewportLedger";
+import {
+  bottomScrollTop,
+  isHardBottom,
+  shouldEscapePinnedScroll,
+  STICK_ESCAPE_MIN_DELTA_PX,
+  STICK_ESCAPE_WHEEL_DELTA,
+} from "@/lib/stickToBottom";
+
+/** Which state the viewport is in, per `CONTEXT.md`. */
+export type ViewportPhase = "pinned" | "escaped";
+
+/** The three numbers a scroll container exposes. */
+export type ViewportGeometry = {
+  scrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+};
+
+/**
+ * The element at the top of the viewport, expressed against the ledger: which
+ * row sits there and how far its top is from the viewport top (negative when
+ * the viewport top is inside the row).
+ */
+export type ViewportAnchor = {
+  rowIndex: number;
+  offsetIntoViewport: number;
+};
+
+/** Row geometry the planner reads; a `LayoutLedger` satisfies it structurally. */
+export type ViewportRows = Pick<
+  LayoutLedger,
+  "offsetOf" | "indexAtOffset" | "rowCount" | "totalHeight"
+>;
+
+/** A user gesture. Sign convention: negative moves toward history. */
+export type ViewportIntent =
+  | { kind: "wheel"; deltaY: number }
+  | { kind: "touch"; deltaY: number }
+  | { kind: "keyboard"; key: string }
+  | { kind: "scrollbar"; deltaY: number };
+
+/** What an intent means for the state machine. */
+export type ViewportIntentEffect = "escape" | "towardEnd" | "none";
+
+/** A position write the caller must apply; `none` means "leave it alone". */
+export type ViewportDirective =
+  | { kind: "end" }
+  | { kind: "anchor"; top: number }
+  | { kind: "none" };
+
+/** Mutable state the caller carries between batches. */
+export type ViewportState = {
+  phase: ViewportPhase;
+  /** Set whenever the phase is escaped; null while pinned. */
+  anchor: ViewportAnchor | null;
+  /** Consecutive gesture-free upward scroll events at an unchanged height. */
+  upStreak: number;
+  upStreakAt: number;
+};
+
+/** Keyboard moves that read history. */
+const ESCAPE_KEYS = new Set(["PageUp", "ArrowUp", "Home"]);
+/** Keyboard moves that return toward the tail. */
+const TOWARD_END_KEYS = new Set([
+  "PageDown",
+  "ArrowDown",
+  "End",
+  " ",
+  "Spacebar",
+]);
+
+/** Fresh state: pinned at the tail with no anchor. */
+export function createViewportState(): ViewportState {
+  return { phase: "pinned", anchor: null, upStreak: 0, upStreakAt: 0 };
+}
+
+/** Target `scrollTop` that parks the viewport on the content end. */
+export function contentEndScrollTop(geometry: ViewportGeometry): number {
+  return bottomScrollTop(geometry.scrollHeight, geometry.clientHeight);
+}
+
+/** Highest `scrollTop` the engine will keep (content end). */
+export function maxScrollTop(geometry: ViewportGeometry): number {
+  return Math.max(0, geometry.scrollHeight - geometry.clientHeight);
+}
+
+/**
+ * The row at the top of the viewport and its offset, resolved through the
+ * ledger. Empty ledger → row 0 at the viewport top.
+ */
+export function anchorAtViewportTop(
+  geometry: ViewportGeometry,
+  rows: ViewportRows,
+): ViewportAnchor {
+  const count = rows.rowCount();
+  if (count === 0) {
+    // Empty ledger: hold the raw scrollTop. offsets[0] is 0, so recording
+    // `-scrollTop` makes the round-trip a no-op instead of jumping to the top.
+    return { rowIndex: 0, offsetIntoViewport: -geometry.scrollTop };
+  }
+  const rowIndex = Math.min(
+    Math.max(0, rows.indexAtOffset(geometry.scrollTop)),
+    count - 1,
+  );
+  return {
+    rowIndex,
+    offsetIntoViewport: rows.offsetOf(rowIndex) - geometry.scrollTop,
+  };
+}
+
+/** `scrollTop` that keeps `anchor` at its recorded on-screen position. */
+export function scrollTopForAnchor(
+  anchor: ViewportAnchor,
+  rows: ViewportRows,
+  geometry: ViewportGeometry,
+): number {
+  const raw = rows.offsetOf(anchor.rowIndex) - anchor.offsetIntoViewport;
+  return Math.min(Math.max(0, raw), maxScrollTop(geometry));
+}
+
+/**
+ * Classify a user gesture. Reading history escapes; a move toward the tail is
+ * only a re-pin signal at the hard bottom (the near-bottom band is deliberately
+ * not re-pinning — that thrash is the bottom bounce).
+ */
+export function intentEffect(intent: ViewportIntent): ViewportIntentEffect {
+  switch (intent.kind) {
+    case "wheel":
+      if (intent.deltaY <= -STICK_ESCAPE_WHEEL_DELTA) return "escape";
+      if (intent.deltaY >= STICK_ESCAPE_WHEEL_DELTA) return "towardEnd";
+      return "none";
+    case "touch":
+      // Finger moves down → content moves up → the user is reading history.
+      if (intent.deltaY >= STICK_ESCAPE_MIN_DELTA_PX) return "escape";
+      if (intent.deltaY <= -STICK_ESCAPE_MIN_DELTA_PX) return "towardEnd";
+      return "none";
+    case "keyboard":
+      if (ESCAPE_KEYS.has(intent.key)) return "escape";
+      if (TOWARD_END_KEYS.has(intent.key)) return "towardEnd";
+      return "none";
+    case "scrollbar":
+      if (intent.deltaY < 0) return "escape";
+      if (intent.deltaY > 0) return "towardEnd";
+      return "none";
+  }
+}
+
+function escapeState(
+  geometry: ViewportGeometry,
+  rows: ViewportRows,
+  now: number,
+): ViewportState {
+  return {
+    phase: "escaped",
+    anchor: anchorAtViewportTop(geometry, rows),
+    upStreak: 0,
+    upStreakAt: now,
+  };
+}
+
+/**
+ * Transition for a user gesture. Escape is immediate and does not move the
+ * viewport (the user's own scroll already landed); a move toward the tail
+ * re-pins only when it lands on the hard bottom.
+ */
+export function applyIntent(input: {
+  state: ViewportState;
+  intent: ViewportIntent;
+  geometry: ViewportGeometry;
+  rows: ViewportRows;
+  now: number;
+}): { state: ViewportState; directive: ViewportDirective } {
+  const { state, intent, geometry, rows, now } = input;
+  const effect = intentEffect(intent);
+  if (effect === "escape") {
+    return { state: escapeState(geometry, rows, now), directive: { kind: "none" } };
+  }
+  if (
+    effect === "towardEnd" &&
+    isHardBottom(geometry.scrollTop, geometry.scrollHeight, geometry.clientHeight)
+  ) {
+    return { state: createViewportState(), directive: { kind: "end" } };
+  }
+  return { state, directive: { kind: "none" } };
+}
+
+export type ViewportScrollSample = {
+  scrollTop: number;
+  previousScrollTop: number;
+  scrollHeight: number;
+  previousScrollHeight?: number;
+  clientHeight: number;
+  /** A real gesture happened within the escape window. */
+  gestureRecent: boolean;
+};
+
+/**
+ * Transition for a scroll event. A gesture-less upward move is layout
+ * clamping — keep the pin and put the viewport back on the end. Two of them at
+ * an unchanged height are a scrollbar drag, which escapes.
+ */
+export function applyScrollSample(input: {
+  state: ViewportState;
+  sample: ViewportScrollSample;
+  rows: ViewportRows;
+  now: number;
+  /** Upward moves within this window extend the same streak. */
+  streakWindowMs: number;
+}): { state: ViewportState; directive: ViewportDirective } {
+  const { state, sample, rows, now, streakWindowMs } = input;
+  const geometry: ViewportGeometry = {
+    scrollTop: sample.scrollTop,
+    scrollHeight: sample.scrollHeight,
+    clientHeight: sample.clientHeight,
+  };
+  const movedUp = sample.previousScrollTop - sample.scrollTop >= 0.5;
+  const movedDown = sample.scrollTop - sample.previousScrollTop >= 0.5;
+
+  if (state.phase === "escaped") {
+    if (
+      movedDown &&
+      sample.gestureRecent &&
+      isHardBottom(sample.scrollTop, sample.scrollHeight, sample.clientHeight)
+    ) {
+      return { state: createViewportState(), directive: { kind: "end" } };
+    }
+    // Reading history: stay there, do not fight the user.
+    return { state, directive: { kind: "none" } };
+  }
+
+  if (!movedUp) {
+    return {
+      state: state.upStreak === 0 ? state : { ...state, upStreak: 0, upStreakAt: 0 },
+      directive: { kind: "none" },
+    };
+  }
+
+  const escapeCandidate = shouldEscapePinnedScroll({
+    pinned: true,
+    scrollTop: sample.scrollTop,
+    previousScrollTop: sample.previousScrollTop,
+    scrollHeight: sample.scrollHeight,
+    clientHeight: sample.clientHeight,
+    previousScrollHeight: sample.previousScrollHeight,
+  });
+
+  if (escapeCandidate && sample.gestureRecent) {
+    return { state: escapeState(geometry, rows, now), directive: { kind: "none" } };
+  }
+
+  if (!escapeCandidate) {
+    // Height shrink / hard-bottom clamp: layout, not the user.
+    return {
+      state: state.upStreak === 0 ? state : { ...state, upStreak: 0, upStreakAt: 0 },
+      directive: { kind: "end" },
+    };
+  }
+
+  // Gesture-free upward move at an effectively unchanged height. One is a
+  // layout clamp (re-assert the end); two in a row are a scrollbar drag.
+  const stableHeight =
+    sample.previousScrollHeight == null ||
+    Math.abs(sample.scrollHeight - sample.previousScrollHeight) < 0.5;
+  const streak =
+    stableHeight && now - state.upStreakAt < streakWindowMs
+      ? state.upStreak + 1
+      : stableHeight
+        ? 1
+        : 0;
+  if (streak >= 2) {
+    return { state: escapeState(geometry, rows, now), directive: { kind: "none" } };
+  }
+  return {
+    state: { ...state, upStreak: streak, upStreakAt: now },
+    directive: { kind: "end" },
+  };
+}
+
+/**
+ * Position for the end of a batch that changed height: pinned → the content
+ * end; escaped → the recorded anchor's on-screen position.
+ */
+export function planRestore(input: {
+  state: ViewportState;
+  geometry: ViewportGeometry;
+  rows: ViewportRows;
+}): ViewportDirective {
+  const { state, geometry, rows } = input;
+  if (state.phase === "pinned") {
+    return { kind: "end" };
+  }
+  if (!state.anchor) {
+    return { kind: "anchor", top: contentEndScrollTop(geometry) };
+  }
+  return { kind: "anchor", top: scrollTopForAnchor(state.anchor, rows, geometry) };
+}
