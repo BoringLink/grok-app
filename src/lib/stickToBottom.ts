@@ -494,14 +494,6 @@ export function shouldEscapePinnedScroll(input: {
 }
 
 /**
- * Virtual-list pin-snap writes `scrollTop` without going through the stick
- * hook. Remember that assignment so the next scroll event is not treated as
- * a user leave. Entries older than {@link PROGRAMMATIC_STICK_SCROLL_TTL_MS}
- * are ignored (a missed event must not swallow a later flick).
- */
-export const PROGRAMMATIC_STICK_SCROLL_TTL_MS = 100;
-
-/**
  * Below this, clientHeight is not a real chat viewport (hidden WebView,
  * App switch occlusion, or a 0-height layout pass). Pin/escape/follow
  * math using maxTop = scrollHeight - 0 parks scrollTop in the middle
@@ -536,40 +528,14 @@ export function shouldRestorePinnedFollowOnViewportReady(input: {
 }
 
 /**
- * Stick follow / virtual-list pin-snap write scrollTop and then fire
- * `scroll`. Treating that as a user leave drops pin mid-stream so the
- * answer grows above the fold.
- *
- * Wheel/touch already unpin on their own listeners. Scrollbar-only leave
- * still works on events that are not tagged programmatic.
+ * A follow write fires a `scroll` event that must not count as a user leave.
+ * The controller owns every write, so it passes the position it just wrote;
+ * anything else (a real gesture) reaches the escape logic.
  */
 export function shouldIgnoreProgrammaticStickLeave(
   ignoreTop: number | undefined,
 ): boolean {
   return ignoreTop != null;
-}
-
-type ProgrammaticStickScroll = { top: number; at: number };
-
-const programmaticStickScroll = new WeakMap<Element, ProgrammaticStickScroll>();
-
-export function markProgrammaticStickScroll(el: Element, top: number): void {
-  programmaticStickScroll.set(el, { top, at: nowMs() });
-}
-
-/** Consume a recent pin-snap; stale or missing → undefined. */
-export function takeProgrammaticStickScroll(el: Element): number | undefined {
-  const v = programmaticStickScroll.get(el);
-  if (!v) return undefined;
-  programmaticStickScroll.delete(el);
-  if (nowMs() - v.at > PROGRAMMATIC_STICK_SCROLL_TTL_MS) return undefined;
-  return v.top;
-}
-
-function nowMs(): number {
-  return typeof performance !== "undefined" && typeof performance.now === "function"
-    ? performance.now()
-    : Date.now();
 }
 
 export function distanceFromBottom(
@@ -635,21 +601,6 @@ export function pinnedFollowDelayMs(
   if (heightDelta < 0) return 0;
   if (Math.abs(heightDelta) < mediaPx) return 0;
   return delayMs;
-}
-
-/**
- * Pinned virtual-list commits must land on the tail. Pre-commit distance is
- * inflated when a thought body unmounts (scrollHeight drops, scrollTop has
- * not followed yet). Restoring that distance parks the viewport in history
- * and the next collapse looks like "lost stick-to-bottom" (#1246).
- */
-export function pinnedWindowRestoreDist(input: {
-  pinned: boolean;
-  forceOpen: boolean;
-  preCommitDist: number;
-}): number {
-  if (input.forceOpen || input.pinned) return 0;
-  return input.preCommitDist;
 }
 
 /**

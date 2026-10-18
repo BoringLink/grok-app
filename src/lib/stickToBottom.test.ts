@@ -15,7 +15,6 @@ import {
   isNearBottom,
   pinnedFollowDelayMs,
   pinnedFollowDelayForLayout,
-  pinnedWindowRestoreDist,
   shouldBumpStickOnBusyEdge,
   stabilizeStickUserId,
   shouldClampPinnedOverscroll,
@@ -201,28 +200,6 @@ describe("pinnedFollowDelayForLayout", () => {
         conversationOpening: true,
       }),
     ).toBe(0);
-  });
-});
-
-describe("pinnedWindowRestoreDist", () => {
-  it("snaps to the tail while stick is still following (#1246)", () => {
-    expect(
-      pinnedWindowRestoreDist({
-        pinned: true,
-        forceOpen: false,
-        preCommitDist: 220,
-      }),
-    ).toBe(0);
-  });
-
-  it("keeps pre-commit distance after the user left the tail", () => {
-    expect(
-      pinnedWindowRestoreDist({
-        pinned: false,
-        forceOpen: false,
-        preCommitDist: 180,
-      }),
-    ).toBe(180);
   });
 });
 
@@ -471,7 +448,7 @@ describe("shouldForcePinnedSnapOnOpen", () => {
     ).toBe(false);
   });
 
-  it("virtualizer open-snap follows the live stick flag, not a hardcoded pin", () => {
+  it("delegates transcript writes to the controller instead of assigning", () => {
     const src = readFileSync(
       join(
         dirname(fileURLToPath(import.meta.url)),
@@ -479,9 +456,9 @@ describe("shouldForcePinnedSnapOnOpen", () => {
       ),
       "utf8",
     );
-    expect(src).toContain("pinned: !!isPinnedRef.current");
-    expect(src).toContain("shouldWritePinnedWindowScrollTop");
-    expect(src).toContain("scrollTopAfterHeightChange");
+    expect(src).toContain("controller?.pinToEnd(");
+    expect(src).toContain("controller?.restoreLayout()");
+    expect(src).not.toContain("applyScrollTopTraced");
   });
 });
 

@@ -12,7 +12,6 @@ import {
   STICK_MIN_VIEWPORT_HEIGHT_PX,
   isHardBottom,
   isStickViewportUnreliable,
-  markProgrammaticStickScroll,
   nextStickPinState,
   shouldEscapePinnedScroll,
   shouldIgnorePinnedLayoutScroll,
@@ -20,7 +19,6 @@ import {
   shouldReleaseStickOnScrollUp,
   shouldReleaseStickOnSlowScrollUp,
   shouldRestorePinnedFollowOnViewportReady,
-  takeProgrammaticStickScroll,
 } from "./stickToBottom";
 
 describe("isHardBottom", () => {
@@ -340,15 +338,6 @@ describe("collapse layout recovery", () => {
         recoveryUntil: 250,
       }),
     ).toBe(false);
-  });
-});
-
-describe("programmatic stick scroll ignore", () => {
-  it("hands the written top to the next scroll event once", () => {
-    const el = { id: "vp" } as unknown as Element;
-    markProgrammaticStickScroll(el, 592);
-    expect(takeProgrammaticStickScroll(el)).toBe(592);
-    expect(takeProgrammaticStickScroll(el)).toBeUndefined();
   });
 });
 

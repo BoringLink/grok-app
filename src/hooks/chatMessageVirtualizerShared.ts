@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 import type { ChatVirtualWindow } from "@/lib/chatVirtualList";
+import type { ChatViewportControllerHandle } from "@/hooks/useChatViewportController";
 
 export type UseChatMessageVirtualizerArgs = {
   itemCount: number;
@@ -7,8 +8,14 @@ export type UseChatMessageVirtualizerArgs = {
   /** Content-aware estimate before first measure (critical for tall answers). */
   getEstimateHeight?: (index: number) => number;
   viewportRef: RefObject<HTMLElement | null>;
-  /** Stick pin flag from useStickToBottom (ref, not reactive). */
+  /** Stick pin flag from useChatViewportController (ref, not reactive). */
   isPinnedRef: RefObject<boolean>;
+  /**
+   * The transcript viewport controller. The virtual list produces layout only:
+   * measured heights go into the controller's ledger and geometry changes are
+   * restored by the controller, which owns the single `scrollTop` write.
+   */
+  controller?: ChatViewportControllerHandle;
   /** Reset height cache when conversation switches. */
   conversationKey?: string | number | null;
   /** Always-mounted indices (find match, streaming row, …). */

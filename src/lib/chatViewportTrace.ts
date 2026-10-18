@@ -147,9 +147,9 @@ export function traceViewport(
 /**
  * Record a `scrollTop` assignment. `before` must be read before the write.
  *
- * The stack is the point: three modules write this scroller
- * (`useChatMessageVirtualizer`, `useStickToBottom`, and any future caller), and
- * a stray write is invisible in the geometry afterwards.
+ * The stack is the point: the transcript controller owns the only write
+ * (`useChatViewportController`), and a stray write is invisible in the
+ * geometry afterwards.
  */
 export function traceScrollTopWrite(
   source: string,

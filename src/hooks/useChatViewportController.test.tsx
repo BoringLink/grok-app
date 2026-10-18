@@ -4,7 +4,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { lastPinFlipCause, resetChatViewportTrace } from "@/lib/chatViewportTrace";
 import { STICK_BOTTOM_REBOUND_SETTLE_MS } from "@/lib/stickToBottom";
-import { useStickToBottom, type UseStickToBottomResult } from "./useStickToBottom";
+import { useChatViewportController, type UseChatViewportControllerResult } from "./useChatViewportController";
 
 class ControlledResizeObserver {
   private static readonly instances = new Set<ControlledResizeObserver>();
@@ -50,7 +50,7 @@ function flushLayoutFrame() {
   vi.advanceTimersByTime(16);
 }
 
-describe("useStickToBottom bottom rebound", () => {
+describe("useChatViewportController bottom rebound", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     ControlledResizeObserver.reset();
@@ -101,7 +101,7 @@ describe("useStickToBottom bottom rebound", () => {
     });
 
     const { result, rerender } = renderHook(
-      ({ keyName }) => useStickToBottom({ conversationKey: keyName }),
+      ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
       { initialProps: { keyName: "before-attach" } },
     );
     Object.assign(result.current.viewportRef, { current: viewport });
@@ -146,7 +146,7 @@ describe("useStickToBottom bottom rebound", () => {
     });
 
     const { result, rerender } = renderHook(
-      ({ keyName }) => useStickToBottom({ conversationKey: keyName }),
+      ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
       { initialProps: { keyName: "before-attach" } },
     );
     Object.assign(result.current.viewportRef, { current: viewport });
@@ -192,7 +192,7 @@ describe("useStickToBottom bottom rebound", () => {
     });
 
     const { result, rerender } = renderHook(
-      ({ keyName }) => useStickToBottom({ conversationKey: keyName }),
+      ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
       { initialProps: { keyName: "before-attach" } },
     );
     Object.assign(result.current.viewportRef, { current: viewport });
@@ -250,7 +250,7 @@ describe("useStickToBottom bottom rebound", () => {
     });
 
     const { result, rerender } = renderHook(
-      ({ keyName }) => useStickToBottom({ conversationKey: keyName }),
+      ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
       { initialProps: { keyName: "before-attach" } },
     );
     Object.assign(result.current.viewportRef, { current: viewport });
@@ -279,7 +279,7 @@ describe("useStickToBottom bottom rebound", () => {
  * browser clamps scrollTop with the new content height). It must hold the pin
  * instead of releasing it, or the rest of the turn stops being followed.
  */
-describe("useStickToBottom escape policy", () => {
+describe("useChatViewportController escape policy", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     ControlledResizeObserver.reset();
@@ -321,7 +321,7 @@ describe("useStickToBottom escape policy", () => {
     });
 
     const { result, rerender } = renderHook(
-      ({ keyName }) => useStickToBottom({ conversationKey: keyName }),
+      ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
       { initialProps: { keyName: "before-attach" } },
     );
     Object.assign(result.current.viewportRef, { current: viewport });
@@ -336,7 +336,7 @@ describe("useStickToBottom escape policy", () => {
     return {
       viewport,
       content,
-      result: result as { current: UseStickToBottomResult },
+      result: result as { current: UseChatViewportControllerResult },
       scrollTop: () => scrollTop,
       setScrollTop: (value: number) => {
         scrollTop = value;
@@ -421,3 +421,230 @@ describe("useStickToBottom escape policy", () => {
     expect(lastPinFlipCause()).toBe("button");
   });
 });
+
+/**
+ * The controller is the transcript's single writer. Other transcript modules
+ * (the virtual list, the rail / find jumps) call this handle instead of
+ * assigning `scrollTop` themselves.
+ */
+describe("useChatViewportController handle", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    ControlledResizeObserver.reset();
+    vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      (callback: FrameRequestCallback) =>
+        window.setTimeout(() => callback(performance.now()), 0),
+    );
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+      window.clearTimeout(id);
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    ControlledResizeObserver.reset();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  function mount(initial: { scrollTop: number; scrollHeight: number }) {
+    let scrollTop = initial.scrollTop;
+    let scrollHeight = initial.scrollHeight;
+    const viewport = document.createElement("div");
+    const content = document.createElement("div");
+    viewport.appendChild(content);
+    Object.defineProperties(viewport, {
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      clientHeight: { configurable: true, get: () => 400 },
+      clientWidth: { configurable: true, get: () => 800 },
+    });
+
+    const { result, rerender } = renderHook(
+      ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
+      { initialProps: { keyName: "before-attach" } },
+    );
+    Object.assign(result.current.viewportRef, { current: viewport });
+    Object.assign(result.current.contentRef, { current: content });
+    rerender({ keyName: "attached" });
+    act(() => vi.advanceTimersByTime(40));
+
+    return {
+      viewport,
+      controller: result.current.controller,
+      isPinnedRef: result.current.isPinnedRef,
+      escapedRef: result.current.escapedRef,
+      scrollTop: () => scrollTop,
+      setScrollTop: (value: number) => {
+        scrollTop = value;
+      },
+      setScrollHeight: (value: number) => {
+        scrollHeight = value;
+      },
+    };
+  }
+
+  /** Viewport with a row above and a row at the viewport top, both measured. */
+  function mountWithRows(input: { scrollTop: number; aboveHeight: number }) {
+    let scrollTop = input.scrollTop;
+    let aboveHeight = input.aboveHeight;
+    const rowHeight = 300;
+    const viewport = document.createElement("div");
+    const content = document.createElement("div");
+    const above = document.createElement("div");
+    const anchorRow = document.createElement("div");
+    content.append(above, anchorRow);
+    viewport.appendChild(content);
+    document.body.appendChild(viewport);
+
+    const rect = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 800,
+        width: 800,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    Object.defineProperties(viewport, {
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+      scrollHeight: { configurable: true, get: () => 1000 },
+      clientHeight: { configurable: true, get: () => 400 },
+      clientWidth: { configurable: true, get: () => 800 },
+    });
+    Object.defineProperty(viewport, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(0, 400),
+    });
+    Object.defineProperty(content, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(-scrollTop, 1000),
+    });
+    Object.defineProperty(above, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(-scrollTop, aboveHeight),
+    });
+    Object.defineProperty(anchorRow, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(aboveHeight - scrollTop, rowHeight),
+    });
+
+    const { result, rerender } = renderHook(
+      ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
+      { initialProps: { keyName: "before-attach" } },
+    );
+    Object.assign(result.current.viewportRef, { current: viewport });
+    Object.assign(result.current.contentRef, { current: content });
+    rerender({ keyName: "attached" });
+    act(() => vi.advanceTimersByTime(40));
+    // Undo the conversation-switch pin so the test controls the position.
+    scrollTop = input.scrollTop;
+
+    return {
+      controller: result.current.controller,
+      isPinnedRef: result.current.isPinnedRef,
+      escapedRef: result.current.escapedRef,
+      scrollTop: () => scrollTop,
+      setAboveHeight: (value: number) => {
+        aboveHeight = value;
+      },
+    };
+  }
+
+  it("writes the transcript position through assign", () => {
+    const harness = mount({ scrollTop: 600, scrollHeight: 1000 });
+
+    act(() => {
+      harness.controller.assign("test:jump", 240);
+    });
+
+    expect(harness.scrollTop()).toBe(240);
+  });
+  it("escape detaches from the bottom and clears the pin", () => {
+    const harness = mount({ scrollTop: 600, scrollHeight: 1000 });
+
+    act(() => {
+      harness.controller.escape("test:locate");
+    });
+
+    expect(harness.isPinnedRef.current).toBe(false);
+    expect(harness.escapedRef.current).toBe(true);
+  });
+
+  it("restores the content end through restoreLayout while pinned", () => {
+    const harness = mount({ scrollTop: 600, scrollHeight: 1000 });
+    // Layout shrank and the browser clamped, then grew back.
+    harness.setScrollTop(400);
+    harness.setScrollHeight(800);
+
+    act(() => {
+      harness.setScrollHeight(1000);
+      harness.controller.restoreLayout();
+    });
+
+    expect(harness.scrollTop()).toBe(600);
+    expect(harness.isPinnedRef.current).toBe(true);
+  });
+
+  /**
+   * A rail / find jump is a programmatic escape: after it the viewport must
+   * hold the landed position, not re-snap to the tail (user story 15).
+   */
+  it("holds the landed position after a programmatic escape", () => {
+    const harness = mount({ scrollTop: 600, scrollHeight: 1000 });
+
+    act(() => {
+      harness.controller.escape("test:locate");
+      harness.controller.assign("test:locate", 320);
+      harness.setScrollHeight(1000);
+      harness.controller.restoreLayout();
+    });
+
+    expect(harness.scrollTop()).toBe(320);
+    expect(harness.isPinnedRef.current).toBe(false);
+    expect(harness.escapedRef.current).toBe(true);
+  });
+
+  /**
+   * The anchor is the element at the viewport top, measured directly, so a
+   * height change the ledger and the observer cannot see (a collapse above the
+   * mounted band) still holds its on-screen position.
+   */
+  it("holds the anchor element across a height change above it", () => {
+    const harness = mountWithRows({ scrollTop: 200, aboveHeight: 200 });
+
+    act(() => {
+      harness.controller.escape("test:locate");
+      harness.controller.restoreLayout(); // capture the anchor element
+    });
+
+    act(() => {
+      // The row above the anchor grows 100px; the browser shifts the anchor down.
+      harness.setAboveHeight(300);
+      harness.controller.restoreLayout();
+    });
+
+    expect(harness.scrollTop()).toBe(300);
+    expect(harness.isPinnedRef.current).toBe(false);
+  });
+});
+
