@@ -1,0 +1,43 @@
+src/lib/frameSchedule.ts
+  s_ea3a0627a24ff2::t_80b58ad33e8dfd 67-88,101
+  s_5a98cfc153b25e::t_cd2bad30488f5d 2,4-8,11,33-39,95-100
+src/lib/frameSchedule.test.ts
+  s_5a98cfc153b25e::t_fc46894491d193 3-7,44,94,96,98,100-104,106-113,115-123
+  s_5a98cfc153b25e::t_ab97c363e8cb3f 1,21,31-32,43,49,63,65,95,97,99,105,114
+src/lib/frameCadence.test.ts
+  s_5a98cfc153b25e::t_d5f8e6997cfdfe 9
+  s_ea3a0627a24ff2::t_6fba52b11eba36 66-90
+  s_5a98cfc153b25e::t_f6b26c69fdf5f4 1-8,10,12-59,63-65,93-100,114-115
+  s_ea3a0627a24ff2::t_5e56a92b922e3c 11
+  s_5a98cfc153b25e::t_1c4c55d51257c6 60-62
+  s_ea3a0627a24ff2::t_bc584566503edc 91
+  s_5a98cfc153b25e::t_7f35850d715166 92,101-113
+src/lib/frameCadence.ts
+  s_5a98cfc153b25e::t_b7ec73fb0be8b1 1-53,69-71,75,78,95,101-103,109-112
+  s_5a98cfc153b25e::t_1e8f4193d92161 54-68
+  s_ea3a0627a24ff2::t_2270b4e62da794 72-74,76-77,79-94,96-100,104-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "b8b139ad470a6dfcf8f6d8d5c932b0b5d0027597",
+  "prompts": {},
+  "sessions": {
+    "s_5a98cfc153b25e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f5f-a6b2-7292-94bf-4bb7ac27c5f3",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_ea3a0627a24ff2": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f74-a604-78d2-9232-d696a242f304",
+        "model": "auto(free)"
+      },
+      "human_author": null
+    }
+  }
+}
