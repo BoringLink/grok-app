@@ -1,0 +1,26 @@
+src/lib/chatViewportLedger.ts
+  s_30909c381b1e41::t_c8ae75ad0acf5e 427-434
+  s_30909c381b1e41::t_4726347e5c30cc 22-27
+  s_30909c381b1e41::t_c4e094b6c6fc96 80-81,87
+  s_30909c381b1e41::t_4d92af82a12518 190
+src/lib/chatViewportLedger.test.ts
+  s_30909c381b1e41::t_026aaf35d6d010 227,233-245
+  s_30909c381b1e41::t_2bceb9f9b25a52 522
+  s_30909c381b1e41::t_df981be437cfab 506
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "5c9752fa1c501bca5ce4ee0edf17df583a9a2129",
+  "prompts": {},
+  "sessions": {
+    "s_30909c381b1e41": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1500d-088d-7321-8bcc-1bcc062dca5a",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
