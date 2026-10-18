@@ -101,6 +101,11 @@ describe("distanceFromBottom", () => {
   it("never goes negative when overscrolled", () => {
     expect(distanceFromBottom(500, 900, 500)).toBe(0);
   });
+
+  it("keeps the raw negative distance when clamping is off", () => {
+    expect(distanceFromBottom(400, 900, 500, false)).toBe(0);
+    expect(distanceFromBottom(420, 900, 500, false)).toBe(-20);
+  });
 });
 
 describe("isNearBottom", () => {

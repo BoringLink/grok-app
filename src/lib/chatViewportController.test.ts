@@ -356,7 +356,7 @@ describe("chatViewportController restore", () => {
   });
 
   /**
-   * AC3, per the Spec's position model (`docs/plans/2026-10-18-chat-viewport-scroll-spec.md`):
+   * C3, per the Spec's position model (`docs/plans/2026-10-18-chat-viewport-scroll-spec.md`):
    * while escaped the anchor is the element at the viewport top, so its on-screen
    * position is what is held. A collapse below the anchor leaves that element's
    * offset untouched, so the top of the viewport stays fixed and the content

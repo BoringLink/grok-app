@@ -432,8 +432,8 @@ export function useChatResidentList(
   }, [controller, refreshBand]);
 
   // DEV-only: record the transcript's first painted frame so the number can be
-  // read from the Host log in the packaged client (AC4). No-op when the trace
-  // flag is unset.
+  // read from the Host log in the packaged client (the first-frame acceptance).
+  // No-op when the trace flag is unset.
   useLayoutEffect(() => {
     if (!chatViewportTraceEnabled()) return;
     const start = nowMs();

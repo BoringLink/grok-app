@@ -72,7 +72,6 @@ import {
   applyScrollSample,
   contentEndScrollTop,
   createViewportState,
-  maxScrollTop,
   planJump,
   planRestore,
   VIEWPORT_ANCHOR_TOLERANCE_PX,
@@ -646,7 +645,7 @@ export function useChatViewportController(
     if (delta != null) {
       if (Math.abs(delta) > VIEWPORT_ANCHOR_TOLERANCE_PX) {
         applyScrollTop(
-          Math.min(Math.max(0, el.scrollTop + delta), maxScrollTop(g)),
+          Math.min(Math.max(0, el.scrollTop + delta), contentEndScrollTop(g)),
           "restore:anchor",
         );
       }
