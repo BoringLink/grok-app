@@ -1,0 +1,33 @@
+src/hooks/useChatViewportTraceProbe.ts
+  s_ae30523405d50c::t_21d6b19fdb3831 107,321
+  s_ae30523405d50c::t_ebfb95859cfd03 21
+  s_ae30523405d50c::t_21a5ddde1c6654 348,352-353,529-534
+  s_ae30523405d50c::t_84e16972db1076 37,586-592
+src/lib/chatViewportTrace.ts
+  s_ae30523405d50c::t_1a476129dc77be 217-222
+  s_ae30523405d50c::t_5598e5439a64fe 23-24
+  s_ae30523405d50c::t_d53069441e1fb3 647-714
+src/lib/chatViewportTrace.test.ts
+  s_ae30523405d50c::t_2fd3107f780d5b 809-845
+  s_ae30523405d50c::t_b41a086d441103 31
+docs/llm-wiki/chat-viewport-trace.md
+  s_ae30523405d50c::t_6bdfa7396616a2 177-178
+  s_ae30523405d50c::t_43a2583847c489 55
+  s_ae30523405d50c::t_260099ee2f152e 192-198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "eb4cff8216a79bbfd4e93077873d5e39070ecb07",
+  "prompts": {},
+  "sessions": {
+    "s_ae30523405d50c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15086-5a4d-7a03-b2b3-8e09c3ff63b8",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
