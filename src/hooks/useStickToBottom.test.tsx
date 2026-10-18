@@ -2,6 +2,7 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { lastPinFlipCause, resetChatViewportTrace } from "@/lib/chatViewportTrace";
 import { STICK_BOTTOM_REBOUND_SETTLE_MS } from "@/lib/stickToBottom";
 import { useStickToBottom, type UseStickToBottomResult } from "./useStickToBottom";
 
@@ -394,5 +395,29 @@ describe("useStickToBottom escape policy", () => {
     });
 
     expect(harness.scrollTop()).toBe(600);
+  });
+
+  it("records a button cause when the explicit control re-pins an escaped view", () => {
+    // Arrange — escape first, so the re-pin is a real flip.
+    resetChatViewportTrace();
+    const harness = mountPinned({ scrollTop: 600, scrollHeight: 1000 });
+    act(() => {
+      harness.setScrollTop(590);
+      harness.viewport.dispatchEvent(new Event("scroll"));
+      harness.setScrollTop(580);
+      harness.viewport.dispatchEvent(new Event("scroll"));
+    });
+    expect(harness.result.current.escapedRef.current).toBe(true);
+    expect(lastPinFlipCause()).toBe("scrollbar");
+
+    // Act — the "back to bottom" button path: scrollToBottom with its reason.
+    act(() => {
+      harness.result.current.scrollToBottom("instant", "button-scroll-to-bottom");
+    });
+
+    // Assert
+    expect(harness.result.current.isPinnedRef.current).toBe(true);
+    expect(harness.result.current.escapedRef.current).toBe(false);
+    expect(lastPinFlipCause()).toBe("button");
   });
 });

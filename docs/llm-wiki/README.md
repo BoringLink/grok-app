@@ -20,6 +20,7 @@ Agent 与贡献者的**可执行知识库**。改产品行为或 UI 文案前，
 | [release.md](./release.md) | **发版 / Release 强制流程**：CHANGELOG 短句、What's New 弹窗、tag、三端 CI、macOS 损坏处理 |
 | [website-downloads.md](./website-downloads.md) | **官网下载对接**：grok-app.com 按钮、稳定别名、`downloads.json`、禁止反代 |
 | [maintain.md](./maintain.md) | **开源维护**：Issue 分拣、PR 审核、社区反馈入库、修复闭环；**已合并分支 / worktree 及时安全清理** |
+| [chat-viewport-trace.md](./chat-viewport-trace.md) | **Chat viewport trace**: dev-only diagnostic probe for the transcript scroll invariants; flags, sampling convention, log path, dump window |
 | [chatcut.md](./chatcut.md) | **ChatCut Codex 插件**：适配器、MCP surface、Resources 内嵌浏览器 handoff、re-pull 迁移 |
 | [agent-gui-reference.md](./agent-gui-reference.md) | **Agent GUI 参考**：桌面客户端与 CLI 的交互界面规范 |
 | [git-worktrees.md](./git-worktrees.md) | **Git worktree**：分支菜单、创建/移除/GC、会话绑定与徽章 |
