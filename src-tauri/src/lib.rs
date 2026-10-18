@@ -273,6 +273,8 @@ mod skin_staging;
 mod skin_video_bake;
 
 #[cfg(target_os = "macos")]
+mod chat_viewport_occlusion;
+#[cfg(target_os = "macos")]
 mod mac_ime_fn_bridge;
 #[cfg(windows)]
 mod win_file_drop;
@@ -788,6 +790,9 @@ pub fn run() {
                     // Doubao Fn voice needs IME to see flagsChanged (#1030).
                     #[cfg(target_os = "macos")]
                     mac_ime_fn_bridge::install();
+                    // Covered-window signal for the chat viewport (BOR-107).
+                    #[cfg(target_os = "macos")]
+                    chat_viewport_occlusion::install(&w);
                 });
             } else {
                 // Show immediately — do not block_on host services first (that
@@ -801,6 +806,9 @@ pub fn run() {
                 // Doubao Fn voice needs IME to see flagsChanged (#1030).
                 #[cfg(target_os = "macos")]
                 mac_ime_fn_bridge::install();
+                // Covered-window signal for the chat viewport (BOR-107).
+                #[cfg(target_os = "macos")]
+                chat_viewport_occlusion::install(&window);
             }
 
             // ── 2) Non-UI host work off the critical path (WebView already open).
