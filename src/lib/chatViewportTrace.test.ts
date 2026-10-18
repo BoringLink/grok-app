@@ -7,6 +7,7 @@ import {
   chatTraceSessionId,
   chatViewportTraceEnabled,
   chatViewportTraceEvents,
+  chatViewportWriteStats,
   classifyPinFlipCause,
   distanceToContentEnd,
   DUMP_CONTEXT_EVENTS,
@@ -507,21 +508,41 @@ describe("dumpChatViewportTrace trigger anchoring", () => {
     expect(dump.events.some((event) => event.seq === 299)).toBe(false);
   });
 
+  it("reaches back past the old 80-event cap when the events are compact", () => {
+    // Arrange — small per-frame samples, as the probe records them.
+    setChatViewportTraceEnabled(true);
+    for (let i = 0; i < 100; i++) traceViewport("sample", { i, d: 0, v: -1 });
+    const trigger = traceViewport("backward", { fromIndex: 9, toIndex: 4 });
+
+    // Act
+    const dump = dumpChatViewportTrace("wide", trigger);
+
+    // Assert — the whole stream fits, so nothing is dropped and the window is
+    // wider than the old fixed 80-event context.
+    expect(dump.events.length).toBeGreaterThan(80);
+    expect(dump.events).toHaveLength(101);
+    expect(dump.events.at(-1)).toBe(trigger);
+    expect(dump.truncated).toBe(false);
+    expect(JSON.stringify(dump).length).toBeLessThanOrEqual(DUMP_MAX_CHARS);
+  });
+
   it("drops the oldest context first and always keeps the trigger", () => {
     // Arrange — each event carries a payload, so the char budget bites.
     setChatViewportTraceEnabled(true);
     const filler = "x".repeat(400);
-    for (let i = 0; i < 100; i++) traceViewport("sample", { seq: i, filler });
-    const trigger = traceViewport("backward", { seq: 100, filler });
+    for (let i = 0; i < 100; i++) traceViewport("sample", { i, filler });
+    const trigger = traceViewport("backward", { i: 100, filler });
 
     // Act
     const dump = dumpChatViewportTrace("budget", trigger);
 
-    // Assert
+    // Assert — it uses the larger budget but still reports the trim.
     expect(dump.truncated).toBe(true);
     expect(dump.events.at(-1)).toBe(trigger);
     expect(dump.events.length).toBeLessThanOrEqual(DUMP_CONTEXT_EVENTS);
     expect(JSON.stringify(dump).length).toBeLessThanOrEqual(DUMP_MAX_CHARS);
+    expect(DUMP_CONTEXT_EVENTS).toBe(400);
+    expect(DUMP_MAX_CHARS).toBe(8000);
   });
 
   it("falls back to the newest event when the trigger was never recorded", () => {
@@ -536,5 +557,54 @@ describe("dumpChatViewportTrace trigger anchoring", () => {
     // Assert
     expect(dump.trigger?.seq).toBe(2);
     expect(dump.events.at(-1)?.seq).toBe(2);
+  });
+});
+
+describe("chatViewportWriteStats", () => {
+  const viewport = () => {
+    const el = document.createElement("div");
+    Object.defineProperty(el, "scrollTop", {
+      value: 0,
+      writable: true,
+      configurable: true,
+    });
+    return el;
+  };
+
+  it("counts writes and reports the last source only while tracing", () => {
+    // Arrange
+    const el = viewport();
+    setChatViewportTraceEnabled(false);
+
+    // Act — disabled: the write happens, nothing is counted.
+    applyScrollTopTraced("stick:applyScrollTop", el, 120);
+
+    // Assert
+    expect(chatViewportWriteStats()).toEqual({ writes: 0, lastSource: null });
+
+    // Act — enabled: both writes are counted, the last source wins.
+    setChatViewportTraceEnabled(true);
+    applyScrollTopTraced("stick:applyScrollTop", el, 240);
+    applyScrollTopTraced("virt:pinnedWindowSnap", el, 260);
+
+    // Assert
+    expect(chatViewportWriteStats()).toEqual({
+      writes: 2,
+      lastSource: "virt:pinnedWindowSnap",
+    });
+  });
+
+  it("counts a raw traced write and clears on reset", () => {
+    // Arrange
+    setChatViewportTraceEnabled(true);
+    const el = viewport();
+
+    // Act
+    traceScrollTopWrite("thread:locateNudge", el, 0);
+
+    // Assert
+    expect(chatViewportWriteStats().writes).toBe(1);
+    resetChatViewportTrace();
+    expect(chatViewportWriteStats()).toEqual({ writes: 0, lastSource: null });
   });
 });

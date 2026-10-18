@@ -40,4 +40,17 @@ describe("chat viewport probe cost guard", () => {
       expect(at, `${sideEffect} is behind the guard`).toBeGreaterThan(guard);
     }
   });
+
+  it("stamps which sampling path produced a frame", () => {
+    // Arrange + Act — the rAF loop and the timer fallback must both pass the
+    // path, so a fallback (non-draw) frame can be told from a drawn frame.
+    const hasRafStamp = /takeSample\("raf"\)/.test(source);
+    const hasFallbackStamp = /takeSample\("fallback"\)/.test(source);
+    const recordsStamp = /by:\s*sampledBy/.test(source);
+
+    // Assert
+    expect(hasRafStamp).toBe(true);
+    expect(hasFallbackStamp).toBe(true);
+    expect(recordsStamp).toBe(true);
+  });
 });

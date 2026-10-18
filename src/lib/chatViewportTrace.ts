@@ -45,6 +45,14 @@ let pinned = false;
  */
 let recentPinFlipCause: PinFlipCause | null = null;
 /**
+ * Transcript `scrollTop` writes seen while tracing, and the source of the
+ * last one. The frame sampler reports the per-frame delta and source from
+ * here, so a dumped frame carries its own write count and origin (Spec
+ * "心跳字段保留（pinned/escaped、离底距离、可见位移、写入来源）").
+ */
+let scrollTopWriteCount = 0;
+let lastScrollTopWriteSource: string | null = null;
+/**
  * Optional tracking-session id. When set, every line the Host appends to
  * `logs/app.log.<day>` is prefixed `[session=<id>]` so an external session can
  * `tail -F` that log and filter a reproduction by its id. Read from
@@ -150,6 +158,8 @@ export function traceScrollTopWrite(
 ): void {
   if (!chatViewportTraceEnabled()) return;
   const after = el.scrollTop;
+  scrollTopWriteCount += 1;
+  lastScrollTopWriteSource = source;
   const stack =
     typeof Error !== "undefined" && typeof Error().stack === "string"
       ? (Error().stack as string)
@@ -252,18 +262,19 @@ export function isBackwardViewportMove(input: {
 }
 
 /**
- * Events kept *before* the trigger in a dump. The trigger is the cause chain's
- * end, so the events that led up to it are the ones worth keeping; later noise
- * is not.
+ * Count ceiling for a dump window: the whole ring. The character budget below
+ * binds first, so this only stops a dump from exceeding the events available.
  */
-export const DUMP_CONTEXT_EVENTS = 80;
+export const DUMP_CONTEXT_EVENTS = MAX_EVENTS;
 /**
- * Serialized-size budget for one dump, under the host's
+ * Serialized-size budget for one dump, just under the host's
  * `MAX_TRACE_LINE_CHARS = 8192`. The host truncates an over-long line keeping
  * its head, so a dump that overflows would lose the trigger (the last event) —
- * staying under the cap is what guarantees the trigger is not dropped.
+ * staying under the cap is what guarantees the trigger is not dropped. The
+ * frame sample uses compact keys so the window covers as many frames leading
+ * into the trigger as the cap allows.
  */
-export const DUMP_MAX_CHARS = 6000;
+export const DUMP_MAX_CHARS = 8000;
 
 export type ChatViewportDump = {
   reason: string;
@@ -444,15 +455,13 @@ export function visibleBandShift(
   current: readonly VisibleRowPosition[],
 ): number | null {
   const before = new Map(previous.map((row) => [row.index, row.top]));
-  let sum = 0;
-  let count = 0;
-  for (const row of current) {
+  const shared = current.flatMap((row) => {
     const priorTop = before.get(row.index);
-    if (priorTop === undefined) continue;
-    sum += row.top - priorTop;
-    count += 1;
-  }
-  return count === 0 ? null : round2(sum / count);
+    return priorTop === undefined ? [] : [{ priorTop, top: row.top }];
+  });
+  if (shared.length === 0) return null;
+  const total = shared.reduce((sum, row) => sum + (row.top - row.priorTop), 0);
+  return round2(total / shared.length);
 }
 
 /**
@@ -492,6 +501,18 @@ export function lastPinFlipCause(): PinFlipCause | null {
 }
 
 /**
+ * Transcript `scrollTop` writes seen since the trace started, and the source
+ * of the last one. The sampler diffs the count per frame and stamps the last
+ * source onto the frame it reports.
+ */
+export function chatViewportWriteStats(): {
+  writes: number;
+  lastSource: string | null;
+} {
+  return { writes: scrollTopWriteCount, lastSource: lastScrollTopWriteSource };
+}
+
+/**
  * Send a compact trace payload (a heartbeat, not the event ring) to the Host
  * log. Silent when not under Tauri.
  */
@@ -519,6 +540,8 @@ export function resetChatViewportTrace(): void {
   events = [];
   dumps = 0;
   recentPinFlipCause = null;
+  scrollTopWriteCount = 0;
+  lastScrollTopWriteSource = null;
 }
 
 /** Mirror the current stick state for trace payloads. */
