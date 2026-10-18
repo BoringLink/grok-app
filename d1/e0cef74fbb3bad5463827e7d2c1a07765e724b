@@ -1,0 +1,51 @@
+src/hooks/chatJumpFind.test.tsx
+  s_a52aa4f3d285f4::t_e21490ebb5ff1f 81-83,87,91,102-106,120-126,166
+  s_a52aa4f3d285f4::t_2abdc7bccd5986 244,249,256-274
+  s_a52aa4f3d285f4::t_b4dfcf3c84e169 26
+  s_a52aa4f3d285f4::t_d9a3d8a7aaeee6 286-291
+  s_a52aa4f3d285f4::t_816fd35b7be391 314-319
+  s_a52aa4f3d285f4::t_2747fb60323f25 342-347,352,361-426
+src/lib/chatViewportController.ts
+  s_a52aa4f3d285f4::t_0086c239f10330 392-399,411-417,420,423-427
+src/hooks/useChatViewportController.ts
+  s_a52aa4f3d285f4::t_df51348d84dc65 79
+  s_a52aa4f3d285f4::t_c57383639809c2 1403
+  s_a52aa4f3d285f4::t_180b85b907bfe3 559,569-570
+  s_a52aa4f3d285f4::t_1a4fa56aa00dfe 162-166,169,171-174,176
+  s_a52aa4f3d285f4::t_68029cd480a021 1374,1377-1381,1384,1386-1389,1392-1393
+  s_a52aa4f3d285f4::t_639b8a5262a2aa 519-525,534
+src/lib/chatFind.ts
+  s_a52aa4f3d285f4::t_49c9acec6aa36e 187-210
+src/components/lobe-chat/ConversationThread.tsx
+  s_a52aa4f3d285f4::t_9a60e907819076 2129-2131
+  s_a52aa4f3d285f4::t_497835a05fea9d 2408-2409,2415
+  s_a52aa4f3d285f4::t_f40480cf3b74e5 2500-2502
+  s_a52aa4f3d285f4::t_cd6fbb31aa945b 2381,2387-2396,2398-2407,2411,2413,2416-2417,2420,2422-2459,2481-2484
+  s_a52aa4f3d285f4::t_d6784efb2c3aed 154
+  s_a52aa4f3d285f4::t_588c46297be0a1 2157,2170,2176-2177,2179-2198,2204-2207,2228-2231,2244-2266,2275,2293-2295
+  s_a52aa4f3d285f4::t_1b88aeacc12c0e 2123-2128
+  s_a52aa4f3d285f4::t_54907f575c7d1e 214-220
+src/hooks/useChatViewportController.test.tsx
+  s_a52aa4f3d285f4::t_bbb045b2c37559 1094-1096
+  s_a52aa4f3d285f4::t_900b903b8e596e 1053-1055
+  s_a52aa4f3d285f4::t_41ea146a152cac 1081
+src/lib/chatViewportController.test.ts
+  s_a52aa4f3d285f4::t_9911b7b221984a 388-389,392,395,404,406,417,425-434,437-444,446-447,449-450,454
+  s_a52aa4f3d285f4::t_ac0277ce489fd9 435-436,445,448
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "d1e0cef74fbb3bad5463827e7d2c1a07765e724b",
+  "prompts": {},
+  "sessions": {
+    "s_a52aa4f3d285f4": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14fff-ce7a-70c2-9dac-38bf6074b0ca",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
