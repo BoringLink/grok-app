@@ -1,13 +1,12 @@
 /**
  * Variable-height message window for ConversationThread.
- * Respects stick-to-bottom: when pinned, always mounts the tail; when
- * escaped, windows by scrollTop and corrects scrollTop on height remeasure.
+ * Produces layout only: when pinned it mounts the tail; when escaped it
+ * windows by scrollTop. Measured heights go to the viewport controller, which
+ * owns the single scrollTop write and restores the bottom / anchor invariant.
  *
- * Bounce defenses: content-aware estimates, ignore shrink thrash, shift
- * scrollTop for rows fully above the fold (short shells that only clip the
- * top also shift so the live tail stays put). Pinned commits never write
- * scrollTop per row. Gestures freeze overscan hydration but still paint
- * rows that intersect the viewport.
+ * Bounce defenses: content-aware estimates, ignore shrink thrash, keep the
+ * live tail put across remeasure. Gestures freeze overscan hydration but still
+ * paint rows that intersect the viewport.
  */
 
 import {
@@ -26,14 +25,11 @@ import {
   cumulativeOffsets,
   shiftOffsetsAfter,
   resolveChatOverscanPx,
-  scrollTopAfterHeightChange,
   shouldCommitRowHeight,
   shouldVirtualizeChat,
-  shouldWritePinnedWindowScrollTop,
   type ChatVirtualWindow,
 } from "@/lib/chatVirtualList";
 import { planChatVirtualWindowCommit } from "@/lib/chatVirtualCommit";
-import { applyScrollTopTraced } from "@/lib/chatViewportTrace";
 import { scrollPerfDebug } from "@/lib/scrollPerfDebug";
 import {
   isStreamPerfActive,
@@ -50,9 +46,6 @@ import {
   runAfterPaneSplitMotion,
 } from "@/lib/paneSplitMotion";
 import {
-  distanceFromBottom,
-  markProgrammaticStickScroll,
-  pinnedWindowRestoreDist,
   shouldForcePinnedSnapOnOpen,
   STICK_MIN_VIEWPORT_HEIGHT_PX,
   isStickViewportUnreliable,
@@ -78,6 +71,7 @@ export function useChatMessageVirtualizer(
     getEstimateHeight,
     viewportRef,
     isPinnedRef,
+    controller,
     conversationKey = null,
     forceIndices = [],
     threshold = CHAT_VIRTUALIZE_THRESHOLD,
@@ -112,8 +106,6 @@ export function useChatMessageVirtualizer(
   const virtualizedRef = useRef(virtualized);
   virtualizedRef.current = virtualized;
   const recomputeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** Programmatic scrollTop from height correction — ignore once for stick. */
-  const ignoreScrollAdjustRef = useRef(false);
   /** Shared ResizeObserver so image/video/layout growth updates height without per-row RO thrash. */
   const sharedRowObserverRef = useRef<ResizeObserver | null>(null);
   const observedElementsRef = useRef<Map<HTMLElement, number>>(new Map());
@@ -154,13 +146,6 @@ export function useChatMessageVirtualizer(
     committedWinRef.current = win;
   }, [win]);
   /**
-   * Distance from the bottom captured right before a pinned window commit.
-   * The post-commit snap restores this distance instead of trusting
-   * post-commit reads, which cannot distinguish user movement from
-   * scrollHeight drift caused by the freshly mounted rows.
-   */
-  const pinnedPreCommitBottomDistRef = useRef(0);
-  /**
    * Next pin-window commit after a conversation switch must land on the tail
    * even if leftover scrollTop is far from the new bottom.
    */
@@ -172,7 +157,6 @@ export function useChatMessageVirtualizer(
     heightsVersionRef.current = 0;
     offsetsCacheRef.current = null;
     pendingAnchorOffsetRef.current = 0;
-    pinnedPreCommitBottomDistRef.current = 0;
     forceOpenSnapRef.current = true;
     fingerDownRef.current = false;
     scrollingRef.current = false;
@@ -329,14 +313,12 @@ export function useChatMessageVirtualizer(
       } else if (scrollingRef.current) {
         scrollingRef.current = false;
         setScrollingUi(false);
-        // Motion settled (velocity == 0): safely flush absorbed anchor offset to scrollTop!
-        const flushOffset = pendingAnchorOffsetRef.current;
+        // Motion settled (velocity == 0): the controller restores the
+        // invariant for the height absorbed while the finger was down.
+        const hadPendingOffset = pendingAnchorOffsetRef.current !== 0;
         pendingAnchorOffsetRef.current = 0;
-        if (Math.abs(flushOffset) > 0.5) {
-          ignoreScrollAdjustRef.current = true;
-          const desiredTop = el.scrollTop + flushOffset;
-          markProgrammaticStickScroll(el, desiredTop);
-          applyScrollTopTraced("virt:flushAnchorOffset", el, desiredTop);
+        if (hadPendingOffset) {
+          controller?.restoreLayout();
           scrollTopWasWritten = true;
         }
       }
@@ -419,20 +401,6 @@ export function useChatMessageVirtualizer(
       return;
     }
 
-    // Capture the distance-from-bottom *before* this commit lands. The pinned
-    // snap effect restores it: post-commit reads cannot tell "user scrolled
-    // up" from "mounted rows shifted scrollHeight", and judging on post-commit
-    // numbers made >10px measurement drift refuse the snap (bottom bounce).
-    if (pin) {
-      pinnedPreCommitBottomDistRef.current = forceOpenSnapRef.current
-        ? 0
-        : distanceFromBottom(
-            el.scrollTop,
-            el.scrollHeight,
-            el.clientHeight,
-          );
-    }
-
     winRef.current = adjustedNext;
 
     // Background-mount lane: render pure-overscan updates as a transition so
@@ -480,15 +448,12 @@ export function useChatMessageVirtualizer(
       if (import.meta.env.DEV) {
         scrollPerfDebug.recordScrollStart();
       }
-      if (ignoreScrollAdjustRef.current) {
-        ignoreScrollAdjustRef.current = false;
-        return;
-      }
-      // Stream growth follows the pinned tail by writing scrollTop, which also
-      // emits a native scroll event. It is not a user gesture and must not
-      // toggle data-scrolling: wallpaper surfaces react to that attribute and
-      // WebView2 can expose a transient opaque/compositor frame. Explicit
-      // wheel/touch/scrollbar input has already set one of these refs.
+      // Stream growth follows the pinned tail through the controller, which
+      // writes scrollTop and therefore emits a native scroll event. It is not
+      // a user gesture and must not toggle data-scrolling: wallpaper surfaces
+      // react to that attribute and WebView2 can expose a transient
+      // opaque/compositor frame. Explicit wheel/touch/scrollbar input has
+      // already set one of these refs.
       const programmaticPinFollow =
         isPinnedRef.current &&
         !fingerDownRef.current &&
@@ -637,9 +602,9 @@ export function useChatMessageVirtualizer(
     recomputeNow();
   }, [virtualized, itemCount, forceIndices, recomputeNow]);
 
-  // After a pin-window spacer commit, restore the pre-commit distance from
-  // the bottom before paint, so a commit whose mounted heights differ from
-  // the cached estimates is displacement-neutral (no bottom bounce).
+  // After a pin-window spacer commit the mounted heights differ from the
+  // cached estimates, so the controller restores the invariant before paint
+  // (pinned → content end). Opening a chat force-pins to the tail.
   useLayoutEffect(() => {
     if (!virtualized) return;
     if (fingerDownRef.current) return;
@@ -651,31 +616,8 @@ export function useChatMessageVirtualizer(
     const v = viewportRef.current;
     if (!v) return;
     if (v.clientHeight < STICK_MIN_VIEWPORT_HEIGHT_PX) return;
-    // When stick still says pinned, always restore the bottom offset.
-    // Streaming thinking/tool growth can inflate pre-commit dist above the
-    // escape threshold without the user leaving the tail (#1172). True
-    // leave-bottom is owned by useStickToBottom flipping isPinnedRef.
-    // Mid-gesture yank is prevented by scrollingRef / fingerDown above and
-    // by not clearing scrollingRef during the wheel itself (#1159).
-    const dist = pinnedWindowRestoreDist({
-      pinned: !!isPinnedRef.current,
-      forceOpen,
-      preCommitDist: pinnedPreCommitBottomDistRef.current,
-    });
-    const top = Math.max(0, v.scrollHeight - v.clientHeight);
-    const desired = Math.max(0, top - dist);
-    if (
-      shouldWritePinnedWindowScrollTop({
-        currentScrollTop: v.scrollTop,
-        desiredScrollTop: desired,
-        scrollHeight: v.scrollHeight,
-        clientHeight: v.clientHeight,
-      })
-    ) {
-      ignoreScrollAdjustRef.current = true;
-      markProgrammaticStickScroll(v, desired);
-      applyScrollTopTraced("virt:pinnedWindowSnap", v, desired);
-    }
+    if (forceOpen) controller?.pinToEnd("virt:openPin");
+    else controller?.restoreLayout();
     // Placeholder windows use totalHeight 0; keep the flag until the real
     // spacer commit so leftover distance cannot skip the tail snap.
     if (forceOpen && win.totalHeight > 0) {
@@ -690,6 +632,7 @@ export function useChatMessageVirtualizer(
     win.totalHeight,
     isPinnedRef,
     viewportRef,
+    controller,
   ]);
 
   // Drop row observers when virtualization turns off.
@@ -770,33 +713,21 @@ export function useChatMessageVirtualizer(
           }
         : null;
 
-      // Compensate height changes so later content stays put. Short shells
-      // that only clip the top must shift; tall rows the user is reading
-      // grow in place (see scrollTopAfterHeightChange).
+      // Feed the measured height into the controller's ledger, then let the
+      // controller restore the invariant: pinned returns to the end, escaped
+      // holds the anchor. The virtual list produces layout only.
+      controller?.reportRowHeight(index, nextH);
       if (viewport && Math.abs(delta) > 0.5) {
-        const desiredTop = scrollTopAfterHeightChange({
-          scrollTop: viewport.scrollTop,
-          rowOffset,
-          prevHeight: prevH,
-          delta,
-          pinToBottom: !!isPinnedRef.current,
-          viewportHeight: viewport.clientHeight,
-        });
-        const shift = desiredTop - viewport.scrollTop;
-        if (Math.abs(shift) > 0.5) {
-          if (scrollingRef.current || fingerDownRef.current) {
-            pendingAnchorOffsetRef.current += shift;
-          } else {
-            ignoreScrollAdjustRef.current = true;
-            markProgrammaticStickScroll(viewport, desiredTop);
-            applyScrollTopTraced("virt:rowAnchorShift", viewport, desiredTop);
-          }
+        if (scrollingRef.current || fingerDownRef.current) {
+          pendingAnchorOffsetRef.current += delta;
+        } else {
+          controller?.restoreLayout();
         }
       }
 
       recompute();
     },
-    [getOffsets, recompute, viewportRef, isPinnedRef],
+    [getOffsets, recompute, viewportRef, isPinnedRef, controller],
   );
 
   const commitRowHeightRef = useRef(commitRowHeight);

@@ -16,12 +16,10 @@ import {
   findStartIndex,
   resolveChatOverscanPx,
   resolveChatRichRange,
-  scrollTopAfterHeightChange,
   shouldCommitRowHeight,
   shouldWriteScrollOnRowCommit,
   shouldVirtualizeChat,
   splitVirtSpacerHeights,
-  shouldWritePinnedWindowScrollTop,
   clampDeferredWindowExpansion,
   CHAT_VIEWPORT_COVER_MARGIN_PX,
   CHAT_DEFERRED_MOUNT_ROWS_PER_COMMIT,
@@ -452,75 +450,6 @@ describe("shouldCommitRowHeight", () => {
   });
 });
 
-describe("scrollTopAfterHeightChange", () => {
-  it("does not adjust when pinned", () => {
-    expect(
-      scrollTopAfterHeightChange({
-        scrollTop: 500,
-        rowOffset: 100,
-        prevHeight: 80,
-        delta: 40,
-        pinToBottom: true,
-      }),
-    ).toBe(500);
-  });
-
-  it("shifts when entire row was above viewport and grows", () => {
-    expect(
-      scrollTopAfterHeightChange({
-        scrollTop: 500,
-        rowOffset: 100,
-        prevHeight: 80,
-        delta: 40,
-        pinToBottom: false,
-      }),
-    ).toBe(540);
-  });
-
-  it("does not shift tall straddling media row growth (near-bottom bounce)", () => {
-    // Assistant starts at 100, height 800; user reading lower half at scrollTop 500.
-    // Images load (+200) at bottom of the same row — must not yank down.
-    expect(
-      scrollTopAfterHeightChange({
-        scrollTop: 500,
-        rowOffset: 100,
-        prevHeight: 800,
-        delta: 200,
-        pinToBottom: false,
-        viewportHeight: 600,
-      }),
-    ).toBe(500);
-  });
-
-  it("shifts a short shell that only clips the top so the live tail stays put", () => {
-    // Previous turn is a 120px empty shell at 400; viewport at 480 is on the
-    // live tail. Shell paints to 4000px. Grow-in-place would throw the user
-    // onto that turn's user bubble.
-    expect(
-      scrollTopAfterHeightChange({
-        scrollTop: 480,
-        rowOffset: 400,
-        prevHeight: 120,
-        delta: 3880,
-        pinToBottom: false,
-        viewportHeight: 600,
-      }),
-    ).toBe(4360);
-  });
-
-  it("ignores rows at or below viewport top", () => {
-    expect(
-      scrollTopAfterHeightChange({
-        scrollTop: 500,
-        rowOffset: 500,
-        prevHeight: 120,
-        delta: 40,
-        pinToBottom: false,
-      }),
-    ).toBe(500);
-  });
-});
-
 describe("cumulativeOffsets", () => {
   it("builds prefix sums", () => {
     expect(cumulativeOffsets(3, (i) => (i + 1) * 10)).toEqual([0, 10, 30, 60]);
@@ -768,41 +697,6 @@ describe("splitVirtSpacerHeights", () => {
 
   it("chunks a tall spacer under the compositor cap", () => {
     expect(splitVirtSpacerHeights(9000, 4096)).toEqual([4096, 4096, 808]);
-  });
-});
-
-describe("shouldWritePinnedWindowScrollTop", () => {
-  it("writes a normal tail snap", () => {
-    expect(
-      shouldWritePinnedWindowScrollTop({
-        currentScrollTop: 7400,
-        desiredScrollTop: 7410,
-        scrollHeight: 8000,
-        clientHeight: 600,
-      }),
-    ).toBe(true);
-  });
-
-  it("does not yank a real position to 0 when spacers have not painted", () => {
-    expect(
-      shouldWritePinnedWindowScrollTop({
-        currentScrollTop: 7200,
-        desiredScrollTop: 0,
-        scrollHeight: 600,
-        clientHeight: 600,
-      }),
-    ).toBe(false);
-  });
-
-  it("skips a no-op write", () => {
-    expect(
-      shouldWritePinnedWindowScrollTop({
-        currentScrollTop: 7410,
-        desiredScrollTop: 7410,
-        scrollHeight: 8000,
-        clientHeight: 600,
-      }),
-    ).toBe(false);
   });
 });
 

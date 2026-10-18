@@ -3,19 +3,20 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * Every position write on the transcript path must go through
- * `applyScrollTopTraced` so a trace can attribute a move to a source (ADR 0006,
- * Spec "诊断"). A raw `scrollTop` assignment is invisible in the geometry
- * afterwards and makes the drift unattributable.
+ * The transcript viewport has exactly one position writer: the controller hook.
+ * ADR 0006 defines the transcript as the `.lobe-chat__scroll` column, so the
+ * virtual list and the thread must not assign `scrollTop` — they hand the
+ * controller a measured height or a decided position instead.
+ *
+ * Nested scroll ports (thinking body, activity phase table, the sidebar
+ * `VirtualList`) are separate scrollers, not the transcript, and keep their own
+ * scoped writes.
  */
-const TRANSCRIPT_WRITE_PATH = [
+const TRANSCRIPT_CONTROLLER = "../hooks/useChatViewportController.ts";
+/** Transcript writers that must delegate to the controller. */
+const TRANSCRIPT_CONSUMERS = [
   "../components/lobe-chat/ConversationThread.tsx",
-  "../components/lobe-chat/TimelinePhaseBlock.tsx",
-  "../components/VirtualList.tsx",
-  "../hooks/useStickToBottom.ts",
   "../hooks/useChatMessageVirtualizer.ts",
-  "../hooks/useThoughtBodyFollow.ts",
-  "grokActivityVirtualize.ts",
 ] as const;
 
 /** Assignment only: reads, `>=`, `<=` and `==` must not match. */
@@ -40,15 +41,26 @@ describe("transcript scroll write source guard", () => {
     expect(rawWriteLocations("el.scrollTop ==", "x")).toHaveLength(0);
   });
 
-  it("routes every transcript position write through the traced helper", () => {
-    const rawWrites = TRANSCRIPT_WRITE_PATH.flatMap((path) =>
+  it("keeps the controller the only transcript position writer", () => {
+    const rawWrites = TRANSCRIPT_CONSUMERS.flatMap((path) =>
       rawWriteLocations(read(path), path),
     );
 
     expect(rawWrites).toEqual([]);
   });
 
+  it("routes every transcript write through the controller's traced helper", () => {
+    const leaked = TRANSCRIPT_CONSUMERS.filter((path) =>
+      /applyScrollTopTraced/.test(read(path)),
+    );
+
+    expect(leaked).toEqual([]);
+  });
+
   it("keeps the traced helper the single place that assigns", () => {
+    const controller = read(TRANSCRIPT_CONTROLLER);
+    expect(controller).toMatch(/applyScrollTopTraced\(/);
+
     const helper = read("chatViewportTrace.ts").match(
       /export function applyScrollTopTraced\([\s\S]*?\n\}/,
     )?.[0];

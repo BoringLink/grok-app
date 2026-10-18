@@ -1,12 +1,22 @@
 /**
- * Keep a scroll viewport pinned to the bottom while the user is following,
- * and release pin after they scroll up (wheel / touch / scrollbar).
+ * The chat transcript viewport controller (ADR 0006).
  *
- * Pin model mirrors use-stick-to-bottom's escapedFromLock:
- * - User scroll-up escapes; we do NOT re-pin merely because they are still
- *   within the near-bottom threshold (that thrash is what causes bounce).
- * - Re-pin only after they scroll down again and land on the absolute
- *   bottom, or after force-stick / conversation switch.
+ * Single decision maker and single write point for the transcript position:
+ *   - pinned  — sit on the content end and stay there while content grows;
+ *   - escaped — hold the element at the viewport top at a fixed on-screen
+ *               position across every height change.
+ *
+ * The state machine lives in `lib/chatViewportController` (pure, tested). This
+ * hook is the driver: it owns the element, classifies real gestures, restores
+ * the invariant at the end of a height-changing batch (before paint) and is
+ * the only module that assigns `scrollTop`.
+ *
+ * Pin model:
+ * - Only a user gesture (wheel / touch / keyboard / scrollbar drag) escapes;
+ *   we do NOT re-pin merely because they are still within the near-bottom
+ *   threshold (that thrash is what causes bounce).
+ * - Re-pin only after they scroll down again and land on the absolute bottom,
+ *   or after force-stick / conversation switch.
  * - Programmatic follows are instant and ignored by the scroll handler so
  *   resize + stream growth cannot fight the user mid-gesture.
  */
@@ -15,6 +25,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   type RefObject,
   type UIEvent,
@@ -38,15 +49,28 @@ import {
   isStickViewportUnreliable,
   shouldClampPinnedOverscroll,
   shouldClampPinnedStreamDrift,
-  shouldEscapePinnedScroll,
   shouldIgnorePinnedGrowthRebound,
   shouldIgnorePinnedLayoutScroll,
   shouldIgnoreProgrammaticStickLeave,
   shouldPreventPinnedBottomWheel,
   shouldRestorePinnedFollowOnViewportReady,
   shouldSettleBottomRebound,
-  takeProgrammaticStickScroll,
 } from "@/lib/stickToBottom";
+import {
+  createLayoutLedger,
+  LEDGER_FALLBACK_ESTIMATE_PX,
+  type LayoutLedger,
+} from "@/lib/chatViewportLedger";
+import {
+  anchorAtViewportTop,
+  applyScrollSample,
+  contentEndScrollTop,
+  createViewportState,
+  planRestore,
+  type ViewportDirective,
+  type ViewportGeometry,
+  type ViewportState,
+} from "@/lib/chatViewportController";
 import {
   applyScrollTopTraced,
   tracePinState,
@@ -54,7 +78,7 @@ import {
 } from "@/lib/chatViewportTrace";
 
 
-export type UseStickToBottomOptions = {
+export type UseChatViewportControllerOptions = {
   /** Re-pin when the conversation identity changes (session / first message). */
   conversationKey?: string | number | null;
   /** Force re-pin (e.g. user just sent a message). */
@@ -64,7 +88,27 @@ export type UseStickToBottomOptions = {
   enabled?: boolean;
 };
 
-export type UseStickToBottomResult = {
+/**
+ * The controller handle handed to other transcript writers (the virtual list
+ * and the rail / find jumps). Every method funnels into this hook's single
+ * assignment; no caller writes `scrollTop` itself.
+ */
+export type ChatViewportControllerHandle = {
+  /** Apply a decided position. The one place the transcript scrollTop is set. */
+  assign(source: string, top: number): void;
+  /** Programmatic jump; `smooth` only for the explicit back-to-bottom control. */
+  scrollTo(source: string, top: number, behavior?: ScrollBehavior): void;
+  /** A row's measured height changed — restore the invariant before paint. */
+  reportRowHeight(index: number, height: number): void;
+  /** A layout batch changed the transcript height — restore before paint. */
+  restoreLayout(source?: string): void;
+  /** Programmatic escape (rail / find jump): the user is reading history. */
+  escape(reason: string): void;
+  /** Pin to the content end (send, force-stick, back-to-bottom). */
+  pinToEnd(source: string, behavior?: ScrollBehavior): void;
+};
+
+export type UseChatViewportControllerResult = {
   viewportRef: RefObject<HTMLDivElement | null>;
   /** Optional: attach to the content column for more accurate resize observe. */
   contentRef: RefObject<HTMLDivElement | null>;
@@ -78,6 +122,8 @@ export type UseStickToBottomResult = {
   showBack: boolean;
   /** Fine-grained subscription for BackBottom button to avoid parent component re-renders. */
   subscribeShowBack: (cb: (val: boolean) => void) => () => void;
+  /** Handle other transcript writers use instead of assigning scrollTop. */
+  controller: ChatViewportControllerHandle;
 };
 
 /**
@@ -93,9 +139,9 @@ function stickNowMs(): number {
     : Date.now();
 }
 
-export function useStickToBottom(
-  options: UseStickToBottomOptions = {},
-): UseStickToBottomResult {
+export function useChatViewportController(
+  options: UseChatViewportControllerOptions = {},
+): UseChatViewportControllerResult {
   const {
     conversationKey = null,
     forceStickKey = null,
@@ -105,6 +151,19 @@ export function useStickToBottom(
 
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * Geometry source for the controller's anchor math (几何账本). The virtual
+   * list reports measured row heights; the ledger grows with them, so the
+   * controller never re-derives whole-conversation offsets from the DOM.
+   */
+  const ledgerRef = useRef<LayoutLedger>(
+    createLayoutLedger({
+      count: 0,
+      estimateHeight: LEDGER_FALLBACK_ESTIMATE_PX,
+    }),
+  );
+  /** Pinned / escaped phase plus the escaped-mode anchor. */
+  const viewportStateRef = useRef<ViewportState>(createViewportState());
   /** Auto-follow stream / growth. */
   const isPinnedRef = useRef(true);
   /**
@@ -139,8 +198,6 @@ export function useStickToBottom(
    * first gesture, `now - last` must never look like a fresh gesture.
    */
   const lastGestureAtRef = useRef(Number.NEGATIVE_INFINITY);
-  /** Consecutive upward scroll events that happened at an unchanged height. */
-  const upStreakRef = useRef({ count: 0, at: 0 });
   const thresholdRef = useRef(thresholdPx);
   thresholdRef.current = thresholdPx;
   const enabledRef = useRef(enabled);
@@ -157,6 +214,11 @@ export function useStickToBottom(
     conversationKeyRef.current = conversationKey;
     escapedRef.current = false;
     isPinnedRef.current = true;
+    viewportStateRef.current = createViewportState();
+    ledgerRef.current = createLayoutLedger({
+      count: 0,
+      estimateHeight: LEDGER_FALLBACK_ESTIMATE_PX,
+    });
     userIntentDownRef.current = false;
     bottomIntentUntilRef.current = 0;
     lastScrollTopRef.current = 0;
@@ -194,23 +256,87 @@ export function useStickToBottom(
     }
   }, []);
 
-  const applyScrollTop = useCallback((top: number) => {
+  const readGeometry = useCallback((): ViewportGeometry | null => {
+    const el = viewportRef.current;
+    if (!el) return null;
+    return {
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    };
+  }, []);
+
+  /**
+   * The single transcript position write. Every decided move funnels here;
+   * `applyScrollTopTraced` is the only place the transcript `scrollTop` is
+   * assigned, so a trace can attribute any move to its source (ADR 0006).
+   */
+  const assign = useCallback((source: string, top: number) => {
     const el = viewportRef.current;
     if (!el) return;
-    if (Math.abs(el.scrollTop - top) < 1) {
-      ignoreScrollTopRef.current = el.scrollTop;
-      return;
-    }
     // Force instant assignment even if CSS scroll-behavior is smooth.
     const prev = el.style.scrollBehavior;
     el.style.scrollBehavior = "auto";
-    applyScrollTopTraced("stick:applyScrollTop", el, top);
+    applyScrollTopTraced(source, el, top);
     ignoreScrollTopRef.current = el.scrollTop;
-    lastScrollTopRef.current = el.scrollTop;
-    lastScrollHeightRef.current = el.scrollHeight;
     if (prev) el.style.scrollBehavior = prev;
     else el.style.removeProperty("scroll-behavior");
   }, []);
+
+  const applyScrollTop = useCallback(
+    (top: number) => {
+      const el = viewportRef.current;
+      if (!el) return;
+      if (Math.abs(el.scrollTop - top) < 1) {
+        ignoreScrollTopRef.current = el.scrollTop;
+        return;
+      }
+      assign("stick:applyScrollTop", top);
+      lastScrollTopRef.current = el.scrollTop;
+      lastScrollHeightRef.current = el.scrollHeight;
+    },
+    [assign],
+  );
+
+  /** Record the escaped anchor at the current viewport top. */
+  const captureEscapeAnchor = useCallback(() => {
+    const g = readGeometry();
+    if (!g) return;
+    viewportStateRef.current = {
+      phase: "escaped",
+      anchor: anchorAtViewportTop(g, ledgerRef.current),
+      upStreak: 0,
+      upStreakAt: stickNowMs(),
+    };
+  }, [readGeometry]);
+
+  /** Apply a directive produced by the pure planner. */
+  const applyDirective = useCallback(
+    (directive: ViewportDirective) => {
+      if (directive.kind === "none") return;
+      const g = readGeometry();
+      if (!g) return;
+      const top = directive.kind === "end" ? contentEndScrollTop(g) : directive.top;
+      applyScrollTop(top);
+    },
+    [applyScrollTop, readGeometry],
+  );
+
+  /** Restore the invariant for the current phase (pinned → end, escaped → anchor). */
+  const restoreNow = useCallback(() => {
+    const g = readGeometry();
+    if (!g) return;
+    if (!isPinnedRef.current && viewportStateRef.current.phase !== "escaped") {
+      captureEscapeAnchor();
+    }
+    applyDirective(
+      planRestore({
+        state: viewportStateRef.current,
+        geometry: g,
+        rows: ledgerRef.current,
+      }),
+    );
+  }, [applyDirective, captureEscapeAnchor, readGeometry]);
 
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = "instant") => {
@@ -226,6 +352,7 @@ export function useStickToBottom(
         behavior === "smooth" ? now + 800 : 0;
       escapedRef.current = false;
       isPinnedRef.current = true;
+      viewportStateRef.current = createViewportState();
       userIntentDownRef.current = false;
       const top = bottomScrollTop(el.scrollHeight, el.clientHeight);
       traceViewport("scroll-to-bottom", {
@@ -374,8 +501,7 @@ export function useStickToBottom(
       }
       let lastScrollTop = lastScrollTopRef.current;
       const lastScrollHeight = lastScrollHeightRef.current;
-      const ignore =
-        ignoreScrollTopRef.current ?? takeProgrammaticStickScroll(el);
+      const ignore = ignoreScrollTopRef.current;
       lastScrollTopRef.current = scrollTop;
       lastScrollHeightRef.current = el.scrollHeight;
       ignoreScrollTopRef.current = undefined;
@@ -426,43 +552,38 @@ export function useStickToBottom(
         return;
       }
 
-      const shouldEscapeStick = shouldEscapePinnedScroll({
-        pinned: isPinnedRef.current,
-        escaped: escapedRef.current,
-        scrollTop,
-        previousScrollTop: lastScrollTop,
-        scrollHeight: el.scrollHeight,
-        clientHeight: el.clientHeight,
-        previousScrollHeight:
-          lastScrollHeight > 0 ? lastScrollHeight : undefined,
-      });
-
-      // Layout clamp vs. the user walking into history. A collapse clamps
-      // scrollTop in the same layout pass that changed the height, so the move
-      // is upward with a changed (or reverted) height and no gesture. Only a
-      // gesture, or a run of upward events at an unchanged height, is the user.
+      // Layout clamp vs. the user walking into history. The pure planner owns
+      // this: a gesture-less upward move is the browser clamping scrollTop
+      // after a collapse (hold the pin, re-assert the end); two of them at a
+      // stable height are a scrollbar drag, which escapes. A real gesture
+      // (wheel / touch / key) escapes immediately.
       const gestureRecent =
         stickNowMs() - lastGestureAtRef.current < GESTURE_ESCAPE_WINDOW_MS;
-      const heightStable = Math.abs(el.scrollHeight - lastScrollHeight) < 0.5;
-      if (shouldEscapeStick && !gestureRecent && heightStable) {
-        const now = stickNowMs();
-        const streak =
-          now - upStreakRef.current.at < GESTURE_ESCAPE_WINDOW_MS
-            ? upStreakRef.current.count + 1
-            : 1;
-        upStreakRef.current = { count: streak, at: now };
-      } else if (!isMovingUp) {
-        upStreakRef.current = { count: 0, at: 0 };
+      if (!isPinnedRef.current && viewportStateRef.current.phase !== "escaped") {
+        // Escaped by a gesture handler: record the anchor before planning.
+        captureEscapeAnchor();
       }
-      const userWalked =
-        gestureRecent ||
-        (shouldEscapeStick && upStreakRef.current.count >= 2);
+      const decision = applyScrollSample({
+        state: {
+          ...viewportStateRef.current,
+          phase: isPinnedRef.current ? "pinned" : "escaped",
+        },
+        sample: {
+          scrollTop,
+          previousScrollTop: lastScrollTop,
+          scrollHeight: el.scrollHeight,
+          previousScrollHeight:
+            lastScrollHeight > 0 ? lastScrollHeight : undefined,
+          clientHeight: el.clientHeight,
+          gestureRecent,
+        },
+        rows: ledgerRef.current,
+        now: stickNowMs(),
+        streakWindowMs: GESTURE_ESCAPE_WINDOW_MS,
+      });
+      viewportStateRef.current = decision.state;
 
-      // A real gesture (wheel / touch / key) or repeated upward scrolling at a
-      // stable height is the user walking into history. Keyboard scrolling and
-      // scrollbar drag land in those two cases; every other upward move is the
-      // browser clamping scrollTop for a layout change.
-      if (shouldEscapeStick && userWalked) {
+      if (decision.state.phase === "escaped" && isPinnedRef.current) {
         programmaticFollowUntilRef.current = 0;
         userIntentDownRef.current = false;
         isPinnedRef.current = false;
@@ -479,7 +600,24 @@ export function useStickToBottom(
         return;
       }
 
-      if (shouldEscapeStick) {
+      if (decision.state.phase === "pinned" && escapedRef.current) {
+        // Landed back on the hard bottom under a real gesture: re-engage.
+        isPinnedRef.current = true;
+        escapedRef.current = false;
+        tracePinState({
+          reason: "scroll-repin",
+          pinned: true,
+          escaped: false,
+          scrollTop,
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+        });
+        syncShowBack();
+        applyScrollTop(bottomScrollTop(el.scrollHeight, el.clientHeight));
+        return;
+      }
+
+      if (decision.directive.kind === "end" && isPinnedRef.current) {
         // Gesture-free upward move: the browser clamped scrollTop after a
         // collapse. Hold the pin and put the viewport back on the tail.
         applyScrollTop(bottomScrollTop(el.scrollHeight, el.clientHeight));
@@ -610,6 +748,8 @@ export function useStickToBottom(
         );
         isPinnedRef.current = next.pinned;
         escapedRef.current = next.escaped;
+        if (next.escaped) captureEscapeAnchor();
+        else viewportStateRef.current = createViewportState();
         if (
           next.pinned !== previousPinned ||
           next.escaped !== previousEscaped
@@ -672,6 +812,7 @@ export function useStickToBottom(
         if (isPinnedRef.current) {
           escapedRef.current = true;
           isPinnedRef.current = false;
+          captureEscapeAnchor();
           tracePinState({
             reason: "wheel-escape",
             pinned: false,
@@ -738,6 +879,7 @@ export function useStickToBottom(
         if (isPinnedRef.current) {
           escapedRef.current = true;
           isPinnedRef.current = false;
+          captureEscapeAnchor();
           tracePinState({
             reason: "touch-escape",
             pinned: false,
@@ -1070,14 +1212,14 @@ export function useStickToBottom(
 
     /**
      * Collapse / reflow changes the DOM in one task; the ResizeObserver
-     * callback that re-asserts the bottom runs a frame later, so the shifted
+     * callback that re-asserts the position runs a frame later, so the shifted
      * frame is painted. Mutation callbacks run as microtasks in the same task,
-     * which lands the compensating scrollTop write before that paint.
+     * which lands the compensating scrollTop write before that paint — pinned
+     * returns to the end, escaped holds the anchor.
      */
     const mo =
       typeof MutationObserver !== "undefined"
         ? new MutationObserver(() => {
-            if (!isPinnedRef.current || escapedRef.current) return;
             if (
               isStickViewportUnreliable({
                 clientHeight: el.clientHeight,
@@ -1086,7 +1228,7 @@ export function useStickToBottom(
             ) {
               return;
             }
-            applyScrollTop(bottomScrollTop(el.scrollHeight, el.clientHeight));
+            restoreNow();
           })
         : null;
     if (content && mo) {
@@ -1128,6 +1270,16 @@ export function useStickToBottom(
         applyScrollTop(bottomScrollTop(v.scrollHeight, v.clientHeight));
         lastScrollTopRef.current = v.scrollTop;
         lastScrollHeightRef.current = v.scrollHeight;
+      } else if (
+        escapedRef.current &&
+        viewportWasUnreliable &&
+        !unreliable
+      ) {
+        // Occlusion ended while reading history: first painted frame holds the
+        // anchor (C5).
+        restoreNow();
+        lastScrollTopRef.current = v.scrollTop;
+        lastScrollHeightRef.current = v.scrollHeight;
       }
       viewportWasUnreliable = unreliable;
     };
@@ -1148,7 +1300,73 @@ export function useStickToBottom(
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", onVisibility);
     };
-  }, [enabled, conversationKey, applyScrollTop, followIfPinned]);
+  }, [enabled, conversationKey, applyScrollTop, followIfPinned, restoreNow]);
+
+  /**
+   * Handle other transcript writers use. The virtual list reports row heights
+   * and layout batches; the rail / find jumps assign positions. Both funnel
+   * into the single write point above.
+   */
+  const controller = useMemo<ChatViewportControllerHandle>(
+    () => ({
+      assign,
+      scrollTo(source, top, behavior = "instant") {
+        const el = viewportRef.current;
+        if (!el) return;
+        if (behavior === "smooth" && typeof el.scrollTo === "function") {
+          ignoreScrollTopRef.current = top;
+          el.scrollTo({ top, behavior: "smooth" });
+          return;
+        }
+        assign(source, top);
+        lastScrollTopRef.current = el.scrollTop;
+        lastScrollHeightRef.current = el.scrollHeight;
+      },
+      reportRowHeight(index, height) {
+        const ledger = ledgerRef.current;
+        if (index >= ledger.rowCount()) ledger.setCount(index + 1);
+        ledger.setRowHeight(index, height, "measured");
+      },
+      restoreLayout() {
+        restoreNow();
+      },
+      escape(reason) {
+        if (!isPinnedRef.current) return;
+        isPinnedRef.current = false;
+        escapedRef.current = true;
+        // No anchor yet: the programmatic jump assigns right after, and the
+        // first restore captures the landed position.
+        viewportStateRef.current = {
+          phase: "escaped",
+          anchor: null,
+          upStreak: 0,
+          upStreakAt: stickNowMs(),
+        };
+        const g = readGeometry();
+        if (g) {
+          tracePinState({
+            reason,
+            pinned: false,
+            escaped: true,
+            scrollTop: g.scrollTop,
+            scrollHeight: g.scrollHeight,
+            clientHeight: g.clientHeight,
+          });
+        }
+        syncShowBack();
+      },
+      pinToEnd(_source, behavior = "instant") {
+        scrollToBottom(behavior);
+      },
+    }),
+    [
+      assign,
+      restoreNow,
+      readGeometry,
+      syncShowBack,
+      scrollToBottom,
+    ],
+  );
 
   return {
     viewportRef,
@@ -1159,5 +1377,6 @@ export function useStickToBottom(
     escapedRef,
     showBack: showBackRef.current,
     subscribeShowBack,
+    controller,
   };
 }

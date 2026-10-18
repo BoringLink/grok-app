@@ -94,7 +94,7 @@ import {
   isContextCompactMessage,
 } from "@/lib/contextUsage";
 import type { ModelOption } from "@/lib/grokCatalog";
-import { useStickToBottom } from "@/hooks/useStickToBottom";
+import { useChatViewportController } from "@/hooks/useChatViewportController";
 import {
   shouldBumpStickOnBusyEdge,
   shouldFollowPinnedMediaReveal,
@@ -115,7 +115,6 @@ import {
 import { useChatMessageVirtualizer } from "@/hooks/useChatMessageVirtualizer";
 import { useChatViewportTraceProbe } from "@/hooks/useChatViewportTraceProbe";
 import {
-  applyScrollTopTraced,
   publishTraceToHost,
   traceViewport,
 } from "@/lib/chatViewportTrace";
@@ -1848,7 +1847,8 @@ export function ConversationThread({
     isPinnedRef,
     escapedRef,
     subscribeShowBack,
-  } = useStickToBottom({
+    controller: viewportController,
+  } = useChatViewportController({
     conversationKey: conversationKeyForStick,
     forceStickKey,
   });
@@ -2150,13 +2150,18 @@ export function ConversationThread({
         return;
       }
 
-      // Align to the upper band so tall previous messages leave the focus line.
-      // Instant first — smooth often no-ops when the row is already partially on screen.
+      // Align the node to the upper band so tall previous messages leave the
+      // focus line. The controller owns the write — `scrollIntoView` would also
+      // move unrelated scrollable ancestors and bypass the single writer.
       const beforeAlignScroll = viewport.scrollTop;
-      root.scrollIntoView({ block: "start", behavior: "instant" });
-      // `scrollIntoView` moves every scrollable ancestor, so the transcript
-      // viewport can move without any `scrollTop` assignment to instrument.
-      traceViewport("locate:scrollIntoView", {
+      const alignViewportRect = viewport.getBoundingClientRect();
+      const alignRootRect = root.getBoundingClientRect();
+      const alignTop = Math.max(
+        0,
+        viewport.scrollTop + (alignRootRect.top - alignViewportRect.top),
+      );
+      viewportController.scrollTo("thread:locate", alignTop, "instant");
+      traceViewport("locate:align", {
         nodeId: node.id,
         before: Math.round(beforeAlignScroll),
         after: Math.round(viewport.scrollTop),
@@ -2167,7 +2172,10 @@ export function ConversationThread({
       const desiredTop = vr.top + Math.min(48, viewport.clientHeight * 0.1);
       const delta = rr.top - desiredTop;
       if (Math.abs(delta) > 2) {
-        applyScrollTopTraced("thread:locateNudge", viewport, viewport.scrollTop + delta);
+        viewportController.assign(
+          "thread:locateNudge",
+          Math.max(0, viewport.scrollTop + delta),
+        );
       }
 
       if (locateClearTimerRef.current) clearTimeout(locateClearTimerRef.current);
@@ -2179,7 +2187,7 @@ export function ConversationThread({
         navLockUntilRef.current = performance.now() + 120;
       }, 700);
     },
-    [scrollRef],
+    [scrollRef, viewportController],
   );
 
   const scrollToMessageNode = useCallback(
@@ -2187,8 +2195,9 @@ export function ConversationThread({
       const viewport = scrollRef.current;
       if (!viewport) return;
 
-      // Leave stick-to-bottom so programmatic jumps are not yanked back.
-      isPinnedRef.current = false;
+      // Leave stick-to-bottom so programmatic jumps are not yanked back; the
+      // controller records the escape (and its anchor).
+      viewportController.escape("thread:locate");
 
       railCursorRef.current = node.id;
       navLockUntilRef.current = performance.now() + 1200;
@@ -2216,11 +2225,7 @@ export function ConversationThread({
               node.messageIndex,
               viewport.clientHeight,
             );
-      const prevBehavior = viewport.style.scrollBehavior;
-      viewport.style.scrollBehavior = "auto";
-      applyScrollTopTraced("thread:nodeEstimate", viewport, approx);
-      if (prevBehavior) viewport.style.scrollBehavior = prevBehavior;
-      else viewport.style.removeProperty("scroll-behavior");
+      viewportController.assign("thread:nodeEstimate", approx);
 
       if (locateRafRef.current != null) {
         window.cancelAnimationFrame(locateRafRef.current);
@@ -2235,10 +2240,10 @@ export function ConversationThread({
     },
     [
       applyScrollToNodeDom,
-      isPinnedRef,
       messages,
       scrollRef,
       transcriptMessages,
+      viewportController,
     ],
   );
 
@@ -2361,7 +2366,21 @@ export function ConversationThread({
       };
       traceViewport("find:scrollIntoView", payload);
       void publishTraceToHost(payload);
-      target.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (viewport) {
+        // Center the match through the controller (the single writer);
+        // `scrollIntoView` would also move unrelated scrollable ancestors.
+        const viewportRect = viewport.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const centered =
+          viewport.scrollTop +
+          (targetRect.top - viewportRect.top) -
+          (viewport.clientHeight - targetRect.height) / 2;
+        viewportController.scrollTo(
+          "find:scrollIntoView",
+          Math.max(0, centered),
+          "smooth",
+        );
+      }
       if (findSettleTimerRef.current != null) {
         clearTimeout(findSettleTimerRef.current);
       }
@@ -2386,7 +2405,7 @@ export function ConversationThread({
         findSettleTimerRef.current = null;
       }
     };
-  }, [findActive?.messageId, findActive?.occurrence, findQuery]);
+  }, [findActive?.messageId, findActive?.occurrence, findQuery, viewportController]);
 
   useEffect(() => {
     return () => {
@@ -2748,6 +2767,7 @@ export function ConversationThread({
     getEstimateHeight,
     viewportRef: scrollRef,
     isPinnedRef,
+    controller: viewportController,
     conversationKey: conversationKeyForStick,
     forceIndices: forceVirtualIndices,
     enabled: chatVirtualScroll,
