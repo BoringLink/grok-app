@@ -329,18 +329,38 @@ Frontend also coalesces stream tokens (~48ms) before React `setState`.
 
 The transcript is a **resident list** (`useChatResidentList` + the geometry
 ledger): every conversation row stays in the DOM for the whole session, its
-box height coming from the ledger, so the scrollbar length equals the real
-content length before and after a collapse. There is no moving window and no
-spacers.
+box height coming from the ledger. There is no moving window and no spacers.
 
+- **Scrollbar length honesty is tiered.** A row measured inside the band is
+  exact, and a collapse or a re-growth there changes the real length at once. A
+  row that folds while it is a shell is re-seeded from an *estimate* until it is
+  rendered again, so the length there is approximate, not exact — it moves in the
+  right direction immediately and becomes exact on the next in-band render.
 - **Visible band**: the rows the viewport spans plus a margin render their real
   content; the rows outside keep only their height (a shell). The band is
   computed from the ledger per frame, not from a rect walk.
 - **Estimates seed the ledger** before a row is first rendered; a real render
   upgrades that row to `measured` and the height is remembered.
+- **Fold outside the band** (thinking / work phase collapsing or re-opening
+  while its row is a shell) cannot be measured — the row renders no content — so
+  the model is the only source: `resolveRowActivityFold` mirrors the component
+  fold policy, and when a tracked shell's fold flips the resident list re-seeds
+  its ledger row (`reestimateRow`) and re-renders exactly that shell. A collapse
+  re-seeds to the estimate; a re-growth restores the height remembered from the
+  row's last expanded render (estimate when there is none). The demotion is
+  authoritative: the ledger bumps a per-row generation so a measurement taken
+  before it cannot restore the old shape.
+- **Before paint**: the re-seed runs in a layout effect, and it notifies the
+  band store so only that shell re-renders. React flushes a store update
+  scheduled from a layout effect before the browser paints, and the mutation it
+  produces is restored by the controller's `MutationObserver` in the same task.
+  This rests on React's layout-effect flush guarantee; the tests here drive the
+  decision and the ledger write, not the browser's paint timing.
 - The viewport controller (`useChatViewportController`, ADR-0006) is the single
   `scrollTop` writer; the resident list only reports measured heights and asks
-  it to restore the pinned/anchor invariant.
+  it to restore the pinned/anchor invariant. Nested scrollers (thinking body,
+  activity steps, tool bodies) write only their own `scrollTop` through the
+  traced helper, never the transcript.
 - **Session open**: existing idle chats hold the transcript behind the
   loading overlay until mounted image/video cards have a measurable box
   (pending imgs, pending video posters). Then one instant scroll-to-bottom

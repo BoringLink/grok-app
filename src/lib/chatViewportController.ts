@@ -355,6 +355,13 @@ export function applyScrollSample(input: {
 /**
  * Position for the end of a batch that changed height: pinned → the content
  * end; escaped → the recorded anchor's on-screen position.
+ *
+ * The anchor is the element at the viewport top, so this is exactly what
+ * "reading stability" means (Spec: 已脱离时锚点是视口顶部元素). A height change at
+ * or above the anchor scrolls to keep that element still, so the content the
+ * user is reading does not move; a change below the anchor leaves the element's
+ * offset alone and the top of the viewport stays fixed while the content under
+ * it moves up.
  */
 export function planRestore(input: {
   state: ViewportState;

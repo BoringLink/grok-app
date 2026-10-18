@@ -232,6 +232,138 @@ describe("height tiers", () => {
   });
 });
 
+describe("reestimateRow", () => {
+  it("demotes a measured row so the total follows a collapse", () => {
+    // Arrange: row 1 was rendered expanded and measured at 500.
+    const ledger = createLayoutLedger({ count: 3, estimateHeight: 120 });
+    ledger.setRowHeight(1, 500, "measured");
+    expect(ledger.totalHeight()).toBe(740);
+
+    // Act: a model-known collapse re-seeds it from the collapsed estimate.
+    const changed = ledger.reestimateRow(1, 60);
+
+    // Assert
+    expect(changed).toBe(true);
+    expect(ledger.heightOf(1)).toBe(60);
+    expect(ledger.sourceOf(1)).toBe("estimate");
+    expect(ledger.totalHeight()).toBe(300);
+    expect(ledger.offsetOf(2)).toBe(180);
+  });
+
+  it("lets a later measurement upgrade the row back to measured", () => {
+    // Arrange
+    const ledger = createLayoutLedger({ count: 3, estimateHeight: 120 });
+    ledger.setRowHeight(1, 500, "measured");
+    ledger.reestimateRow(1, 60);
+
+    // Act: the row scrolls back into the band and is measured at its real size.
+    const upgraded = ledger.setRowHeight(1, 70, "measured");
+
+    // Assert
+    expect(upgraded).toBe(true);
+    expect(ledger.sourceOf(1)).toBe("measured");
+    expect(ledger.heightOf(1)).toBe(70);
+    expect(ledger.totalHeight()).toBe(310);
+  });
+
+  it("is a no-op when the estimate already matches", () => {
+    // Arrange
+    const ledger = createLayoutLedger({ count: 3, estimateHeight: 120 });
+    const before = ledger.stats().rebuilds;
+
+    // Act
+    const changed = ledger.reestimateRow(0, 120);
+
+    // Assert
+    expect(changed).toBe(false);
+    expect(ledger.stats().rebuilds).toBe(before);
+  });
+
+  it("rejects an out-of-range index or an invalid height", () => {
+    // Arrange
+    const ledger = createLayoutLedger({ count: 3, estimateHeight: 120 });
+
+    // Act
+    const writes = [
+      ledger.reestimateRow(-1, 60),
+      ledger.reestimateRow(3, 60),
+      ledger.reestimateRow(0, Number.NaN),
+      ledger.reestimateRow(0, -10),
+    ];
+
+    // Assert
+    expect(writes).toEqual([false, false, false, false]);
+    expect(ledger.totalHeight()).toBe(360);
+  });
+
+  it("reports an empty ledger without rows", () => {
+    // Arrange
+    const ledger = createLayoutLedger({ count: 0, estimateHeight: 120 });
+
+    // Act / Assert
+    expect(ledger.reestimateRow(0, 60)).toBe(false);
+  });
+
+  it("rejects a measurement taken before the demotion", () => {
+    // Arrange: row 1 was measured expanded at generation 0.
+    const ledger = createLayoutLedger({ count: 3, estimateHeight: 120 });
+    ledger.setRowHeight(1, 500, "measured", ledger.generationOf(1));
+    const staleGeneration = ledger.generationOf(1);
+
+    // Act: the fold demotes the row, then the old measurement is delivered late.
+    ledger.reestimateRow(1, 60);
+    const restored = ledger.setRowHeight(1, 500, "measured", staleGeneration);
+
+    // Assert: the demotion is authoritative.
+    expect(restored).toBe(false);
+    expect(ledger.heightOf(1)).toBe(60);
+    expect(ledger.sourceOf(1)).toBe("estimate");
+  });
+
+  it("accepts a measurement taken at the current generation", () => {
+    // Arrange
+    const ledger = createLayoutLedger({ count: 3, estimateHeight: 120 });
+    ledger.setRowHeight(1, 500, "measured", ledger.generationOf(1));
+    ledger.reestimateRow(1, 60);
+
+    // Act: the row is rendered again and measured for the collapsed shape.
+    const accepted = ledger.setRowHeight(
+      1,
+      80,
+      "measured",
+      ledger.generationOf(1),
+    );
+
+    // Assert
+    expect(accepted).toBe(true);
+    expect(ledger.heightOf(1)).toBe(80);
+    expect(ledger.sourceOf(1)).toBe("measured");
+  });
+
+  it("bumps the generation on every demotion", () => {
+    // Arrange
+    const ledger = createLayoutLedger({ count: 2, estimateHeight: 120 });
+    expect(ledger.generationOf(0)).toBe(0);
+
+    // Act
+    ledger.reestimateRow(0, 60);
+    ledger.reestimateRow(0, 60);
+
+    // Assert
+    expect(ledger.generationOf(0)).toBe(2);
+  });
+
+  it("does not gate a measurement that carries no generation", () => {
+    // Arrange
+    const ledger = createLayoutLedger({ count: 2, estimateHeight: 120 });
+    ledger.reestimateRow(0, 60);
+
+    // Act / Assert
+    expect(ledger.setRowHeight(0, 90, "measured")).toBe(true);
+    expect(ledger.heightOf(0)).toBe(90);
+  });
+});
+
 describe("row count changes", () => {
   it("keeps measured heights when the conversation grows", () => {
     // Arrange

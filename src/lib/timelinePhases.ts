@@ -80,7 +80,9 @@ function toolRunning(t: MessageToolSegment): boolean {
   return s === "in_progress" || s === "pending" || s === "running";
 }
 
-function toolFailed(t: MessageToolSegment): boolean {
+/** Failed / rejected tool status. Shared with the fold model so a shell's
+ *  height counts the same failure rows the phase renders. */
+export function toolFailed(t: MessageToolSegment): boolean {
   if (t.isError) return true;
   const s = (t.status || "").toLowerCase();
   return s === "failed" || s === "error" || s === "rejected" || s === "denied";

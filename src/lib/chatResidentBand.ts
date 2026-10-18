@@ -98,20 +98,36 @@ export function residentTailBand(
 }
 
 /**
- * Band membership as an external store. Each row subscribes for its own index,
- * so a band change notifies only the rows whose membership actually flipped —
- * a scroll must not cost an O(rows) getSnapshot pass on a 10k-row list.
+ * Band membership and shell-height revision as an external store. Each row
+ * subscribes for its own index, so a band change (or a shell height change)
+ * notifies only the rows concerned — a scroll must not cost an O(rows)
+ * getSnapshot pass on a 10k-row list.
  */
 export type ChatResidentBandStore = {
   /** True when the row must render its real content this frame. */
   isRich(index: number): boolean;
+  /**
+   * Monotonic revision of a row's shell height. A shell reads its height from
+   * the ledger during render, so a height that changes without a band change —
+   * a collapse re-seeded from the model while the row was a shell — needs a
+   * snapshot that moves to make that row re-render before paint.
+   */
+  heightRevision(index: number): number;
   /** Stable per-index subscribe, for `useSyncExternalStore`. */
   subscribeFor(index: number): (listener: () => void) => () => void;
 };
 
-/** The store plus the mutator the resident list owns. */
+/** The store plus the mutators the resident list owns. */
 export type ChatResidentBandStoreControl = ChatResidentBandStore & {
   setBand(band: ResidentBand): void;
+  /** Signal that a shell row's height changed; re-renders only that row. */
+  notifyHeightChanged(index: number): void;
+  /**
+   * Drop the per-row revisions and subscribe cache on a row-identity change
+   * (conversation / filter switch), so neither grows with the largest index ever
+   * seen. Mounted rows re-subscribe on their next render.
+   */
+  clearRowState(): void;
 };
 
 export function createChatResidentBandStore(
@@ -119,6 +135,7 @@ export function createChatResidentBandStore(
 ): ChatResidentBandStoreControl {
   let band = initial;
   const listeners = new Map<number, Set<() => void>>();
+  const revisions = new Map<number, number>();
   const subscribeCache = new Map<
     number,
     (listener: () => void) => () => void
@@ -136,6 +153,9 @@ export function createChatResidentBandStore(
   return {
     isRich(index) {
       return index >= band.start && index < band.end;
+    },
+    heightRevision(index) {
+      return revisions.get(index) ?? 0;
     },
     subscribeFor(index) {
       const cached = subscribeCache.get(index);
@@ -173,6 +193,14 @@ export function createChatResidentBandStore(
       if (next.end > prev.end) {
         notifyRange(Math.max(next.start, prev.end), next.end);
       }
+    },
+    notifyHeightChanged(index) {
+      revisions.set(index, (revisions.get(index) ?? 0) + 1);
+      notifyRow(index);
+    },
+    clearRowState() {
+      revisions.clear();
+      subscribeCache.clear();
     },
   };
 }

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, renderHook, act } from "@testing-library/react";
 import { createLayoutLedger } from "@/lib/chatViewportLedger";
 import type { ChatViewportControllerHandle } from "@/hooks/useChatViewportController";
+import type { RowActivityFoldSnapshot } from "@/hooks/chatResidentListShared";
 import { useChatResidentList } from "./useChatResidentList";
 
 afterEach(cleanup);
@@ -16,9 +17,17 @@ function makeController() {
   const positionListeners = new Set<() => void>();
   const controller = {
     ledger: () => ledger,
-    reportRowHeight(index: number, height: number) {
+    reportRowHeight(index: number, height: number, generation?: number) {
       if (index >= ledger.rowCount()) ledger.setCount(index + 1);
-      ledger.setRowHeight(index, height, "measured");
+      ledger.setRowHeight(index, height, "measured", generation);
+    },
+    reestimateRow(
+      index: number,
+      height: number,
+      isRich: (index: number) => boolean,
+    ) {
+      if (isRich(index)) return;
+      ledger.reestimateRow(index, height);
     },
     resetLedger() {
       ledger = createLayoutLedger({ count: 0, estimateHeight: 120 });
@@ -36,6 +45,35 @@ function makeController() {
     for (const listener of positionListeners) listener();
   };
   return { controller, restoreLayout, notifyPosition, ledger: () => ledger };
+}
+
+/**
+ * Model fold source for the tests: each `set` bumps a per-row input identity so
+ * the list sees the fold inputs changed, exactly as a new message object does.
+ */
+function makeFoldSource() {
+  const rows = new Map<
+    number,
+    { hasActivity: boolean; expanded: boolean; inputs: [number] }
+  >();
+  return {
+    set(
+      index: number,
+      fold: { hasActivity: boolean; expanded: boolean },
+    ): void {
+      const prev = rows.get(index);
+      rows.set(index, { ...fold, inputs: [(prev?.inputs[0] ?? 0) + 1] });
+    },
+    get(index: number): RowActivityFoldSnapshot | null {
+      const row = rows.get(index);
+      if (!row) return null;
+      return {
+        hasActivity: row.hasActivity,
+        expanded: row.expanded,
+        inputs: row.inputs,
+      };
+    },
+  };
 }
 
 function makeViewport(scrollTop: number, clientHeight: number) {
@@ -224,6 +262,132 @@ describe("useChatResidentList", () => {
     act(() => result.current.measureRef(3)(row));
     expect(result.current.rowHeight(3)).toBe(400);
     expect(ledger().totalHeight()).toBe(baseTotal + 300);
+  });
+
+  it("re-seeds a shell's height from the estimate when its activity folds", () => {
+    // Arrange: a long list held at the top; row 50 is far outside the band.
+    const viewport = makeViewport(0, 400);
+    const { controller, ledger } = makeController();
+    const isPinnedRef = { current: false };
+    const folds = makeFoldSource();
+    folds.set(50, { hasActivity: true, expanded: true });
+    const { result, rerender } = renderHook(
+      ({ rev }) =>
+        useChatResidentList({
+          itemCount: 100,
+          getEstimateHeight: () => 100,
+          viewportRef: { current: viewport },
+          isPinnedRef,
+          controller,
+          getActivityFold: folds.get,
+          activityRevision: rev,
+        }),
+      { initialProps: { rev: 1 } },
+    );
+    // Row 50 was measured at its expanded height while it was in the band.
+    const row = document.createElement("div");
+    row.getBoundingClientRect = () => ({ height: 500 }) as DOMRect;
+    act(() => result.current.measureRef(50)(row));
+    expect(ledger().heightOf(50)).toBe(500);
+    expect(ledger().sourceOf(50)).toBe("measured");
+    const expandedTotal = ledger().totalHeight();
+
+    // Act: the block folds while the row is a shell (the model says so).
+    act(() => folds.set(50, { hasActivity: true, expanded: false }));
+    act(() => rerender({ rev: 2 }));
+
+    // Assert: the ledger follows the collapse immediately.
+    expect(ledger().heightOf(50)).toBe(100);
+    expect(ledger().sourceOf(50)).toBe("estimate");
+    expect(ledger().totalHeight()).toBe(expandedTotal - 400);
+  });
+
+  it("restores the remembered height when a shell's fold re-opens", () => {
+    // Arrange: row 50 measured expanded, then folded while out of band.
+    const viewport = makeViewport(0, 400);
+    const { controller, ledger } = makeController();
+    const isPinnedRef = { current: false };
+    const folds = makeFoldSource();
+    folds.set(50, { hasActivity: true, expanded: true });
+    const { result, rerender } = renderHook(
+      ({ rev }) =>
+        useChatResidentList({
+          itemCount: 100,
+          getEstimateHeight: () => 100,
+          viewportRef: { current: viewport },
+          isPinnedRef,
+          controller,
+          getActivityFold: folds.get,
+          activityRevision: rev,
+        }),
+      { initialProps: { rev: 1 } },
+    );
+    const row = document.createElement("div");
+    row.getBoundingClientRect = () => ({ height: 500 }) as DOMRect;
+    act(() => result.current.measureRef(50)(row));
+    act(() => folds.set(50, { hasActivity: true, expanded: false }));
+    act(() => rerender({ rev: 2 }));
+    expect(ledger().heightOf(50)).toBe(100);
+
+    // Act: a new activity round re-opens the fold in the still-shell row.
+    act(() => folds.set(50, { hasActivity: true, expanded: true }));
+    act(() => rerender({ rev: 3 }));
+
+    // Assert: the shell grows back to the remembered expanded height.
+    expect(ledger().heightOf(50)).toBe(500);
+    expect(ledger().totalHeight()).toBe(99 * 100 + 500);
+  });
+
+  it("leaves a still-expanded shell and a rich row to their own measurement", () => {
+    // Arrange
+    const viewport = makeViewport(0, 400);
+    const { controller, ledger } = makeController();
+    const isPinnedRef = { current: false };
+    const folds = makeFoldSource();
+    folds.set(50, { hasActivity: true, expanded: true });
+    folds.set(3, { hasActivity: true, expanded: false });
+    const { result, rerender } = renderHook(
+      ({ rev }) =>
+        useChatResidentList({
+          itemCount: 100,
+          getEstimateHeight: () => 100,
+          viewportRef: { current: viewport },
+          isPinnedRef,
+          controller,
+          getActivityFold: folds.get,
+          activityRevision: rev,
+        }),
+      { initialProps: { rev: 1 } },
+    );
+    const shellRow = document.createElement("div");
+    shellRow.getBoundingClientRect = () => ({ height: 500 }) as DOMRect;
+    const richRow = document.createElement("div");
+    richRow.getBoundingClientRect = () => ({ height: 300 }) as DOMRect;
+    act(() => {
+      result.current.measureRef(50)(shellRow);
+      result.current.measureRef(3)(richRow);
+    });
+
+    // Act: the revision moves but neither the shell nor the rich row folded.
+    act(() => rerender({ rev: 2 }));
+
+    // Assert: the rich row keeps its measurement; the shell keeps its height
+    // because the model still reports it expanded.
+    expect(ledger().heightOf(3)).toBe(300);
+    expect(ledger().sourceOf(3)).toBe("measured");
+    expect(ledger().heightOf(50)).toBe(500);
+
+    // Act: the rich row folds and re-measures itself (no model re-seed needed).
+    richRow.getBoundingClientRect = () => ({ height: 80 }) as DOMRect;
+    act(() => folds.set(3, { hasActivity: true, expanded: false }));
+    act(() => {
+      result.current.measureRef(3)(richRow);
+      rerender({ rev: 3 });
+    });
+
+    // Assert: the model-driven pass did not touch the measured row.
+    expect(ledger().heightOf(3)).toBe(80);
+    expect(ledger().sourceOf(3)).toBe("measured");
   });
 
   it("returns an empty band for an empty conversation", () => {

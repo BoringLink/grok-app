@@ -27,7 +27,10 @@ import { createT, type Locale } from "@/i18n";
 import { COLLAPSE_ALL_ACTIVITY_EVENT } from "@/lib/collapseAllActivity";
 import { formatWorkDuration } from "@/lib/formatWorkDuration";
 import { resolveThinkingChromeLabel } from "@/lib/thinkingChromeLabel";
-import { resolveFoldExpanded } from "@/lib/toolStepsAutoCollapsePref";
+import {
+  resolveFoldExpanded,
+  thoughtDefaultOpen,
+} from "@/lib/toolStepsAutoCollapsePref";
 import {
   freezeThinkingDurationMs,
   nextThinkingStartAnchor,
@@ -74,7 +77,7 @@ export const Thinking = memo(function Thinking({
   const expanded = resolveFoldExpanded({
     userToggled: userToggled.current,
     storedOpen: open,
-    defaultOpen: !!thinking,
+    defaultOpen: thoughtDefaultOpen(!!thinking),
   });
 
   useEffect(() => {

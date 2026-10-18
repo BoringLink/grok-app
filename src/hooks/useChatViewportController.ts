@@ -118,7 +118,23 @@ export type ChatViewportControllerHandle = {
    */
   ledger(): LayoutLedger;
   /** A row's measured height changed — restore the invariant before paint. */
-  reportRowHeight(index: number, height: number): void;
+  reportRowHeight(index: number, height: number, generation?: number): void;
+  /**
+   * Shell-row-only: re-seed a row from the model estimate after a fold it did
+   * not render (it was outside the band). The resident list calls this in the
+   * write path so the scrollbar follows a shell's fold immediately; see
+   * {@link LayoutLedger.reestimateRow}.
+   *
+   * `isRich` is the caller's band predicate and is enforced here: a row that is
+   * rendering real content is left untouched, so the tier bypass this method
+   * performs can never demote a visible row (nor its queued measurement, which
+   * the ledger's per-row generation rejects).
+   */
+  reestimateRow(
+    index: number,
+    height: number,
+    isRich: (index: number) => boolean,
+  ): void;
   /** Drop every remembered height (conversation / row-identity change). */
   resetLedger(): void;
   /** A layout batch changed the transcript height — restore before paint. */
@@ -1218,10 +1234,14 @@ export function useChatViewportController(
       ledger() {
         return ledgerRef.current;
       },
-      reportRowHeight(index, height) {
+      reportRowHeight(index, height, generation) {
         const ledger = ledgerRef.current;
         if (index >= ledger.rowCount()) ledger.setCount(index + 1);
-        ledger.setRowHeight(index, height, "measured");
+        ledger.setRowHeight(index, height, "measured", generation);
+      },
+      reestimateRow(index, height, isRich) {
+        if (isRich(index)) return;
+        ledgerRef.current.reestimateRow(index, height);
       },
       resetLedger() {
         ledgerRef.current = createLayoutLedger({

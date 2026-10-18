@@ -590,7 +590,9 @@ describe("useChatViewportController handle", () => {
       controller: result.current.controller,
       isPinnedRef: result.current.isPinnedRef,
       escapedRef: result.current.escapedRef,
+      content,
       scrollTop: () => scrollTop,
+      aboveHeight: () => aboveHeight,
       setAboveHeight: (value: number) => {
         aboveHeight = value;
       },
@@ -606,6 +608,45 @@ describe("useChatViewportController handle", () => {
 
     expect(harness.scrollTop()).toBe(240);
   });
+  it("re-seeds a shell row through reestimateRow", () => {
+    const harness = mount({ scrollTop: 0, scrollHeight: 1000 });
+
+    act(() => harness.controller.reportRowHeight(0, 500));
+    expect(harness.controller.ledger().heightOf(0)).toBe(500);
+    expect(harness.controller.ledger().sourceOf(0)).toBe("measured");
+
+    act(() => harness.controller.reestimateRow(0, 60, () => false));
+
+    expect(harness.controller.ledger().heightOf(0)).toBe(60);
+    expect(harness.controller.ledger().sourceOf(0)).toBe("estimate");
+  });
+
+  it("refuses to demote a row that is rendering real content", () => {
+    const harness = mount({ scrollTop: 0, scrollHeight: 1000 });
+
+    act(() => harness.controller.reportRowHeight(0, 500));
+
+    // The band predicate says the row is inside the band (rich).
+    act(() => harness.controller.reestimateRow(0, 60, () => true));
+
+    expect(harness.controller.ledger().heightOf(0)).toBe(500);
+    expect(harness.controller.ledger().sourceOf(0)).toBe("measured");
+  });
+
+  it("refuses a measurement taken before a shell row was re-estimated", () => {
+    const harness = mount({ scrollTop: 0, scrollHeight: 1000 });
+
+    act(() => harness.controller.reportRowHeight(0, 500, 0));
+    const stale = harness.controller.ledger().generationOf(0);
+    act(() => harness.controller.reestimateRow(0, 60, () => false));
+
+    // The late entry for the old expanded shape arrives after the demotion.
+    act(() => harness.controller.reportRowHeight(0, 500, stale));
+
+    expect(harness.controller.ledger().heightOf(0)).toBe(60);
+    expect(harness.controller.ledger().sourceOf(0)).toBe("estimate");
+  });
+
   it("escape detaches from the bottom and clears the pin", () => {
     const harness = mount({ scrollTop: 600, scrollHeight: 1000 });
 
@@ -672,6 +713,49 @@ describe("useChatViewportController handle", () => {
 
     expect(harness.scrollTop()).toBe(300);
     expect(harness.isPinnedRef.current).toBe(false);
+  });
+
+  /**
+   * AC1 — a nested scroller expanding or collapsing must leave the outer anchor
+   * exactly where it is. The nested change reaches the controller as a content
+   * mutation, which it restores inside the batch (before paint), not a frame
+   * later via a ResizeObserver.
+   */
+  it("holds the escaped anchor across a nested scroller resize (mutation batch)", async () => {
+    const harness = mountWithRows({ scrollTop: 200, aboveHeight: 200 });
+    act(() => {
+      harness.controller.escape("test:locate");
+      harness.controller.restoreLayout(); // capture the anchor element
+    });
+    const anchorScreenTop = harness.aboveHeight() - harness.scrollTop();
+
+    // Act: the thinking body above the reader expands 120px in one batch.
+    await act(async () => {
+      harness.setAboveHeight(320);
+      harness.content.appendChild(document.createElement("div"));
+    });
+
+    // Assert: the anchor has not moved on screen.
+    expect(harness.aboveHeight() - harness.scrollTop()).toBe(anchorScreenTop);
+    expect(harness.isPinnedRef.current).toBe(false);
+    expect(harness.escapedRef.current).toBe(true);
+  });
+
+  it("keeps the pinned viewport at the content end across a nested scroller resize", async () => {
+    const harness = mountWithRows({ scrollTop: 200, aboveHeight: 200 });
+    // Re-pin via the explicit control, then revert to the tail model.
+    act(() => harness.controller.pinToEnd("test:pin"));
+
+    // Act: a nested scroller grows below the pinned tail.
+    await act(async () => {
+      harness.setAboveHeight(260);
+      harness.content.appendChild(document.createElement("div"));
+    });
+
+    // Assert: still following the tail (the harness scrollHeight is stable, so
+    // the observable claim is the pin state, not a coordinate).
+    expect(harness.isPinnedRef.current).toBe(true);
+    expect(harness.escapedRef.current).toBe(false);
   });
 });
 
