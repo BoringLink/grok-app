@@ -1,0 +1,19 @@
+docs/plans/2026-10-18-chat-viewport-scroll-spec.md
+  s_39e12dca10916e::t_dccc3ce6c9cda6 1-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "a42f3321f0aa622d7ce015ebaac293f305f5ce4e",
+  "prompts": {},
+  "sessions": {
+    "s_39e12dca10916e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14af1-a628-7f83-b692-898c6acaa413",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
