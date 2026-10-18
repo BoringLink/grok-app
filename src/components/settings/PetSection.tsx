@@ -6,6 +6,8 @@ import { useSettingsModel } from "@/providers/SettingsModelContext";
 import { SettingsLabelWithTip, SettingsTabStrip, UiSwitch } from "./shared";
 import { PetMark } from "@/components/pet/PetMark";
 import { Select } from "@/components/Select";
+import { PetQuickHotkeyRow } from "./PetQuickHotkeyRow";
+import { PetSizeSlider } from "./PetSizeSlider";
 import { listen } from "@/lib/api/host";
 import type { MessageKey } from "@/i18n";
 import {
@@ -17,7 +19,7 @@ import {
   PET_COLOR_SWATCH,
   PET_EXPRESSIONS,
   PET_PICKER_SHAPES,
-  PET_SIZES,
+  PET_SIZE_DEFAULT,
   isPetColor,
   isPetShape,
   normalizePetBubbleDismissSec,
@@ -127,6 +129,34 @@ export function PetSection() {
     }
   }, []);
 
+  // Slider drags update a local draft; the overlay resizes once the thumb settles.
+  const [sizeDraft, setSizeDraft] = useState<number | null>(null);
+  const sizeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
+  const queueSize = useCallback(
+    (raw: number, now = false) => {
+      const n = normalizePetSize(raw);
+      setSizeDraft(n);
+      if (sizeTimer.current) clearTimeout(sizeTimer.current);
+      const run = () => {
+        sizeTimer.current = null;
+        void Promise.resolve(commit({ ...prefsRef.current, sizePx: n })).finally(() =>
+          setSizeDraft(null),
+        );
+      };
+      if (now) run();
+      else sizeTimer.current = setTimeout(run, 180);
+    },
+    [commit],
+  );
+  useEffect(
+    () => () => {
+      if (sizeTimer.current) clearTimeout(sizeTimer.current);
+    },
+    [],
+  );
+
   const shown = petWindowOn(prefs);
   const shape: PetShape = isPetShape(prefs.shape) ? prefs.shape : "hex";
   const color: PetColor = isPetColor(prefs.color) ? prefs.color : "green";
@@ -175,23 +205,14 @@ export function PetSection() {
                 label={t("settings.pet.size")}
                 tip={t("settings.pet.sizeDesc")}
               />
-              <Select
-                value={String(sizePx)}
-                onChange={(v) =>
-                  void commit({ ...prefs, sizePx: normalizePetSize(Number(v)) })
-                }
-                options={PET_SIZES.map((n) => ({
-                  value: String(n),
-                  label:
-                    n === 96
-                      ? t("settings.pet.size.sm")
-                      : n === 160
-                        ? t("settings.pet.size.lg")
-                        : t("settings.pet.size.md"),
-                }))}
-                aria-label={t("settings.pet.size")}
+              <PetSizeSlider
+                value={sizeDraft ?? sizePx}
+                isDefault={sizePx === PET_SIZE_DEFAULT && sizeDraft == null}
+                onChange={(n) => queueSize(n)}
+                onReset={() => queueSize(PET_SIZE_DEFAULT, true)}
               />
             </div>
+            <PetQuickHotkeyRow />
           </div>
 
           <div

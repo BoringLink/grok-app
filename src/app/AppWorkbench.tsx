@@ -442,6 +442,9 @@ import {
   useSendQueue,
   type ExecuteSendFromQueue,
 } from "@/hooks/useSendQueue";
+import { parsePetQuickPrompt, type PetQuickPrompt } from "@/lib/api/petQuick";
+import { runPetQuickPrompt } from "@/lib/petQuickPromptRun";
+import { parsePetQuickAction, runPetQuickAction, type PetQuickActionReq } from "@/lib/petQuickActions";
 import {
   buildSlashCatalog,
   countSlashByKind,
@@ -10635,6 +10638,8 @@ export function AppWorkbench() {
     /** Omit section to restore last settings route. */
     openSettings: (_section?: SettingsSectionId) => {},
     openDoctor: () => {},
+    quickPrompt: (_p: PetQuickPrompt) => {},
+    quickAction: (_a: PetQuickActionReq) => {},
   });
   const openSessionByIdHandler = (id: string) => {
     void (async () => {
@@ -10726,6 +10731,21 @@ export function AppWorkbench() {
     openDoctor: () => {
       void openDoctor();
     },
+    quickPrompt: (p: PetQuickPrompt) => {
+      void runPetQuickPrompt(p, {
+        sessions, projects, openSession, newChat, showToast, tr,
+        sessionsList: api.sessionsList, mapRow: mapSessionListRow,
+        send: (o) => executeSendLatestRef.current(o),
+      });
+    },
+    quickAction: (a: PetQuickActionReq) => {
+      void runPetQuickAction(a, {
+        activePerm: perm, pendingPerms: pendingPermBySessionRef.current,
+        buttonsFor: (p) => mapPermissionButtons(p.options, { allowOnce: tr("perm.allowOnce"), allowSession: tr("perm.allowSession"), deny: tr("perm.deny") }, p.toolName),
+        resolve: resolvePermission, stop: (sid) => stop(sid), open: openSessionByIdHandler,
+        notify: () => showToast(tr("pet.quick.noPending"), 3000),
+      }).catch(() => {});
+    },
   };
 
   // Desktop notification click → open the session that fired the notify.
@@ -10791,6 +10811,16 @@ export function AppWorkbench() {
         unsubs.push(
           await listen("tray://open-doctor", () => {
             trayHandlersRef.current.openDoctor();
+          }),
+        );
+        unsubs.push(
+          await listen("pet://quick-prompt", (ev) => {
+            const p = parsePetQuickPrompt(ev.payload);
+            if (p) trayHandlersRef.current.quickPrompt(p);
+          }),
+          await listen("pet://quick-action", (ev) => {
+            const a = parsePetQuickAction(ev.payload);
+            if (a) trayHandlersRef.current.quickAction(a);
           }),
         );
       } catch (e) {
