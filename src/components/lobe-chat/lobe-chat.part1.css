@@ -310,12 +310,6 @@ html[data-chat-width="full"] .lobe-chat__inner,
   flex-shrink: 0;
 }
 
-.lobe-chat__virt-spacer {
-  contain: strict;
-  overflow: hidden;
-  pointer-events: none;
-}
-
 .lobe-chat-item--assistant .lobe-chat-item__body {
   width: 100%;
 }

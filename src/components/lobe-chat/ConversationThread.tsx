@@ -14,6 +14,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
   type MouseEvent as ReactMouseEvent,
 } from "react";
@@ -112,17 +113,14 @@ import {
   TRANSCRIPT_OPEN_REVEAL_FALLBACK_POLL_MS,
   TRANSCRIPT_OPEN_REVEAL_TIMEOUT_MS,
 } from "@/lib/transcriptOpenReveal";
-import { useChatMessageVirtualizer } from "@/hooks/useChatMessageVirtualizer";
+import { useChatResidentList } from "@/hooks/useChatResidentList";
+import type { ChatResidentBandStore } from "@/hooks/chatResidentListShared";
 import { useChatViewportTraceProbe } from "@/hooks/useChatViewportTraceProbe";
 import {
   publishTraceToHost,
   traceViewport,
 } from "@/lib/chatViewportTrace";
-import {
-  estimateChatRowHeight,
-  splitVirtSpacerHeights,
-} from "@/lib/chatVirtualList";
-import { chatRowPaint } from "@/lib/chatRowPaintPolicy";
+import { estimateChatRowHeight } from "@/lib/chatRowHeight";
 import { countFailedToolSegments } from "@/lib/phaseErrorExcerpt";
 import { scrollPerfDebug } from "@/lib/scrollPerfDebug";
 import { StructuredJsonPanel } from "./StructuredJsonPanel";
@@ -584,10 +582,10 @@ export interface ConversationThreadProps {
 type TranscriptMessageRowProps = {
   m: ChatMessage;
   msgIndex: number;
-  virtualized: boolean;
-  /** Geometric window may be wide; shell skips markdown. */
-  paint: "rich" | "shell";
-  shellHeight: number;
+  /** Which rows render real content this frame (external store, stable object). */
+  bandStore: ChatResidentBandStore;
+  /** Shell height for a row, from the layout ledger. */
+  rowHeight: (index: number) => number;
   measureRef: (index: number) => (el: HTMLElement | null) => void;
   locale: Locale;
   tr: ReturnType<typeof createT>;
@@ -666,9 +664,8 @@ function transcriptRowPropsEqual(
 ): boolean {
   if (a.m !== b.m) return false;
   if (a.msgIndex !== b.msgIndex) return false;
-  if (a.virtualized !== b.virtualized) return false;
-  if (a.paint !== b.paint) return false;
-  if (a.paint === "shell" && a.shellHeight !== b.shellHeight) return false;
+  if (a.bandStore !== b.bandStore) return false;
+  if (a.rowHeight !== b.rowHeight) return false;
   if (a.locale !== b.locale) return false;
   if (a.projectPath !== b.projectPath) return false;
   if (a.sshAlias !== b.sshAlias) return false;
@@ -726,9 +723,8 @@ function transcriptRowPropsEqual(
 const TranscriptMessageRow = memo(function TranscriptMessageRow({
   m,
   msgIndex,
-  virtualized,
-  paint,
-  shellHeight,
+  bandStore,
+  rowHeight,
   measureRef,
   locale,
   tr,
@@ -787,6 +783,14 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
   sessionChanges,
 }: TranscriptMessageRowProps) {
   void _timeTick;
+  // Band membership is an external store so a scroll re-renders only the rows
+  // whose membership flipped, not the parent with its 10k rows.
+  const rich = useSyncExternalStore(
+    bandStore.subscribe,
+    () => bandStore.isRich(msgIndex),
+  );
+  const paint: "rich" | "shell" = rich ? "rich" : "shell";
+  const shellHeight = paint === "shell" ? rowHeight(msgIndex) : 0;
   const renderStartRef = useRef<number | null>(null);
   if (import.meta.env.DEV && renderStartRef.current === null) {
     renderStartRef.current = performance.now();
@@ -806,18 +810,15 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
     }
   }, [m.id, msgIndex, m.role]);
 
-  const wrap = (node: ReactNode) =>
-    virtualized ? (
-      <div
-        key={m.id}
-        ref={measureRef(msgIndex)}
-        data-virt-index={msgIndex}
-      >
-        {node}
-      </div>
-    ) : (
-      node
-    );
+  const wrap = (node: ReactNode) => (
+    <div
+      key={m.id}
+      ref={paint === "rich" ? measureRef(msgIndex) : undefined}
+      data-virt-index={msgIndex}
+    >
+      {node}
+    </div>
+  );
 
   if (paint === "shell") {
     return wrap(
@@ -857,42 +858,39 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
   // Conversation filter hides tool chrome entirely.
   if (isToolStepMessage(m)) {
     if (!showToolChrome) {
-      return virtualized ? (
+      return (
         <div
           key={m.id}
-          ref={measureRef(msgIndex)}
           data-virt-index={msgIndex}
           style={{ height: 0, overflow: "hidden" }}
           aria-hidden
         />
-      ) : null;
+      );
     }
     const tcid =
       (m.toolCallId || "").trim() ||
       (m.id.startsWith("tool-") ? m.id.slice(5) : "");
     // Use woven list — parent `messages` may lag display-layer weave.
     if (tcid && isToolInlinedInAssistants(wovenMessages, tcid)) {
-      return virtualized ? (
+      return (
         <div
           key={m.id}
-          ref={measureRef(msgIndex)}
           data-virt-index={msgIndex}
           style={{ height: 0, overflow: "hidden" }}
           aria-hidden
         />
-      ) : null;
+      );
     }
     const toolSeg = toolSegmentFromMessage(m);
     if (!toolSeg) {
-      return virtualized ? (
+      return (
         <div
           key={m.id}
-          ref={measureRef(msgIndex)}
           data-virt-index={msgIndex}
           style={{ height: 0, overflow: "hidden" }}
           aria-hidden
         />
-      ) : null;
+      );
     }
     // Consecutive unwoven standalone tool_step rows merge into one
     // collapsible group (painted at the first row; the rest become
@@ -900,15 +898,14 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
     const standaloneGroup = standaloneToolGroups.get(m.id);
     if (standaloneGroup) {
       if (!standaloneGroup.first) {
-        return virtualized ? (
+        return (
           <div
             key={m.id}
-            ref={measureRef(msgIndex)}
             data-virt-index={msgIndex}
             style={{ height: 0, overflow: "hidden" }}
             aria-hidden
           />
-        ) : null;
+        );
       }
       return wrap(
         <div key={m.id} className="lobe-chat-assistant-timeline">
@@ -979,15 +976,14 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
 
   // Generic tool rows (non marker) — keep quiet; no history stack.
   if (m.role === "tool") {
-    return virtualized ? (
+    return (
       <div
         key={m.id}
-        ref={measureRef(msgIndex)}
         data-virt-index={msgIndex}
         style={{ height: 0, overflow: "hidden" }}
         aria-hidden
       />
-    ) : null;
+    );
   }
 
   // A turn the Host started on its own (PR-monitor wake, external send) is not
@@ -2577,54 +2573,10 @@ export function ConversationThread({
     return map;
   }, [transcriptMessages, wovenMessages]);
 
-  // Force-mount only what must stay in DOM. The virtualizer applies force
-  // freely while pinned (blank-pin defense) but only expands nearby while
-  // escaped — listing the last user/assistant here no longer mounts the
-  // whole tail mid-history (see CHAT_FORCE_EXPAND_MAX_GAP).
-  const forceVirtualIndices = useMemo(() => {
-    const out: number[] = [];
-    const pushId = (id: string | null | undefined) => {
-      if (!id) return;
-      const i = transcriptMessages.findIndex((m) => m.id === id);
-      if (i >= 0) out.push(i);
-    };
-    pushId(findActive?.messageId);
-    pushId(locateTargetId);
-    pushId(activeAssistantId);
-    // While following the live turn, keep the last user + tail mounted.
-    if (turnBusy) {
-      pushId(lastUserMessageId);
-      const n = transcriptMessages.length;
-      for (let i = Math.max(0, n - 2); i < n; i++) out.push(i);
-    } else {
-      // Idle: last transcript row only (assistant). Indices are post-filter.
-      const n = transcriptMessages.length;
-      if (n > 0) out.push(n - 1);
-    }
-    // While pinned, last user + last assistant keep the pin window from
-    // landing only on trailing tool_step zeros. Escaped history browse
-    // ignores distant force (virtualizer max-gap) so long chats stay windowed.
-    // Always resolve via pushId (transcript indices) — never push messages[]
-    // offsets into the virtual list (idle path used to force wrong rows / thrash).
-    if (!turnBusy && transcriptMessages.length > 0) {
-      pushId(lastUserMessageId);
-      for (let i = transcriptMessages.length - 1; i >= 0; i--) {
-        const row = transcriptMessages[i]!;
-        if (row.role === "assistant" && !row.isError) {
-          pushId(row.id);
-          break;
-        }
-      }
-    }
-    return out;
-  }, [
-    transcriptMessages,
-    findActive?.messageId,
-    locateTargetId,
-    activeAssistantId,
-    lastUserMessageId,
-    turnBusy,
-  ]);
+  // Row identity for the resident list's ledger. A conversation switch or a
+  // transcript-filter change renumbers the rows, so the remembered heights must
+  // be dropped rather than pose as measurements for different messages.
+  const residentListResetKey = `${conversationKeyForStick}:${transcriptFilter}`;
 
   const estimateCacheRef = useRef<
     Map<string, { len: number; atts: number; failed: number; h: number }>
@@ -2752,24 +2704,16 @@ export function ConversationThread({
   );
 
   const {
-    virtualized,
-    start: virtStart,
-    end: virtEnd,
-    paddingTop,
-    paddingBottom,
-    richStart,
-    richEnd,
+    bandStore,
     rowHeight,
     measureRef,
-  } = useChatMessageVirtualizer({
+  } = useChatResidentList({
     itemCount: transcriptMessages.length,
-    getKey: (i) => transcriptMessages[i]?.id ?? `i-${i}`,
     getEstimateHeight,
     viewportRef: scrollRef,
     isPinnedRef,
     controller: viewportController,
-    conversationKey: conversationKeyForStick,
-    forceIndices: forceVirtualIndices,
+    resetKey: residentListResetKey,
     enabled: chatVirtualScroll,
   });
 
@@ -2805,12 +2749,6 @@ export function ConversationThread({
     finalAssistantCommitKey,
     isPinnedRef,
     scrollToBottom,
-    virtStart,
-    virtEnd,
-    paddingTop,
-    paddingBottom,
-    richStart,
-    richEnd,
   ]);
 
   const openMediaCount = useMemo(() => {
@@ -2863,23 +2801,17 @@ export function ConversationThread({
     return map;
   }, [messages]);
 
-  const visibleMessages = useMemo(() => {
-    if (!virtualized) {
-      if (transcriptMessages.length >= 10) {
-        scrollPerfDebug.recordLog(
-          "VirtualizationStatus",
-          `⚠️ Virtualization is OFF for ${transcriptMessages.length} messages (rendered all DOM nodes)`,
-        );
-      }
-      return transcriptMessages.map((m, index) => ({ m, index }));
-    }
-    const slice: { m: ChatMessage; index: number }[] = [];
-    for (let i = virtStart; i < virtEnd; i++) {
-      const m = transcriptMessages[i];
-      if (m) slice.push({ m, index: i });
-    }
-    return slice;
-  }, [transcriptMessages, virtualized, virtStart, virtEnd]);
+  // Every row is resident; the band only decides which rows render content.
+  const rows = useMemo(
+    () => transcriptMessages.map((m, index) => ({ m, index })),
+    [transcriptMessages],
+  );
+  if (import.meta.env.DEV && !chatVirtualScroll && transcriptMessages.length >= 10) {
+    scrollPerfDebug.recordLog(
+      "ResidentBandStatus",
+      `⚠️ Shell band is OFF for ${transcriptMessages.length} messages (every row renders content)`,
+    );
+  }
 
   const revealedOpenKeyRef = useRef<string | null>(null);
   const [openRevealTick, setOpenRevealTick] = useState(0);
@@ -3006,29 +2938,13 @@ export function ConversationThread({
             </div>
           ) : null}
 
-          {virtualized && paddingTop > 0
-            ? splitVirtSpacerHeights(paddingTop).map((h, i) => (
-                <div
-                  key={`virt-top-${i}`}
-                  aria-hidden
-                  className="lobe-chat__virt-spacer"
-                  style={{ height: h, flexShrink: 0 }}
-                />
-              ))
-            : null}
-
-          {visibleMessages.map(({ m, index: msgIndex }) => (
+          {rows.map(({ m, index: msgIndex }) => (
             <TranscriptMessageRow
               key={m.id}
               m={m}
               msgIndex={msgIndex}
-              virtualized={virtualized}
-              paint={
-                virtualized
-                  ? chatRowPaint(msgIndex, { richStart, richEnd })
-                  : "rich"
-              }
-              shellHeight={rowHeight(msgIndex)}
+              bandStore={bandStore}
+              rowHeight={rowHeight}
               measureRef={measureRef}
               locale={locale}
               tr={tr}
@@ -3104,17 +3020,6 @@ export function ConversationThread({
               sessionChanges={sessionChanges}
             />
           ))}
-
-          {virtualized && paddingBottom > 0
-            ? splitVirtSpacerHeights(paddingBottom).map((h, i) => (
-                <div
-                  key={`virt-bot-${i}`}
-                  aria-hidden
-                  className="lobe-chat__virt-spacer"
-                  style={{ height: h, flexShrink: 0 }}
-                />
-              ))
-            : null}
 
           {/* Tool before any assistant bubble — only if not already a message row. */}
           {showToolChrome && liveTool && !activeAssistantId && !liveToolHasRow ? (

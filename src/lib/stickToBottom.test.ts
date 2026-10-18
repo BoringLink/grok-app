@@ -19,7 +19,6 @@ import {
   stabilizeStickUserId,
   shouldClampPinnedOverscroll,
   shouldClampPinnedStreamDrift,
-  shouldForcePinnedSnapOnOpen,
   shouldIgnorePinnedGrowthRebound,
   shouldReleaseStickOnDistanceFromBottom,
   shouldSnapPinnedLayoutToBottom,
@@ -415,48 +414,16 @@ describe("shouldFollowPinnedMediaReveal", () => {
   });
 });
 
-describe("shouldForcePinnedSnapOnOpen", () => {
-  it("lands on the tail even when leftover distance looks like a leave", () => {
-    expect(
-      shouldForcePinnedSnapOnOpen({
-        pinned: true,
-        forceOpenSnap: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldSnapPinnedLayoutToBottom({
-        scrollTop: 0,
-        scrollHeight: 8000,
-        clientHeight: 600,
-      }),
-    ).toBe(false);
-  });
-
-  it("does not yank after the user has escaped", () => {
-    expect(
-      shouldForcePinnedSnapOnOpen({
-        pinned: false,
-        forceOpenSnap: true,
-        escaped: true,
-      }),
-    ).toBe(false);
-    expect(
-      shouldForcePinnedSnapOnOpen({
-        pinned: true,
-        forceOpenSnap: false,
-      }),
-    ).toBe(false);
-  });
-
-  it("delegates transcript writes to the controller instead of assigning", () => {
+describe("resident list delegates transcript writes", () => {
+  it("hands measured heights and restores to the controller, never assigns", () => {
     const src = readFileSync(
       join(
         dirname(fileURLToPath(import.meta.url)),
-        "../hooks/useChatMessageVirtualizer.ts",
+        "../hooks/useChatResidentList.ts",
       ),
       "utf8",
     );
-    expect(src).toContain("controller?.pinToEnd(");
+    expect(src).toContain("controller?.reportRowHeight(");
     expect(src).toContain("controller?.restoreLayout()");
     expect(src).not.toContain("applyScrollTopTraced");
   });

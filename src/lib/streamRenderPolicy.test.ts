@@ -1,13 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  CHAT_VIRTUALIZE_THRESHOLD_PERF,
-  isStreamPerfActive,
   resolveStreamFlushMs,
   resolveStreamMarkdownParseMs,
-  resolveStreamOverscanScale,
   resolveMarkdownPaintSource,
   resolveTranscriptContentNotifyMs,
-  setStreamPerfActive,
   shouldPlayWallpaperVideo,
   shouldSyncStreamPerfDataset,
   shouldUsePlainStreamBody,
@@ -18,11 +14,6 @@ import {
 } from "./streamRenderPolicy";
 
 describe("streamRenderPolicy", () => {
-  it("virtualize threshold is early enough for multi-turn agent chats", () => {
-    expect(CHAT_VIRTUALIZE_THRESHOLD_PERF).toBeLessThanOrEqual(24);
-    expect(CHAT_VIRTUALIZE_THRESHOLD_PERF).toBeGreaterThanOrEqual(12);
-  });
-
   it("never drops to plain stream body (keeps live markdown)", () => {
     expect(shouldUsePlainStreamBody(100, true)).toBe(false);
     expect(
@@ -61,15 +52,6 @@ describe("streamRenderPolicy", () => {
     expect(resolveMarkdownPaintSource(false, "final", "final")).toBe("final");
   });
 
-  it("overscan scale shrinks only while streaming", () => {
-    expect(resolveStreamOverscanScale(false, 12)).toBe(1);
-    expect(resolveStreamOverscanScale(true, 12)).toBeLessThan(1);
-    expect(resolveStreamOverscanScale(true, 16)).toBeLessThan(1);
-    expect(resolveStreamOverscanScale(true, 12)).toBeLessThan(
-      resolveStreamOverscanScale(true, 16),
-    );
-  });
-
   it("content notify ms scales with hardware concurrency", () => {
     expect(resolveTranscriptContentNotifyMs(4)).toBeGreaterThanOrEqual(
       TRANSCRIPT_CONTENT_NOTIFY_MS,
@@ -86,15 +68,6 @@ describe("streamRenderPolicy", () => {
     expect(shouldPlayWallpaperVideo({})).toBe(true);
     expect(shouldPlayWallpaperVideo({ visibilityState: "visible" })).toBe(true);
     expect(shouldPlayWallpaperVideo({ visibilityState: "hidden" })).toBe(false);
-  });
-
-  it("tracks stream-perf in a module flag for overscan without requiring html attrs (#1158)", () => {
-    setStreamPerfActive(false);
-    expect(isStreamPerfActive()).toBe(false);
-    setStreamPerfActive(true);
-    expect(isStreamPerfActive()).toBe(true);
-    setStreamPerfActive(false);
-    expect(isStreamPerfActive()).toBe(false);
   });
 
   it("skips html data-stream-perf sync while wallpaper is active (#1158)", () => {
