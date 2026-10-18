@@ -1,0 +1,135 @@
+src/hooks/useChatViewportController.ts
+  s_8f245a373e1506::t_e05650645397b5 1244
+  s_8f245a373e1506::t_923bd3254ce4c4 122,126,132
+  s_6ff597d32285f6::t_4eaff93c7dec85 1241
+  s_d3e1371cd7fd26::t_9ebda0ec6e8e8d 1237,1240,1242-1243
+  s_d3e1371cd7fd26::t_8fff33bc3028e9 121,123-125,127-131,133-137
+src/lib/toolStepsAutoCollapsePref.test.ts
+  s_d3e1371cd7fd26::t_aed1db79b5ee5f 6,10
+  s_d3e1371cd7fd26::t_f32b3451ce4292 143-203
+docs/llm-wiki/session-continuity.md
+  s_8f245a373e1506::t_57729656ac456b 361-363
+  s_d3e1371cd7fd26::t_052ccf533abedd 332,334-338,344-352
+  s_d3e1371cd7fd26::t_8b9711b0873fe5 353-358
+src/lib/toolStepsAutoCollapsePref.ts
+  s_d3e1371cd7fd26::t_c7e1afac5d676f 104-146
+src/lib/chatViewportLedger.ts
+  s_d3e1371cd7fd26::t_9868ed2cd0eaf1 185
+  s_8f245a373e1506::t_d811e60eef3227 336-339,343-351,361-362
+  s_d3e1371cd7fd26::t_05c7207a106507 114-117,120-125
+  s_d3e1371cd7fd26::t_3a50b9c5bab16b 288
+  s_d3e1371cd7fd26::t_bff39f22bcd28a 340-342,353-354
+  s_d3e1371cd7fd26::t_ad7fb2bb5ff9c5 92-97
+  s_d3e1371cd7fd26::t_8cd07ab974554e 249-256
+  s_d3e1371cd7fd26::t_3d7d7fd6f1204f 365-369
+  s_d3e1371cd7fd26::t_ff660d2dbf981a 42-48
+  s_8f245a373e1506::t_3103bcd76ddb99 100-113,118-119
+  s_d3e1371cd7fd26::t_436a06835d6ee3 206-207,211
+src/lib/chatRowCollapse.test.ts
+  s_8f245a373e1506::t_dd994e4241dfa4 1,6-9,11,13-14,16-17,19-24,26-29,31-36,38-41,43-48,50-51,68,73-74,77-84,87,89-92,94-95,97,100,115,124-126,139-141,143-146,148-153,155
+  s_d3e1371cd7fd26::t_ea156116ea5d97 2,5,10,12,15,18,25,30,37,42,49,52-67,69-72,75-76,85-86,88,93,96,98-99,101-114,116-123,127-138,142,147,154
+  s_d3e1371cd7fd26::t_539e516ddf9317 157-180
+  s_d3e1371cd7fd26::t_f599bb088cad4a 3-4
+src/hooks/useChatViewportController.test.tsx
+  s_d3e1371cd7fd26::t_a995288482591e 618-644
+  s_d3e1371cd7fd26::t_b5a9baa729ddd2 593,595
+  s_d3e1371cd7fd26::t_538825874f133a 717-759
+  s_8f245a373e1506::t_67d8f58351dfbf 611-617
+src/lib/timelinePhases.ts
+  s_d3e1371cd7fd26::t_75bc69dfaae35a 83-85
+src/lib/chatViewportController.test.ts
+  s_d3e1371cd7fd26::t_9cd3894cc7d2c5 356-382
+src/lib/chatViewportController.ts
+  s_d3e1371cd7fd26::t_42397215dfefde 358-364
+src/lib/chatViewportLedger.test.ts
+  s_8f245a373e1506::t_5c68c8a5dd4a0f 235-305,365-366
+  s_d3e1371cd7fd26::t_6cb8ce68bcaeda 306-364
+src/hooks/useChatResidentList.test.tsx
+  s_d3e1371cd7fd26::t_6023ede03ec97c 272-273,282,296,305-340,346-348,357,382
+  s_e4ea3552f322ba::t_5297abec3875ab 23
+  s_d3e1371cd7fd26::t_b4c29b671d6e82 8
+  s_d3e1371cd7fd26::t_4afc244467e7bd 20,22,24-29
+  s_8f245a373e1506::t_e864953cfd8c49 267-271,274-281,283-295,297-302,341-345,349-356,358-381,383-392
+  s_d3e1371cd7fd26::t_bc7b551c584bb9 50-78
+  s_8f245a373e1506::t_03834a50eb0eb2 30
+src/hooks/chatResidentListShared.ts
+  s_8f245a373e1506::t_6b6ae8cf28be15 28,38,40,42,45-46
+  s_d3e1371cd7fd26::t_82f760056a4649 29-37,39,41,43-44,47-56
+src/components/lobe-chat/Thinking.tsx
+  s_d3e1371cd7fd26::t_34e0f67201ead2 30-33
+  s_d3e1371cd7fd26::t_8001f49ee33975 80
+src/components/lobe-chat/ConversationThread.tsx
+  s_d3e1371cd7fd26::t_58b2596a61791b 117-120
+  s_d3e1371cd7fd26::t_e5e31fca2404d6 2718-2722,2724-2728,2730-2734,2739-2744,2746-2751,2767-2768
+  s_8f245a373e1506::t_5be7693840f549 2717,2723,2729,2735-2738,2745,2752-2754
+  s_d3e1371cd7fd26::t_0ee112a09d697b 127
+  s_8f245a373e1506::t_82e47582623456 796-802
+src/lib/chatRowCollapse.ts
+  s_8f245a373e1506::t_9a53947122ae0a 1-5,10,17-20,24,40-42,44,50-52,56,71-72,87,105
+  s_d3e1371cd7fd26::t_05e361495cf3b3 6-9,11-16,21-23,25-39,43,45-49,53-55,57-70,73-86,88-104
+src/lib/chatResidentBand.test.ts
+  s_d3e1371cd7fd26::t_188b7dc9e47e64 186
+  s_8f245a373e1506::t_016e030aed91d7 155-173
+  s_d3e1371cd7fd26::t_6a3ac074a1f891 174-185,187-191
+src/hooks/useChatResidentList.ts
+  s_8f245a373e1506::t_7852b262db7ecb 127
+  s_d3e1371cd7fd26::t_e3aaadd790d94d 326
+  s_d3e1371cd7fd26::t_c93374dfa01049 353,355-356,358,361-374,377-380,382-392,394-397
+  s_e4ea3552f322ba::t_91d87092052fab 359
+  s_d3e1371cd7fd26::t_f93e7cd6fa77d8 68-77
+  s_8f245a373e1506::t_43dd3b083f341a 360,375-376,381,393,398-402
+  s_d3e1371cd7fd26::t_0370fc52d2db72 126,134-135
+  s_d3e1371cd7fd26::t_e232e2daef17e3 192-196,198-202
+  s_d3e1371cd7fd26::t_e7ef69a7b66791 278-283
+  s_d3e1371cd7fd26::t_5cd2474cf6e883 208-213,226-237
+  s_d3e1371cd7fd26::t_50d25ca8ef1b07 308,311-316,319,321
+  s_8f245a373e1506::t_7c5a368e91149f 191,197
+src/lib/chatResidentBand.ts
+  s_8f245a373e1506::t_37387be9344690 157-159
+  s_8f245a373e1506::t_03d9aa4018714b 101-104
+  s_8f245a373e1506::t_b8425a66294ad2 138
+  s_d3e1371cd7fd26::t_d2768dd53328f0 201-204
+  s_8f245a373e1506::t_c704d9ed29d608 197-199
+  s_8f245a373e1506::t_cf7bf743d0c8a7 109-115,120,123-124
+  s_d3e1371cd7fd26::t_06cde27b941eab 125-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "1fe7c938c7c6b6335c1e4aac2bb8e733c195286c",
+  "prompts": {},
+  "sessions": {
+    "s_6ff597d32285f6": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14ef7-28c0-71f2-b95e-c7910867da16",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_8f245a373e1506": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f8d-25e8-7a11-a31c-7df482a989d8",
+        "model": "auto(free)"
+      },
+      "human_author": null
+    },
+    "s_d3e1371cd7fd26": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14fa7-83e4-7ad3-a582-a4cfcf395fdb",
+        "model": "auto(free)"
+      },
+      "human_author": null
+    },
+    "s_e4ea3552f322ba": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f2b-17c5-7622-87e0-3bd161420d7c",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
