@@ -15,10 +15,10 @@ Map skill vocabulary to Linear state **by statusType**, never by hardcoded names
 
 | Skill says | Linear statusType | Status in BOR today |
 | --- | --- | --- |
-| 未开始 / not started | `unstarted` | `Todo` |
-| 进行中 / in progress | `started` | `In Progress` |
-| 待评审 | `started` | `In Review` |
-| 已完成 / done | `completed` | `Done` |
+| not started | `unstarted` | `Todo` |
+| in progress | `started` | `In Progress` |
+| in review | `started` | `In Review` |
+| done | `completed` | `Done` |
 
 Use `linear__list_issue_statuses` before setting a state; the statuses above are what the team has today, not a contract.
 
