@@ -225,6 +225,58 @@ describe("useChatResidentList", () => {
     expect(result.current.bandStore.isRich(0)).toBe(false);
   });
 
+  it("keeps every row crossing the viewport real through a far jump and a shell fold", () => {
+    // Arrange: 100px rows, a 600px viewport, follow released, row 150 tracked.
+    const viewport = makeViewport(0, 600);
+    const { controller, ledger, notifyPosition } = makeController();
+    const isPinnedRef = { current: false };
+    const folds = makeFoldSource();
+    folds.set(150, { hasActivity: true, expanded: true });
+
+    const { result, rerender } = renderHook(
+      ({ rev }) =>
+        useChatResidentList({
+          itemCount: 300,
+          getEstimateHeight: () => 100,
+          viewportRef: { current: viewport },
+          isPinnedRef,
+          controller,
+          getActivityFold: folds.get,
+          activityRevision: rev,
+        }),
+      { initialProps: { rev: 1 } },
+    );
+
+    // Row 150 was measured expanded while it was rich (500px, not the estimate).
+    const row = document.createElement("div");
+    row.getBoundingClientRect = () => ({ height: 500 }) as DOMRect;
+    act(() => result.current.measureRef(150)(row));
+    expect(ledger().heightOf(150)).toBe(500);
+
+    const crossingRows = (scrollTop: number, clientHeight: number): number[] => {
+      const first = ledger().indexAtOffset(scrollTop);
+      const last = ledger().indexAtOffset(scrollTop + clientHeight);
+      return Array.from({ length: last - first + 1 }, (_, n) => first + n);
+    };
+    const allRich = (rows: readonly number[]): boolean =>
+      rows.every((i) => result.current.bandStore.isRich(i));
+
+    // Act 1: a far jump lands near the tail; the write path re-bands first.
+    viewport.scrollTop = 20_000;
+    act(() => notifyPosition());
+
+    // Assert 1: a shell was not painted inside the band by the jump.
+    expect(allRich(crossingRows(20_000, 600))).toBe(true);
+
+    // Act 2: the tracked shell folds while it is far above the viewport.
+    act(() => folds.set(150, { hasActivity: true, expanded: false }));
+    act(() => rerender({ rev: 2 }));
+
+    // Assert 2: the fold re-seeded the shell and left the band real.
+    expect(ledger().heightOf(150)).toBe(100);
+    expect(allRich(crossingRows(20_000, 600))).toBe(true);
+  });
+
   it("tracks a collapse and a re-growth in the shell height and the total", () => {
     // Arrange
     const viewport = makeViewport(0, 400);
