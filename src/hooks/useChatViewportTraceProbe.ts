@@ -17,14 +17,17 @@
  * Cost when disabled: one cached boolean check, no rAF loop, no listeners.
  */
 
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import {
   anchorScreenShift,
   chatTraceSessionId,
   chatViewportTraceEnabled,
+  chatViewportTraceEvents,
   chatViewportWriteStats,
   distanceToContentEnd,
   dumpChatViewportTrace,
+  frameCostSummary,
+  frameWriteSummary,
   isBackwardViewportMove,
   isSuspiciousUpwardJump,
   lastPinFlipCause,
@@ -68,6 +71,14 @@ const HEARTBEAT_MS = 10_000;
 const FALLBACK_SAMPLE_MS = 1000;
 /** Cadence of the live follower published for an external tracking session. */
 const LIVE_FOLLOW_MS = 250;
+
+/** The layout ledger's footprint the ledger-memory budget is read against. */
+export type LedgerStatsSnapshot = {
+  /** Rows the ledger currently holds. */
+  rows: number;
+  /** The ledger's typed-array footprint in bytes. */
+  memoryBytes: number;
+};
 
 function firstVisibleRowIndex(
   viewport: HTMLElement,
@@ -131,9 +142,24 @@ export function useChatViewportTraceProbe(input: {
   anchorRef?: RefObject<EscapedAnchorElement | null>;
   /** The chat's own session/conversation id, for correlating a viewport run. */
   sessionId?: string | null;
+  /**
+   * The layout ledger's footprint, for the ledger-memory budget on the
+   * heartbeat. Read only while the trace is on; the probe keeps the latest
+   * getter in a ref so its identity cannot re-run the effect.
+   */
+  getLedgerStats?: () => LedgerStatsSnapshot | null;
 }): void {
-  const { viewportRef, isPinnedRef, escapedRef, contentRef, anchorRef, sessionId } =
-    input;
+  const {
+    viewportRef,
+    isPinnedRef,
+    escapedRef,
+    contentRef,
+    anchorRef,
+    sessionId,
+    getLedgerStats,
+  } = input;
+  const getLedgerStatsRef = useRef(getLedgerStats);
+  getLedgerStatsRef.current = getLedgerStats;
 
   useEffect(() => {
     if (!chatViewportTraceEnabled()) return;
@@ -162,6 +188,11 @@ export function useChatViewportTraceProbe(input: {
     let lastWriteSource: string | null = null;
     let prevWriteCount = chatViewportWriteStats().writes;
     let writesSinceHeartbeat = 0;
+    /**
+     * Paint-boundary callback durations for the current heartbeat window (ms).
+     * Reset on every heartbeat, so the aggregate covers one 10s window.
+     */
+    let frameCostWindow: number[] = [];
     let sampled = 0;
     let backwardCount = 0;
     let cancelled = false;
@@ -421,7 +452,12 @@ export function useChatViewportTraceProbe(input: {
       // estimate: a refresh-rate change (120 Hz ↔ 60 Hz) or a cross-display
       // move then shows up in the heartbeat without a separate timer.
       noteAnimationFrame(performance.now());
+      // The delivery's own work at the paint boundary — the band / shell check,
+      // the geometry walk and the app callbacks that share this tick. It is the
+      // per-frame cost the app can measure from inside; see the field legend.
+      const frameStartedAt = performance.now();
       takeSample("raf");
+      frameCostWindow.push(performance.now() - frameStartedAt);
       raf = requestAnimationFrame(frame);
     };
 
@@ -526,6 +562,11 @@ export function useChatViewportTraceProbe(input: {
         });
       }
       lastNominalRefreshHz = nominalHz;
+      // The frame-cost window and the ledger footprint for this heartbeat. The
+      // window resets so the aggregate covers one 10s interval.
+      const frameCost = frameCostSummary(frameCostWindow);
+      const ledgerStats = getLedgerStatsRef.current?.() ?? null;
+      frameCostWindow = [];
       // A dump, not a bare status line: the per-frame samples (distance to the
       // content end, visible-band shift, write sources) only reach the log
       // through a dump, so a session with no trigger would otherwise keep them
@@ -533,6 +574,20 @@ export function useChatViewportTraceProbe(input: {
       // anchors on.
       traceViewport("heartbeat", {
         ...geometry(),
+        // The spec's per-frame write budget, read off the paint-boundary frames:
+        // the peak and how many frames exceeded one write. This is what the
+        // manual macOS pass reads to confirm "≤ 1 position write per frame".
+        ...frameWriteSummary(chatViewportTraceEvents()),
+        // The measured frame cost over the window, against the 120Hz budget.
+        ...frameCost,
+        // The ledger-memory budget (absolute footprint, not a delta). Absent
+        // when no ledger getter was supplied.
+        ...(ledgerStats
+          ? {
+              ledgerMemoryBytes: ledgerStats.memoryBytes,
+              ledgerRows: ledgerStats.rows,
+            }
+          : {}),
         sampled,
         mutations,
         backward: backwardCount,

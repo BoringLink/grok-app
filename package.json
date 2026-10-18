@@ -39,6 +39,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint src --max-warnings 0",
+    "measure:chat-first-frame": "node scripts/measure-chat-first-frame.mjs",
+    "measure:chat-scroll": "node scripts/measure-chat-scroll.mjs",
+    "scenarios:chat-viewport": "node scripts/run-chat-viewport-scenarios.mjs",
     "chatcut:start": "node scripts/chatcut-plugin-start.mjs",
     "chatcut:fetch": "node scripts/chatcut-plugin-start.mjs --fetch"
   },

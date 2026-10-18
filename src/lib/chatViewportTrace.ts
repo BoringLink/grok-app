@@ -572,6 +572,83 @@ export function chatViewportWriteStats(): {
 }
 
 /**
+ * Per-frame transcript position-write summary over the recorded sample frames.
+ *
+ * The spec's budget is at most one `scrollTop` write per frame during a scroll
+ * (one layout read plus one position write). Each frame sample carries `w`, the
+ * writes it saw, so the two headline numbers of a captured scroll — the peak
+ * and how many frames exceeded it — read straight off the ring or a dumped
+ * heartbeat without a manual scan.
+ *
+ * Only paint-boundary (`by: "raf"`) frames are counted. A timer fallback
+ * sample (`by: "fallback"`) covers roughly a second at once, so it would report
+ * several writes for a single "frame" and make `framesOverWriteBudget`
+ * non-zero on a backgrounded window that never violated the budget.
+ */
+export type FrameWriteSummary = {
+  /** Paint-boundary sample frames counted. */
+  writeFrames: number;
+  /** Largest number of transcript writes any one counted frame carried. */
+  maxWritesPerFrame: number;
+  /** Frames that carried more than one write — the budget is zero of these. */
+  framesOverWriteBudget: number;
+};
+
+export function frameWriteSummary(
+  events: readonly ViewportTraceEvent[],
+): FrameWriteSummary {
+  return events.reduce<FrameWriteSummary>(
+    (summary, event) => {
+      if (event.kind !== "sample" || event.by !== "raf") return summary;
+      const writes = typeof event.w === "number" ? event.w : 0;
+      return {
+        writeFrames: summary.writeFrames + 1,
+        maxWritesPerFrame: Math.max(summary.maxWritesPerFrame, writes),
+        framesOverWriteBudget:
+          summary.framesOverWriteBudget + (writes > 1 ? 1 : 0),
+      };
+    },
+    { writeFrames: 0, maxWritesPerFrame: 0, framesOverWriteBudget: 0 },
+  );
+}
+
+/** The 120Hz frame budget the viewport's frame cost is judged against (ms). */
+export const FRAME_BUDGET_MS = 8.3;
+
+/** Aggregate frame cost over a window of paint-boundary rAF callbacks. */
+export type FrameCostSummary = {
+  /** Largest single-frame callback duration in the window (ms). */
+  frameCostMaxMs: number;
+  /** 90th-percentile frame callback duration in the window (ms). */
+  frameCostP90Ms: number;
+  /** Frames whose measured cost exceeded {@link FRAME_BUDGET_MS}. */
+  framesOverFrameBudget: number;
+};
+
+/**
+ * Aggregate the paint-boundary callback durations the probe measured over one
+ * heartbeat window. The value is the delivery's own work per frame at the rAF
+ * boundary — a lower bound on the frame's main-thread cost; see the field
+ * legend in `docs/llm-wiki/chat-viewport-trace.md`.
+ */
+export function frameCostSummary(
+  durationsMs: readonly number[],
+): FrameCostSummary {
+  if (durationsMs.length === 0) {
+    return { frameCostMaxMs: 0, frameCostP90Ms: 0, framesOverFrameBudget: 0 };
+  }
+  const sorted = [...durationsMs].sort((a, b) => a - b);
+  const p90 =
+    sorted[Math.min(sorted.length - 1, Math.floor(0.9 * (sorted.length - 1)))];
+  return {
+    frameCostMaxMs: round2(sorted[sorted.length - 1]),
+    frameCostP90Ms: round2(p90),
+    framesOverFrameBudget: sorted.filter((value) => value > FRAME_BUDGET_MS)
+      .length,
+  };
+}
+
+/**
  * Send a compact trace payload (a heartbeat, not the event ring) to the Host
  * log. Silent when not under Tauri.
  */

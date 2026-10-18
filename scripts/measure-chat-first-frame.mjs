@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Measure the first-frame cost of opening a 10k-row conversation.
  *
@@ -9,22 +10,16 @@
  * animation frame after it.
  *
  * It does NOT run the packaged app on WKWebView, so it cannot report a number
- * for the macOS client's own first frame; it bounds the frontend work.
+ * for the macOS client's own first frame; it bounds the frontend work. The
+ * ledger's own footprint at this scale is reported by `measure-chat-scroll.mjs`
+ * and, in the packaged client, on the trace heartbeat.
  *
  *   node scripts/measure-chat-first-frame.mjs [rows]
  */
 
-import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { createServer } from "node:http";
-import { join, resolve, extname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { withChromeHarness } from "./lib/chatHeadlessHarness.mjs";
 
-const REPO = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const ROWS = Number(process.argv[2] || 10_000);
-const CHROME =
-  process.env.CHROME_PATH ||
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 const ENTRY = `
 import { createRoot } from "react-dom/client";
@@ -137,192 +132,26 @@ requestAnimationFrame(() =>
 );
 `;
 
-function run(command, args, { onStderr } = {}) {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let stderr = "";
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-      onStderr?.(stderr);
-    });
-    child.on("error", rejectPromise);
-    child.on("exit", (code) => {
-      if (code === 0) resolvePromise(stderr);
-      else rejectPromise(new Error(`${command} exited ${code}\n${stderr}`));
-    });
-  });
-}
+try {
+  const result = await withChromeHarness(ENTRY, (page) =>
+    page.waitFor(
+      "({ms: window.__FIRST_FRAME_MS ?? null, rows: window.__ROW_COUNT ?? null, appMount: window.__APP_RENDERS_AT_MOUNT__ ?? null, appScroll: window.__APP_RENDERS_AFTER_SCROLL__ ?? null, rowRenders: window.__ROW_RENDERS_DURING_SCROLL__ ?? null, err: window.__ERR__ ?? null})",
+      (value) => value?.appScroll != null,
+    ),
+  );
 
-async function main() {
-  // Keep the harness inside the repo's node_modules so bare imports resolve.
-  const cacheRoot = join(REPO, "node_modules/.cache");
-  mkdirSync(cacheRoot, { recursive: true });
-  const dir = mkdtempSync(join(cacheRoot, "chat-first-frame-"));
-  try {
-    writeFileSync(join(dir, "entry.jsx"), ENTRY);
-    const { build } = await import("vite");
-    await build({
-      root: REPO,
-      logLevel: "warn",
-      resolve: { alias: { "@": join(REPO, "src") } },
-      esbuild: { jsx: "automatic" },
-      define: {
-        "process.env.NODE_ENV": '"production"',
-        "import.meta.env.DEV": "false",
-      },
-      build: {
-        outDir: dir,
-        emptyOutDir: false,
-        minify: false,
-        lib: { entry: join(dir, "entry.jsx"), formats: ["es"], fileName: "harness" },
-      },
-    });
-    writeFileSync(
-      join(dir, "index.html"),
-      `<!doctype html><html><body>
-<script>
-window.__ERR__ = null;
-window.addEventListener("error", (e) => { window.__ERR__ = String((e.error && e.error.stack) || e.message); });
-window.addEventListener("unhandledrejection", (e) => { window.__ERR__ = String((e.reason && e.reason.stack) || e.reason); });
-</script>
-<script type="module" src="./harness.js"></script>
-</body></html>`,
-    );
-
-    const port = 9200 + Math.floor(Math.random() * 500);
-    const chrome = spawn(CHROME, [
-      "--headless=new",
-      "--disable-gpu",
-      "--no-sandbox",
-      `--remote-debugging-port=${port}`,
-      "--user-data-dir=" + join(dir, "profile"),
-      "about:blank",
-    ]);
-
-    const server = await serveDir(dir);
-    try {
-      const ws = await waitForDevtools(port);
-      const result = await evaluateFirstFrame(
-        ws,
-        `http://127.0.0.1:${server.port}/index.html`,
-      );
-      console.log(
-        `first-frame: ${result.ms.toFixed(0)}ms for ${result.rows} rows (${ROWS} expected)`,
-      );
-      console.log(
-        `parent renders: ${result.appMount} at mount, ${result.appScroll} after 40 scroll frames`,
-      );
-      console.log(
-        `row re-renders during those 40 scroll frames: ${result.rowRenders}`,
-      );
-    } finally {
-      chrome.kill("SIGKILL");
-      server.close();
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-const CONTENT_TYPES = {
-  ".html": "text/html",
-  ".js": "text/javascript",
-  ".css": "text/css",
-};
-
-function serveDir(dir) {
-  return new Promise((resolvePromise) => {
-    const server = createServer((req, res) => {
-      const name = decodeURIComponent((req.url || "/").split("?")[0]);
-      const file = join(dir, name === "/" ? "index.html" : name.slice(1));
-      try {
-        const body = readFileSync(file);
-        res.writeHead(200, {
-          "content-type": CONTENT_TYPES[extname(file)] || "application/octet-stream",
-        });
-        res.end(body);
-      } catch {
-        res.writeHead(404);
-        res.end("not found");
-      }
-    });
-    server.listen(0, "127.0.0.1", () => {
-      resolvePromise({
-        port: server.address().port,
-        close: () => server.close(),
-      });
-    });
-  });
-}
-
-async function waitForDevtools(port) {
-  for (let i = 0; i < 100; i++) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/json/version`);
-      const info = await res.json();
-      return new WebSocket(info.webSocketDebuggerUrl);
-    } catch {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-  throw new Error("Chrome devtools endpoint never came up");
-}
-
-function evaluateFirstFrame(browserWs, url) {
-  return new Promise((resolvePromise, rejectPromise) => {
-    let id = 0;
-    const pending = new Map();
-    const send = (sessionId, method, params) =>
-      new Promise((res) => {
-        const msgId = ++id;
-        pending.set(msgId, res);
-        browserWs.send(JSON.stringify({ id: msgId, method, params, sessionId }));
-      });
-
-    browserWs.addEventListener("message", (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.id && pending.has(msg.id)) {
-        pending.get(msg.id)(msg.result);
-        pending.delete(msg.id);
-      }
-    });
-    browserWs.addEventListener("error", rejectPromise);
-
-    browserWs.addEventListener("open", async () => {
-      const { targetId } = await send(undefined, "Target.createTarget", {
-        url: "about:blank",
-      });
-      const { sessionId } = await send(undefined, "Target.attachToTarget", {
-        targetId,
-        flatten: true,
-      });
-      await send(sessionId, "Runtime.enable");
-      await send(sessionId, "Page.enable");
-      await send(sessionId, "Page.navigate", { url });
-
-      for (let i = 0; i < 300; i++) {
-        const evalRes = await send(sessionId, "Runtime.evaluate", {
-          expression:
-            "({ms: window.__FIRST_FRAME_MS ?? null, rows: window.__ROW_COUNT ?? null, appMount: window.__APP_RENDERS_AT_MOUNT__ ?? null, appScroll: window.__APP_RENDERS_AFTER_SCROLL__ ?? null, rowRenders: window.__ROW_RENDERS_DURING_SCROLL__ ?? null, err: window.__ERR__ ?? null})",
-          returnByValue: true,
-        });
-        const value = evalRes?.result?.value;
-        if (value?.err) {
-          rejectPromise(new Error("harness error: " + value.err));
-          return;
-        }
-        if (value?.appScroll != null) {
-          resolvePromise(value);
-          return;
-        }
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      rejectPromise(new Error("first-frame value never appeared"));
-    });
-  });
-}
-
-main().catch((err) => {
-  console.error(err);
+  console.log(
+    `first-frame: ${result.ms.toFixed(0)}ms for ${result.rows} rows (${ROWS} expected)`,
+  );
+  console.log(
+    `parent renders: ${result.appMount} at mount, ${result.appScroll} after 40 scroll frames`,
+  );
+  console.log(
+    `row re-renders during those 40 scroll frames: ${result.rowRenders}`,
+  );
+} catch (error) {
+  console.error(
+    `chat-first-frame: ${error instanceof Error ? error.message : error}`,
+  );
   process.exitCode = 1;
-});
+}

@@ -2855,6 +2855,11 @@ export function ConversationThread({
     contentRef,
     anchorRef,
     sessionId,
+    // The ledger footprint for the ledger-memory budget on the heartbeat.
+    getLedgerStats: () => ({
+      rows: viewportController.ledger().rowCount(),
+      memoryBytes: viewportController.ledger().stats().memoryBytes,
+    }),
   });
 
   useLayoutEffect(() => {

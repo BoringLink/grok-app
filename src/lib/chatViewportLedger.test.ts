@@ -224,11 +224,25 @@ describe("height tiers", () => {
     // Assert
     expect(writes).toEqual([false, false, false, false, false]);
     expect(ledger.totalHeight()).toBe(360);
-    expect(ledger.stats()).toEqual({
+    expect(ledger.stats()).toMatchObject({
       rebuilds: 0,
       rebuiltRows: 0,
       shiftedRows: 0,
     });
+  });
+
+  it("reports the exact typed-array footprint of its storage", () => {
+    // Arrange — 10k rows at the spec's design scale.
+    const ledger = createLayoutLedger({ count: 10_000, estimateHeight: 120 });
+
+    // Act
+    const { memoryBytes } = ledger.stats();
+
+    // Assert — heights + offsets (count + 1) + sources + generations, i.e.
+    // 8 + 8 + 1 + 8 bytes per row plus the extra offset slot. ~250KB, far under
+    // the spec's 20MB ledger budget.
+    expect(memoryBytes).toBe(10_000 * 25 + 8);
+    expect(memoryBytes).toBeLessThan(20 * 1024 * 1024);
   });
 });
 
@@ -489,7 +503,7 @@ describe("incremental rebuild", () => {
     ledger.applyRowHeights(burst);
 
     // Assert
-    expect(ledger.stats()).toEqual({
+    expect(ledger.stats()).toMatchObject({
       rebuilds: 1,
       rebuiltRows: BURST,
       shiftedRows: COUNT - (BASE + BURST),
@@ -505,7 +519,7 @@ describe("incremental rebuild", () => {
 
     // Assert
     expect(changed).toBe(true);
-    expect(ledger.stats()).toEqual({
+    expect(ledger.stats()).toMatchObject({
       rebuilds: 1,
       rebuiltRows: 1,
       shiftedRows: COUNT - 1,

@@ -92,6 +92,18 @@ The latest distance / shift / `pinned` / `escaped` / write source and the write
 count also ride the heartbeat event (inside that dump) and the `tracking-live`
 payload as a live tail.
 
+### What the write count covers
+
+`chatViewportWriteStats` (and the per-frame `w` on a sample) counts only writes
+that go through the traced funnel — `applyScrollTopTraced` / `traceScrollTopWrite`,
+which is the controller's single transcript position write (ADR 0006). A raw
+`scrollTop =` assignment somewhere else would therefore read as **zero** writes,
+not as a violation. That case is covered by a different guard:
+`src/lib/chatViewportWriteSources.guard.test.ts` scans every transcript-surfacing
+source file and fails if any writer other than the controller assigns a
+position. Read the budget as "the controller wrote at most once per frame", and
+the guard as "the controller is still the only writer".
+
 ## Pin / escape flip causes
 
 Every pin/escape flip records a normalized `cause` (`tracePinState`):
@@ -144,6 +156,11 @@ Key event `reason`s:
 
 - `tracking-begin` (probeVersion 4): mount marker with `session`, `chatSession`
   (the app's conversation id), rows/geometry, clientHeight, pinned.
+- `first-frame` (ring) / `chat-first-frame` (host publish): the resident list
+  emits this once per conversation open, from a layout effect, with `ms`
+  (`render()` → the first `requestAnimationFrame` after it), `rows`, `scrollTop`,
+  `scrollHeight`, `clientHeight`. This is the first-frame budget read-out for
+  the packaged client (ticket 05).
 - `tracking-live`: compact geometry each `LIVE_FOLLOW_MS` (250 ms) while moving —
   `scrollTop`, `scrollHeight`, `clientHeight`, `distFromBottom`, `index`, `dTop`,
   `dHeight`, `peakTopMove`, `pinned`, `escaped`. This is the frame-level
@@ -156,7 +173,21 @@ Key event `reason`s:
 - `heartbeat`: every 10 s. Publishes a dump (anchored on the heartbeat event)
   of the recent per-frame samples, so a session with no backward move still
   leaves its per-frame distance / shift / follow state / write source in the
-  log. Also proves liveness when the capture found nothing.
+  log. Also proves liveness when the capture found nothing. It carries the
+  three budget read-outs the manual pass confirms AC1/AC2 with:
+  - `writeFrames` / `maxWritesPerFrame` / `framesOverWriteBudget` — the
+    per-frame position-write summary (`frameWriteSummary`) over the counted
+    paint-boundary (`by: "raf"`) frames; `framesOverWriteBudget` must be 0.
+    Timer fallback samples are excluded: one covers ~1 s of writes and would
+    report a spurious violation.
+  - `frameCostMaxMs` / `frameCostP90Ms` / `framesOverFrameBudget` — the frame
+    cost the probe measured in its own rAF callback over this 10 s window
+    (`frameCostSummary`), against the 120Hz budget of 8.3 ms. It is the
+    delivery's paint-boundary work per frame (a lower bound on the frame's
+    main-thread cost); `framesOverFrameBudget` should be 0.
+  - `ledgerMemoryBytes` / `ledgerRows` — the layout ledger's absolute
+    typed-array footprint and its row count, so the ledger-memory budget is
+    readable without measuring a delta.
 - `viewport-moved-to-older-message` / `viewport-jumped-up` / `viewport-native-jumped-up`:
   the suspicious backward moves you are hunting, published as cause-chain dumps.
 - `occlusion`: paint availability changed. `state: "enter"` when the window

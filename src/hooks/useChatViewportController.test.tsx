@@ -2,7 +2,12 @@
 
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { lastPinFlipCause, resetChatViewportTrace } from "@/lib/chatViewportTrace";
+import {
+  chatViewportWriteStats,
+  lastPinFlipCause,
+  resetChatViewportTrace,
+  setChatViewportTraceEnabled,
+} from "@/lib/chatViewportTrace";
 import { STICK_BOTTOM_REBOUND_SETTLE_MS } from "@/lib/stickToBottom";
 import { useChatViewportController, type UseChatViewportControllerResult } from "./useChatViewportController";
 
@@ -422,6 +427,39 @@ describe("useChatViewportController escape policy", () => {
     });
 
     expect(harness.scrollTop()).toBe(600);
+  });
+
+  it("coalesces a frame's mutation batches into a single transcript write", async () => {
+    // Arrange — pinned, sitting off the end, with the trace counting writes.
+    resetChatViewportTrace();
+    setChatViewportTraceEnabled(true);
+    const harness = mountPinned({ scrollTop: 600, scrollHeight: 1000 });
+    harness.setScrollHeight(1200);
+    harness.setScrollTop(200);
+    const before = chatViewportWriteStats().writes;
+
+    // Act — several DOM mutations land in one microtask (one batch).
+    await act(async () => {
+      harness.content.appendChild(document.createElement("div"));
+      harness.content.appendChild(document.createElement("span"));
+    });
+
+    // Assert — the batch-end restore writes the content end exactly once.
+    expect(chatViewportWriteStats().writes - before).toBe(1);
+    expect(harness.scrollTop()).toBe(800);
+
+    // Act — a second batch before the frame latch clears.
+    harness.setScrollHeight(1500);
+    harness.setScrollTop(300);
+    await act(async () => {
+      harness.content.appendChild(document.createElement("b"));
+    });
+
+    // Assert — coalesced into the first write; the latch holds until the frame.
+    expect(chatViewportWriteStats().writes - before).toBe(1);
+
+    setChatViewportTraceEnabled(null);
+    resetChatViewportTrace();
   });
 
   it("records a button cause when the explicit control re-pins an escaped view", () => {
