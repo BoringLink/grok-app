@@ -3,6 +3,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  anchorScreenShift,
   applyScrollTopTraced,
   chatTraceSessionId,
   chatViewportTraceEnabled,
@@ -389,6 +390,52 @@ describe("visibleBandShift", () => {
       visibleBandShift([{ index: 1, top: 0 }], [{ index: 2, top: 0 }]),
     ).toBeNull();
     expect(visibleBandShift([], [{ index: 2, top: 0 }])).toBeNull();
+  });
+});
+
+describe("anchorScreenShift", () => {
+  /** Minimal connected element with a fixed `getBoundingClientRect().top`. */
+  function anchorElement(top: number, connected = true) {
+    const el = document.createElement("div");
+    Object.defineProperty(el, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ top }) as DOMRect,
+    });
+    if (connected) document.body.appendChild(el);
+    return el;
+  }
+
+  it("reports the anchor element's own screen-top shift from its recorded top", () => {
+    // Arrange
+    const element = anchorElement(140);
+
+    // Act
+    const shift = anchorScreenShift({ element, screenTop: 100 });
+
+    // Assert
+    expect(shift).toBe(40);
+  });
+
+  it("reads a negative shift when the anchor moved up", () => {
+    // Arrange
+    const element = anchorElement(80);
+
+    // Act + Assert
+    expect(anchorScreenShift({ element, screenTop: 100 })).toBe(-20);
+  });
+
+  it("returns null when no anchor is held", () => {
+    // Arrange + Act + Assert
+    expect(anchorScreenShift(null)).toBeNull();
+    expect(anchorScreenShift({ element: null, screenTop: 100 })).toBeNull();
+  });
+
+  it("returns null when the held element is disconnected", () => {
+    // Arrange — the row was re-rendered; the captured node is gone.
+    const element = anchorElement(140, false);
+
+    // Act + Assert
+    expect(anchorScreenShift({ element, screenTop: 100 })).toBeNull();
   });
 });
 

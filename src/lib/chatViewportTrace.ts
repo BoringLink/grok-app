@@ -500,6 +500,25 @@ export function visibleBandShift(
 }
 
 /**
+ * On-screen displacement (px) of a held element from the screen top recorded
+ * for it — one frame of the C3 read-out.
+ *
+ * Both the escaped restore and the sampler call this on the same source of
+ * truth (the controller's anchor ref), so the trace measures exactly the
+ * quantity the restore corrects: the captured anchor element's own screen-top
+ * shift. A row whose interior layout changed moves the anchor element even when
+ * the row's box does not, so this follows the element, not the top row.
+ * Returns null when no anchor is held or its element is gone.
+ */
+export function anchorScreenShift(anchor: {
+  element: HTMLElement | null;
+  screenTop: number;
+} | null): number | null {
+  if (!anchor || !anchor.element || !anchor.element.isConnected) return null;
+  return round2(anchor.element.getBoundingClientRect().top - anchor.screenTop);
+}
+
+/**
  * Normalize a pin/escape flip into one of {@link PinFlipCause}.
  *
  * The reason's prefix wins where it already names a gesture (`wheel-*`,

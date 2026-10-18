@@ -356,6 +356,26 @@ box height coming from the ledger. There is no moving window and no spacers.
   produces is restored by the controller's `MutationObserver` in the same task.
   This rests on React's layout-effect flush guarantee; the tests here drive the
   decision and the ledger write, not the browser's paint timing.
+- **Escaped anchor vs. decode (C3)**: a media element (image / PDF / media box)
+  finishing decode takes its rendered height with no DOM mutation carrying the
+  new size, so the `MutationObserver` cannot hold the anchor for it. The
+  controller's content `ResizeObserver` restores the escaped anchor on any
+  content-box change, in the observer callback (after layout, before paint),
+  through the frame-latched `scheduleRestore` so it stays one restore per batch.
+  A change above the anchor is compensated by the anchor's own measured
+  displacement; a change below it leaves that displacement at zero, so the
+  anchor is held and the reader is not dragged. The restore's detection, the
+  transcript write's skip and the trace's sample-worthiness all use
+  `VIEWPORT_ANCHOR_TOLERANCE_PX` (0.5px), the Spec's C1/C3 bound.
+- **The anchor is never planted inside a nested scroller**: while resolving the
+  element at the viewport top, the descent stops at the first nested scroll
+  container (the activity steps table, the thinking / fragment bodies) and takes
+  that box as the anchor. A change *inside* one of those — a decode especially —
+  moves an element within the scroller without resizing the scroller's box, so
+  neither the content `ResizeObserver` nor the `MutationObserver` would report
+  it; anchoring on a box whose position the transcript controls keeps the
+  invariant enforceable. The interior of a nested scroller is that scroller's
+  own reading surface, exactly as it is for its `scrollTop`.
 - The viewport controller (`useChatViewportController`, ADR-0006) is the single
   `scrollTop` writer; the resident list only reports measured heights and asks
   it to restore the pinned/anchor invariant. Nested scrollers (thinking body,

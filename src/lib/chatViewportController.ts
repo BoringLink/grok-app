@@ -37,6 +37,16 @@ import {
 /** Which state the viewport is in, per `CONTEXT.md`. */
 export type ViewportPhase = "pinned" | "escaped";
 
+/**
+ * Largest on-screen anchor displacement tolerated at a paint boundary — the
+ * Spec's C1/C3 bound (≤ 0.5px). One number backs three decisions that must
+ * agree: the escaped restore corrects once the anchor moves more than this, the
+ * transcript write skips a target this close to the current position (*never*
+ * write for noise, always write for a violation), and the trace counts a
+ * displacement past it as a sample-worthy frame.
+ */
+export const VIEWPORT_ANCHOR_TOLERANCE_PX = 0.5;
+
 /** The three numbers a scroll container exposes. */
 export type ViewportGeometry = {
   scrollTop: number;
