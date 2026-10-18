@@ -11,17 +11,18 @@
 export const STREAM_COALESCE_FLUSH_MS = 110;
 
 /**
- * Virtualize the transcript once this many rows exist (tool steps count).
- * Lower than historical 48 so "a few agent turns" already window the DOM.
- */
-export const CHAT_VIRTUALIZE_THRESHOLD_PERF = 16;
-
-/**
  * While streaming, re-run ReactMarkdown at most this often (ms).
  * Smooth/plain text can still update more often; only the parse is throttled.
  * ~9×/s keeps long answers fluid without an O(n) parse per token.
  */
 export const STREAM_MARKDOWN_PARSE_MS = 110;
+
+/**
+ * Historical threshold for the old plain-pre stream body. Kept as a length
+ * breakpoint for adaptive markdown parse throttling only — we no longer drop
+ * to bare markdown mid-turn (that caused visible `**` / fence flashes).
+ */
+export const STREAM_PLAIN_TEXT_CHAR_THRESHOLD = 2000;
 
 /**
  * Non-structural content notify throttle for the transcript store (ms).
@@ -41,22 +42,6 @@ export function resolveTranscriptContentNotifyMs(
   if (hardwareConcurrency <= 8) return 110;
   if (hardwareConcurrency <= 12) return TRANSCRIPT_CONTENT_NOTIFY_MS;
   return 64;
-}
-
-/**
- * Historical threshold for the old plain-pre stream body. Kept as a length
- * breakpoint for adaptive markdown parse throttling only — we no longer drop
- * to bare markdown mid-turn (that caused visible `**` / fence flashes).
- */
-export const STREAM_PLAIN_TEXT_CHAR_THRESHOLD = 2000;
-
-/** Whether hardware looks like a thermally-limited laptop (Intel dual-GPU class). */
-export function isLowPowerClient(
-  hardwareConcurrency: number = typeof navigator !== "undefined"
-    ? navigator.hardwareConcurrency || 8
-    : 8,
-): boolean {
-  return hardwareConcurrency <= 12;
 }
 
 /**
@@ -101,15 +86,6 @@ export function resolveStreamFlushMs(
   return 72;
 }
 
-/** Scale chat virtual overscan down while streaming on low-power clients. */
-export function resolveStreamOverscanScale(
-  streaming: boolean,
-  hardwareConcurrency?: number,
-): number {
-  if (!streaming) return 1;
-  return isLowPowerClient(hardwareConcurrency) ? 0.55 : 0.75;
-}
-
 /**
  * Streaming markdown parse is throttled. On settle, paint the live source in
  * the same render — a useEffect flush leaves one frame of stale tree at the
@@ -131,21 +107,6 @@ export function shouldPlayWallpaperVideo(opts: {
   visibilityState?: string;
 }): boolean {
   return (opts.visibilityState ?? "visible") !== "hidden";
-}
-
-/**
- * Module-level stream-perf flag for JS readers (virtual overscan, etc.).
- * Prefer this over `document.documentElement.dataset.streamPerf` so wallpaper
- * sessions can skip flipping html attributes that invalidate macOS blur layers.
- */
-let streamPerfActive = false;
-
-export function setStreamPerfActive(on: boolean): void {
-  streamPerfActive = on;
-}
-
-export function isStreamPerfActive(): boolean {
-  return streamPerfActive;
 }
 
 /** When wallpaper frost is active, skip syncing `data-stream-perf` onto `<html>`. */

@@ -1,9 +1,9 @@
 /**
- * User preference: virtualize the main chat transcript.
+ * User preference: limit the main chat transcript to a visible band of real
+ * content (the rest of the resident rows keep only their ledger height).
  * localStorage-only — does not touch Host AppSettings.
  *
- * Default on: same as the previous always-on virtual window. Turn off
- * for native overflow if that window jumps when scrolling up.
+ * Default on. Turn off to render every row's real content (native overflow).
  */
 
 export const CHAT_VIRTUAL_SCROLL_STORAGE_KEY = "grok.chatVirtualScroll";

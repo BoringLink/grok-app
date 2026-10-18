@@ -325,28 +325,27 @@ still ends the turn.
 
 Frontend also coalesces stream tokens (~48ms) before React `setState`.
 
-### 4f. Main chat virtualization (scroll-safe)
+### 4f. Main chat residency (scroll-safe)
 
-When the transcript has **≥48** messages, the main chat uses a **variable-height**
-virtual window (`chatVirtualList` + `useChatMessageVirtualizer`):
+The transcript is a **resident list** (`useChatResidentList` + the geometry
+ledger): every conversation row stays in the DOM for the whole session, its
+box height coming from the ledger, so the scrollbar length equals the real
+content length before and after a collapse. There is no moving window and no
+spacers.
 
-- Spacers preserve total `scrollHeight` so `useStickToBottom` pin / escape / re-pin
-  and “Back to bottom” keep working.
-- **Pinned** (following stream): always mount the tail; adaptive overscan builds
-  upward (viewport-scaled, clamped).
+- **Visible band**: the rows the viewport spans plus a margin render their real
+  content; the rows outside keep only their height (a shell). The band is
+  computed from the ledger per frame, not from a rect walk.
+- **Estimates seed the ledger** before a row is first rendered; a real render
+  upgrades that row to `measured` and the height is remembered.
+- The viewport controller (`useChatViewportController`, ADR-0006) is the single
+  `scrollTop` writer; the resident list only reports measured heights and asks
+  it to restore the pinned/anchor invariant.
 - **Session open**: existing idle chats hold the transcript behind the
   loading overlay until mounted image/video cards have a measurable box
   (pending imgs, pending video posters). Then one instant scroll-to-bottom
   and reveal. Live streaming is never gated. Video occupancy is the reserved
   poster box (click-to-play does not load the file). Timeout 8s.
-- **Escaped** (user scrolled up): window by `scrollTop`; height remeasure of rows
-  above the viewport adjusts `scrollTop` so content does not jump.
-- Force-mounted nearby only while escaped (find match, streaming assistant, last
-  user/assistant within a small index gap). Distant tail force **must not** expand
-  the continuous window across the whole list — that defeated virtualization on
-  long history browse. While pinned, force may still expand for blank-pin defense.
-- Scroll recomputes are rAF-coalesced; cumulative offsets are cached until a height
-  commit so flings stay O(log n) for range find, not O(n) every event.
 
 Consequences, all of them load-bearing:
 

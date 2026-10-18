@@ -83,9 +83,9 @@ describe("transcript scroll write source guard", () => {
       .filter((path) => TRANSCRIPT_SURFACE.test(readFileSync(path, "utf8")))
       .map((path) => relative(SRC, path).replaceAll("\\", "/"));
 
-    // The thread, the virtual list, the shared args and the controller.
+    // The thread, the resident list, the shared args and the controller.
     expect(surface).toContain("components/lobe-chat/ConversationThread.tsx");
-    expect(surface).toContain("hooks/useChatMessageVirtualizer.ts");
+    expect(surface).toContain("hooks/useChatResidentList.ts");
     expect(surface).toContain("hooks/useChatViewportController.ts");
   });
 

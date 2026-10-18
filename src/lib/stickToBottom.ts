@@ -630,18 +630,6 @@ export function isConversationOpenFollowActive(input: {
 }
 
 /**
- * Opening a chat must land on the tail even if leftover distance from the
- * previous transcript (or the loading placeholder) looks like a user leave.
- */
-export function shouldForcePinnedSnapOnOpen(input: {
-  pinned: boolean;
-  forceOpenSnap: boolean;
-  escaped?: boolean;
-}): boolean {
-  return input.pinned && input.forceOpenSnap && !input.escaped;
-}
-
-/**
  * While stick is pinned, stream/thinking often grows a few px per frame
  * (smooth reveal). Those deltas are "noise" for bounce suppression, but
  * stacked they leave the viewport off the true bottom. Callers should still

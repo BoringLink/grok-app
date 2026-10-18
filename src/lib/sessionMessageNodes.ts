@@ -3,7 +3,7 @@
  * Pure view-model derived from the linear journal — no disk schema change.
  */
 
-import { estimateChatRowHeight } from "./chatVirtualList";
+import { estimateChatRowHeight } from "./chatRowHeight";
 import { isEndOfTurnMarker } from "./endOfTurn";
 import {
   isInjectedPromptMarker,

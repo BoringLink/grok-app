@@ -97,10 +97,24 @@ export type ChatViewportControllerHandle = {
    * "back to bottom" control. Every write is recorded for the trace.
    */
   assign(source: string, top: number, behavior?: ScrollBehavior): void;
+  /**
+   * The single geometry ledger (ADR 0006). The resident list seeds estimates
+   * and reads shell heights from it; measured heights go through
+   * `reportRowHeight` so the controller stays the writer of the ledger.
+   */
+  ledger(): LayoutLedger;
   /** A row's measured height changed — restore the invariant before paint. */
   reportRowHeight(index: number, height: number): void;
+  /** Drop every remembered height (conversation / row-identity change). */
+  resetLedger(): void;
   /** A layout batch changed the transcript height — restore before paint. */
   restoreLayout(source?: string): void;
+  /**
+   * Notified synchronously after every transcript position write, so a reader
+   * (the resident list) can re-band in the write path instead of waiting for a
+   * frame — a programmatic jump must not paint a shell inside the band.
+   */
+  subscribePosition(listener: () => void): () => void;
   /** Programmatic escape (rail / find jump): the user is reading history. */
   escape(reason: string): void;
   /** Pin to the content end (send, force-stick, back-to-bottom). */
@@ -274,6 +288,15 @@ export function useChatViewportController(
   }, []);
 
   /**
+   * Synchronous post-write listeners. The resident list re-bands here, in the
+   * write path, so a programmatic jump is banded before the frame paints.
+   */
+  const positionListenersRef = useRef<Set<() => void>>(new Set());
+  const notifyPositionWritten = useCallback(() => {
+    for (const listener of positionListenersRef.current) listener();
+  }, []);
+
+  /**
    * The single transcript position write. Every decided move — instant or
    * animated — funnels here and is recorded through the trace module, so a
    * trace can attribute any move to its source (ADR 0006).
@@ -289,6 +312,7 @@ export function useChatViewportController(
         ignoreScrollTopRef.current = top;
         el.scrollTo({ top, behavior: "smooth" });
         traceScrollTopWrite(source, el, before);
+        notifyPositionWritten();
         return;
       }
       // Force instant assignment even if CSS scroll-behavior is smooth.
@@ -300,8 +324,9 @@ export function useChatViewportController(
       lastScrollHeightRef.current = el.scrollHeight;
       if (prev) el.style.scrollBehavior = prev;
       else el.style.removeProperty("scroll-behavior");
+      notifyPositionWritten();
     },
-    [],
+    [notifyPositionWritten],
   );
 
   const applyScrollTop = useCallback(
@@ -1104,13 +1129,29 @@ export function useChatViewportController(
   const controller = useMemo<ChatViewportControllerHandle>(
     () => ({
       assign,
+      ledger() {
+        return ledgerRef.current;
+      },
       reportRowHeight(index, height) {
         const ledger = ledgerRef.current;
         if (index >= ledger.rowCount()) ledger.setCount(index + 1);
         ledger.setRowHeight(index, height, "measured");
       },
+      resetLedger() {
+        ledgerRef.current = createLayoutLedger({
+          count: 0,
+          estimateHeight: LEDGER_FALLBACK_ESTIMATE_PX,
+        });
+      },
       restoreLayout() {
         restoreNow();
+      },
+      subscribePosition(listener) {
+        const listeners = positionListenersRef.current;
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
       },
       escape(reason) {
         // A rail / find jump: the caller assigns the landed position next, so

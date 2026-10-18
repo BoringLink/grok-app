@@ -4,10 +4,10 @@
  * DEV-only diagnostic trace for the chat viewport ("the chat jumps back to an
  * earlier message").
  *
- * Why this exists: the stuck-to-bottom geometry in
- * `useChatMessageVirtualizer` + `useStickToBottom` re-asserts the bottom on
- * every window commit, so the backward jump cannot be explained by the window
- * math alone. To find the cause we need, from the running app, three things
+ * Why this exists: the transcript position is written by the viewport
+ * controller (`useChatViewportController`) and re-asserted on every layout
+ * batch, so the backward jump cannot be explained by the list math alone. To
+ * find the cause we need, from the running app, three things
  * that no unit test can supply:
  *
  * 1. every `scrollTop` write with its source (and stack) — who moved the view;
