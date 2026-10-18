@@ -73,6 +73,7 @@ import {
   contentEndScrollTop,
   createViewportState,
   maxScrollTop,
+  planJump,
   planRestore,
   VIEWPORT_ANCHOR_TOLERANCE_PX,
   type ViewportDirective,
@@ -159,6 +160,17 @@ export type ChatViewportControllerHandle = {
   subscribePosition(listener: () => void): () => void;
   /** Programmatic escape (rail / find jump): the user is reading history. */
   escape(reason: string): void;
+  /**
+   * Land a programmatic jump (rail / find / deep link) at `top`.
+   *
+   * `atTail` marks a jump whose target is the conversation's last row: the
+   * reader is at the end, so follow re-engages and stays on the tail even while
+   * that row is still streaming. Every other jump escapes onto the landed
+   * element, which becomes the anchor so a later height change above leaves the
+   * landed message where it is. A jump that lands on the content end (its offset
+   * clamps to the bottom) also re-engages follow.
+   */
+  jumpTo(source: string, top: number, atTail?: boolean): void;
   /** Pin to the content end (send, force-stick, back-to-bottom). */
   pinToEnd(source: string, behavior?: ScrollBehavior): void;
 };
@@ -526,6 +538,28 @@ export function useChatViewportController(
       }
     },
     [readGeometry, syncShowBack],
+  );
+
+  /**
+   * Enter the escaped phase programmatically (rail / find / deep link). The
+   * held anchor is dropped: the caller writes the landing position next, and
+   * `jumpTo` captures that landing as the new anchor so a later height change
+   * above restores it instead of displacing the landed message.
+   */
+  const beginEscape = useCallback(
+    (reason: string) => {
+      escapedAnchorRef.current = null;
+      commitState(
+        {
+          phase: "escaped",
+          anchor: null,
+          upStreak: 0,
+          upStreakAt: stickNowMs(),
+        },
+        reason,
+      );
+    },
+    [commitState],
   );
 
   const clearBottomIntent = useCallback(() => {
@@ -1324,19 +1358,40 @@ export function useChatViewportController(
         };
       },
       escape(reason) {
-        // A rail / find jump: the caller assigns the landed position next, so
-        // drop the held anchor and capture the landing on the first restore.
-        escapedAnchorRef.current = null;
-        commitState(
-          { phase: "escaped", anchor: null, upStreak: 0, upStreakAt: stickNowMs() },
-          reason,
-        );
+        beginEscape(reason);
+      },
+      jumpTo(source, top, atTail = false) {
+        const el = viewportRef.current;
+        if (!el) return;
+        const g = readGeometry();
+        if (!g) return;
+        const decision = planJump({ atTail, top, geometry: g });
+        if (decision.kind === "end") {
+          // The landing is the content end (the target is the last row, or its
+          // offset clamps to the bottom): the reader is at the tail, so follow
+          // re-engages instead of holding an escaped anchor there.
+          scrollToBottom("instant", atTail ? `${source}:tail` : `${source}:end`);
+          return;
+        }
+        beginEscape(source);
+        applyDirective({ kind: "anchor", top: decision.top }, source);
+        // The landing is the anchor: capture it now so a later height change
+        // above restores it instead of displacing the landed message.
+        captureEscapeAnchor();
       },
       pinToEnd(source, behavior = "instant") {
         scrollToBottom(behavior, source);
       },
     }),
-    [assign, commitState, restoreNow, scrollToBottom],
+    [
+      applyDirective,
+      assign,
+      beginEscape,
+      captureEscapeAnchor,
+      readGeometry,
+      restoreNow,
+      scrollToBottom,
+    ],
   );
 
   return {

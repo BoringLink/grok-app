@@ -387,3 +387,36 @@ export function planRestore(input: {
   }
   return { kind: "anchor", top: scrollTopForAnchor(state.anchor, rows, geometry) };
 }
+
+/**
+ * The outcome of a programmatic jump. `end` re-engages follow at the content
+ * end; `land` escapes onto a specific position, which becomes the anchor.
+ */
+export type JumpDecision =
+  | { kind: "end" }
+  | { kind: "land"; top: number };
+
+/**
+ * Plan a programmatic jump (rail / find / deep link).
+ *
+ * A target that is the conversation's last row is a jump to the end: the reader
+ * is at the tail, so follow re-engages (and stays there while that row streams).
+ * Every other target lands at `top`, clamped to the scroller, and escapes onto
+ * it — unless the clamp puts the landing on the content end, where the reader is
+ * also at the tail and follow re-engages instead of pinning an anchor to the
+ * bottom.
+ */
+export function planJump(input: {
+  atTail: boolean;
+  top: number;
+  geometry: ViewportGeometry;
+}): JumpDecision {
+  if (input.atTail) return { kind: "end" };
+  const top = Math.min(Math.max(0, input.top), maxScrollTop(input.geometry));
+  if (
+    isHardBottom(top, input.geometry.scrollHeight, input.geometry.clientHeight)
+  ) {
+    return { kind: "end" };
+  }
+  return { kind: "land", top };
+}

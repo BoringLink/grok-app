@@ -2105,6 +2105,13 @@ export function ConversationThread({
     () => latestContinuableEndMessageId(transcriptMessages),
     [transcriptMessages],
   );
+  /**
+   * Id of the last painted transcript row. A rail / find jump whose target is
+   * this row is a jump to the end: the controller re-engages follow instead of
+   * escaping onto it.
+   */
+  const tailMessageIdRef = useRef<string | null>(null);
+  tailMessageIdRef.current = transcriptMessages.at(-1)?.id ?? null;
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [locateTargetId, setLocateTargetId] = useState<string | null>(null);
   const [focusMessageId, setFocusMessageId] = useState<string | null>(null);
@@ -2161,6 +2168,7 @@ export function ConversationThread({
       // Align the node to the upper band so tall previous messages leave the
       // focus line. The controller owns the write — `scrollIntoView` would also
       // move unrelated scrollable ancestors and bypass the single writer.
+      const atTail = tailMessageIdRef.current === node.id;
       const beforeAlignScroll = viewport.scrollTop;
       const alignViewportRect = viewport.getBoundingClientRect();
       const alignRootRect = root.getBoundingClientRect();
@@ -2168,22 +2176,25 @@ export function ConversationThread({
         0,
         viewport.scrollTop + (alignRootRect.top - alignViewportRect.top),
       );
-      viewportController.assign("thread:locate", alignTop, "instant");
+      viewportController.jumpTo("jump:locate", alignTop, atTail);
       traceViewport("locate:align", {
         nodeId: node.id,
         before: Math.round(beforeAlignScroll),
         after: Math.round(viewport.scrollTop),
       });
-      // Nudge: keep a small top inset so the bubble isn't under chrome.
-      const vr = viewport.getBoundingClientRect();
-      const rr = root.getBoundingClientRect();
-      const desiredTop = vr.top + Math.min(48, viewport.clientHeight * 0.1);
-      const delta = rr.top - desiredTop;
-      if (Math.abs(delta) > 2) {
-        viewportController.assign(
-          "thread:locateNudge",
-          Math.max(0, viewport.scrollTop + delta),
-        );
+      // Nudge: keep a small top inset so the bubble isn't under chrome. A jump
+      // to the tail lands on the content end instead, so it skips the nudge.
+      if (!atTail) {
+        const vr = viewport.getBoundingClientRect();
+        const rr = root.getBoundingClientRect();
+        const desiredTop = vr.top + Math.min(48, viewport.clientHeight * 0.1);
+        const delta = rr.top - desiredTop;
+        if (Math.abs(delta) > 2) {
+          viewportController.jumpTo(
+            "jump:locateNudge",
+            Math.max(0, viewport.scrollTop + delta),
+          );
+        }
       }
 
       if (locateClearTimerRef.current) clearTimeout(locateClearTimerRef.current);
@@ -2204,8 +2215,8 @@ export function ConversationThread({
       if (!viewport) return;
 
       // Leave stick-to-bottom so programmatic jumps are not yanked back; the
-      // controller records the escape (and its anchor).
-      viewportController.escape("thread:locate");
+      // controller records the escape. The landing below settles the state.
+      viewportController.escape("jump:locate");
 
       railCursorRef.current = node.id;
       navLockUntilRef.current = performance.now() + 1200;
@@ -2233,7 +2244,7 @@ export function ConversationThread({
               node.messageIndex,
               viewport.clientHeight,
             );
-      viewportController.assign("thread:nodeEstimate", approx);
+      viewportController.assign("jump:locate", approx);
 
       if (locateRafRef.current != null) {
         window.cancelAnimationFrame(locateRafRef.current);
@@ -2375,18 +2386,21 @@ export function ConversationThread({
       traceViewport("find:scrollIntoView", payload);
       void publishTraceToHost(payload);
       if (viewport) {
-        // Center the match through the controller (the single writer);
+        // Land the match through the controller (the single writer);
         // `scrollIntoView` would also move unrelated scrollable ancestors.
+        // Instant, so the resident list re-bands in the write path and the
+        // jumped-to row renders real content in the frame that paints it. A
+        // match in the last row is a jump to the end, which re-engages follow.
         const viewportRect = viewport.getBoundingClientRect();
         const targetRect = target.getBoundingClientRect();
         const centered =
           viewport.scrollTop +
           (targetRect.top - viewportRect.top) -
           (viewport.clientHeight - targetRect.height) / 2;
-        viewportController.assign(
-          "find:scrollIntoView",
+        viewportController.jumpTo(
+          "jump:find",
           Math.max(0, centered),
-          "smooth",
+          tailMessageIdRef.current === id,
         );
       }
       if (findSettleTimerRef.current != null) {

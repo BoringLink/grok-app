@@ -7,6 +7,7 @@ import {
   contentEndScrollTop,
   createViewportState,
   intentEffect,
+  planJump,
   planRestore,
   scrollTopForAnchor,
   type ViewportGeometry,
@@ -379,5 +380,60 @@ describe("chatViewportController restore", () => {
     });
 
     expect(directive).toEqual({ kind: "anchor", top: 250 });
+  });
+});
+
+/**
+ * A rail / find / deep-link jump either lands on a historical position (escape
+ * onto it) or re-engages follow at the end (`atTail`, or a landing that clamps
+ * to the content end). User story 15.
+ */
+describe("planJump", () => {
+  it("lands a non-tail jump on the escaped position", () => {
+    // Arrange + Act
+    const decision = planJump({
+      atTail: false,
+      top: 250,
+      geometry: geometry({ scrollTop: 600 }),
+    });
+
+    // Assert
+    expect(decision).toEqual({ kind: "land", top: 250 });
+  });
+
+  it("re-engages follow for a jump whose target is the last row", () => {
+    // Arrange + Act — the target row is the conversation's last row.
+    const decision = planJump({
+      atTail: true,
+      top: 250,
+      geometry: geometry({ scrollTop: 600 }),
+    });
+
+    // Assert
+    expect(decision).toEqual({ kind: "end" });
+  });
+
+  it("re-engages follow when the landing clamps to the content end", () => {
+    // Arrange + Act — past the content end (600), so the engine clamps to it.
+    const decision = planJump({
+      atTail: false,
+      top: 5000,
+      geometry: geometry({ scrollTop: 0 }),
+    });
+
+    // Assert
+    expect(decision).toEqual({ kind: "end" });
+  });
+
+  it("clamps a negative landing to the top of the transcript", () => {
+    // Arrange + Act
+    const decision = planJump({
+      atTail: false,
+      top: -50,
+      geometry: geometry({ scrollTop: 600 }),
+    });
+
+    // Assert
+    expect(decision).toEqual({ kind: "land", top: 0 });
   });
 });

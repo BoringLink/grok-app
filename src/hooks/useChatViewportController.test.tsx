@@ -1033,6 +1033,70 @@ describe("useChatViewportController handle", () => {
       expect(harness.escapedRef.current).toBe(true);
     });
   });
+
+  /**
+   * A rail / find jump lands through `jumpTo`: a non-tail target escapes onto
+   * the landed element and holds it; a jump to the conversation's last row (or
+   * one that clamps to the content end) re-engages follow.
+   */
+  describe("programmatic jump landing", () => {
+    const anchorScreenTop = (harness: {
+      aboveHeight: () => number;
+      scrollTop: () => number;
+    }) => harness.aboveHeight() - harness.scrollTop();
+
+    it("escapes onto a non-tail landing and holds it across a height change above", () => {
+      // Arrange — pinned at the top, a measured block above the anchor row.
+      const harness = mountWithRows({ scrollTop: 200, aboveHeight: 200 });
+
+      // Act — a find jump to a non-tail message.
+      act(() => harness.controller.jumpTo("jump:test", 320));
+
+      // Assert — escaped, landed, with the landing as the anchor.
+      expect(harness.isPinnedRef.current).toBe(false);
+      expect(harness.escapedRef.current).toBe(true);
+      expect(harness.scrollTop()).toBe(320);
+      const held = anchorScreenTop(harness);
+
+      // Act — a block above the landing re-grows in a layout batch.
+      act(() => {
+        harness.setAboveHeight(300);
+        harness.controller.restoreLayout();
+      });
+
+      // Assert — the landed message stays where it landed (C3 on a jump).
+      expect(anchorScreenTop(harness)).toBe(held);
+      expect(harness.escapedRef.current).toBe(true);
+    });
+
+    it("re-engages follow on a jump whose target is the conversation's last row", () => {
+      // Arrange — escaped, reading history.
+      const harness = mount({ scrollTop: 600, scrollHeight: 1000 });
+      act(() => harness.controller.escape("test:locate"));
+      expect(harness.escapedRef.current).toBe(true);
+
+      // Act — a jump to the last row (the tail), even while it streams.
+      act(() => harness.controller.jumpTo("jump:test", 200, true));
+
+      // Assert — pinned at the content end.
+      expect(harness.isPinnedRef.current).toBe(true);
+      expect(harness.escapedRef.current).toBe(false);
+      expect(harness.scrollTop()).toBe(600);
+    });
+
+    it("re-engages follow when a jump clamps to the content end", () => {
+      // Arrange — pinned at the top; the jump target is past the content end.
+      const harness = mount({ scrollTop: 0, scrollHeight: 1000 });
+
+      // Act
+      act(() => harness.controller.jumpTo("jump:test", 5000));
+
+      // Assert — the engine clamped the write to the end, so follow re-engages.
+      expect(harness.scrollTop()).toBe(600);
+      expect(harness.isPinnedRef.current).toBe(true);
+      expect(harness.escapedRef.current).toBe(false);
+    });
+  });
 });
 
 /**
