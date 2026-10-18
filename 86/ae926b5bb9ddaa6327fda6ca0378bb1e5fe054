@@ -1,0 +1,24 @@
+src/lib/chatViewportController.test.ts
+  s_6ff597d32285f6::t_2147e9b1698f6e 178
+  s_6ff597d32285f6::t_738a0f6aee69a9 1-177,179-304
+src/lib/chatViewportController.ts
+  s_6ff597d32285f6::t_427070e0c19152 1-122,132-202,204-274,276-297,299-323
+  s_6ff597d32285f6::t_02b9c57b5f8649 123-131
+  s_6ff597d32285f6::t_8d5de9b994b267 203,275,298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "86ae926b5bb9ddaa6327fda6ca0378bb1e5fe054",
+  "prompts": {},
+  "sessions": {
+    "s_6ff597d32285f6": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14ef7-28c0-71f2-b95e-c7910867da16",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
