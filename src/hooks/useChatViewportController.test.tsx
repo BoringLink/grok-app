@@ -489,7 +489,7 @@ describe("useChatViewportController escape policy", () => {
 
 /**
  * The controller is the transcript's single writer. Other transcript modules
- * (the virtual list, the rail / find jumps) call this handle instead of
+ * (the resident list, the rail / find jumps) call this handle instead of
  * assigning `scrollTop` themselves.
  */
 describe("useChatViewportController handle", () => {

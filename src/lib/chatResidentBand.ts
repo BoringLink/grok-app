@@ -1,11 +1,11 @@
 /**
- * Pick the transcript's visible band (可见带) for the resident list.
+ * Pick the transcript's visible band (the viewport band) for the resident list.
  *
  * Every conversation row stays in the DOM; this module decides which of them
  * must carry real content this frame. The band is the rows the viewport spans
  * plus a margin, so a scroll or a collapse never exposes a shell inside the
  * viewport. There is no fixed row cap — the band follows the viewport height
- * (CONTEXT.md: 可见带), and rows outside it keep only their ledger height.
+ * (CONTEXT.md: viewport band), and rows outside it keep only their ledger height.
  *
  * Geometry comes from the layout ledger (the single row-geometry source), not
  * from the DOM, so the band costs an O(log n) offset search per frame instead

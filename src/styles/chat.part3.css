@@ -238,7 +238,7 @@
 /* Markdown inline images — STABLE CHAT FRAME
  *
  * Chat cards: fixed 150px height (inline style) so image decode / natural-ratio
- * discovery never changes vertical layout (virtual list + stick-to-bottom).
+ * discovery never changes vertical layout (resident list + stick-to-bottom).
  * Width follows ratio (≤240). Image absolute-fills with object-fit:contain.
  * Resource pane uses natural aspect-ratio instead (no chat caps).
  */

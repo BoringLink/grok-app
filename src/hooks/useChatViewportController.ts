@@ -115,7 +115,7 @@ export type EscapedAnchorElement = {
 };
 
 /**
- * The controller handle handed to other transcript writers (the virtual list
+ * The controller handle handed to other transcript writers (the resident list
  * and the rail / find jumps). Every method funnels into `assign`, the single
  * transcript position write; no caller touches `scrollTop` itself.
  */
@@ -240,7 +240,7 @@ export function useChatViewportController(
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   /**
-   * Geometry source for the controller's anchor math. The virtual list reports
+   * Geometry source for the controller's anchor math. The resident list reports
    * measured row heights; the ledger grows with them, so the controller never
    * re-derives whole-conversation offsets from the DOM.
    */
@@ -288,7 +288,7 @@ export function useChatViewportController(
   const ignoreScrollTopRef = useRef<number | undefined>(undefined);
   /**
    * Collapse can produce multiple synthetic upward scroll events: browser
-   * clamp first, virtual-window correction second. Keep pin through both.
+   * clamp first, the resident list's band correction second. Keep pin through both.
    */
   const collapseRecoveryUntilRef = useRef(0);
   /**
@@ -940,7 +940,7 @@ export function useChatViewportController(
   ]);
 
   // Conversation switch → re-pin and jump to bottom before paint so the
-  // virtual list's layout effect sees pin=true (otherwise it windows from
+  // resident list's layout effect sees pin=true (otherwise it bands from
   // leftover scrollTop / the previous chat's browse range). Extra frames +
   // a short follow window cover journal hydrate and image/PDF decode.
   useLayoutEffect(() => {
@@ -970,8 +970,8 @@ export function useChatViewportController(
   }, [conversationKey, enabled, scrollToBottom, commitState, clearBottomIntent]);
 
   // User sent / turn became busy → force follow even if they had scrolled up.
-  // Layout first so the virtual list's itemCount effect sees pin=true in the
-  // same frame (avoids a browse-window flash, then a snap). One rAF covers
+  // Layout first so the resident list's itemCount effect sees pin=true in the
+  // same frame (avoids a band flash, then a snap). One rAF covers
   // the new bubble height that is not measured until after paint.
   useLayoutEffect(() => {
     if (!enabled || forceStickKey == null || forceStickKey === "") return;
@@ -1056,7 +1056,7 @@ export function useChatViewportController(
       }
 
       // Defense: pin can be dropped without an intentional escape after a
-      // browser clamp / virtual remeasure race (escaped stays false). If the
+      // browser clamp / resident remeasure race (escaped stays false). If the
       // user is still parked on the absolute bottom, re-engage follow so the
       // rest of the stream keeps sticking. Intentional escape blocks this
       // (reading history is never yanked back down).
@@ -1333,7 +1333,7 @@ export function useChatViewportController(
   ]);
 
   /**
-   * Handle other transcript writers use. The virtual list reports row heights
+   * Handle other transcript writers use. The resident list reports row heights
    * and layout batches; the rail / find jumps assign positions. Both funnel
    * into the single write point above.
    */

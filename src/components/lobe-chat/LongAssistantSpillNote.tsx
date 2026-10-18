@@ -1,7 +1,7 @@
 /**
  * Note + file card under a spilled (preview-only) assistant body.
  * Writes the full reply once via save_temp_attachment; remounts reuse cache
- * so the virtual list does not create a new paste file every scroll.
+ * so the resident list does not create a new paste file every scroll.
  */
 
 import { useEffect, useMemo, useState } from "react";

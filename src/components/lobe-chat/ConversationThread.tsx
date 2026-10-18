@@ -517,7 +517,7 @@ export interface ConversationThreadProps {
   sessionId?: string | null;
   /**
    * External locate request (message deep link). Scrolls once when the
-   * journal contains `messageId` (reuses rail virtualizer path).
+   * journal contains `messageId` (reuses the rail / find path).
    */
   locateMessageId?: string | null;
   /**
@@ -912,7 +912,7 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
     }
     // Consecutive unwoven standalone tool_step rows merge into one
     // collapsible group (painted at the first row; the rest become
-    // zero-height spacers so virtualization stays consistent).
+    // zero-height spacers so the resident row list stays consistent).
     const standaloneGroup = standaloneToolGroups.get(m.id);
     if (standaloneGroup) {
       if (!standaloneGroup.first) {
@@ -1952,7 +1952,7 @@ export function ConversationThread({
       window.removeEventListener(TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT, onPref);
   }, []);
 
-  /** When false, the transcript is a native overflow list (no virtual window). */
+  /** When false, every row renders its real content (native overflow, no band). */
   const [chatVirtualScroll, setChatVirtualScroll] = useState(() =>
     loadChatVirtualScrollPref(),
   );
@@ -2096,7 +2096,7 @@ export function ConversationThread({
   /**
    * Display-layer weave + paint list (early): journal reload can leave
    * tool_step rows outside assistant.segments; stitch before paint. Defined
-   * here so rail coarse-scroll estimates share the virtualizer row list
+   * here so rail coarse-scroll estimates share the resident list's item list
    * (filtered transcript), not full journal indices.
    * `conversation` filter also drops standalone tool_step rows.
    */
@@ -2163,7 +2163,7 @@ export function ConversationThread({
       ) as HTMLElement | null;
 
       if (!root) {
-        // Virtual window may still be mounting the forced row.
+        // The forced row may still be mounting.
         if (attempt < 8) {
           locateRafRef.current = window.requestAnimationFrame(() => {
             locateRafRef.current = null;
@@ -2209,7 +2209,7 @@ export function ConversationThread({
       }
 
       if (locateClearTimerRef.current) clearTimeout(locateClearTimerRef.current);
-      // Keep force-mount until layout + scroll settle (virtual list).
+      // Keep force-mount until layout + scroll settle (resident list).
       locateClearTimerRef.current = setTimeout(() => {
         setLocateTargetId((cur) => (cur === node.id ? null : cur));
         locateClearTimerRef.current = null;
@@ -2247,7 +2247,7 @@ export function ConversationThread({
         // Leave stick-to-bottom so the coarse estimate is not yanked back; the
         // landing below settles the state.
         viewportController.escape("jump:locate");
-        // Coarse jump via the paint list so estimates match the virtualizer.
+        // Coarse jump via the paint list so estimates match the resident ledger.
         // node.messageIndex is journal-space; tool rows may be filtered out.
         const paintIndex = transcriptMessages.findIndex((m) => m.id === node.id);
         const approx =
@@ -2268,7 +2268,7 @@ export function ConversationThread({
       if (locateRafRef.current != null) {
         window.cancelAnimationFrame(locateRafRef.current);
       }
-      // Wait a frame for React to apply forceIndices + virtual recompute.
+      // Wait a frame for React to apply forceIndices + the band recompute.
       locateRafRef.current = window.requestAnimationFrame(() => {
         locateRafRef.current = window.requestAnimationFrame(() => {
           locateRafRef.current = null;
@@ -2285,7 +2285,7 @@ export function ConversationThread({
     ],
   );
 
-  // After force-mount state commits, finish the jump (virtual list needs a paint).
+  // After force-mount state commits, finish the jump (the resident list needs a paint).
   useEffect(() => {
     if (!locateTargetId) return;
     const node = messageNodes.find((n) => n.id === locateTargetId);
@@ -2298,7 +2298,7 @@ export function ConversationThread({
 
   /**
    * Deep-link locate: when parent sets `locateMessageId`, scroll once the
-   * journal has rows (reuse rail virtualizer path). Soft-missing reports up.
+   * journal has rows (reuse the rail / find path). Soft-missing reports up.
    */
   const deepLocateConsumedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -2535,9 +2535,8 @@ export function ConversationThread({
     return turnBusy ? lastAssistantId : null;
   }, [messages, turnBusy]);
 
-  // Scanned the whole journal on every render. The virtualizer re-renders this
-  // thread on each window shift, so during a fling that was one O(n) pass per
-  // frame on top of the mount and measure work.
+  // This thread re-renders per band shift during a fling, so one O(n) pass per
+  // frame on top of the mount and measure work is not affordable.
   const hasStreamingAssistant = useMemo(
     () => messages.some((m) => m.role === "assistant" && m.streaming),
     [messages],
@@ -2548,7 +2547,7 @@ export function ConversationThread({
    * standalone `LiveToolText` must not double-render it.
    *
    * Two full-journal scans that used to sit in the JSX and therefore ran on
-   * every render, including every virtual window shift while scrolling.
+   * every render, including every band shift while scrolling.
    */
   const liveToolHasRow = useMemo(() => {
     const toolCallId = liveTool?.toolCallId;
@@ -2737,7 +2736,7 @@ export function ConversationThread({
           body.includes("media://") ||
           body.includes("127.0.0.1"));
       // Tool steps already woven into an assistant timeline render as 0-height
-      // spacers — estimate 0 so virtualization does not invent a blank pin tail.
+      // spacers — estimate 0 so the ledger does not invent a blank pin tail.
       const toolInlined =
         isToolStepMessage(m) &&
         (() => {

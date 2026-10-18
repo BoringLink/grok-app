@@ -120,7 +120,7 @@ describe("shouldReleaseStickOnScrollUp", () => {
   });
 
   it("does NOT escape when thinking/tool collapse shrinks scrollHeight (#1246)", () => {
-    // After the browser clamps to the new max (400), the virtual list may
+    // After the browser clamps to the new max (400), the controller may
     // still write a restore offset (200). scrollTop 400→200 is a real
     // "scroll-up" on the new height — but the content shrank, not the user.
     expect(
@@ -236,7 +236,7 @@ describe("shouldEscapePinnedScroll", () => {
   const ch = 600;
 
   it("keeps following after thinking/tool/body phase jitter", () => {
-    // 6–8px leftover from auto-collapse / virtual remeasure / markdown settle.
+    // 6–8px leftover from auto-collapse / layout remeasure / markdown settle.
     expect(
       shouldEscapePinnedScroll({
         pinned: true,

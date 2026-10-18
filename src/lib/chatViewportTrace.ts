@@ -41,14 +41,15 @@ let pinned = false;
 /**
  * Cause of the most recent pin/escape flip, mirrored for the frame sampler:
  * a flip the sampler detects from `pinned` alone is attributed to the cause
- * the authoritative flip (in `useStickToBottom`) recorded.
+ * the authoritative flip (in `useChatViewportController`) recorded.
  */
 let recentPinFlipCause: PinFlipCause | null = null;
 /**
  * Transcript `scrollTop` writes seen while tracing, and the source of the
  * last one. The frame sampler reports the per-frame delta and source from
  * here, so a dumped frame carries its own write count and origin (Spec
- * "心跳字段保留（pinned/escaped、离底距离、可见位移、写入来源）").
+ * "Diagnostics": keep the heartbeat fields — pinned/escaped, distance to the
+ * end, visible-band shift, write source).
  */
 let scrollTopWriteCount = 0;
 let lastScrollTopWriteSource: string | null = null;
@@ -429,7 +430,7 @@ export function isSuspiciousUpwardJump(input: {
 
 /**
  * Why a pinned/escaped flip happened, normalized so a trace can be read
- * without knowing the stick hook's internal reason strings (Spec "诊断",
+ * without knowing the stick hook's internal reason strings (Spec "Diagnostics",
  * C4). `layout-clamp` is the engine moving `scrollTop` after a height change;
  * it is the one cause that must never be read as a user leaving.
  */

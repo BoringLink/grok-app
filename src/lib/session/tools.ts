@@ -260,12 +260,12 @@ export function isToolInlinedInAssistants(
 }
 
 /**
- * Journal rows for the visible transcript (virtual list / paint).
+ * Journal rows for the visible transcript (resident list / paint).
  *
- * Drops tool_step rows already woven into an assistant timeline — keeping them
- * as 0-height spacers still inflated itemCount past the virtualize threshold
- * (e.g. 1 user + 1 assistant + 64 inlined tools → 66 ≥ 48), which thrashed
- * spacers near the bottom and fought stick-to-bottom (flash-snap on scroll).
+ * Drops tool_step rows already woven into an assistant timeline — a woven row
+ * would otherwise be a duplicate the resident list has to carry and size
+ * (e.g. 1 user + 1 assistant + 64 inlined tools), inflating the ledger and
+ * fighting stick-to-bottom (flash-snap on scroll).
  */
 export function filterTranscriptMessages(
   messages: ChatMessage[],

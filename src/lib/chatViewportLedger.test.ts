@@ -572,7 +572,7 @@ describe("bandFor", () => {
     // Assert
     expect(short.end - short.start).toBe(8);
     expect(tall.end - tall.start).toBe(24);
-    // 24 rows is past every fixed rich-row cap the old virtual list carried.
+    // The band has no fixed row cap, so a tall viewport spans well past a dozen.
     expect(tall.end - tall.start).toBeGreaterThan(12);
     expect(tall.start).toBe(short.start);
   });
