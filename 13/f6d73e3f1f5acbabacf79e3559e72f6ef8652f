@@ -1,0 +1,25 @@
+src/hooks/useStickToBottom.test.tsx
+  s_520bc38b3b2881::t_bfc9d769fb8cce 5
+  s_520bc38b3b2881::t_e6f52c9c23f3c2 399-422
+src/hooks/useStickToBottom.ts
+  s_520bc38b3b2881::t_d040a5566d9c55 220,224,235-247
+  s_520bc38b3b2881::t_7678b8aa812330 73-74
+src/components/lobe-chat/ConversationThread.tsx
+  s_520bc38b3b2881::t_8a12b108bd9180 3182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "13f6d73e3f1f5acbabacf79e3559e72f6ef8652f",
+  "prompts": {},
+  "sessions": {
+    "s_520bc38b3b2881": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f13-b072-74d3-ab9a-b71d7fcca06e",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
