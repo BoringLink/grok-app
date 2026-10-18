@@ -1,0 +1,25 @@
+src/components/lobe-chat/transcriptAnchoring.guard.test.ts
+  s_ae30523405d50c::t_7c02861a387a7e 1,12-15,17-19,21,23-28,34-35,57-59,62-64
+src/lib/chatViewportWriteSources.guard.test.ts
+  s_ae30523405d50c::t_572c966143c428 35-39,41,75-80,85-86
+src/hooks/useChatViewportTraceProbe.guard.test.ts
+  s_ae30523405d50c::t_fcff19568aefa4 1,4-7,13-19,26-34,36,38-47,49-55,61,71-93
+src/hooks/useChatResidentList.test.tsx
+  s_ae30523405d50c::t_78a660bf576efe 228-279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "668a4b725aa2d17fed94884a41b2f6c39fd1ade0",
+  "prompts": {},
+  "sessions": {
+    "s_ae30523405d50c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15086-5a4d-7a03-b2b3-8e09c3ff63b8",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
