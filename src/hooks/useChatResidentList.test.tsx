@@ -152,6 +152,40 @@ describe("useChatResidentList", () => {
     }
   });
 
+  it("tracks a collapse and a re-growth in the shell height", () => {
+    // Arrange
+    const viewport = makeViewport(0, 400);
+    const { controller, ledger } = makeController();
+    const isPinnedRef = { current: false };
+
+    const { result } = renderHook(() =>
+      useChatResidentList({
+        itemCount: 20,
+        getEstimateHeight: () => 100,
+        viewportRef: { current: viewport },
+        isPinnedRef,
+        controller,
+      }),
+    );
+
+    const row = document.createElement("div");
+    let height = 400;
+    row.getBoundingClientRect = () => ({ height }) as DOMRect;
+
+    // Act / Assert: measure, collapse, re-grow.
+    act(() => result.current.measureRef(3)(row));
+    expect(result.current.rowHeight(3)).toBe(400);
+
+    height = 60;
+    act(() => result.current.measureRef(3)(row));
+    expect(result.current.rowHeight(3)).toBe(60);
+    expect(ledger().heightOf(3)).toBe(60);
+
+    height = 400;
+    act(() => result.current.measureRef(3)(row));
+    expect(result.current.rowHeight(3)).toBe(400);
+  });
+
   it("returns an empty band for an empty conversation", () => {
     // Arrange
     const viewport = makeViewport(0, 400);
