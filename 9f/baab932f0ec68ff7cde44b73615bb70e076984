@@ -1,0 +1,30 @@
+src/lib/frameSchedule.test.ts
+  s_5a98cfc153b25e::t_ab97c363e8cb3f 1,21,31-32,43,49,63,65,95,97,99,105,114
+  s_5a98cfc153b25e::t_fc46894491d193 3-7,44,94,96,98,100-104,106-113,115-123
+src/lib/frameCadence.ts
+  s_5a98cfc153b25e::t_b7ec73fb0be8b1 1-53,69-86
+  s_5a98cfc153b25e::t_1e8f4193d92161 54-68
+src/lib/frameCadence.test.ts
+  s_5a98cfc153b25e::t_7f35850d715166 66,75-87
+  s_5a98cfc153b25e::t_1c4c55d51257c6 59-61
+  s_5a98cfc153b25e::t_f6b26c69fdf5f4 1-8,10-58,62-65,67-74,88-89
+  s_5a98cfc153b25e::t_d5f8e6997cfdfe 9
+src/lib/frameSchedule.ts
+  s_5a98cfc153b25e::t_cd2bad30488f5d 2,4-8,11,33-39,72-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "9fbaab932f0ec68ff7cde44b73615bb70e076984",
+  "prompts": {},
+  "sessions": {
+    "s_5a98cfc153b25e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f5f-a6b2-7292-94bf-4bb7ac27c5f3",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
