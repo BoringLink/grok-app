@@ -1,0 +1,55 @@
+src/lib/chatRowCollapse.ts
+  s_8f245a373e1506::t_9a53947122ae0a 1-52
+src/lib/chatViewportLedger.test.ts
+  s_8f245a373e1506::t_5c68c8a5dd4a0f 235-307
+src/components/lobe-chat/ConversationThread.tsx
+  s_8f245a373e1506::t_82e47582623456 793-799
+  s_8f245a373e1506::t_179f98a7987f9c 124
+  s_8f245a373e1506::t_5be7693840f549 2714-2732,2745-2746
+src/hooks/useChatResidentList.ts
+  s_8f245a373e1506::t_7852b262db7ecb 116-117,124-125
+  s_8f245a373e1506::t_74506544085f7d 206-208
+  s_8f245a373e1506::t_43dd3b083f341a 313,317-342
+  s_8f245a373e1506::t_7c5a368e91149f 181-186
+src/lib/chatResidentBand.test.ts
+  s_8f245a373e1506::t_016e030aed91d7 155-173
+src/lib/chatResidentBand.ts
+  s_8f245a373e1506::t_03d9aa4018714b 101-104
+  s_8f245a373e1506::t_cf7bf743d0c8a7 109-115,120,123-124
+  s_8f245a373e1506::t_c704d9ed29d608 191-194
+  s_8f245a373e1506::t_b8425a66294ad2 132
+  s_8f245a373e1506::t_37387be9344690 151-153
+docs/llm-wiki/session-continuity.md
+  s_8f245a373e1506::t_57729656ac456b 341-347,350-352
+src/hooks/useChatViewportController.ts
+  s_8f245a373e1506::t_923bd3254ce4c4 122-128
+  s_8f245a373e1506::t_e05650645397b5 1233-1235
+src/lib/chatViewportLedger.ts
+  s_8f245a373e1506::t_d811e60eef3227 301-313,323-324
+  s_8f245a373e1506::t_3103bcd76ddb99 88-103
+src/hooks/useChatViewportController.test.tsx
+  s_8f245a373e1506::t_67d8f58351dfbf 609-621
+src/hooks/chatResidentListShared.ts
+  s_8f245a373e1506::t_6b6ae8cf28be15 28-42
+src/lib/chatRowCollapse.test.ts
+  s_8f245a373e1506::t_dd994e4241dfa4 1-107
+src/hooks/useChatResidentList.test.tsx
+  s_8f245a373e1506::t_e864953cfd8c49 232-318
+  s_8f245a373e1506::t_03834a50eb0eb2 23-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "928994dfdfc72a0b5cd2ef8bd2c2913cb4168c74",
+  "prompts": {},
+  "sessions": {
+    "s_8f245a373e1506": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f8d-25e8-7a11-a31c-7df482a989d8",
+        "model": "auto(free)"
+      },
+      "human_author": null
+    }
+  }
+}
