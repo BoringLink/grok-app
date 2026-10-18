@@ -1497,3 +1497,147 @@ describe("useChatViewportController occlusion and window resize", () => {
   });
 });
 
+
+describe("useChatViewportController scrolling flag", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    ControlledResizeObserver.reset();
+    vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      (callback: FrameRequestCallback) =>
+        window.setTimeout(() => callback(performance.now()), 0),
+    );
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+      window.clearTimeout(id);
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    ControlledResizeObserver.reset();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  function mountHarness(initial: { scrollTop: number; scrollHeight: number }) {
+    let scrollTop = initial.scrollTop;
+    let scrollHeight = initial.scrollHeight;
+    const viewport = document.createElement("div");
+    const content = document.createElement("div");
+    viewport.appendChild(content);
+    Object.defineProperties(viewport, {
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      clientHeight: { configurable: true, get: () => 400 },
+      clientWidth: { configurable: true, get: () => 800 },
+    });
+
+    const { result, rerender, unmount } = renderHook(
+      ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
+      { initialProps: { keyName: "before-attach" } },
+    );
+    Object.assign(result.current.viewportRef, { current: viewport });
+    Object.assign(result.current.contentRef, { current: content });
+    rerender({ keyName: "attached" });
+    act(() => {
+      vi.advanceTimersByTime(40);
+      viewport.dispatchEvent(new Event("scroll"));
+    });
+
+    return {
+      viewport,
+      result: result as { current: UseChatViewportControllerResult },
+      unmount,
+      setScrollTop: (value: number) => {
+        scrollTop = value;
+      },
+      setScrollHeight: (value: number) => {
+        scrollHeight = value;
+      },
+    };
+  }
+
+  it("flags the scroller on a wheel gesture and clears it once scrolling stops", () => {
+    // Arrange
+    const harness = mountHarness({ scrollTop: 600, scrollHeight: 1000 });
+
+    // Act — a wheel gesture flags immediately.
+    act(() => {
+      harness.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -40 }));
+    });
+
+    // Assert
+    expect(harness.viewport.dataset.scrolling).toBe("1");
+
+    // Act — still inside the idle window, then past it.
+    act(() => {
+      vi.advanceTimersByTime(219);
+    });
+    expect(harness.viewport.dataset.scrolling).toBe("1");
+    act(() => {
+      vi.advanceTimersByTime(2);
+    });
+
+    // Assert — cleared without any further activity.
+    expect(harness.viewport.dataset.scrolling).toBeUndefined();
+  });
+
+  it("flags the scroller on a keyboard scroll", () => {
+    // Arrange
+    const harness = mountHarness({ scrollTop: 600, scrollHeight: 1000 });
+
+    // Act
+    act(() => {
+      harness.viewport.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "PageUp" }),
+      );
+    });
+
+    // Assert
+    expect(harness.viewport.dataset.scrolling).toBe("1");
+    act(() => {
+      vi.advanceTimersByTime(220 + 1);
+    });
+    expect(harness.viewport.dataset.scrolling).toBeUndefined();
+  });
+
+  it("does not flag the scroller on the controller's own follow write", () => {
+    // Arrange
+    const harness = mountHarness({ scrollTop: 600, scrollHeight: 1000 });
+
+    // Act — the pin follow writes the content end; its synthetic scroll event
+    // must not be read as the user scrolling.
+    act(() => {
+      harness.result.current.scrollToBottom("instant");
+      harness.setScrollTop(600);
+      harness.viewport.dispatchEvent(new Event("scroll"));
+    });
+
+    // Assert
+    expect(harness.viewport.dataset.scrolling).toBeUndefined();
+  });
+
+  it("clears the flag and its timer when unmounted mid-scroll", () => {
+    // Arrange
+    const harness = mountHarness({ scrollTop: 600, scrollHeight: 1000 });
+    act(() => {
+      harness.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -40 }));
+    });
+    expect(harness.viewport.dataset.scrolling).toBe("1");
+
+    // Act
+    act(() => {
+      harness.unmount();
+    });
+
+    // Assert — dropped synchronously, not left to the pending timer.
+    expect(harness.viewport.dataset.scrolling).toBeUndefined();
+  });
+});

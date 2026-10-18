@@ -208,6 +208,16 @@ export type UseChatViewportControllerResult = {
  */
 const GESTURE_ESCAPE_WINDOW_MS = 400;
 
+/**
+ * How long `data-scrolling="1"` stays on the viewport after the last scroll
+ * activity. Setting it is immediate; clearing is debounced, because each
+ * attribute flip re-runs selector matching over the whole transcript DOM and a
+ * slow drag settles for a few frames between wheel ticks. 220ms spans the gaps
+ * inside one wheel/trackpad gesture (and its momentum) while restoring hover
+ * and the wallpaper backdrop promptly once the gesture is over.
+ */
+const SCROLLING_FLAG_IDLE_MS = 220;
+
 function stickNowMs(): number {
   return typeof performance !== "undefined" &&
     typeof performance.now === "function"
@@ -291,6 +301,10 @@ export function useChatViewportController(
    * clamp first, the resident list's band correction second. Keep pin through both.
    */
   const collapseRecoveryUntilRef = useRef(0);
+  /** Debounced clear of the `data-scrolling` scroll-state flag. */
+  const scrollingFlagTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   /**
    * Last real user gesture (wheel / touch / keyboard) on the viewport. A
    * scroll that no gesture can explain is layout, so it must not release the
@@ -359,6 +373,37 @@ export function useChatViewportController(
         listener(next);
       }
     }
+  }, []);
+
+  /**
+   * Mark the transcript as scrolling. This is a UI signal, not a position
+   * write: `data-scrolling="1"` lets the CSS suppress row hover / pointer
+   * events and the wallpaper backdrop while the scroller is in motion, and
+   * lets the node rail take its estimate path instead of a rect walk. Set
+   * immediately, cleared by the debounced idle timer below.
+   */
+  const noteTranscriptScrolling = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    if (el.dataset.scrolling !== "1") el.dataset.scrolling = "1";
+    if (scrollingFlagTimerRef.current != null) {
+      clearTimeout(scrollingFlagTimerRef.current);
+    }
+    scrollingFlagTimerRef.current = setTimeout(() => {
+      scrollingFlagTimerRef.current = null;
+      const v = viewportRef.current;
+      if (v && v.dataset.scrolling === "1") delete v.dataset.scrolling;
+    }, SCROLLING_FLAG_IDLE_MS);
+  }, []);
+
+  /** Drop the flag and its pending timer (idle is handled by the timer). */
+  const clearTranscriptScrolling = useCallback(() => {
+    if (scrollingFlagTimerRef.current != null) {
+      clearTimeout(scrollingFlagTimerRef.current);
+      scrollingFlagTimerRef.current = null;
+    }
+    const el = viewportRef.current;
+    if (el && el.dataset.scrolling === "1") delete el.dataset.scrolling;
   }, []);
 
   const readGeometry = useCallback((): ViewportGeometry | null => {
@@ -785,6 +830,11 @@ export function useChatViewportController(
       const now = stickNowMs();
       const gestureRecent =
         now - lastGestureAtRef.current < GESTURE_ESCAPE_WINDOW_MS;
+      // A gesture-driven scroll, or any scroll while escaped (the reader is
+      // driving), is a real move. A gesture-free scroll while pinned is stream
+      // growth or a collapse clamp: flagging it would flash the wallpaper
+      // backdrop on every stream frame (the flag drives `data-scrolling`).
+      if (escapedRef.current || gestureRecent) noteTranscriptScrolling();
       const decision = applyScrollSample({
         state: {
           ...viewportStateRef.current,
@@ -847,6 +897,7 @@ export function useChatViewportController(
     const handleWheel = (e: WheelEvent) => {
       lastGestureAtRef.current = stickNowMs();
       lastGestureTypeRef.current = "wheel";
+      noteTranscriptScrolling();
       if (
         shouldPreventPinnedBottomWheel({
           pinned: isPinnedRef.current,
@@ -871,6 +922,7 @@ export function useChatViewportController(
     const onTouchMove = (e: TouchEvent) => {
       lastGestureAtRef.current = stickNowMs();
       lastGestureTypeRef.current = "touch";
+      noteTranscriptScrolling();
       const y = e.touches[0]?.clientY;
       if (touchY == null || y == null) return;
       const dy = y - touchY;
@@ -903,6 +955,7 @@ export function useChatViewportController(
     const onKeyScroll = (e: KeyboardEvent) => {
       lastGestureAtRef.current = stickNowMs();
       lastGestureTypeRef.current = "keyboard";
+      noteTranscriptScrolling();
       applyGesture({ kind: "keyboard", key: e.key }, "keyboard");
     };
 
@@ -928,6 +981,9 @@ export function useChatViewportController(
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
       el.removeEventListener("touchcancel", onTouchEnd);
+      // The scroller may unmount mid-gesture: drop the flag and its timer
+      // directly, so no pending clear can outlive the element.
+      clearTranscriptScrolling();
     };
   }, [
     enabled,
@@ -937,6 +993,8 @@ export function useChatViewportController(
     captureEscapeAnchor,
     clearBottomIntent,
     commitState,
+    clearTranscriptScrolling,
+    noteTranscriptScrolling,
   ]);
 
   // Conversation switch → re-pin and jump to bottom before paint so the
