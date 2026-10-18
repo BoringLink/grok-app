@@ -49,18 +49,25 @@ real `ResizeObserver` / `MutationObserver` delivery:
 Frame cost is read from a CDP `toplevel,devtools.timeline` trace as the
 **duration of each `FireAnimationFrame`** on the renderer main thread: the rAF
 callbacks the app schedules (the band recompute, the controller's restore latch)
-plus the work they run before returning. Per-frame **style + layout** is reported
-next to it as `UpdateLayoutTree` + `Layout` durations. The React commit for the
-rows whose band membership flipped runs on the microtask checkpoint after the
-callback, so it is not inside the `FireAnimationFrame` duration; the layout it
-forces is the `UpdateLayoutTree` those rows produce and is covered by the
-style+layout line.
+plus the work they run before returning. **This excludes the React commit, paint
+and compositing**: the commit for the rows whose band membership flipped runs on
+the microtask checkpoint after the callback, and paint/compositing run on the
+GPU in the real client. Per-frame **style + layout** is reported next to it as
+`UpdateLayoutTree` + `Layout` durations, which covers the layout the commit
+forces; raster is not measured. So the number bounds the app's JS + style/layout
+per frame, not the whole pipeline.
 
 Position writes come from the controller's own trace counter
 (`chatViewportWriteStats`, incremented by the single write funnel
 `applyScrollTopTraced`), sampled once per frame; the trace is enabled inside the
-harness page only. The ledger figure is the ledger's exact typed-array footprint
-(`LayoutLedger.stats().memoryBytes`).
+harness page only. The counter only sees writes that go through that funnel — a
+raw `scrollTop =` write elsewhere would read as zero, which is why
+`src/lib/chatViewportWriteSources.guard.test.ts` separately fails any new writer
+on the transcript path.
+
+The ledger figure is the ledger's **absolute typed-array footprint at 10k rows**
+(`LayoutLedger.stats().memoryBytes`), not a before/after delta: the budget is
+"the ledger the session carries", and the footprint is exact and deterministic.
 
 ### Verbatim runs
 
@@ -105,38 +112,46 @@ per-frame work sits around 3–4ms p99 with rare single-frame excursions to
   impossible in this environment.
 - **Not the packaged app.** No Tauri host, no top-level window, no real window
   occlusion. The harness window is a flat 469px scroller.
-- **The commit path is adjacent, not inside, the measured number.** The rAF
-  callback duration covers the app's scheduled frame work; the React microtask
-  commit is covered only through the style+layout it produces.
+- **The measured frame cost is JS + style/layout only** (see Method): the React
+  commit, paint and compositing are outside the number.
 - Run-to-run variance is real (see the spread above); the harness is a bound,
   not a certification.
 
 ## The manual macOS pass: read the log
 
-The packaged client's frame-level numbers come from the dev trace, and the
-per-frame write budget is now a single field so the pass is a matter of reading
-the log. Enable the trace (`localStorage["grok.chatTrace"]="1"` or
-`?chatTrace=1`, plus a tracking id), reproduce on the 10k-row conversation, and
-read the `heartbeat` line (dumped with its event window every 10s):
+The packaged client's numbers come from the dev trace; each budget is now a
+field on the log, so the pass is a matter of reading it. Enable the trace
+(`localStorage["grok.chatTrace"]="1"` or `?chatTrace=1`, plus a tracking id) and
+reproduce on the 10k-row conversation. Then read, per acceptance criterion:
 
-- `frames`, `maxWritesPerFrame`, `framesOverBudget` — the ledger's write budget
-  over the sampled frames (`frameWriteSummary`). `framesOverBudget` must be 0.
-- `frameIntervalMs` / `fps` — the measured display cadence (120Hz on ProMotion),
-  not a fixed 60Hz assumption.
-- On the `sample` frames (`by: "raf"`), `d` is the distance to the content end
-  (C1, must be 0 while pinned), `v` the visible-band shift (C2), `a` the escaped
-  anchor shift (C3), and `w`/`ws` the writes and their source per frame.
+| Criterion | Where | Fields (must hold) |
+|-----------|-------|--------------------|
+| AC1 frame cost ≤ 8.3ms / 120Hz | `heartbeat` (every 10s) | `frameCostP90Ms`, `frameCostMaxMs`, `framesOverFrameBudget` (= 0), `fps`/`frameIntervalMs` (measured cadence, not a fixed 60Hz) |
+| AC2 first frame ≤ 400ms | `chat-first-frame` host line (`first-frame` ring event), once per conversation open | `ms`, with `rows`, `scrollHeight`, `clientHeight` for context |
+| AC2 ledger memory ≤ 20MB | `heartbeat` | `ledgerMemoryBytes`, `ledgerRows` |
+| AC3 ≤ 1 position write per frame | `heartbeat`, and the per-frame `sample` frames | `writeFrames`, `maxWritesPerFrame`, `framesOverWriteBudget` (= 0); on each `by: "raf"` sample, `w` (writes that frame) and `ws` (source) |
 
-Because the frame sampler counts writes from the single write funnel, a body of
-`w` values at 0–1 with `framesOverBudget: 0` on a real 120Hz scroll is the
-packaged-client proof of the "≤ 1 position write per frame" budget.
+`frameCost*` is the probe's own paint-boundary work per frame, a lower bound on
+the frame's main-thread cost — the same quantity the harness measures, with the
+same exclusions (React commit, paint, compositing). It is the only frame-cost
+signal readable from inside the packaged app; a real 120Hz WKWebView number still
+needs the manual pass on a ProMotion display.
+
+`maxWritesPerFrame: 1` with `framesOverWriteBudget: 0` is "the controller wrote
+at most once per frame, through the single funnel". It does not by itself prove
+no other writer exists — `src/lib/chatViewportWriteSources.guard.test.ts` is the
+guard for that, and it runs in CI.
+
+On the `sample` frames (`by: "raf"`), `d` is the distance to the content end
+(C1, must be 0 while pinned), `v` the visible-band shift (C2), `a` the escaped
+anchor shift (C3), and `w`/`ws` the writes and their source per frame.
 
 ## Scenario runner
 
 `pnpm scenarios:chat-viewport` (or `node scripts/run-chat-viewport-scenarios.mjs`)
-drives the ten synthetic scenarios the Spec's Testing Decisions name against the
-real controller, and asserts on the trace event sequence plus DOM geometry. It
-exits 0 only when all pass:
+drives the twelve synthetic scenarios the Spec's Testing Decisions name against
+the real controller, and asserts on the trace event sequence plus DOM geometry.
+It exits 0 only when all pass:
 
 ```
 PASS  continuous output stays pinned at the end — worst distance to end=0.00px, escapes=0
@@ -146,16 +161,20 @@ PASS  small repeated reflow keeps the pin — escapes=0, worst end distance=0.00
 PASS  a gesture-free upward move is a clamp, then a drag — pinned after 1st=true, escaped after 2nd=true
 PASS  a real wheel upward escapes the tail — escaped=true, causes=wheel
 PASS  restore lands back at the end after occlusion — distance to end=0.00px, occlusion events=2
+PASS  occlusion restore holds the escaped anchor, not the end — escaped=true, anchor shift=0.00px
+PASS  no frame carries more than one transcript write — max writes/frame=1
 PASS  a window resize re-follows the end — viewport-size event=true, distance to end=0.00
 PASS  a nested scroller expanding does not move the outer anchor — anchor shift=0.00px
 PASS  a media decode above the anchor does not move it — decoded height=400px, shift=0.00px
-10/10 scenarios passed
+12/12 scenarios passed
 ```
 
 What it asserts: pin/escape state per scenario, distance to the content end
 (C1), the escaped anchor element's on-screen shift (C3), the pin-flip causes the
-classifier recorded (C4 — `wheel`, `scrollbar`), the `occlusion` enter/exit
-events and the restore landing (C5), and the `viewport-size` event on resize.
+classifier recorded (C4 — `wheel`, `scrollbar`), the pinned and escaped halves
+of the occlusion restore (C5 — pinned returns to the end, escaped holds the
+anchor), the per-frame write budget (≤ 1), and the `viewport-size` event on
+resize.
 
 What it cannot assert here: it runs the controller over a hand-built DOM, not
 the resident list / band, and it is Chromium, not the packaged app or WKWebView.
@@ -172,5 +191,12 @@ surfaces with no behavioural change:
 - `LayoutLedger.stats().memoryBytes` — the exact typed-array footprint, so the
   ledger budget is a deterministic number instead of a noisy heap sample.
 - `frameWriteSummary` in `src/lib/chatViewportTrace.ts` and the `heartbeat`
-  fields it feeds — the "≤ 1 write per frame" summary the manual pass reads.
-  Dev-only; the probe still returns before any listener when the trace is off.
+  fields it feeds — the "≤ 1 write per frame" summary the manual pass reads,
+  counting paint-boundary frames only.
+- `frameCostSummary` in the same module and the probe's per-heartbeat frame-cost
+  window (`frameCostMaxMs` / `frameCostP90Ms` / `framesOverFrameBudget`) — the
+  packaged app's frame-cost read-out, measured in the probe's own rAF callback.
+- The probe's `getLedgerStats` input (wired in `ConversationThread`) and the
+  `ledgerMemoryBytes` / `ledgerRows` heartbeat fields — the ledger budget in the
+  packaged app. Dev-only; the probe still returns before any listener when the
+  trace is off.
