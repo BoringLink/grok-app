@@ -34,6 +34,10 @@ import {
   type ViewportTraceEvent,
   type VisibleRowPosition,
 } from "@/lib/chatViewportTrace";
+import {
+  shellsCrossingViewport,
+  type BandRowRect,
+} from "@/lib/chatResidentBand";
 
 /** A real gesture within this window means the move was the user's, not a bug. */
 const GESTURE_WINDOW_MS = 400;
@@ -78,11 +82,13 @@ function firstVisibleRowIndex(
 /**
  * On-screen position of every row crossing the viewport, for the C2
  * visible-shift metric. Rows are emitted in DOM order (ascending index), so a
- * row that starts below the viewport ends the walk.
+ * row that starts below the viewport ends the walk. Crossing rows are also
+ * copied into `crossing` (with a shell flag) for the AC2 band check.
  */
 function visibleRowPositions(
   viewport: HTMLElement,
   content: HTMLElement | null,
+  crossing?: BandRowRect[],
 ): VisibleRowPosition[] {
   const root = content ?? viewport;
   const rows = root.querySelectorAll<HTMLElement>("[data-virt-index]");
@@ -95,7 +101,14 @@ function visibleRowPositions(
     if (rect.bottom <= viewTop) continue;
     const raw = row.dataset.virtIndex;
     const index = raw == null ? Number.NaN : Number(raw);
-    if (Number.isFinite(index)) positions.push({ index, top: rect.top });
+    if (!Number.isFinite(index)) continue;
+    positions.push({ index, top: rect.top });
+    crossing?.push({
+      index,
+      top: rect.top,
+      bottom: rect.bottom,
+      shell: row.querySelector("[data-virt-shell]") != null,
+    });
   }
   return positions;
 }
@@ -125,6 +138,8 @@ export function useChatViewportTraceProbe(input: {
     let prevPinned = isPinnedRef.current;
     /** Visible-band row positions from the previous frame, for the shift metric. */
     let prevPositions: VisibleRowPosition[] = [];
+    /** Shell indices seen inside the band last frame, so a repeat is not re-logged. */
+    let prevShellsInBand = "";
     let lastDTop = 0;
     let lastDHeight = 0;
     /** Latest frame metrics, surfaced on the heartbeat so the log reads out. */
@@ -236,9 +251,41 @@ export function useChatViewportTraceProbe(input: {
       const clientHeight = viewport.clientHeight;
       // One layout walk per frame: the first visible index falls out of the
       // band positions instead of a second `getBoundingClientRect` pass.
-      const positions = visibleRowPositions(viewport, contentRef?.current ?? null);
+      const crossing: BandRowRect[] = [];
+      const positions = visibleRowPositions(
+        viewport,
+        contentRef?.current ?? null,
+        crossing,
+      );
       const index = positions[0]?.index ?? null;
       const shift = visibleBandShift(prevPositions, positions);
+      // AC2: no shell may sit inside the visible band. Judged here, at the
+      // paint boundary, on the same rows the C2 shift metric uses.
+      const viewTop = viewport.getBoundingClientRect().top;
+      const shellsInBand = shellsCrossingViewport(
+        crossing,
+        viewTop,
+        viewTop + clientHeight,
+      );
+      const shellKey = shellsInBand.join(",");
+      if (shellKey !== prevShellsInBand) {
+        prevShellsInBand = shellKey;
+        if (shellsInBand.length > 0) {
+          const trigger = traceViewport("shell-in-band", {
+            count: shellsInBand.length,
+            indices: shellsInBand.slice(0, 8),
+            scrollTop: Math.round(scrollTop),
+            scrollHeight: Math.round(scrollHeight),
+            clientHeight: Math.round(clientHeight),
+            by: sampledBy,
+          });
+          console.warn(
+            "[chat-viewport] shell row inside the visible band",
+            shellsInBand.slice(0, 8),
+          );
+          publish("shell-in-band", false, trigger);
+        }
+      }
       const distFromBottom = distanceToContentEnd({
         scrollTop,
         scrollHeight,

@@ -16,19 +16,15 @@
  * Cost: the band is computed from the ledger (an O(log n) offset search), not
  * from a rect walk, and it lives in an external store, so a scroll re-renders
  * only the rows whose band membership flipped — never the parent with its 10k
- * rows.
+ * rows and never a getSnapshot pass over all of them.
  */
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import type { LayoutLedger, LayoutRowHeight } from "@/lib/chatViewportLedger";
 import {
+  createChatResidentBandStore,
   resolveResidentBand,
-  residentTailBand,
+  type ChatResidentBandStoreControl,
   type ResidentBand,
 } from "@/lib/chatResidentBand";
 import {
@@ -41,8 +37,12 @@ import {
   scheduleOnFrame,
   type FrameSchedule,
 } from "@/lib/frameSchedule";
+import {
+  chatViewportTraceEnabled,
+  publishTraceToHost,
+  traceViewport,
+} from "@/lib/chatViewportTrace";
 import type {
-  ChatResidentBandStore,
   UseChatResidentListArgs,
   UseChatResidentListResult,
 } from "@/hooks/chatResidentListShared";
@@ -65,32 +65,43 @@ function nowMs(): number {
     : Date.now();
 }
 
-type BandStoreInternal = ChatResidentBandStore & {
-  setBand(band: ResidentBand): void;
+/** Seed bookkeeping: which ledger is in use and how many rows it holds. */
+export type ResidentLedgerSeed = {
+  ledger: LayoutLedger | null;
+  count: number;
+  resetKey: string | number | null;
 };
 
-/** Band membership store; notifies only when a row's membership actually flips. */
-function createBandStore(initial: ResidentBand): BandStoreInternal {
-  let band = initial;
-  const listeners = new Set<() => void>();
-  return {
-    isRich(index: number) {
-      return index >= band.start && index < band.end;
-    },
-    subscribe(listener: () => void) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
-    setBand(next: ResidentBand) {
-      if (next.start === band.start && next.end === band.end) return;
-      band = next;
-      for (const listener of listeners) listener();
-    },
-  };
+/**
+ * Grow `ledger` to `itemCount` and write the content estimate for every row
+ * that has never been seeded. Idempotent: a repeat call with the same seed
+ * state does no work, so it is safe across a StrictMode double effect.
+ */
+export function seedResidentLedger(input: {
+  ledger: LayoutLedger;
+  seed: ResidentLedgerSeed;
+  itemCount: number;
+  estimate: (index: number) => number;
+}): void {
+  const { ledger, seed, itemCount, estimate } = input;
+  if (ledger.rowCount() !== itemCount) ledger.setCount(itemCount);
+  if (seed.count > itemCount) seed.count = 0;
+  if (seed.count >= itemCount) return;
+  const changes: LayoutRowHeight[] = [];
+  for (let i = seed.count; i < itemCount; i++) {
+    changes.push({ index: i, height: estimate(i), source: "estimate" });
+  }
+  ledger.applyRowHeights(changes);
+  seed.count = itemCount;
 }
 
+/**
+ * Resident transcript list: keep every conversation row in the DOM, render real
+ * content only inside the visible band, and let the layout ledger drive the
+ * rest. The band is recomputed from the ledger before paint (and synchronously
+ * in the controller's write path), measured heights go back to the controller,
+ * and the single `scrollTop` writer stays the controller.
+ */
 export function useChatResidentList(
   args: UseChatResidentListArgs,
 ): UseChatResidentListResult {
@@ -112,28 +123,25 @@ export function useChatResidentList(
   enabledRef.current = enabled;
 
   const lastViewportHeightRef = useRef(0);
-  /** Ledger + seeded row count, so seeding never walks the whole list twice. */
-  const seedRef = useRef<{
-    ledger: LayoutLedger | null;
-    count: number;
-    resetKey: string | number | null;
-  }>({ ledger: null, count: 0, resetKey });
-
-  // Seed the ledger's estimate tier during render: the first painted frame must
-  // already know every shell's height, so the scrollbar is real from frame one.
-  // The writes are idempotent, so a StrictMode double render is harmless.
-  const ledgerForRender = seedLedger(
-    controller,
-    seedRef.current,
-    itemCount,
+  const seedRef = useRef<ResidentLedgerSeed>({
+    ledger: null,
+    count: 0,
     resetKey,
-    estimateRef,
-  );
+  });
 
-  const bandStoreRef = useRef<BandStoreInternal | null>(null);
+  const estimateFor = useCallback((index: number): number => {
+    const est = estimateRef.current?.(index);
+    return est != null && Number.isFinite(est) && est >= 0
+      ? est
+      : CHAT_DEFAULT_ROW_ESTIMATE_PX;
+  }, []);
+
+  // Nothing is rich until the layout effect bands (and seeds) before the first
+  // paint; with the shell band disabled, every row is rich from the start.
+  const bandStoreRef = useRef<ChatResidentBandStoreControl | null>(null);
   if (!bandStoreRef.current) {
-    bandStoreRef.current = createBandStore(
-      initialBand(enabled, ledgerForRender, itemCount, lastViewportHeightRef.current),
+    bandStoreRef.current = createChatResidentBandStore(
+      enabled ? { start: 0, end: 0 } : { start: 0, end: itemCount },
     );
   }
   const bandStore = bandStoreRef.current;
@@ -218,7 +226,10 @@ export function useChatResidentList(
           if (box && Number.isFinite(box.blockSize) && box.blockSize > 0) {
             height = box.blockSize;
           }
-        } else if (entry.contentRect && Number.isFinite(entry.contentRect.height)) {
+        } else if (
+          entry.contentRect &&
+          Number.isFinite(entry.contentRect.height)
+        ) {
           height = entry.contentRect.height;
         }
         if (height <= 0) continue;
@@ -261,12 +272,20 @@ export function useChatResidentList(
     [ensureSharedObserver],
   );
 
+  /**
+   * Shell height for a row. Before the ledger is seeded (the very first commit)
+   * the content estimate stands in, so the DOM already has the real scroll
+   * height when the controller pins the conversation to its tail.
+   */
   const rowHeight = useCallback(
     (index: number): number => {
       const ledger = controller?.ledger();
-      return ledger ? ledger.heightOf(index) : CHAT_DEFAULT_ROW_ESTIMATE_PX;
+      if (ledger && index >= 0 && index < ledger.rowCount()) {
+        return ledger.heightOf(index);
+      }
+      return estimateFor(index);
     },
-    [controller],
+    [controller, estimateFor],
   );
 
   // ---- lifecycle --------------------------------------------------------
@@ -281,14 +300,52 @@ export function useChatResidentList(
     pendingRestoreRef.current = false;
   }, [resetKey]);
 
-  // First frame and every structural change: re-band before paint.
+  // Seed, then band, before paint: the first painted frame must know every
+  // shell's height and which rows carry content. Layout effects run before
+  // paint, so this keeps the first-frame behaviour without a render-phase
+  // side effect.
   useLayoutEffect(() => {
+    seedControllerLedger({
+      controller,
+      seed: seedRef.current,
+      itemCount,
+      resetKey,
+      estimate: estimateFor,
+    });
     refreshBand();
     // Unknown viewport (mount before layout): retry on the next frame so the
     // first painted band is not stuck on the fallback height.
     const raf = requestAnimationFrame(refreshBand);
     return () => cancelAnimationFrame(raf);
-  }, [refreshBand, itemCount, resetKey, enabled, controller]);
+  }, [controller, itemCount, resetKey, enabled, estimateFor, refreshBand]);
+
+  // Re-band synchronously in the controller's write path: a programmatic jump
+  // (find / Home / rail) must not paint a shell row inside the band.
+  useEffect(() => {
+    if (!controller) return;
+    return controller.subscribePosition(refreshBand);
+  }, [controller, refreshBand]);
+
+  // DEV-only: record the transcript's first painted frame so the number can be
+  // read from the Host log in the packaged client (AC4). No-op when the trace
+  // flag is unset.
+  useLayoutEffect(() => {
+    if (!chatViewportTraceEnabled()) return;
+    const start = nowMs();
+    const raf = requestAnimationFrame(() => {
+      const el = viewportRef.current;
+      const payload = {
+        ms: Math.round(nowMs() - start),
+        rows: itemCountRef.current,
+        scrollTop: Math.round(el?.scrollTop ?? 0),
+        scrollHeight: Math.round(el?.scrollHeight ?? 0),
+        clientHeight: Math.round(el?.clientHeight ?? 0),
+      };
+      traceViewport("first-frame", payload);
+      void publishTraceToHost({ reason: "chat-first-frame", ...payload });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [controller, resetKey, viewportRef]);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -338,61 +395,29 @@ export function useChatResidentList(
   };
 }
 
-/** Band for the first painted frame: the tail while pinned, else the whole list. */
-function initialBand(
-  enabled: boolean,
-  ledger: LayoutLedger | null,
-  itemCount: number,
-  viewportHeight: number,
-): ResidentBand {
-  if (!enabled || !ledger) return { start: 0, end: itemCount };
-  return residentTailBand(ledger, viewportHeight);
-}
-
 /**
- * Grow the ledger to `itemCount` and give every never-seeded row its content
- * estimate. Idempotent, and stable across a StrictMode double render.
+ * Seed the controller's ledger, dropping remembered heights first when the row
+ * identity changed on the same ledger object (conversation switch recreates the
+ * ledger inside the controller, so only the reset case is handled here).
  */
-function seedLedger(
-  controller: UseChatResidentListArgs["controller"],
-  state: {
-    ledger: LayoutLedger | null;
-    count: number;
-    resetKey: string | number | null;
-  },
-  itemCount: number,
-  resetKey: string | number | null,
-  estimateRef: { current: ((index: number) => number) | undefined },
-): LayoutLedger | null {
-  if (!controller) return null;
+function seedControllerLedger(input: {
+  controller: UseChatResidentListArgs["controller"];
+  seed: ResidentLedgerSeed;
+  itemCount: number;
+  resetKey: string | number | null;
+  estimate: (index: number) => number;
+}): void {
+  const { controller, seed, itemCount, resetKey, estimate } = input;
+  if (!controller) return;
   let ledger = controller.ledger();
-  // A new identity on the same ledger object: drop remembered heights first.
-  if (resetKey !== state.resetKey && state.ledger === ledger) {
+  if (resetKey !== seed.resetKey && seed.ledger === ledger) {
     controller.resetLedger();
     ledger = controller.ledger();
   }
-  if (state.ledger !== ledger) {
-    // The controller recreated the ledger (conversation switch).
-    state.ledger = ledger;
-    state.count = 0;
+  if (seed.ledger !== ledger) {
+    seed.ledger = ledger;
+    seed.count = 0;
   }
-  state.resetKey = resetKey;
-  if (ledger.rowCount() !== itemCount) ledger.setCount(itemCount);
-  if (state.count > itemCount) state.count = 0;
-  if (state.count >= itemCount) return ledger;
-  const changes: LayoutRowHeight[] = [];
-  for (let i = state.count; i < itemCount; i++) {
-    const est = estimateRef.current?.(i);
-    changes.push({
-      index: i,
-      height:
-        est != null && Number.isFinite(est) && est >= 0
-          ? est
-          : CHAT_DEFAULT_ROW_ESTIMATE_PX,
-      source: "estimate",
-    });
-  }
-  ledger.applyRowHeights(changes);
-  state.count = itemCount;
-  return ledger;
+  seed.resetKey = resetKey;
+  seedResidentLedger({ ledger, seed, itemCount, estimate });
 }

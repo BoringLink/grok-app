@@ -13,6 +13,7 @@ afterEach(cleanup);
 function makeController() {
   let ledger = createLayoutLedger({ count: 0, estimateHeight: 120 });
   const restoreLayout = vi.fn();
+  const positionListeners = new Set<() => void>();
   const controller = {
     ledger: () => ledger,
     reportRowHeight(index: number, height: number) {
@@ -23,11 +24,18 @@ function makeController() {
       ledger = createLayoutLedger({ count: 0, estimateHeight: 120 });
     },
     restoreLayout,
+    subscribePosition(listener: () => void) {
+      positionListeners.add(listener);
+      return () => positionListeners.delete(listener);
+    },
     assign: vi.fn(),
     escape: vi.fn(),
     pinToEnd: vi.fn(),
   } as unknown as ChatViewportControllerHandle;
-  return { controller, restoreLayout, ledger: () => ledger };
+  const notifyPosition = () => {
+    for (const listener of positionListeners) listener();
+  };
+  return { controller, restoreLayout, notifyPosition, ledger: () => ledger };
 }
 
 function makeViewport(scrollTop: number, clientHeight: number) {
@@ -141,18 +149,45 @@ describe("useChatResidentList", () => {
 
     // Act / Assert: every row crossing [scrollTop, scrollTop + clientHeight) is
     // real content — a shell there is exactly the forbidden visible placeholder.
-    const viewBottom = scrollTop + clientHeight;
-    for (let i = 0; i < 200; i++) {
-      const rowTop = i * rowHeight;
-      const rowBottom = rowTop + rowHeight;
-      const intersects = rowBottom > scrollTop && rowTop < viewBottom;
-      if (intersects) {
-        expect(result.current.bandStore.isRich(i)).toBe(true);
-      }
-    }
+    const firstCrossing = Math.floor(scrollTop / rowHeight);
+    const lastCrossing = Math.ceil((scrollTop + clientHeight) / rowHeight);
+    const crossingRows = Array.from(
+      { length: lastCrossing - firstCrossing },
+      (_, n) => firstCrossing + n,
+    );
+    expect(crossingRows.every((i) => result.current.bandStore.isRich(i))).toBe(
+      true,
+    );
   });
 
-  it("tracks a collapse and a re-growth in the shell height", () => {
+  it("re-bands synchronously on a programmatic jump, before any frame", () => {
+    // Arrange: 100px rows, a 600px viewport held at the top.
+    const viewport = makeViewport(0, 600);
+    const { controller, notifyPosition } = makeController();
+    const isPinnedRef = { current: false };
+
+    const { result } = renderHook(() =>
+      useChatResidentList({
+        itemCount: 200,
+        getEstimateHeight: () => 100,
+        viewportRef: { current: viewport },
+        isPinnedRef,
+        controller,
+      }),
+    );
+    expect(result.current.bandStore.isRich(80)).toBe(false);
+
+    // Act: a programmatic jump (find / Home / rail) writes the position and the
+    // controller notifies; no rAF runs.
+    viewport.scrollTop = 8000;
+    act(() => notifyPosition());
+
+    // Assert: rows now crossing [8000, 8600) are real content immediately.
+    expect(result.current.bandStore.isRich(80)).toBe(true);
+    expect(result.current.bandStore.isRich(0)).toBe(false);
+  });
+
+  it("tracks a collapse and a re-growth in the shell height and the total", () => {
     // Arrange
     const viewport = makeViewport(0, 400);
     const { controller, ledger } = makeController();
@@ -167,23 +202,28 @@ describe("useChatResidentList", () => {
         controller,
       }),
     );
+    const baseTotal = ledger().totalHeight();
+    expect(baseTotal).toBe(2000);
 
     const row = document.createElement("div");
     let height = 400;
     row.getBoundingClientRect = () => ({ height }) as DOMRect;
 
-    // Act / Assert: measure, collapse, re-grow.
+    // Act / Assert: measure, collapse, re-grow — the total (and the scrollbar
+    // drawn from the shell heights) follows exactly for a measured row.
     act(() => result.current.measureRef(3)(row));
     expect(result.current.rowHeight(3)).toBe(400);
+    expect(ledger().totalHeight()).toBe(baseTotal + 300);
 
     height = 60;
     act(() => result.current.measureRef(3)(row));
     expect(result.current.rowHeight(3)).toBe(60);
-    expect(ledger().heightOf(3)).toBe(60);
+    expect(ledger().totalHeight()).toBe(baseTotal - 40);
 
     height = 400;
     act(() => result.current.measureRef(3)(row));
     expect(result.current.rowHeight(3)).toBe(400);
+    expect(ledger().totalHeight()).toBe(baseTotal + 300);
   });
 
   it("returns an empty band for an empty conversation", () => {

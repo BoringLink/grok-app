@@ -1,6 +1,9 @@
 import type { RefObject } from "react";
 import type { ChatViewportControllerHandle } from "@/hooks/useChatViewportController";
 
+export type { ChatResidentBandStore } from "@/lib/chatResidentBand";
+import type { ChatResidentBandStore } from "@/lib/chatResidentBand";
+
 export type UseChatResidentListArgs = {
   /** Every conversation row is resident; this is how many there are. */
   itemCount: number;
@@ -25,16 +28,9 @@ export type UseChatResidentListArgs = {
 };
 
 /**
- * Band membership as an external store, so a scroll re-renders only the rows
- * whose membership flipped — not the parent with its 10k rows.
+ * The hook result. The band is a store so a scroll re-renders only the rows
+ * whose membership flipped, never the parent with its 10k rows.
  */
-export type ChatResidentBandStore = {
-  /** True when the row must render its real content this frame. */
-  isRich(index: number): boolean;
-  /** Subscribe to band-membership changes. */
-  subscribe(listener: () => void): () => void;
-};
-
 export type UseChatResidentListResult = {
   /** Every row is resident; the full range is always `[0, rowCount)`. */
   rowCount: number;

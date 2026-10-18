@@ -1,12 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createLayoutLedger } from "./chatViewportLedger";
 import {
   CHAT_RESIDENT_FALLBACK_VIEWPORT_PX,
   CHAT_RESIDENT_OVERSCAN_MAX_PX,
   CHAT_RESIDENT_OVERSCAN_MIN_PX,
+  createChatResidentBandStore,
   resolveResidentBand,
   resolveResidentOverscanPx,
   residentTailBand,
+  shellsCrossingViewport,
 } from "./chatResidentBand";
 
 const ROW = 100;
@@ -103,5 +105,66 @@ describe("resolveResidentBand", () => {
       overscanPx: 0,
     });
     expect(band).toEqual({ start: 0, end: 3 });
+  });
+});
+
+describe("createChatResidentBandStore", () => {
+  it("notifies only the rows whose membership flipped", () => {
+    // Arrange: 0 and 1 start rich; 10 and 11 start outside.
+    const store = createChatResidentBandStore({ start: 0, end: 10 });
+    const seen: number[] = [];
+    store.subscribeFor(0)(() => seen.push(0));
+    store.subscribeFor(3)(() => seen.push(3));
+    store.subscribeFor(9)(() => seen.push(9));
+    store.subscribeFor(10)(() => seen.push(10));
+
+    // Act: the band slides right into [2, 12).
+    store.setBand({ start: 2, end: 12 });
+
+    // Assert: 0 leaves and 10 enters; 3 and 9 never move.
+    expect([...seen].sort((a, b) => a - b)).toEqual([0, 10]);
+    expect(store.isRich(0)).toBe(false);
+    expect(store.isRich(2)).toBe(true);
+    expect(store.isRich(11)).toBe(true);
+  });
+
+  it("does not notify at all when the band is unchanged", () => {
+    const store = createChatResidentBandStore({ start: 0, end: 10 });
+    const listener = vi.fn();
+    store.subscribeFor(1)(listener);
+
+    store.setBand({ start: 0, end: 10 });
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("returns a stable per-index subscribe and stops after unsubscribe", () => {
+    const store = createChatResidentBandStore({ start: 0, end: 5 });
+    expect(store.subscribeFor(1)).toBe(store.subscribeFor(1));
+    const listener = vi.fn();
+    const off = store.subscribeFor(1)(listener);
+
+    // Row 1 stays inside [1, 6); only 0 leaves and 5 enters.
+    store.setBand({ start: 1, end: 6 });
+    expect(listener).not.toHaveBeenCalled();
+
+    off();
+    store.setBand({ start: 2, end: 6 });
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
+describe("shellsCrossingViewport", () => {
+  it("returns the shell rows inside the viewport and nothing else", () => {
+    const rows = [
+      { index: 0, top: -50, bottom: 50, shell: true },
+      { index: 1, top: 50, bottom: 150, shell: false },
+      { index: 2, top: 150, bottom: 250, shell: true },
+      { index: 3, top: 250, bottom: 350, shell: true },
+    ];
+
+    expect(shellsCrossingViewport(rows, 100, 300)).toEqual([2, 3]);
+    expect(shellsCrossingViewport(rows, 0, 40)).toEqual([0]);
+    expect(shellsCrossingViewport(rows, 1000, 1200)).toEqual([]);
   });
 });

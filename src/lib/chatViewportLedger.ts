@@ -14,7 +14,10 @@
  *
  * An estimate may only ever describe a never-rendered row: a write whose source
  * ranks below the row's current source is rejected, so a late estimate can never
- * move a row the user has already seen.
+ * move a row the user has already seen. That tier boundary is also the exact
+ * limit of the scrollbar promise: the resident list sets a shell's height from
+ * this ledger, so the total — and the scrollbar drawn from it — is exact for
+ * every measured row and estimated only for rows never rendered yet.
  *
  * Memory: heights (Float64Array) + offsets (Float64Array, count + 1) + sources
  * (Uint8Array) = 17 bytes per row plus one 8-byte offset slot. At the design
@@ -90,6 +93,12 @@ export type LayoutLedger = {
   sourceOf(index: number): LayoutRowSource;
   /** Top offset of a row; `offsetOf(rowCount())` is the total height. */
   offsetOf(index: number): number;
+  /**
+   * Total conversation height. Exact for every row that has been measured;
+   * a row that has never been rendered contributes its estimate, so the total
+   * (and the scrollbar time draws from it) is an estimate only until that row
+   * is measured once.
+   */
   totalHeight(): number;
   /** Row containing a pixel. -1 for an empty ledger. */
   indexAtOffset(px: number): number;

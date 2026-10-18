@@ -109,6 +109,12 @@ export type ChatViewportControllerHandle = {
   resetLedger(): void;
   /** A layout batch changed the transcript height — restore before paint. */
   restoreLayout(source?: string): void;
+  /**
+   * Notified synchronously after every transcript position write, so a reader
+   * (the resident list) can re-band in the write path instead of waiting for a
+   * frame — a programmatic jump must not paint a shell inside the band.
+   */
+  subscribePosition(listener: () => void): () => void;
   /** Programmatic escape (rail / find jump): the user is reading history. */
   escape(reason: string): void;
   /** Pin to the content end (send, force-stick, back-to-bottom). */
@@ -282,6 +288,15 @@ export function useChatViewportController(
   }, []);
 
   /**
+   * Synchronous post-write listeners. The resident list re-bands here, in the
+   * write path, so a programmatic jump is banded before the frame paints.
+   */
+  const positionListenersRef = useRef<Set<() => void>>(new Set());
+  const notifyPositionWritten = useCallback(() => {
+    for (const listener of positionListenersRef.current) listener();
+  }, []);
+
+  /**
    * The single transcript position write. Every decided move — instant or
    * animated — funnels here and is recorded through the trace module, so a
    * trace can attribute any move to its source (ADR 0006).
@@ -297,6 +312,7 @@ export function useChatViewportController(
         ignoreScrollTopRef.current = top;
         el.scrollTo({ top, behavior: "smooth" });
         traceScrollTopWrite(source, el, before);
+        notifyPositionWritten();
         return;
       }
       // Force instant assignment even if CSS scroll-behavior is smooth.
@@ -308,8 +324,9 @@ export function useChatViewportController(
       lastScrollHeightRef.current = el.scrollHeight;
       if (prev) el.style.scrollBehavior = prev;
       else el.style.removeProperty("scroll-behavior");
+      notifyPositionWritten();
     },
-    [],
+    [notifyPositionWritten],
   );
 
   const applyScrollTop = useCallback(
@@ -1128,6 +1145,13 @@ export function useChatViewportController(
       },
       restoreLayout() {
         restoreNow();
+      },
+      subscribePosition(listener) {
+        const listeners = positionListenersRef.current;
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
       },
       escape(reason) {
         // A rail / find jump: the caller assigns the landed position next, so

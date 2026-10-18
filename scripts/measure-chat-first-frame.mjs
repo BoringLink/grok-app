@@ -36,6 +36,7 @@ const ROWS = ${ROWS};
 
 function makeController() {
   let ledger = createLayoutLedger({ count: 0, estimateHeight: 120 });
+  const positionListeners = new Set();
   return {
     ledger: () => ledger,
     reportRowHeight(index, height) {
@@ -46,6 +47,10 @@ function makeController() {
       ledger = createLayoutLedger({ count: 0, estimateHeight: 120 });
     },
     restoreLayout() {},
+    subscribePosition(listener) {
+      positionListeners.add(listener);
+      return () => positionListeners.delete(listener);
+    },
     assign() {},
     escape() {},
     pinToEnd() {},
@@ -56,7 +61,7 @@ window.__ROW_RENDERS__ = 0;
 const Row = memo(function Row({ index, bandStore, rowHeight, measureRef }) {
   window.__ROW_RENDERS__ += 1;
   const rich = useSyncExternalStore(
-    bandStore.subscribe,
+    bandStore.subscribeFor(index),
     () => bandStore.isRich(index),
   );
   if (!rich) {

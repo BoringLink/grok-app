@@ -96,3 +96,111 @@ export function residentTailBand(
     pinned: true,
   });
 }
+
+/**
+ * Band membership as an external store. Each row subscribes for its own index,
+ * so a band change notifies only the rows whose membership actually flipped —
+ * a scroll must not cost an O(rows) getSnapshot pass on a 10k-row list.
+ */
+export type ChatResidentBandStore = {
+  /** True when the row must render its real content this frame. */
+  isRich(index: number): boolean;
+  /** Stable per-index subscribe, for `useSyncExternalStore`. */
+  subscribeFor(index: number): (listener: () => void) => () => void;
+};
+
+/** The store plus the mutator the resident list owns. */
+export type ChatResidentBandStoreControl = ChatResidentBandStore & {
+  setBand(band: ResidentBand): void;
+};
+
+export function createChatResidentBandStore(
+  initial: ResidentBand,
+): ChatResidentBandStoreControl {
+  let band = initial;
+  const listeners = new Map<number, Set<() => void>>();
+  const subscribeCache = new Map<
+    number,
+    (listener: () => void) => () => void
+  >();
+
+  const notifyRow = (index: number): void => {
+    const set = listeners.get(index);
+    if (!set) return;
+    for (const listener of set) listener();
+  };
+  const notifyRange = (lo: number, hi: number): void => {
+    for (let i = lo; i < hi; i++) notifyRow(i);
+  };
+
+  return {
+    isRich(index) {
+      return index >= band.start && index < band.end;
+    },
+    subscribeFor(index) {
+      const cached = subscribeCache.get(index);
+      if (cached) return cached;
+      const subscribe = (listener: () => void) => {
+        let set = listeners.get(index);
+        if (!set) {
+          set = new Set();
+          listeners.set(index, set);
+        }
+        set.add(listener);
+        return () => {
+          set.delete(listener);
+          if (set.size === 0) listeners.delete(index);
+        };
+      };
+      subscribeCache.set(index, subscribe);
+      return subscribe;
+    },
+    setBand(next) {
+      const prev = band;
+      if (prev.start === next.start && prev.end === next.end) return;
+      band = next;
+      // Notify exactly the symmetric difference of the two half-open ranges:
+      // rows rich before and shell after, then shell before and rich after.
+      if (prev.start < next.start) {
+        notifyRange(prev.start, Math.min(prev.end, next.start));
+      }
+      if (prev.end > next.end) {
+        notifyRange(Math.max(prev.start, next.end), prev.end);
+      }
+      if (next.start < prev.start) {
+        notifyRange(next.start, Math.min(next.end, prev.start));
+      }
+      if (next.end > prev.end) {
+        notifyRange(Math.max(next.start, prev.end), next.end);
+      }
+    },
+  };
+}
+
+/** One mounted row's box, for the dev-only shell-in-band check. */
+export type BandRowRect = {
+  index: number;
+  top: number;
+  bottom: number;
+  shell: boolean;
+};
+
+/**
+ * Indices of shell rows that cross `[viewTop, viewBottom)` — a placeholder
+ * inside the visible band, which AC2 forbids. Pure so the paint-boundary check
+ * and its test share the same rule.
+ */
+export function shellsCrossingViewport(
+  rows: readonly BandRowRect[],
+  viewTop: number,
+  viewBottom: number,
+): number[] {
+  const out: number[] = [];
+  for (const row of rows) {
+    if (!row.shell) continue;
+    if (row.bottom <= viewTop || row.top >= viewBottom) continue;
+    out.push(row.index);
+  }
+  return out;
+}
+

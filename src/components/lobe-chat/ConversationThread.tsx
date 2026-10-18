@@ -783,10 +783,10 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
   sessionChanges,
 }: TranscriptMessageRowProps) {
   void _timeTick;
-  // Band membership is an external store so a scroll re-renders only the rows
-  // whose membership flipped, not the parent with its 10k rows.
+  // Band membership is a per-row subscription so a scroll re-renders only the
+  // rows whose membership flipped, not the parent with its 10k rows.
   const rich = useSyncExternalStore(
-    bandStore.subscribe,
+    bandStore.subscribeFor(msgIndex),
     () => bandStore.isRich(msgIndex),
   );
   const paint: "rich" | "shell" = rich ? "rich" : "shell";
