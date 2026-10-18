@@ -1,0 +1,52 @@
+src/lib/chatResidentFirstFrame.test.ts
+  s_2b3b9dbade4daf::t_49bfb5da7602f2 2-8,11-14,16-17,22-23,25-27,30-52,54-73,76-77
+  s_2b3b9dbade4daf::t_4e3191fa42255b 18-20
+src/lib/chatViewportLedger.ts
+  s_2b3b9dbade4daf::t_a4f0630a184603 17-20
+  s_2b3b9dbade4daf::t_536d0b211efd24 96-101
+src/lib/chatResidentBand.ts
+  s_2b3b9dbade4daf::t_a8b5eb4a99fb11 99-206
+scripts/measure-chat-first-frame.mjs
+  s_2b3b9dbade4daf::t_118e4b35ac6f44 64
+  s_2b3b9dbade4daf::t_9e3972e23bd84e 39,50-53
+src/hooks/useChatViewportTraceProbe.ts
+  s_2b3b9dbade4daf::t_35a32fdc306c59 85-86,91,104-111
+  s_2b3b9dbade4daf::t_53dcd94e1ed1b8 141-142
+  s_2b3b9dbade4daf::t_e34ff9d0b3851f 37-40
+  s_2b3b9dbade4daf::t_3be4fdaa7477d2 254-259,262-288
+src/components/lobe-chat/ConversationThread.tsx
+  s_2b3b9dbade4daf::t_22f838a13ab5a5 786-787,789
+src/lib/chatResidentBand.test.ts
+  s_2b3b9dbade4daf::t_75ba1e0a77f421 110-170
+  s_2b3b9dbade4daf::t_d8149e2f9c9fe6 1,7,11
+src/hooks/useChatViewportController.ts
+  s_2b3b9dbade4daf::t_5410469f8b640d 291-298
+  s_2b3b9dbade4daf::t_757f9cf0e5a1a1 112-117
+  s_2b3b9dbade4daf::t_24900d3dd7f454 329
+  s_2b3b9dbade4daf::t_a7e33b357c7258 315,327
+  s_2b3b9dbade4daf::t_92cf40f04a586b 1149-1155
+src/hooks/chatResidentListShared.ts
+  s_2b3b9dbade4daf::t_ce5ab4a28ae5d4 31-32
+  s_2b3b9dbade4daf::t_1e588fcea988de 4-6
+src/hooks/useChatResidentList.ts
+  s_2b3b9dbade4daf::t_9008505946032b 19,22,25,27,40-44,68-72,75-95,98-104,126-128,130,132-141,143-144,229-232,275-279,283-286,288,303-306,308-314,320-348,399-401,403-411,413,417-419,421-422
+src/hooks/useChatResidentList.test.tsx
+  s_2b3b9dbade4daf::t_9cb9bd2bc62aef 16,27-30,35-38,161-187,190,205-206,212-213,216,221,226
+  s_2b3b9dbade4daf::t_2be5a6d7de00c7 152-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "6cc6d77530fd70173d2c825657effe6f348bc5ce",
+  "prompts": {},
+  "sessions": {
+    "s_2b3b9dbade4daf": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f4c-7d52-72d3-b28a-921600e949e3",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
