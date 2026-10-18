@@ -1,0 +1,41 @@
+src/lib/chatViewportController.ts
+  s_41ce35b1895b05::t_205278cf8ec147 390-422
+src/hooks/useChatViewportController.ts
+  s_41ce35b1895b05::t_a5511aac599dac 543-564
+  s_41ce35b1895b05::t_7bb99d063ae28b 1361-1366,1374-1375,1378-1380,1386-1394
+  s_41ce35b1895b05::t_aaa74b1c28e38f 76
+  s_41ce35b1895b05::t_224542904cbd19 1367-1373,1376-1377
+  s_41ce35b1895b05::t_e70cdec987e208 163-173
+src/hooks/chatJumpFind.test.tsx
+  s_41ce35b1895b05::t_7350c511ccdb0d 105-106,111-118,127-145
+  s_41ce35b1895b05::t_7096cd44a02429 1-104,107-110,119-126,146-242,244-262,265-309
+  s_41ce35b1895b05::t_03b9f94344380d 243,263-264
+src/components/lobe-chat/ConversationThread.tsx
+  s_41ce35b1895b05::t_5c5b1a9785de2d 2171,2179,2185-2197
+  s_41ce35b1895b05::t_fd9baeb344c03b 2247
+  s_41ce35b1895b05::t_7db9ffb26392d9 2389,2391,2400-2401,2403
+  s_41ce35b1895b05::t_9e5f0c030a750d 2392-2393
+  s_41ce35b1895b05::t_cb81ad084f2038 2108-2114
+  s_41ce35b1895b05::t_0f0cae1601a462 2218-2219
+src/hooks/useChatViewportController.test.tsx
+  s_41ce35b1895b05::t_4a30ba55d9bd88 1036-1099
+src/lib/chatViewportController.test.ts
+  s_41ce35b1895b05::t_b34c973ee4ac78 385-439
+  s_41ce35b1895b05::t_8ea656a4baa546 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "f24fa92f7239482ffe68832d2cb92bade08a73d6",
+  "prompts": {},
+  "sessions": {
+    "s_41ce35b1895b05": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14fe9-48dd-7690-be14-9368f293df84",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
