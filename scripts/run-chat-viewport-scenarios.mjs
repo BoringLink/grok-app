@@ -17,7 +17,11 @@
  *   4.  small repeated reflow       10. a window resize
  *   5.  a gesture-free upward move  11. a nested scroller expanding
  *   6.  a real wheel upward         12. a media decode
+ *   13. a fold-heavy long session (the delivery's original failure shape)
  *
+ * Assertions cover the Spec's C1 (distance to the content end), C2 (visible
+ * band shift), C3 (escaped anchor shift), C4 (pin-flip causes) and the write
+ * budget.
  * It is a repeatable artifact: exit code 0 when every scenario passes, 1
  * otherwise. Nothing is left running — the harness tears Chrome, the server
  * and the scratch dir down. When the dev trace is off the app still runs; this
@@ -37,6 +41,7 @@ import {
   chatViewportWriteStats,
   resetChatViewportTrace,
   setChatViewportTraceEnabled,
+  visibleBandShift,
 } from "@/lib/chatViewportTrace";
 
 // Dev-only, this page only: the trace is what the scenarios assert on.
@@ -65,14 +70,14 @@ function App() {
     createElement(
       "div",
       { ref: ctl.contentRef, id: "content" },
-      createElement("div", { id: "above", style: { height: "800px" } }, "above"),
-      createElement("div", { id: "anchorBlock", style: { height: "400px" } }, "anchor"),
+      createElement("div", { id: "above", "data-virt-index": 0, style: { height: "800px" } }, "above"),
+      createElement("div", { id: "anchorBlock", "data-virt-index": 1, style: { height: "400px" } }, "anchor"),
       createElement(
         "div",
-        { id: "nested", style: { height: "300px", overflowY: "auto" } },
+        { id: "nested", "data-virt-index": 2, style: { height: "300px", overflowY: "auto" } },
         createElement("div", { id: "nestedInner", style: { height: "400px" } }, "inner"),
       ),
-      createElement("div", { id: "below", style: { height: "2000px" } }, "below"),
+      createElement("div", { id: "below", "data-virt-index": 3, style: { height: "2000px" } }, "below"),
     ),
   );
 }
@@ -98,8 +103,9 @@ async function escapeOntoAnchor() {
   const vp = document.getElementById("viewport");
   vp.dispatchEvent(new WheelEvent("wheel", { deltaY: -120, bubbles: true }));
   await frame();
-  // #above is 800px, so a scrollTop of ~740 puts #anchorBlock at the top.
-  vp.scrollTop = 740;
+  // #above is 800px, so scrollTop 800 puts #anchorBlock exactly at the top —
+  // the element the controller resolves as the anchor, not the block above it.
+  vp.scrollTop = 800;
   vp.dispatchEvent(new Event("scroll"));
   await frame();
   return window.__CTL__.anchorRef.current;
@@ -110,6 +116,23 @@ const anchorShift = () => {
   if (!a || !a.element || !a.element.isConnected) return null;
   return a.element.getBoundingClientRect().top - a.screenTop;
 };
+
+/** Rows crossing the viewport now, identified by their data-virt-index, for C2. */
+const visibleRows = () => {
+  const vp = document.getElementById("viewport");
+  const viewTop = vp.getBoundingClientRect().top;
+  const viewBottom = viewTop + vp.clientHeight;
+  const out = [];
+  for (const row of vp.querySelectorAll("[data-virt-index]")) {
+    const rect = row.getBoundingClientRect();
+    if (rect.bottom <= viewTop || rect.top >= viewBottom) continue;
+    out.push({ index: Number(row.dataset.virtIndex), top: rect.top });
+  }
+  return out;
+};
+
+/** C2: mean on-screen shift of the rows present in both samples. */
+const bandShift = (before, after) => visibleBandShift(before, after);
 
 const pinEvents = () =>
   chatViewportTraceEvents().filter((event) => event.kind === "pin");
@@ -157,14 +180,19 @@ window.__SCENARIOS__ = {
     resetChatViewportTrace();
     await pin();
     await escapeOntoAnchor();
+    const before = visibleRows();
     const above = document.getElementById("above");
     above.style.height = "200px";
     await frames(3);
     const shift = anchorShift();
+    const band = bandShift(before, visibleRows());
     record(
-      "a collapse above does not move the escaped anchor",
-      shift != null && Math.abs(shift) <= 0.5 && window.__CTL__.escapedRef.current,
-      "anchor shift=" + (shift == null ? "null" : shift.toFixed(2) + "px"),
+      "a collapse above does not move the escaped anchor or the visible band",
+      shift != null && Math.abs(shift) <= 0.5 &&
+        band != null && Math.abs(band) <= 0.5 &&
+        window.__CTL__.escapedRef.current,
+      "anchor shift=" + (shift == null ? "null" : shift.toFixed(2) + "px") +
+        ", band shift=" + (band == null ? "null" : band.toFixed(2) + "px"),
     );
   },
 
@@ -175,13 +203,17 @@ window.__SCENARIOS__ = {
     const above = document.getElementById("above");
     above.style.height = "200px";
     await frames(2);
+    const before = visibleRows();
     above.style.height = "800px";
     await frames(3);
     const shift = anchorShift();
+    const band = bandShift(before, visibleRows());
     record(
-      "a re-growth above does not move the escaped anchor",
-      shift != null && Math.abs(shift) <= 0.5,
-      "anchor shift=" + (shift == null ? "null" : shift.toFixed(2) + "px"),
+      "a re-growth above does not move the escaped anchor or the visible band",
+      shift != null && Math.abs(shift) <= 0.5 &&
+        band != null && Math.abs(band) <= 0.5,
+      "anchor shift=" + (shift == null ? "null" : shift.toFixed(2) + "px") +
+        ", band shift=" + (band == null ? "null" : band.toFixed(2) + "px"),
     );
   },
 
@@ -272,6 +304,7 @@ window.__SCENARIOS__ = {
     resetChatViewportTrace();
     await pin();
     await escapeOntoAnchor();
+    const before = visibleRows();
     const above = document.getElementById("above");
     setHidden(true);
     await frame();
@@ -281,12 +314,15 @@ window.__SCENARIOS__ = {
     setHidden(false);
     await frames(2);
     const shift = anchorShift();
+    const band = bandShift(before, visibleRows());
     clearHidden();
     record(
       "occlusion restore holds the escaped anchor, not the end",
-      window.__CTL__.escapedRef.current && shift != null && Math.abs(shift) <= 0.5,
+      window.__CTL__.escapedRef.current && shift != null && Math.abs(shift) <= 0.5 &&
+        band != null && Math.abs(band) <= 0.5,
       "escaped=" + window.__CTL__.escapedRef.current + ", anchor shift=" +
-        (shift == null ? "null" : shift.toFixed(2) + "px"),
+        (shift == null ? "null" : shift.toFixed(2) + "px") +
+        ", band shift=" + (band == null ? "null" : band.toFixed(2) + "px"),
     );
   },
 
@@ -345,14 +381,18 @@ window.__SCENARIOS__ = {
     await pin();
     await escapeOntoAnchor();
     const inner = document.getElementById("nestedInner");
-    const before = window.__CTL__.escapedRef.current ? 1 : 0;
+    const before = visibleRows();
+    const beforeEscaped = window.__CTL__.escapedRef.current ? 1 : 0;
     inner.style.height = "1200px";
     await frames(3);
     const shift = anchorShift();
+    const band = bandShift(before, visibleRows());
     record(
-      "a nested scroller expanding does not move the outer anchor",
-      before === 1 && shift != null && Math.abs(shift) <= 0.5,
-      "anchor shift=" + (shift == null ? "null" : shift.toFixed(2) + "px"),
+      "a nested scroller expanding does not move the outer anchor or band",
+      beforeEscaped === 1 && shift != null && Math.abs(shift) <= 0.5 &&
+        band != null && Math.abs(band) <= 0.5,
+      "anchor shift=" + (shift == null ? "null" : shift.toFixed(2) + "px") +
+        ", band shift=" + (band == null ? "null" : band.toFixed(2) + "px"),
     );
   },
 
@@ -373,6 +413,7 @@ window.__SCENARIOS__ = {
     await frame();
     await pin();
     await escapeOntoAnchor();
+    const before = visibleRows();
     // Wait for the decode: the image grows from 0 to 400px above the anchor.
     await new Promise((resolve) => {
       if (img.complete) resolve();
@@ -380,12 +421,52 @@ window.__SCENARIOS__ = {
     });
     await frames(3);
     const shift = anchorShift();
+    const band = bandShift(before, visibleRows());
     const imageHeight = img.getBoundingClientRect().height;
     record(
       "a media decode above the anchor does not move it",
-      imageHeight > 0 && shift != null && Math.abs(shift) <= 0.5,
+      imageHeight > 0 && shift != null && Math.abs(shift) <= 0.5 &&
+        band != null && Math.abs(band) <= 0.5,
       "decoded height=" + imageHeight.toFixed(0) + "px, shift=" +
-        (shift == null ? "null" : shift.toFixed(2) + "px"),
+        (shift == null ? "null" : shift.toFixed(2) + "px") +
+        ", band shift=" + (band == null ? "null" : band.toFixed(2) + "px"),
+    );
+  },
+
+  /**
+   * The delivery's original failure shape: a long, fold-heavy session that
+   * keeps streaming. The baseline it must beat drifted tens of thousands of
+   * pixels, needed repeated "back to bottom" clicks, and jittered over several
+   * frames. Here a block above folds and re-grows every frame while output
+   * keeps arriving; the pin must hold with zero drift and no unprompted escape.
+   */
+  async foldHeavyStream() {
+    resetChatViewportTrace();
+    const vp = document.getElementById("viewport");
+    const above = document.getElementById("above");
+    const below = document.getElementById("below");
+    // A long session first, so the fold has thousands of pixels of transcript
+    // above the viewport to disturb.
+    below.style.height = "50000px";
+    void vp.scrollHeight;
+    await pin();
+    let worst = 0;
+    for (let k = 0; k < 60; k += 1) {
+      above.style.height = (k % 2 === 0 ? 200 : 800) + "px";
+      below.style.height = 50000 + (k + 1) * 30 + "px";
+      void vp.scrollHeight;
+      // Two frames: the height mutation and the controller's own restore run in
+      // different rAF callbacks in this harness, so the settled position — the
+      // one on the drawn frame — is read after both.
+      await frames(2);
+      worst = Math.max(worst, Math.abs(distFromEnd(vp)));
+    }
+    const escapedPins = pinEvents().filter((event) => event.escaped);
+    record(
+      "a fold-heavy long session never drifts or drops the pin",
+      window.__CTL__.isPinnedRef.current && worst <= 0.5 && escapedPins.length === 0,
+      "worst settled drift=" + worst.toFixed(2) + "px, unprompted escapes=" +
+        escapedPins.length,
     );
   },
 };
@@ -429,6 +510,7 @@ const output = await withChromeHarness(
       "windowResize",
       "nestedScroller",
       "mediaDecode",
+      "foldHeavyStream",
     ];
     const results = [];
     for (const name of names) {
