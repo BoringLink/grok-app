@@ -70,7 +70,8 @@ export type UseStickToBottomResult = {
   /** Optional: attach to the content column for more accurate resize observe. */
   contentRef: RefObject<HTMLDivElement | null>;
   onScroll: (e: UIEvent<HTMLDivElement>) => void;
-  scrollToBottom: (behavior?: ScrollBehavior) => void;
+  /** `reason` labels the pin flip in the trace (the button passes its own). */
+  scrollToBottom: (behavior?: ScrollBehavior, reason?: string) => void;
   /** True while auto-follow is active (ref, not reactive). */
   isPinnedRef: RefObject<boolean>;
   /** True after an explicit user scroll-up until the tail is re-engaged. */
@@ -216,10 +217,11 @@ export function useStickToBottom(
   }, []);
 
   const scrollToBottom = useCallback(
-    (behavior: ScrollBehavior = "instant") => {
+    (behavior: ScrollBehavior = "instant", reason = "scroll-to-bottom") => {
       const el = viewportRef.current;
       if (!el) return;
       const pinnedBefore = isPinnedRef.current;
+      const escapedBefore = escapedRef.current;
       if (scrollDebounceTimerRef.current != null) {
         clearTimeout(scrollDebounceTimerRef.current);
         scrollDebounceTimerRef.current = null;
@@ -230,6 +232,19 @@ export function useStickToBottom(
       escapedRef.current = false;
       isPinnedRef.current = true;
       userIntentDownRef.current = false;
+      if (pinnedBefore !== isPinnedRef.current || escapedBefore !== escapedRef.current) {
+        // The explicit button re-pins without a gesture; recording it here is
+        // the only place that flip's cause reaches the trace (C4).
+        tracePinState({
+          reason,
+          pinned: true,
+          escaped: false,
+          scrollTop: el.scrollTop,
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+          gesture: "none",
+        });
+      }
       const top = bottomScrollTop(el.scrollHeight, el.clientHeight);
       traceViewport("scroll-to-bottom", {
         behavior,

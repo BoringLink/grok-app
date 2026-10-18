@@ -3179,7 +3179,7 @@ export function ConversationThread({
           };
           traceViewport("button-scroll-to-bottom", payload);
           void publishTraceToHost(payload);
-          scrollToBottom("smooth");
+          scrollToBottom("smooth", "button-scroll-to-bottom");
         }}
       />
 
