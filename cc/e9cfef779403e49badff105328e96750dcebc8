@@ -1,0 +1,30 @@
+docs/llm-wiki/README.md
+  s_7e89d9a0551b97::t_b14327f027ff24 24
+docs/llm-wiki/chat-viewport-trace.md
+  s_7e89d9a0551b97::t_efeacc3340311a 95-106
+  s_7e89d9a0551b97::t_61ac87ae9c56c2 159-163
+  s_7e89d9a0551b97::t_49ed1440181157 176-190
+docs/llm-wiki/chat-viewport-budget.md
+  s_7e89d9a0551b97::t_10f4ce98000dc7 115-116
+  s_7e89d9a0551b97::t_6860146438a088 130-132
+  s_7e89d9a0551b97::t_8d225a1422837c 122-129,133-147
+  s_7e89d9a0551b97::t_f102f46af34a55 52-58,63-70
+  s_7e89d9a0551b97::t_1ac32064c9c460 152-154,164-165,169,174-177
+  s_7e89d9a0551b97::t_42f1faf700d92c 194-202
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "cce9cfef779403e49badff105328e96750dcebc8",
+  "prompts": {},
+  "sessions": {
+    "s_7e89d9a0551b97": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15049-c63c-77b1-862f-6755c09a7336",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
