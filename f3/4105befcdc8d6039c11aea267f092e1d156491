@@ -1,0 +1,79 @@
+src/hooks/useChatResidentList.ts
+  s_e4ea3552f322ba::t_eacab6b6dea0f1 17-19,45,51,68-93,133-137,139,158-159,335,341-349
+  s_e4ea3552f322ba::t_a2b229b24b810a 114-120
+  s_e4ea3552f322ba::t_91d87092052fab 1-16,20-44,46-50,52-67,94-113,121-132,138,140-157,160-334,336-340,350-398
+src/lib/chatResidentBand.ts
+  s_e4ea3552f322ba::t_2d7333c074859b 1-98
+src/components/lobe-chat/ConversationThread.tsx
+  s_e4ea3552f322ba::t_9aee27e8e6eed5 667-668
+  s_e4ea3552f322ba::t_3601dc642f8fb1 2946-2947
+  s_e4ea3552f322ba::t_80710a1be7ac9c 2576-2579
+  s_e4ea3552f322ba::t_72910035b26a03 117
+  s_e4ea3552f322ba::t_45ec328612591f 786-793
+  s_e4ea3552f322ba::t_6fcea8afcfeefd 901,908
+  s_e4ea3552f322ba::t_cec20ee8f50232 726-727
+  s_e4ea3552f322ba::t_f6887f7226fd97 116,123
+  s_e4ea3552f322ba::t_8ba0bb416a8a95 979,986
+  s_e4ea3552f322ba::t_bb4cce2b4f07fb 585-588
+  s_e4ea3552f322ba::t_8d1e2dac533348 17
+  s_e4ea3552f322ba::t_9a039f1155dc18 813-821
+  s_e4ea3552f322ba::t_13a85826255ee8 2707
+  s_e4ea3552f322ba::t_82ee4cc65f0f19 2710,2716
+  s_e4ea3552f322ba::t_1a4fd8ed0aa4d9 2941
+  s_e4ea3552f322ba::t_02f478d7273b04 861,868,875,882,886,893
+  s_e4ea3552f322ba::t_53b6e475cbae69 2804-2814
+docs/llm-wiki/session-continuity.md
+  s_e4ea3552f322ba::t_790ccd48ec87d2 328-343
+src/lib/chatViewportTrace.ts
+  s_e4ea3552f322ba::t_7be5e078891fa0 7-10
+src/hooks/useChatResidentList.test.tsx
+  s_e4ea3552f322ba::t_72df24df2a88c5 68-69
+  s_e4ea3552f322ba::t_266024520eb5f1 123-154
+  s_e4ea3552f322ba::t_e84fd5ce44cfbe 173
+  s_e4ea3552f322ba::t_5297abec3875ab 1-67,70-89,92-122,155-172,174-227,230-231
+  s_e4ea3552f322ba::t_e6153698c7ae57 90-91
+  s_e4ea3552f322ba::t_f4e635ee840cff 228-229
+src/app/AppWorkbench.tsx
+  s_e4ea3552f322ba::t_071fca092302fb 5574-5576
+  s_e4ea3552f322ba::t_3aa8811cdb25ad 19
+src/hooks/chatResidentListShared.ts
+  s_e4ea3552f322ba::t_6079672c99bbd8 1-26,38-40,43-47
+  s_e4ea3552f322ba::t_ab1aae049184dc 27-37,41-42
+src/lib/chatRowHeight.test.ts
+  s_e4ea3552f322ba::t_2c68d3ba918c64 1-112
+src/lib/streamRenderPolicy.ts
+  s_e4ea3552f322ba::t_f74a83dbb9c119 21-25
+  s_e4ea3552f322ba::t_e737cd93943fbd 20
+src/lib/chatResidentBand.test.ts
+  s_e4ea3552f322ba::t_a6ee686609becf 1-107
+src/lib/chatRowHeight.ts
+  s_e4ea3552f322ba::t_60f235a643838d 1-39,42-150
+  s_e4ea3552f322ba::t_53ed2ebb3104a4 40-41
+src/lib/sessionMessageNodes.ts
+  s_e4ea3552f322ba::t_22c3b88b2757b1 6
+src/lib/chatViewportWriteSources.guard.test.ts
+  s_e4ea3552f322ba::t_decc2362d2225f 86,88
+src/lib/chatVirtualScrollPref.ts
+  s_e4ea3552f322ba::t_f09d2f71b60630 2-3,6
+src/lib/stickToBottom.test.ts
+  s_e4ea3552f322ba::t_afec7bd7a822ef 417-418,422,426
+src/lib/chatResidentFirstFrame.test.ts
+  s_e4ea3552f322ba::t_e187233d30d86b 13-18
+  s_e4ea3552f322ba::t_2f45fb1ba42546 1-12,19-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "f34105befcdc8d6039c11aea267f092e1d156491",
+  "prompts": {},
+  "sessions": {
+    "s_e4ea3552f322ba": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f2b-17c5-7622-87e0-3bd161420d7c",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
