@@ -19,38 +19,43 @@ const TRANSCRIPT_WRITE_PATH = [
 ] as const;
 
 /** Assignment only: reads, `>=`, `<=` and `==` must not match. */
-const RAW_WRITE = /\.scrollTop\s*(?:\+=|-=|=)(?!=)/g;
+const rawWrite = () => /\.scrollTop\s*(?:\+=|-=|=)(?!=)/g;
 
 const read = (path: string) =>
   readFileSync(resolve(__dirname, path), "utf8").replace(/\r\n/g, "\n");
 
+/** `file:line` for every raw assignment the guard would reject. */
+const rawWriteLocations = (source: string, path: string): string[] =>
+  [...source.matchAll(rawWrite())].map((match) => {
+    const line = source.slice(0, match.index).split("\n").length;
+
+    return `${path}:${line}`;
+  });
+
 describe("transcript scroll write source guard", () => {
   it("catches an assignment, so the guard cannot rot into a no-op", () => {
-    expect("el.scrollTop = 0;".match(RAW_WRITE)).toHaveLength(1);
-    expect("el.scrollTop += 12;".match(RAW_WRITE)).toHaveLength(1);
-    expect("el.scrollTop >= 0;".match(RAW_WRITE)).toBeNull();
-    expect("el.scrollTop ==".match(RAW_WRITE)).toBeNull();
+    expect(rawWriteLocations("el.scrollTop = 0;", "x")).toHaveLength(1);
+    expect(rawWriteLocations("el.scrollTop += 12;", "x")).toHaveLength(1);
+    expect(rawWriteLocations("el.scrollTop >= 0;", "x")).toHaveLength(0);
+    expect(rawWriteLocations("el.scrollTop ==", "x")).toHaveLength(0);
   });
 
   it("routes every transcript position write through the traced helper", () => {
     const rawWrites = TRANSCRIPT_WRITE_PATH.flatMap((path) =>
-      [...read(path).matchAll(RAW_WRITE)].map((match) => {
-        const line = read(path).slice(0, match.index).split("\n").length;
-
-        return `${path}:${line}`;
-      }),
+      rawWriteLocations(read(path), path),
     );
 
     expect(rawWrites).toEqual([]);
   });
 
   it("keeps the traced helper the single place that assigns", () => {
-    const trace = read("chatViewportTrace.ts");
-    const helper = trace.match(
+    const helper = read("chatViewportTrace.ts").match(
       /export function applyScrollTopTraced\([\s\S]*?\n\}/,
     )?.[0];
 
     expect(helper).toBeDefined();
-    expect(helper).toMatch(RAW_WRITE);
+    expect(rawWriteLocations(helper ?? "", "chatViewportTrace.ts")).not.toEqual(
+      [],
+    );
   });
 });
