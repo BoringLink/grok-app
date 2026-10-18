@@ -6,6 +6,33 @@ import { lastPinFlipCause, resetChatViewportTrace } from "@/lib/chatViewportTrac
 import { STICK_BOTTOM_REBOUND_SETTLE_MS } from "@/lib/stickToBottom";
 import { useChatViewportController, type UseChatViewportControllerResult } from "./useChatViewportController";
 
+/**
+ * The controller subscribes to the host occlusion event with a dynamic import
+ * of the Tauri event API. jsdom has no Tauri, so the module is mocked: the
+ * handler is captured and the test fires it, which is exactly the client half
+ * of the macOS covered-window signal.
+ */
+const hostOcclusion = vi.hoisted(() => ({
+  handlers: new Set<(event: { payload: unknown }) => void>(),
+  listen: vi.fn(
+    async (_name: string, handler: (event: { payload: unknown }) => void) => {
+      hostOcclusion.handlers.add(handler);
+      return () => hostOcclusion.handlers.delete(handler);
+    },
+  ),
+}));
+vi.mock("@tauri-apps/api/event", () => ({ listen: hostOcclusion.listen }));
+
+/** Deliver a host occlusion report, after the controller's import registers. */
+async function deliverHostOcclusion(occluded: boolean): Promise<void> {
+  await act(async () => {
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    for (const handler of [...hostOcclusion.handlers]) {
+      handler({ payload: { occluded } });
+    }
+  });
+}
+
 class ControlledResizeObserver {
   private static readonly instances = new Set<ControlledResizeObserver>();
   private readonly callback: ResizeObserverCallback;
@@ -29,10 +56,10 @@ class ControlledResizeObserver {
     ControlledResizeObserver.instances.delete(this);
   }
 
-  static emit(target: Element, height: number) {
+  static emit(target: Element, height: number, width = 800) {
     const entry = {
       target,
-      contentRect: { height, width: 800 },
+      contentRect: { height, width },
     } as ResizeObserverEntry;
     ControlledResizeObserver.instances.forEach((observer) => {
       if (observer.targets.has(target)) {
@@ -645,6 +672,362 @@ describe("useChatViewportController handle", () => {
 
     expect(harness.scrollTop()).toBe(300);
     expect(harness.isPinnedRef.current).toBe(false);
+  });
+});
+
+/**
+ * Occlusion (C5) and window resize. The engine stops painting while a window is
+ * hidden or collapsed, so the position is only judged on the first frame the
+ * viewport is available again — which the controller reaches synchronously in
+ * the availability handler (and once more in the first rAF for a minimized
+ * window, whose scroller is still collapsed at the synchronous read).
+ */
+describe("useChatViewportController occlusion and window resize", () => {
+  let hidden = false;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    hidden = false;
+    hostOcclusion.handlers.clear();
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      get: () => hidden,
+    });
+    ControlledResizeObserver.reset();
+    vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      (callback: FrameRequestCallback) =>
+        window.setTimeout(() => callback(performance.now()), 0),
+    );
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+      window.clearTimeout(id);
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    ControlledResizeObserver.reset();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    document.body.replaceChildren();
+  });
+
+  const rect = (top: number, height: number, width = 800): DOMRect =>
+    ({
+      top,
+      bottom: top + height,
+      left: 0,
+      right: width,
+      width,
+      height,
+      x: 0,
+      y: top,
+      toJSON: () => ({}),
+    }) as DOMRect;
+
+  function mountBasic(initial: {
+    scrollTop: number;
+    scrollHeight: number;
+    clientHeight: number;
+  }) {
+    let scrollTop = initial.scrollTop;
+    let scrollHeight = initial.scrollHeight;
+    let clientHeight = initial.clientHeight;
+    const viewport = document.createElement("div");
+    const content = document.createElement("div");
+    viewport.appendChild(content);
+    document.body.appendChild(viewport);
+    Object.defineProperties(viewport, {
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      clientHeight: { configurable: true, get: () => clientHeight },
+      clientWidth: { configurable: true, get: () => 800 },
+    });
+
+    const { result, rerender } = renderHook(
+      ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
+      { initialProps: { keyName: "before-attach" } },
+    );
+    Object.assign(result.current.viewportRef, { current: viewport });
+    Object.assign(result.current.contentRef, { current: content });
+    rerender({ keyName: "attached" });
+    act(() => {
+      vi.advanceTimersByTime(40);
+      viewport.dispatchEvent(new Event("scroll"));
+    });
+    scrollTop = initial.scrollTop;
+
+    return {
+      viewport,
+      content,
+      result: result as { current: UseChatViewportControllerResult },
+      scrollTop: () => scrollTop,
+      setScrollTop: (value: number) => {
+        scrollTop = value;
+      },
+      setScrollHeight: (value: number) => {
+        scrollHeight = value;
+      },
+      setClientHeight: (value: number) => {
+        clientHeight = value;
+      },
+    };
+  }
+
+  /** Viewport with a measured block above the row at the viewport top. */
+  function mountAnchor(initial: {
+    scrollTop: number;
+    aboveHeight: number;
+    scrollHeight: number;
+  }) {
+    let scrollTop = initial.scrollTop;
+    let aboveHeight = initial.aboveHeight;
+    let scrollHeight = initial.scrollHeight;
+    const viewport = document.createElement("div");
+    const content = document.createElement("div");
+    const above = document.createElement("div");
+    const anchorRow = document.createElement("div");
+    content.append(above, anchorRow);
+    viewport.appendChild(content);
+    document.body.appendChild(viewport);
+
+    Object.defineProperties(viewport, {
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      clientHeight: { configurable: true, get: () => 400 },
+      clientWidth: { configurable: true, get: () => 800 },
+    });
+    Object.defineProperty(viewport, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(0, 400),
+    });
+    Object.defineProperty(content, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(-scrollTop, scrollHeight),
+    });
+    Object.defineProperty(above, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(-scrollTop, aboveHeight),
+    });
+    Object.defineProperty(anchorRow, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(aboveHeight - scrollTop, 300),
+    });
+
+    const { result, rerender } = renderHook(
+      ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
+      { initialProps: { keyName: "before-attach" } },
+    );
+    Object.assign(result.current.viewportRef, { current: viewport });
+    Object.assign(result.current.contentRef, { current: content });
+    rerender({ keyName: "attached" });
+    act(() => vi.advanceTimersByTime(40));
+    scrollTop = initial.scrollTop;
+
+    return {
+      viewport,
+      result: result as { current: UseChatViewportControllerResult },
+      scrollTop: () => scrollTop,
+      setScrollHeight: (value: number) => {
+        scrollHeight = value;
+      },
+      setAboveHeight: (value: number) => {
+        aboveHeight = value;
+      },
+    };
+  }
+
+  it("restores the content end synchronously when a hidden window returns", () => {
+    // Arrange — pinned at the tail, then the window is hidden.
+    const harness = mountBasic({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+
+    // Act — hidden; content kept arriving, scrollTop stayed stale.
+    hidden = true;
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    harness.setScrollTop(200);
+    harness.setScrollHeight(1500);
+    hidden = false;
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    // Assert — restored on the first frame, with no timer advanced.
+    expect(harness.scrollTop()).toBe(1100);
+    expect(harness.result.current.isPinnedRef.current).toBe(true);
+  });
+
+  it("restores the invariant on the first frame after the window regains focus", () => {
+    // Arrange — the window is covered (blurred): no visibilitychange fires, and
+    // content grew while the frame was not being painted.
+    const harness = mountBasic({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+    harness.setScrollTop(200);
+    harness.setScrollHeight(1500);
+
+    // Act
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    // Assert — the focus regain is the only boundary this case gets.
+    expect(harness.scrollTop()).toBe(1100);
+  });
+
+  it("holds the escaped anchor on the first frame after occlusion, never yanking to the end", () => {
+    // Arrange — escaped, reading history.
+    const harness = mountAnchor({ scrollTop: 200, aboveHeight: 200, scrollHeight: 1000 });
+    act(() => {
+      harness.result.current.controller.escape("test:locate");
+      harness.result.current.controller.restoreLayout();
+    });
+    expect(harness.scrollTop()).toBe(200);
+
+    // Act — occluded; content grew below, the anchor above did not move.
+    hidden = true;
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    harness.setScrollHeight(1600);
+    hidden = false;
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    // Assert — the anchor holds its screen position; escape survives (C5 + C3).
+    expect(harness.scrollTop()).toBe(200);
+    expect(harness.result.current.escapedRef.current).toBe(true);
+    expect(harness.result.current.isPinnedRef.current).toBe(false);
+  });
+
+  it("holds the escaped anchor across a viewport resize, before paint", () => {
+    // Arrange — escaped with a measured block above the anchor.
+    const harness = mountAnchor({ scrollTop: 200, aboveHeight: 200, scrollHeight: 1000 });
+    act(() => {
+      harness.result.current.controller.escape("test:locate");
+      harness.result.current.controller.restoreLayout();
+    });
+
+    // Act — a width change reflows the block above the anchor by +100px.
+    harness.setAboveHeight(300);
+    act(() => {
+      ControlledResizeObserver.emit(harness.viewport, 400, 700);
+    });
+
+    // Assert — the anchor is held synchronously, with no frame advanced (C3).
+    expect(harness.scrollTop()).toBe(300);
+    expect(harness.result.current.escapedRef.current).toBe(true);
+  });
+
+  it("re-follows the content end after a viewport resize while pinned", () => {
+    // Arrange
+    const harness = mountBasic({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+
+    // Act — the window is resized shorter; the browser clamps and the
+    // controller must re-assert the (new) content end on this frame.
+    harness.setClientHeight(300);
+    act(() => {
+      ControlledResizeObserver.emit(harness.viewport, 300, 800);
+    });
+
+    // Assert — no frame advanced: the RO callback restores before paint.
+    expect(harness.scrollTop()).toBe(700);
+    expect(harness.result.current.isPinnedRef.current).toBe(true);
+  });
+
+  it("keeps restoring batches after the frame latch when rAF is paused", async () => {
+    // Arrange — a pinned viewport, then rAF stops (occluded/backgrounded).
+    const harness = mountBasic({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+    vi.stubGlobal("requestAnimationFrame", () => 0);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+
+    // First mutation batch restores and arms the latch.
+    harness.setScrollHeight(1200);
+    harness.setScrollTop(200);
+    await act(async () => {
+      harness.content.appendChild(document.createElement("div"));
+    });
+    expect(harness.scrollTop()).toBe(800);
+
+    // Second batch is coalesced by the latch (no frame has arrived).
+    harness.setScrollHeight(1400);
+    harness.setScrollTop(300);
+    await act(async () => {
+      harness.content.appendChild(document.createElement("span"));
+    });
+    expect(harness.scrollTop()).toBe(300);
+
+    // Act — the stall fallback clears the latch even though rAF never fires.
+    act(() => vi.advanceTimersByTime(200));
+    await act(async () => {
+      harness.setScrollTop(400);
+      harness.content.appendChild(document.createElement("b"));
+    });
+
+    // Assert — the transcript is restored again instead of staying stale.
+    expect(harness.scrollTop()).toBe(1000);
+  });
+
+  it("restores the content end on the first frame after the host reports covered", async () => {
+    // Arrange — pinned, then the window is completely covered by another app
+    // (Page Visibility stays visible; only the host reports it).
+    const harness = mountBasic({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+
+    await deliverHostOcclusion(true);
+    harness.setScrollTop(200);
+    harness.setScrollHeight(1500);
+    // Act — the window is uncovered.
+    await deliverHostOcclusion(false);
+
+    // Assert — the covered exit is a restore boundary (no visibilitychange).
+    expect(harness.scrollTop()).toBe(1100);
+    expect(harness.result.current.isPinnedRef.current).toBe(true);
+  });
+
+  it("holds the escaped anchor when the host reports the window was covered", async () => {
+    // Arrange — escaped, reading history.
+    const harness = mountAnchor({ scrollTop: 200, aboveHeight: 200, scrollHeight: 1000 });
+    act(() => {
+      harness.result.current.controller.escape("test:locate");
+      harness.result.current.controller.restoreLayout();
+    });
+
+    await deliverHostOcclusion(true);
+    // A block above the anchor reflows while the window is covered.
+    harness.setAboveHeight(300);
+    harness.setScrollHeight(1600);
+    // Act — the window is uncovered.
+    await deliverHostOcclusion(false);
+
+    // Assert — the covered exit holds the anchor (+100px), not the content end.
+    expect(harness.scrollTop()).toBe(300);
+    expect(harness.result.current.escapedRef.current).toBe(true);
+  });
+
+  it("ignores a malformed host occlusion payload", async () => {
+    // Arrange — an untrusted cross-process payload must not change the state.
+    const harness = mountBasic({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 });
+    harness.setScrollTop(200);
+    harness.setScrollHeight(1500);
+
+    // Act
+    await deliverHostOcclusion("nonsense" as unknown as boolean);
+
+    // Assert — no restore, the state is kept.
+    expect(harness.scrollTop()).toBe(200);
   });
 });
 

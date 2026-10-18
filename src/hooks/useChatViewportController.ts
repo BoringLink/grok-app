@@ -43,12 +43,24 @@ import {
   isHeightDeltaNoise,
   isNearBottom,
   pinnedFollowDelayForLayout,
-  isStickViewportUnreliable,
   shouldClampPinnedStreamDrift,
   shouldIgnoreProgrammaticStickLeave,
   shouldPreventPinnedBottomWheel,
-  shouldRestorePinnedFollowOnViewportReady,
 } from "@/lib/stickToBottom";
+import {
+  CHAT_VIEWPORT_OCCLUSION_EVENT,
+  assessViewportOcclusion,
+  parseHostOcclusionPayload,
+  shouldRestoreAfterOcclusion,
+  type ViewportOcclusion,
+} from "@/lib/chatViewportOcclusion";
+import { pausedRafFallbackMs } from "@/lib/frameCadence";
+import {
+  cancelFrameSchedule,
+  emptyFrameSchedule,
+  scheduleOnFrameWithin,
+  type FrameSchedule,
+} from "@/lib/frameSchedule";
 import {
   createLayoutLedger,
   LEDGER_FALLBACK_ESTIMATE_PX,
@@ -69,6 +81,8 @@ import {
 } from "@/lib/chatViewportController";
 import {
   applyScrollTopTraced,
+  chatViewportTraceEnabled,
+  traceOcclusion,
   tracePinState,
   traceScrollTopWrite,
   traceViewport,
@@ -189,6 +203,18 @@ export function useChatViewportController(
   } | null>(null);
   /** Coalesces batch-end restores to at most one per frame. */
   const restoreScheduledRef = useRef(false);
+  /**
+   * Clears {@link restoreScheduledRef} on the next frame, with a timer fallback
+   * so the latch cannot stick when rAF is paused (an occluded or backgrounded
+   * window) — that would stop every later restore.
+   */
+  const restoreLatchRef = useRef<FrameSchedule>(emptyFrameSchedule());
+  /**
+   * Host-reported window occlusion (macOS `NSWindowDidChangeOcclusionState`).
+   * Page Visibility cannot see "completely covered by another app", which the
+   * Spec's Problem Statement records as a source of a wrong position.
+   */
+  const hostOccludedRef = useRef(false);
   /** Auto-follow stream / growth. */
   const isPinnedRef = useRef(true);
   /**
@@ -286,6 +312,22 @@ export function useChatViewportController(
       clientHeight: el.clientHeight,
     };
   }, []);
+
+  /**
+   * The single occlusion assessment. Every guard — follow, scroll, layout and
+   * the mutation restore — reads the same signals from here, so none of them
+   * can drift from the restore boundary (all three signal sources: Page
+   * Visibility, the host occlusion report, and the measured height).
+   */
+  const readViewportOcclusion = useCallback(
+    (target: HTMLElement | null): ViewportOcclusion =>
+      assessViewportOcclusion({
+        hidden: typeof document !== "undefined" && document.hidden,
+        covered: hostOccludedRef.current,
+        clientHeight: target ? target.clientHeight : 0,
+      }),
+    [],
+  );
 
   /**
    * Synchronous post-write listeners. The resident list re-bands here, in the
@@ -475,16 +517,26 @@ export function useChatViewportController(
 
   /**
    * Batch-end restore. Mutation callbacks are microtasks, so the first call
-   * lands before paint; the flag coalesces every further mutation in the same
+   * lands before paint; the latch coalesces every further mutation in the same
    * frame into that one restore (at most one geometry read and one write per
    * frame, per the spec budget).
+   *
+   * The latch is cleared by the next frame **or** by a stall fallback: while
+   * rAF is paused (an occluded or covered window) no frame arrives, and a latch
+   * that only a frame could clear would stick — every later mutation would
+   * return early and the transcript would stop being restored. The fallback is
+   * several frame intervals out, so while frames flow the frame path still wins.
    */
   const scheduleRestore = useCallback(() => {
     if (restoreScheduledRef.current) return;
     restoreScheduledRef.current = true;
-    requestAnimationFrame(() => {
-      restoreScheduledRef.current = false;
-    });
+    scheduleOnFrameWithin(
+      restoreLatchRef.current,
+      () => {
+        restoreScheduledRef.current = false;
+      },
+      pausedRafFallbackMs(),
+    );
     restoreNow();
   }, [restoreNow]);
 
@@ -574,16 +626,9 @@ export function useChatViewportController(
     if (!isPinnedRef.current || !enabledRef.current) return;
     const el = viewportRef.current;
     if (!el) return;
-    if (
-      isStickViewportUnreliable({
-        clientHeight: el.clientHeight,
-        hidden: typeof document !== "undefined" && document.hidden,
-      })
-    ) {
-      return;
-    }
+    if (readViewportOcclusion(el).occluded) return;
     applyDirective({ kind: "end" }, "follow:pinned");
-  }, [applyDirective]);
+  }, [applyDirective, readViewportOcclusion]);
 
   // React onScroll is a no-op passthrough — real logic is on native listeners
   // so we never miss passive wheel/scroll during streaming.
@@ -601,12 +646,7 @@ export function useChatViewportController(
       const scrollTop = el.scrollTop;
       const programmaticFollowActive =
         stickNowMs() < programmaticFollowUntilRef.current;
-      if (
-        isStickViewportUnreliable({
-          clientHeight: el.clientHeight,
-          hidden: typeof document !== "undefined" && document.hidden,
-        })
-      ) {
+      if (readViewportOcclusion(el).occluded) {
         if (programmaticFollowActive) {
           isPinnedRef.current = true;
           escapedRef.current = false;
@@ -848,17 +888,13 @@ export function useChatViewportController(
 
     let previousHeight: number | undefined;
     let previousViewportWidth: number | undefined = el.clientWidth;
+    let previousViewportHeight: number | undefined = el.clientHeight;
     let viewportWidthChanged = false;
     let raf = 0;
     let mediaFollowTimer: ReturnType<typeof setTimeout> | null = null;
 
     const onHeightChange = (height: number) => {
-      if (
-        isStickViewportUnreliable({
-          clientHeight: el.clientHeight,
-          hidden: typeof document !== "undefined" && document.hidden,
-        })
-      ) {
+      if (readViewportOcclusion(el).occluded) {
         previousHeight = height;
         return;
       }
@@ -1005,16 +1041,46 @@ export function useChatViewportController(
       // Coalesce multi-node notifications to one frame. Always read the
       // content column height from the DOM — viewport RO entries report
       // client box size, which is not what we want for grow/shrink.
+      let viewportResized = false;
       for (const entry of entries) {
         if (entry.target !== el) continue;
         const w = entry.contentRect.width;
+        const h = entry.contentRect.height;
         if (
           previousViewportWidth != null &&
           Math.abs(w - previousViewportWidth) >= 0.5
         ) {
           viewportWidthChanged = true;
+          viewportResized = true;
+        }
+        if (
+          previousViewportHeight != null &&
+          Math.abs(h - previousViewportHeight) >= 0.5
+        ) {
+          viewportResized = true;
         }
         previousViewportWidth = w;
+        previousViewportHeight = h;
+      }
+      if (viewportResized && chatViewportTraceEnabled()) {
+        // Guarded so a production resize drag pays no extra layout reads for a
+        // payload it will never record.
+        traceViewport("viewport-size", {
+          width: Math.round(el.clientWidth),
+          height: Math.round(el.clientHeight),
+          scrollTop: Math.round(el.scrollTop),
+          pinned: isPinnedRef.current,
+          escaped: escapedRef.current,
+        });
+      }
+      // A viewport resize reflows the column and changes the usable height, so
+      // the invariant must be re-asserted on this frame, not the next one. The
+      // RO callback runs after layout but before paint, so restoring here is
+      // already correct for the resized frame: pinned → the new content end,
+      // escaped → the anchor's on-screen position. Following via the rAF
+      // measurement instead would paint one frame off the end.
+      if (viewportResized) {
+        restoreNow();
       }
       scheduleMeasure();
     });
@@ -1030,14 +1096,7 @@ export function useChatViewportController(
     const mo =
       typeof MutationObserver !== "undefined"
         ? new MutationObserver(() => {
-            if (
-              isStickViewportUnreliable({
-                clientHeight: el.clientHeight,
-                hidden: typeof document !== "undefined" && document.hidden,
-              })
-            ) {
-              return;
-            }
+            if (readViewportOcclusion(el).occluded) return;
             scheduleRestore();
           })
         : null;
@@ -1054,61 +1113,87 @@ export function useChatViewportController(
     // Viewport size changes (window / stage chrome) also need a re-follow.
     ro.observe(el);
 
-    let viewportWasUnreliable =
-      typeof document !== "undefined" &&
-      isStickViewportUnreliable({
-        clientHeight: el.clientHeight,
-        hidden: document.hidden,
-      });
+    let occlusion = readViewportOcclusion(el);
 
-    const restoreAfterOcclusion = () => {
+    /**
+     * Re-assert the invariant on the first frame the window is available again
+     * (C5). `regainedFocus` marks a focus event, which is the boundary for an
+     * occlusion that happened while the window was blurred.
+     */
+    const restoreAfterOcclusion = (regainedFocus: boolean) => {
       const v = viewportRef.current;
       if (!v) return;
-      const hidden = typeof document !== "undefined" && document.hidden;
-      const unreliable = isStickViewportUnreliable({
-        clientHeight: v.clientHeight,
-        hidden,
-      });
-      if (
-        shouldRestorePinnedFollowOnViewportReady({
+      const next = readViewportOcclusion(v);
+      if (next.occluded !== occlusion.occluded) {
+        traceOcclusion({
+          state: next.occluded ? "enter" : "exit",
+          cause: next.occluded ? next.cause : occlusion.cause,
+          clientHeight: v.clientHeight,
           pinned: isPinnedRef.current,
           escaped: escapedRef.current,
-          viewportWasUnreliable,
-          viewportIsReliable: !unreliable,
-        })
-      ) {
-        applyDirective({ kind: "end" }, "occlusion:restore");
-        lastScrollTopRef.current = v.scrollTop;
-        lastScrollHeightRef.current = v.scrollHeight;
-      } else if (
-        escapedRef.current &&
-        viewportWasUnreliable &&
-        !unreliable
-      ) {
-        // Occlusion ended while reading history: first painted frame holds the
-        // anchor (C5).
-        restoreNow();
-        lastScrollTopRef.current = v.scrollTop;
-        lastScrollHeightRef.current = v.scrollHeight;
+        });
       }
-      viewportWasUnreliable = unreliable;
+      const restore = shouldRestoreAfterOcclusion({
+        wasOccluded: occlusion.occluded,
+        occluded: next.occluded,
+        regainedFocus,
+      });
+      occlusion = next;
+      if (!restore) return;
+      // Pinned → the content end; escaped → the anchor's recorded on-screen
+      // position. restoreNow applies exactly that for the current phase.
+      restoreNow();
+      lastScrollTopRef.current = v.scrollTop;
+      lastScrollHeightRef.current = v.scrollHeight;
     };
 
     const onVisibility = () => {
-      restoreAfterOcclusion();
-      requestAnimationFrame(restoreAfterOcclusion);
+      // Synchronous attempt (still before the next paint), then once more in
+      // the first frame: a window that was minimized can report a collapsed
+      // scroller at the synchronous read, and only the rAF sees the real one.
+      restoreAfterOcclusion(false);
+      requestAnimationFrame(() => restoreAfterOcclusion(false));
     };
+    const onFocus = () => restoreAfterOcclusion(true);
+
+    // Host-reported occlusion (macOS): the only signal for "completely covered
+    // by another app", where Page Visibility stays visible and focus may not
+    // change. The event payload crosses a process boundary, so it is parsed,
+    // not trusted; a malformed payload is ignored and the state is kept.
+    let hostListenerDisposed = false;
+    let unlistenHostOcclusion: (() => void) | null = null;
+    void import("@tauri-apps/api/event")
+      .then(({ listen }) =>
+        listen<unknown>(CHAT_VIEWPORT_OCCLUSION_EVENT, (event) => {
+          const covered = parseHostOcclusionPayload(event.payload);
+          if (covered == null) return;
+          hostOccludedRef.current = covered;
+          restoreAfterOcclusion(false);
+        }),
+      )
+      .then((unlisten) => {
+        if (hostListenerDisposed) unlisten();
+        else unlistenHostOcclusion = unlisten;
+      })
+      .catch(() => {
+        // Not under Tauri (browser / tests): Page Visibility and focus still
+        // cover the hidden case; only the covered case is host-reported.
+      });
 
     document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("focus", onVisibility);
+    window.addEventListener("focus", onFocus);
 
     return () => {
       if (raf) cancelAnimationFrame(raf);
       if (mediaFollowTimer != null) clearTimeout(mediaFollowTimer);
       mo?.disconnect();
       ro.disconnect();
+      hostListenerDisposed = true;
+      unlistenHostOcclusion?.();
+      cancelFrameSchedule(restoreLatchRef.current);
+      restoreScheduledRef.current = false;
       document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("focus", onVisibility);
+      window.removeEventListener("focus", onFocus);
     };
   }, [
     enabled,
@@ -1117,6 +1202,7 @@ export function useChatViewportController(
     applyScrollTop,
     commitState,
     followIfPinned,
+    readViewportOcclusion,
     restoreNow,
     scheduleRestore,
   ]);

@@ -136,6 +136,23 @@ Key event `reason`s:
   log. Also proves liveness when the capture found nothing.
 - `viewport-moved-to-older-message` / `viewport-jumped-up` / `viewport-native-jumped-up`:
   the suspicious backward moves you are hunting, published as cause-chain dumps.
+- `occlusion`: paint availability changed. `state: "enter"` when the window
+  stopped being drawable, `state: "exit"` when it is available again, with
+  `cause` (`"hidden"` = Page Visibility, `"covered"` = the macOS host reported
+  the window completely behind another app, `"collapsed"` = the scroller has no
+  usable height) and the pin state. The exit frame is the one C5 is judged on,
+  and it is also published directly as `occlusion-restored` under a tracking
+  session, so the restore is visible in the log without waiting for a heartbeat.
+  `"covered"` is the only one that never maps to a `visibilitychange`; it comes
+  from the host event `chat-viewport://occlusion`.
+- `viewport-size`: the scroller's own client box changed (window / stage-chrome
+  resize), with `pinned` / `escaped`. While escaped the anchor is held
+  synchronously in this callback, before paint.
+- `refresh-rate`: the nominal refresh rate changed between heartbeats (e.g.
+  120 Hz ↔ 60 Hz, or a cross-display move), with `fromHz` / `toHz`,
+  `frameIntervalMs` and `fps`. The heartbeat's `frameIntervalMs` / `fps` are the
+  current estimate; both come from the delivery's measured frame cadence
+  (`frameCadence.ts`), not a fixed 60 Hz assumption.
 - `manual`: flush after an episode ends, e.g. `window.__CHAT_VIEWPORT_DUMP__()`.
 
 ## Dump window
