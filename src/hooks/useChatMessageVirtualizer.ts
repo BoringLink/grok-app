@@ -334,7 +334,9 @@ export function useChatMessageVirtualizer(
         pendingAnchorOffsetRef.current = 0;
         if (Math.abs(flushOffset) > 0.5) {
           ignoreScrollAdjustRef.current = true;
-          applyScrollTopTraced("virt:flushAnchorOffset", el, el.scrollTop + flushOffset);
+          const desiredTop = el.scrollTop + flushOffset;
+          markProgrammaticStickScroll(el, desiredTop);
+          applyScrollTopTraced("virt:flushAnchorOffset", el, desiredTop);
           scrollTopWasWritten = true;
         }
       }
@@ -786,6 +788,7 @@ export function useChatMessageVirtualizer(
             pendingAnchorOffsetRef.current += shift;
           } else {
             ignoreScrollAdjustRef.current = true;
+            markProgrammaticStickScroll(viewport, desiredTop);
             applyScrollTopTraced("virt:rowAnchorShift", viewport, desiredTop);
           }
         }

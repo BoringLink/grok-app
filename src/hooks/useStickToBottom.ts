@@ -25,6 +25,7 @@ import {
   STICK_BOTTOM_REBOUND_INTENT_MS,
   STICK_BOTTOM_REBOUND_SETTLE_MS,
   STICK_COLLAPSE_RECOVERY_MS,
+  STICK_HEIGHT_NOISE_PX,
   STICK_OPEN_FOLLOW_MS,
   STICK_TO_BOTTOM_THRESHOLD_PX,
   bottomScrollTop,
@@ -38,6 +39,7 @@ import {
   shouldClampPinnedOverscroll,
   shouldClampPinnedStreamDrift,
   shouldEscapePinnedScroll,
+  shouldIgnorePinnedGrowthRebound,
   shouldIgnorePinnedLayoutScroll,
   shouldIgnoreProgrammaticStickLeave,
   shouldPreventPinnedBottomWheel,
@@ -45,7 +47,11 @@ import {
   shouldSettleBottomRebound,
   takeProgrammaticStickScroll,
 } from "@/lib/stickToBottom";
-import { applyScrollTopTraced } from "@/lib/chatViewportTrace";
+import {
+  applyScrollTopTraced,
+  tracePinState,
+  traceViewport,
+} from "@/lib/chatViewportTrace";
 
 
 export type UseStickToBottomOptions = {
@@ -66,11 +72,19 @@ export type UseStickToBottomResult = {
   scrollToBottom: (behavior?: ScrollBehavior) => void;
   /** True while auto-follow is active (ref, not reactive). */
   isPinnedRef: RefObject<boolean>;
+  /** True after an explicit user scroll-up until the tail is re-engaged. */
+  escapedRef: RefObject<boolean>;
   /** Reactive: show "back to bottom" control when user has scrolled up. */
   showBack: boolean;
   /** Fine-grained subscription for BackBottom button to avoid parent component re-renders. */
   subscribeShowBack: (cb: (val: boolean) => void) => () => void;
 };
+
+/**
+ * A scroll event within this window of a real gesture is the user's own move.
+ * Collapse clamps never have one, so they cannot release the pin.
+ */
+const GESTURE_ESCAPE_WINDOW_MS = 400;
 
 function stickNowMs(): number {
   return typeof performance !== "undefined" &&
@@ -117,6 +131,16 @@ export function useStickToBottom(
    * clamp first, virtual-window correction second. Keep pin through both.
    */
   const collapseRecoveryUntilRef = useRef(0);
+  /**
+   * Last real user gesture (wheel / touch / keyboard) on the viewport. A
+   * scroll that no gesture can explain is layout, so it must not release the
+   * pin: only a gesture, or a run of upward events at a *stable* height,
+   * counts as the user walking into history. Negative sentinel: before the
+   * first gesture, `now - last` must never look like a fresh gesture.
+   */
+  const lastGestureAtRef = useRef(Number.NEGATIVE_INFINITY);
+  /** Consecutive upward scroll events that happened at an unchanged height. */
+  const upStreakRef = useRef({ count: 0, at: 0 });
   const thresholdRef = useRef(thresholdPx);
   thresholdRef.current = thresholdPx;
   const enabledRef = useRef(enabled);
@@ -126,6 +150,8 @@ export function useStickToBottom(
    * Wheel escape still wins (see isConversationOpenFollowActive).
    */
   const openFollowUntilRef = useRef(0);
+  /** Explicit back-to-bottom animation; stale scroll settling must not clear pin. */
+  const programmaticFollowUntilRef = useRef(0);
   const conversationKeyRef = useRef(conversationKey);
   if (conversationKeyRef.current !== conversationKey) {
     conversationKeyRef.current = conversationKey;
@@ -190,10 +216,26 @@ export function useStickToBottom(
     (behavior: ScrollBehavior = "instant") => {
       const el = viewportRef.current;
       if (!el) return;
+      const pinnedBefore = isPinnedRef.current;
+      if (scrollDebounceTimerRef.current != null) {
+        clearTimeout(scrollDebounceTimerRef.current);
+        scrollDebounceTimerRef.current = null;
+      }
+      const now = stickNowMs();
+      programmaticFollowUntilRef.current =
+        behavior === "smooth" ? now + 800 : 0;
       escapedRef.current = false;
       isPinnedRef.current = true;
       userIntentDownRef.current = false;
       const top = bottomScrollTop(el.scrollHeight, el.clientHeight);
+      traceViewport("scroll-to-bottom", {
+        behavior,
+        scrollTop: Math.round(el.scrollTop),
+        targetTop: Math.round(top),
+        scrollHeight: Math.round(el.scrollHeight),
+        clientHeight: Math.round(el.clientHeight),
+        pinnedBefore,
+      });
       if (behavior === "smooth" && typeof el.scrollTo === "function") {
         // Smooth is only for the explicit "back to bottom" button.
         // Mark ignore with the target so intermediate events don't re-escape.
@@ -202,7 +244,13 @@ export function useStickToBottom(
         // Snap pin state; showBack clears once we land near bottom via scroll.
         const start = performance.now();
         const tick = () => {
-          if (!viewportRef.current) return;
+          if (
+            !viewportRef.current ||
+            !isPinnedRef.current ||
+            escapedRef.current
+          ) {
+            return;
+          }
           const near = isNearBottom(
             viewportRef.current.scrollTop,
             viewportRef.current.scrollHeight,
@@ -221,6 +269,7 @@ export function useStickToBottom(
             syncShowBack();
             return;
           }
+          if (!isPinnedRef.current || escapedRef.current) return;
           requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
@@ -291,6 +340,14 @@ export function useStickToBottom(
         isPinnedRef.current = true;
         userIntentDownRef.current = false;
         bottomIntentUntilRef.current = 0;
+        tracePinState({
+          reason: "bottom-rebound",
+          pinned: true,
+          escaped: false,
+          scrollTop: v.scrollTop,
+          scrollHeight: v.scrollHeight,
+          clientHeight: v.clientHeight,
+        });
         applyScrollTop(bottomScrollTop(v.scrollHeight, v.clientHeight));
         syncShowBack();
       }, STICK_BOTTOM_REBOUND_SETTLE_MS);
@@ -298,12 +355,18 @@ export function useStickToBottom(
 
     const handleScroll = () => {
       const scrollTop = el.scrollTop;
+      const programmaticFollowActive =
+        stickNowMs() < programmaticFollowUntilRef.current;
       if (
         isStickViewportUnreliable({
           clientHeight: el.clientHeight,
           hidden: typeof document !== "undefined" && document.hidden,
         })
       ) {
+        if (programmaticFollowActive) {
+          isPinnedRef.current = true;
+          escapedRef.current = false;
+        }
         lastScrollTopRef.current = scrollTop;
         lastScrollHeightRef.current = el.scrollHeight;
         ignoreScrollTopRef.current = undefined;
@@ -317,10 +380,15 @@ export function useStickToBottom(
       lastScrollHeightRef.current = el.scrollHeight;
       ignoreScrollTopRef.current = undefined;
 
+      // Ignore only the synthetic event that actually landed on the written
+      // position. A smooth follow stores its target before the animation; an
+      // unrelated keyboard or scrollbar scroll must still reach escape logic.
+      const landedOnIgnoredTop =
+        ignore != null && Math.abs(scrollTop - ignore) < 0.5;
       // Follow / virtual pin-snap wrote scrollTop. That is not a user leave.
       // Using ignore as previousScrollTop used to invent a 10px+ "scroll-up"
       // and drop pin for the rest of the stream.
-      if (shouldIgnoreProgrammaticStickLeave(ignore)) {
+      if (shouldIgnoreProgrammaticStickLeave(landedOnIgnoredTop ? ignore : undefined)) {
         if (
           isPinnedRef.current &&
           !escapedRef.current &&
@@ -336,6 +404,11 @@ export function useStickToBottom(
 
       const maxTop = bottomScrollTop(el.scrollHeight, el.clientHeight);
       const isMovingUp = scrollTop < lastScrollTop - 0.5;
+
+      // A prior intentional down-gesture (wheel/touch) armed bottom intent.
+      // The elastic upward move that follows must settle to the new tail, not
+      // be treated as a user escape. Only a move that is NOT a down-intent
+      // settle reaches the escape logic below.
       const bottomRebound = shouldSettleBottomRebound({
         downIntentActive: stickNowMs() <= bottomIntentUntilRef.current,
         scrollTop,
@@ -350,6 +423,71 @@ export function useStickToBottom(
           scrollDebounceTimerRef.current = null;
         }
         scheduleBottomReboundSettle();
+        return;
+      }
+
+      const shouldEscapeStick = shouldEscapePinnedScroll({
+        pinned: isPinnedRef.current,
+        escaped: escapedRef.current,
+        scrollTop,
+        previousScrollTop: lastScrollTop,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        previousScrollHeight:
+          lastScrollHeight > 0 ? lastScrollHeight : undefined,
+      });
+
+      // Layout clamp vs. the user walking into history. A collapse clamps
+      // scrollTop in the same layout pass that changed the height, so the move
+      // is upward with a changed (or reverted) height and no gesture. Only a
+      // gesture, or a run of upward events at an unchanged height, is the user.
+      const gestureRecent =
+        stickNowMs() - lastGestureAtRef.current < GESTURE_ESCAPE_WINDOW_MS;
+      const heightStable = Math.abs(el.scrollHeight - lastScrollHeight) < 0.5;
+      if (shouldEscapeStick && !gestureRecent && heightStable) {
+        const now = stickNowMs();
+        const streak =
+          now - upStreakRef.current.at < GESTURE_ESCAPE_WINDOW_MS
+            ? upStreakRef.current.count + 1
+            : 1;
+        upStreakRef.current = { count: streak, at: now };
+      } else if (!isMovingUp) {
+        upStreakRef.current = { count: 0, at: 0 };
+      }
+      const userWalked =
+        gestureRecent ||
+        (shouldEscapeStick && upStreakRef.current.count >= 2);
+
+      // A real gesture (wheel / touch / key) or repeated upward scrolling at a
+      // stable height is the user walking into history. Keyboard scrolling and
+      // scrollbar drag land in those two cases; every other upward move is the
+      // browser clamping scrollTop for a layout change.
+      if (shouldEscapeStick && userWalked) {
+        programmaticFollowUntilRef.current = 0;
+        userIntentDownRef.current = false;
+        isPinnedRef.current = false;
+        escapedRef.current = true;
+        tracePinState({
+          reason: "scroll-escape",
+          pinned: false,
+          escaped: true,
+          scrollTop,
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+        });
+        syncShowBack();
+        return;
+      }
+
+      if (shouldEscapeStick) {
+        // Gesture-free upward move: the browser clamped scrollTop after a
+        // collapse. Hold the pin and put the viewport back on the tail.
+        applyScrollTop(bottomScrollTop(el.scrollHeight, el.clientHeight));
+        return;
+      }
+
+      if (programmaticFollowActive && !escapedRef.current) {
+        isPinnedRef.current = true;
         return;
       }
 
@@ -369,31 +507,27 @@ export function useStickToBottom(
         return;
       }
 
-      // Default 10px event + slow-trackpad accumulation from the locked
-      // bottom. Never use a sub-pixel minDelta: thinking / tool collapse and
-      // the next body round routinely move 2–8px off hard bottom, and that
-      // used to drop pin so the rest of the stream grew below the fold.
-      const shouldEscapeStick = shouldEscapePinnedScroll({
-        pinned: isPinnedRef.current,
-        escaped: escapedRef.current,
-        scrollTop,
-        previousScrollTop: lastScrollTop,
-        scrollHeight: el.scrollHeight,
-        clientHeight: el.clientHeight,
-        previousScrollHeight: lastScrollHeight || undefined,
-      });
-      const meaningfulDown =
-        scrollTop - lastScrollTop >= STICK_ESCAPE_MIN_DELTA_PX;
-
-      // Instant escape on intentional user upward gesture (not browser-clamp).
-      // Never write back to scrollTop on upward leave.
-      if (shouldEscapeStick) {
-        userIntentDownRef.current = false;
-        isPinnedRef.current = false;
-        escapedRef.current = true;
-        syncShowBack();
+      // A content-growth reflow can produce a small native rebound after the
+      // follow write. Preserve pin before the generic scroll-up escape path.
+      if (
+        shouldIgnorePinnedGrowthRebound({
+          pinned: isPinnedRef.current,
+          escaped: escapedRef.current,
+          scrollTop,
+          previousScrollTop: lastScrollTop,
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+          previousScrollHeight:
+            lastScrollHeight > 0 ? lastScrollHeight : undefined,
+          thresholdPx: thresholdRef.current,
+        })
+      ) {
+        applyScrollTop(bottomScrollTop(el.scrollHeight, el.clientHeight));
         return;
       }
+
+      const meaningfulDown =
+        scrollTop - lastScrollTop >= STICK_ESCAPE_MIN_DELTA_PX;
 
       // While locked at bottom: only clamp positive overscroll past max.
       if (isPinnedRef.current && !escapedRef.current) {
@@ -417,6 +551,14 @@ export function useStickToBottom(
       scrollDebounceTimerRef.current = setTimeout(() => {
         scrollDebounceTimerRef.current = null;
         if (ignore != null && scrollTop === ignore) return;
+        if (
+          stickNowMs() < programmaticFollowUntilRef.current &&
+          !escapedRef.current
+        ) {
+          isPinnedRef.current = true;
+          syncShowBack();
+          return;
+        }
 
         // Still locked (e.g. no escape this frame)? Snap rubber-band only.
         if (isPinnedRef.current && !escapedRef.current) {
@@ -451,10 +593,12 @@ export function useStickToBottom(
           return;
         }
 
+        const previousPinned = isPinnedRef.current;
+        const previousEscaped = escapedRef.current;
         const next = nextStickPinState(
           {
-            pinned: isPinnedRef.current,
-            escaped: escapedRef.current,
+            pinned: previousPinned,
+            escaped: previousEscaped,
           },
           {
             scrollingUp,
@@ -466,6 +610,19 @@ export function useStickToBottom(
         );
         isPinnedRef.current = next.pinned;
         escapedRef.current = next.escaped;
+        if (
+          next.pinned !== previousPinned ||
+          next.escaped !== previousEscaped
+        ) {
+          tracePinState({
+            reason: "scroll-state-transition",
+            pinned: next.pinned,
+            escaped: next.escaped,
+            scrollTop: el.scrollTop,
+            scrollHeight: el.scrollHeight,
+            clientHeight: el.clientHeight,
+          });
+        }
         if (next.pinned) {
           userIntentDownRef.current = false;
           applyScrollTop(
@@ -477,6 +634,7 @@ export function useStickToBottom(
     };
 
     const handleWheel = (e: WheelEvent) => {
+      lastGestureAtRef.current = stickNowMs();
       if (
         shouldPreventPinnedBottomWheel({
           pinned: isPinnedRef.current,
@@ -509,10 +667,19 @@ export function useStickToBottom(
         el.scrollHeight > el.clientHeight
       ) {
         clearBottomRebound();
+        programmaticFollowUntilRef.current = 0;
         userIntentDownRef.current = false;
         if (isPinnedRef.current) {
           escapedRef.current = true;
           isPinnedRef.current = false;
+          tracePinState({
+            reason: "wheel-escape",
+            pinned: false,
+            escaped: true,
+            scrollTop: el.scrollTop,
+            scrollHeight: el.scrollHeight,
+            clientHeight: el.clientHeight,
+          });
           syncShowBack();
         }
         return;
@@ -534,6 +701,14 @@ export function useStickToBottom(
               escapedRef.current = false;
               isPinnedRef.current = true;
               userIntentDownRef.current = false;
+              tracePinState({
+                reason: "wheel-repin",
+                pinned: true,
+                escaped: false,
+                scrollTop: v.scrollTop,
+                scrollHeight: v.scrollHeight,
+                clientHeight: v.clientHeight,
+              });
               applyScrollTop(
                 bottomScrollTop(v.scrollHeight, v.clientHeight),
               );
@@ -549,6 +724,7 @@ export function useStickToBottom(
       touchY = e.touches[0]?.clientY ?? null;
     };
     const onTouchMove = (e: TouchEvent) => {
+      lastGestureAtRef.current = stickNowMs();
       const y = e.touches[0]?.clientY;
       if (touchY == null || y == null) return;
       const dy = y - touchY;
@@ -557,10 +733,19 @@ export function useStickToBottom(
       // unstick and then snap back (bounce + flash).
       if (dy > STICK_ESCAPE_MIN_DELTA_PX) {
         clearBottomRebound();
+        programmaticFollowUntilRef.current = 0;
         userIntentDownRef.current = false;
         if (isPinnedRef.current) {
           escapedRef.current = true;
           isPinnedRef.current = false;
+          tracePinState({
+            reason: "touch-escape",
+            pinned: false,
+            escaped: true,
+            scrollTop: el.scrollTop,
+            scrollHeight: el.scrollHeight,
+            clientHeight: el.clientHeight,
+          });
           syncShowBack();
         }
       } else if (dy < -STICK_ESCAPE_MIN_DELTA_PX) {
@@ -581,12 +766,36 @@ export function useStickToBottom(
             escapedRef.current = false;
             isPinnedRef.current = true;
             userIntentDownRef.current = false;
+            tracePinState({
+              reason: "touch-repin",
+              pinned: true,
+              escaped: false,
+              scrollTop: v.scrollTop,
+              scrollHeight: v.scrollHeight,
+              clientHeight: v.clientHeight,
+            });
             syncShowBack();
           }
         });
       }
     };
 
+    const onKeyScroll = (e: KeyboardEvent) => {
+      if (
+        e.key === "PageUp" ||
+        e.key === "PageDown" ||
+        e.key === "ArrowUp" ||
+        e.key === "ArrowDown" ||
+        e.key === "Home" ||
+        e.key === "End" ||
+        e.key === " " ||
+        e.key === "Spacebar"
+      ) {
+        lastGestureAtRef.current = stickNowMs();
+      }
+    };
+
+    el.addEventListener("keydown", onKeyScroll, { passive: true });
     el.addEventListener("scroll", handleScroll, { passive: true });
     // Non-passive: at the locked bottom we preventDefault downward
     // overscroll so WKWebView cannot rubber-band the last lines under
@@ -601,6 +810,7 @@ export function useStickToBottom(
     lastScrollHeightRef.current = el.scrollHeight;
 
     return () => {
+      el.removeEventListener("keydown", onKeyScroll);
       el.removeEventListener("scroll", handleScroll);
       el.removeEventListener("wheel", handleWheel);
       el.removeEventListener("touchstart", onTouchStart);
@@ -750,6 +960,14 @@ export function useStickToBottom(
         isHardBottom(el.scrollTop, el.scrollHeight, el.clientHeight)
       ) {
         isPinnedRef.current = true;
+        tracePinState({
+          reason: "height-change-repin",
+          pinned: true,
+          escaped: false,
+          scrollTop: el.scrollTop,
+          scrollHeight: el.scrollHeight,
+          clientHeight: el.clientHeight,
+        });
       }
 
       // Grow, shrink, or viewport-only resize: follow only while pinned.
@@ -782,8 +1000,10 @@ export function useStickToBottom(
           mediaFollowTimer = null;
         }
         followIfPinned();
-      } else {
-        if (mediaFollowTimer != null) clearTimeout(mediaFollowTimer);
+      } else if (mediaFollowTimer == null) {
+        // Follow once immediately, then keep one trailing follow for a resize storm.
+        // Do not reset the timer on every frame or continuous body growth can starve it.
+        followIfPinned();
         mediaFollowTimer = setTimeout(() => {
           mediaFollowTimer = null;
           followIfPinned();
@@ -814,7 +1034,23 @@ export function useStickToBottom(
       });
     };
 
+    const content = contentRef.current ?? el.firstElementChild;
     const ro = new ResizeObserver((entries) => {
+      // Arm collapse recovery before the rAF measurement so the browser's
+      // first clamp event cannot outrun the recovery window.
+      const contentEntry = entries.find((entry) => entry.target === content);
+      const contentHeight = contentEntry?.contentRect.height;
+      if (
+        contentHeight != null &&
+        previousHeight != null &&
+        contentHeight < previousHeight - STICK_HEIGHT_NOISE_PX &&
+        isPinnedRef.current &&
+        !escapedRef.current
+      ) {
+        collapseRecoveryUntilRef.current =
+          stickNowMs() + STICK_COLLAPSE_RECOVERY_MS;
+      }
+
       // Coalesce multi-node notifications to one frame. Always read the
       // content column height from the DOM — viewport RO entries report
       // client box size, which is not what we want for grow/shrink.
@@ -832,7 +1068,36 @@ export function useStickToBottom(
       scheduleMeasure();
     });
 
-    const content = contentRef.current ?? el.firstElementChild;
+    /**
+     * Collapse / reflow changes the DOM in one task; the ResizeObserver
+     * callback that re-asserts the bottom runs a frame later, so the shifted
+     * frame is painted. Mutation callbacks run as microtasks in the same task,
+     * which lands the compensating scrollTop write before that paint.
+     */
+    const mo =
+      typeof MutationObserver !== "undefined"
+        ? new MutationObserver(() => {
+            if (!isPinnedRef.current || escapedRef.current) return;
+            if (
+              isStickViewportUnreliable({
+                clientHeight: el.clientHeight,
+                hidden: typeof document !== "undefined" && document.hidden,
+              })
+            ) {
+              return;
+            }
+            applyScrollTop(bottomScrollTop(el.scrollHeight, el.clientHeight));
+          })
+        : null;
+    if (content && mo) {
+      mo.observe(content, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        characterData: true,
+      });
+    }
+
     if (content) ro.observe(content);
     // Viewport size changes (window / stage chrome) also need a re-follow.
     ro.observe(el);
@@ -878,6 +1143,7 @@ export function useStickToBottom(
     return () => {
       if (raf) cancelAnimationFrame(raf);
       if (mediaFollowTimer != null) clearTimeout(mediaFollowTimer);
+      mo?.disconnect();
       ro.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", onVisibility);
@@ -890,6 +1156,7 @@ export function useStickToBottom(
     onScroll,
     scrollToBottom,
     isPinnedRef,
+    escapedRef,
     showBack: showBackRef.current,
     subscribeShowBack,
   };

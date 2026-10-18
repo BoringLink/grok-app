@@ -21,6 +21,7 @@ import {
   shouldClampPinnedOverscroll,
   shouldClampPinnedStreamDrift,
   shouldForcePinnedSnapOnOpen,
+  shouldIgnorePinnedGrowthRebound,
   shouldReleaseStickOnDistanceFromBottom,
   shouldSnapPinnedLayoutToBottom,
   shouldSettleBottomRebound,
@@ -525,6 +526,92 @@ describe("shouldClampPinnedStreamDrift", () => {
 
   it("does not clamp when unpinned without escape flag either", () => {
     expect(shouldClampPinnedStreamDrift(false, false, 200, sh, ch)).toBe(false);
+  });
+});
+
+describe("shouldIgnorePinnedGrowthRebound", () => {
+  it("keeps pin after a small rebound from the previous hard bottom", () => {
+    expect(
+      shouldIgnorePinnedGrowthRebound({
+        pinned: true,
+        escaped: false,
+        previousScrollTop: 600,
+        scrollTop: 592,
+        previousScrollHeight: 1000,
+        scrollHeight: 1040,
+        clientHeight: 400,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps pin when a large body growth makes the new tail far away", () => {
+    expect(
+      shouldIgnorePinnedGrowthRebound({
+        pinned: true,
+        escaped: false,
+        previousScrollTop: 600,
+        scrollTop: 598,
+        previousScrollHeight: 1000,
+        scrollHeight: 1207,
+        clientHeight: 400,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects a rebound larger than the layout threshold", () => {
+    expect(
+      shouldIgnorePinnedGrowthRebound({
+        pinned: true,
+        escaped: false,
+        previousScrollTop: 600,
+        scrollTop: 580,
+        previousScrollHeight: 1000,
+        scrollHeight: 1040,
+        clientHeight: 400,
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects a rebound that did not start at the old bottom", () => {
+    expect(
+      shouldIgnorePinnedGrowthRebound({
+        pinned: true,
+        escaped: false,
+        previousScrollTop: 580,
+        scrollTop: 560,
+        previousScrollHeight: 1000,
+        scrollHeight: 1040,
+        clientHeight: 400,
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects a move that ends outside the near-bottom band", () => {
+    expect(
+      shouldIgnorePinnedGrowthRebound({
+        pinned: true,
+        escaped: false,
+        previousScrollTop: 600,
+        scrollTop: 480,
+        previousScrollHeight: 1000,
+        scrollHeight: 1040,
+        clientHeight: 400,
+      }),
+    ).toBe(false);
+  });
+
+  it("never overrides an explicit user escape", () => {
+    expect(
+      shouldIgnorePinnedGrowthRebound({
+        pinned: true,
+        escaped: true,
+        previousScrollTop: 600,
+        scrollTop: 580,
+        previousScrollHeight: 1000,
+        scrollHeight: 1040,
+        clientHeight: 400,
+      }),
+    ).toBe(false);
   });
 });
 

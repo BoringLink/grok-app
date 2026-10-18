@@ -114,7 +114,11 @@ import {
 } from "@/lib/transcriptOpenReveal";
 import { useChatMessageVirtualizer } from "@/hooks/useChatMessageVirtualizer";
 import { useChatViewportTraceProbe } from "@/hooks/useChatViewportTraceProbe";
-import { applyScrollTopTraced, traceViewport } from "@/lib/chatViewportTrace";
+import {
+  applyScrollTopTraced,
+  publishTraceToHost,
+  traceViewport,
+} from "@/lib/chatViewportTrace";
 import {
   estimateChatRowHeight,
   splitVirtSpacerHeights,
@@ -1842,6 +1846,7 @@ export function ConversationThread({
     contentRef,
     scrollToBottom,
     isPinnedRef,
+    escapedRef,
     subscribeShowBack,
   } = useStickToBottom({
     conversationKey: conversationKeyForStick,
@@ -2100,6 +2105,10 @@ export function ConversationThread({
     null,
   );
   const locateRafRef = useRef<number | null>(null);
+  /** Records find-jump scroll position after the smooth animation settles. */
+  const findSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   /** While set, scroll-sync must not overwrite the rail cursor (nav in flight). */
   const navLockUntilRef = useRef(0);
   /**
@@ -2339,15 +2348,51 @@ export function ConversationThread({
         '[data-find-mark="current"]',
       ) as HTMLElement | null;
       const target = currentMark ?? root;
+      const viewport = scrollRef.current;
+      const before = viewport?.scrollTop ?? null;
+      const payload = {
+        reason: "find:scrollIntoView",
+        messageId: id,
+        target: currentMark ? "current-mark" : "message",
+        before,
+        scrollHeight: viewport?.scrollHeight ?? null,
+        clientHeight: viewport?.clientHeight ?? null,
+        pinnedBefore: isPinnedRef.current,
+      };
+      traceViewport("find:scrollIntoView", payload);
+      void publishTraceToHost(payload);
       target.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (findSettleTimerRef.current != null) {
+        clearTimeout(findSettleTimerRef.current);
+      }
+      findSettleTimerRef.current = setTimeout(() => {
+        const afterViewport = scrollRef.current;
+        const afterPayload = {
+          reason: "find:scrollIntoView:after",
+          messageId: id,
+          after: afterViewport?.scrollTop ?? null,
+          scrollHeight: afterViewport?.scrollHeight ?? null,
+          clientHeight: afterViewport?.clientHeight ?? null,
+          pinnedAfter: isPinnedRef.current,
+        };
+        traceViewport("find:scrollIntoView:after", afterPayload);
+        void publishTraceToHost(afterPayload);
+      }, 700);
     });
-    return () => window.cancelAnimationFrame(t);
+    return () => {
+      window.cancelAnimationFrame(t);
+      if (findSettleTimerRef.current != null) {
+        clearTimeout(findSettleTimerRef.current);
+        findSettleTimerRef.current = null;
+      }
+    };
   }, [findActive?.messageId, findActive?.occurrence, findQuery]);
 
   useEffect(() => {
     return () => {
       if (focusClearTimerRef.current) clearTimeout(focusClearTimerRef.current);
       if (locateClearTimerRef.current) clearTimeout(locateClearTimerRef.current);
+      if (findSettleTimerRef.current) clearTimeout(findSettleTimerRef.current);
       if (locateRafRef.current != null) {
         window.cancelAnimationFrame(locateRafRef.current);
       }
@@ -2713,7 +2758,9 @@ export function ConversationThread({
   useChatViewportTraceProbe({
     viewportRef: scrollRef,
     isPinnedRef,
+    escapedRef,
     contentRef,
+    sessionId,
   });
 
   useLayoutEffect(() => {
@@ -3104,7 +3151,36 @@ export function ConversationThread({
         subscribeVisible={subscribeShowBack}
         alwaysVisible={backBottomAlways}
         label={tr("chat.scrollBottom")}
-        onClick={() => scrollToBottom("smooth")}
+        onClick={() => {
+          const viewport = scrollRef.current;
+          const payload = {
+            reason: "button-scroll-to-bottom",
+            session: sessionId ?? null,
+            scrollTop: viewport?.scrollTop ?? null,
+            scrollHeight: viewport?.scrollHeight ?? null,
+            clientHeight: viewport?.clientHeight ?? null,
+            distFromBottom:
+              viewport?.scrollHeight != null &&
+              viewport?.clientHeight != null &&
+              viewport?.scrollTop != null
+                ? Math.max(
+                    0,
+                    viewport.scrollHeight -
+                      viewport.clientHeight -
+                      viewport.scrollTop,
+                  )
+                : null,
+            targetTop:
+              viewport?.scrollHeight != null &&
+              viewport?.clientHeight != null
+                ? Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+                : null,
+            pinned: isPinnedRef.current,
+          };
+          traceViewport("button-scroll-to-bottom", payload);
+          void publishTraceToHost(payload);
+          scrollToBottom("smooth");
+        }}
       />
 
       {/* Selection context menu — same ContextMenu baseline as attachment cards. */}

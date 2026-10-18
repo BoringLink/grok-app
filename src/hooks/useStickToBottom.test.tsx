@@ -1,23 +1,72 @@
 // @vitest-environment jsdom
 
-import { act, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STICK_BOTTOM_REBOUND_SETTLE_MS } from "@/lib/stickToBottom";
-import { useStickToBottom } from "./useStickToBottom";
+import { useStickToBottom, type UseStickToBottomResult } from "./useStickToBottom";
 
-class NoopResizeObserver {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
+class ControlledResizeObserver {
+  private static readonly instances = new Set<ControlledResizeObserver>();
+  private readonly callback: ResizeObserverCallback;
+  private readonly targets = new Set<Element>();
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    ControlledResizeObserver.instances.add(this);
+  }
+
+  observe(target: Element) {
+    this.targets.add(target);
+  }
+
+  unobserve(target: Element) {
+    this.targets.delete(target);
+  }
+
+  disconnect() {
+    this.targets.clear();
+    ControlledResizeObserver.instances.delete(this);
+  }
+
+  static emit(target: Element, height: number) {
+    const entry = {
+      target,
+      contentRect: { height, width: 800 },
+    } as ResizeObserverEntry;
+    ControlledResizeObserver.instances.forEach((observer) => {
+      if (observer.targets.has(target)) {
+        observer.callback([entry], observer as unknown as ResizeObserver);
+      }
+    });
+  }
+
+  static reset() {
+    ControlledResizeObserver.instances.clear();
+  }
+}
+
+function flushLayoutFrame() {
+  vi.advanceTimersByTime(16);
 }
 
 describe("useStickToBottom bottom rebound", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.stubGlobal("ResizeObserver", NoopResizeObserver);
+    ControlledResizeObserver.reset();
+    vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      (callback: FrameRequestCallback) =>
+        window.setTimeout(() => callback(performance.now()), 0),
+    );
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+      window.clearTimeout(id);
+    });
   });
 
   afterEach(() => {
+    cleanup();
+    ControlledResizeObserver.reset();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
@@ -115,5 +164,235 @@ describe("useStickToBottom bottom rebound", () => {
 
     expect(scrollTop).toBe(550);
     expect(result.current.isPinnedRef.current).toBe(false);
+  });
+
+  it("follows continuous large growth with a leading and trailing snap", () => {
+    const viewport = document.createElement("div");
+    const content = document.createElement("div");
+    viewport.appendChild(content);
+    let scrollTop = 600;
+    let scrollHeight = 1000;
+    let contentHeight = 1000;
+    Object.defineProperties(viewport, {
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      clientHeight: { configurable: true, get: () => 400 },
+      clientWidth: { configurable: true, get: () => 800 },
+    });
+    Object.defineProperty(content, "offsetHeight", {
+      configurable: true,
+      get: () => contentHeight,
+    });
+
+    const { result, rerender } = renderHook(
+      ({ keyName }) => useStickToBottom({ conversationKey: keyName }),
+      { initialProps: { keyName: "before-attach" } },
+    );
+    Object.assign(result.current.viewportRef, { current: viewport });
+    Object.assign(result.current.contentRef, { current: content });
+    rerender({ keyName: "attached" });
+    act(() => {
+      vi.advanceTimersByTime(40);
+      viewport.dispatchEvent(new Event("scroll"));
+      flushLayoutFrame();
+    });
+
+    act(() => {
+      ControlledResizeObserver.emit(content, contentHeight);
+      flushLayoutFrame();
+      contentHeight = 1030;
+      scrollHeight = 1030;
+      ControlledResizeObserver.emit(content, contentHeight);
+      flushLayoutFrame();
+    });
+    expect(scrollTop).toBe(630);
+
+    act(() => {
+      contentHeight = 1060;
+      scrollHeight = 1060;
+      ControlledResizeObserver.emit(content, contentHeight);
+      flushLayoutFrame();
+      contentHeight = 1090;
+      scrollHeight = 1090;
+      ControlledResizeObserver.emit(content, contentHeight);
+      flushLayoutFrame();
+      vi.advanceTimersByTime(64);
+    });
+
+    expect(scrollTop).toBe(690);
+    expect(result.current.isPinnedRef.current).toBe(true);
+  });
+
+  it("keeps pin when growth exposes a small native rebound", () => {
+    const viewport = document.createElement("div");
+    const content = document.createElement("div");
+    viewport.appendChild(content);
+    let scrollTop = 600;
+    let scrollHeight = 1000;
+    Object.defineProperties(viewport, {
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      clientHeight: { configurable: true, get: () => 400 },
+      clientWidth: { configurable: true, get: () => 800 },
+    });
+
+    const { result, rerender } = renderHook(
+      ({ keyName }) => useStickToBottom({ conversationKey: keyName }),
+      { initialProps: { keyName: "before-attach" } },
+    );
+    Object.assign(result.current.viewportRef, { current: viewport });
+    Object.assign(result.current.contentRef, { current: content });
+    rerender({ keyName: "attached" });
+    act(() => {
+      vi.advanceTimersByTime(40);
+      viewport.dispatchEvent(new Event("scroll"));
+      vi.runOnlyPendingTimers();
+    });
+
+    act(() => {
+      scrollHeight = 1207;
+      scrollTop = 598;
+      viewport.dispatchEvent(new Event("scroll"));
+    });
+
+    expect(scrollTop).toBe(807);
+    expect(result.current.isPinnedRef.current).toBe(true);
+  });
+});
+
+/**
+ * Escape policy: a scroll move that no user gesture can explain is a layout
+ * clamp (a folding thought / tool block collapses above the viewport and the
+ * browser clamps scrollTop with the new content height). It must hold the pin
+ * instead of releasing it, or the rest of the turn stops being followed.
+ */
+describe("useStickToBottom escape policy", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    ControlledResizeObserver.reset();
+    vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      (callback: FrameRequestCallback) =>
+        window.setTimeout(() => callback(performance.now()), 0),
+    );
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+      window.clearTimeout(id);
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    ControlledResizeObserver.reset();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  function mountPinned(initial: { scrollTop: number; scrollHeight: number }) {
+    let scrollTop = initial.scrollTop;
+    let scrollHeight = initial.scrollHeight;
+    const viewport = document.createElement("div");
+    const content = document.createElement("div");
+    viewport.appendChild(content);
+    Object.defineProperties(viewport, {
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
+      clientHeight: { configurable: true, get: () => 400 },
+      clientWidth: { configurable: true, get: () => 800 },
+    });
+
+    const { result, rerender } = renderHook(
+      ({ keyName }) => useStickToBottom({ conversationKey: keyName }),
+      { initialProps: { keyName: "before-attach" } },
+    );
+    Object.assign(result.current.viewportRef, { current: viewport });
+    Object.assign(result.current.contentRef, { current: content });
+    rerender({ keyName: "attached" });
+    act(() => {
+      vi.advanceTimersByTime(40);
+      viewport.dispatchEvent(new Event("scroll"));
+    });
+    scrollTop = initial.scrollTop;
+
+    return {
+      viewport,
+      content,
+      result: result as { current: UseStickToBottomResult },
+      scrollTop: () => scrollTop,
+      setScrollTop: (value: number) => {
+        scrollTop = value;
+      },
+      setScrollHeight: (value: number) => {
+        scrollHeight = value;
+      },
+    };
+  }
+
+  it("keeps the pin when a collapse above the viewport clamps scrollTop", () => {
+    const harness = mountPinned({ scrollTop: 600, scrollHeight: 1000 });
+
+    act(() => {
+      // Folding block above: the browser clamps with the new max ...
+      harness.setScrollHeight(700);
+      harness.setScrollTop(300);
+      // ... and the height returns (streaming continues elsewhere) before the
+      // scroll event reaches the handler, so no shrink is observable.
+      harness.setScrollHeight(1000);
+      harness.viewport.dispatchEvent(new Event("scroll"));
+    });
+
+    expect(harness.scrollTop()).toBe(600);
+    expect(harness.result.current.isPinnedRef.current).toBe(true);
+    expect(harness.result.current.escapedRef.current).toBe(false);
+  });
+
+  it("escapes after repeated gesture-free upward scrolling at a stable height", () => {
+    const harness = mountPinned({ scrollTop: 600, scrollHeight: 1000 });
+
+    act(() => {
+      harness.setScrollTop(590);
+      harness.viewport.dispatchEvent(new Event("scroll"));
+    });
+    expect(harness.result.current.isPinnedRef.current).toBe(true);
+
+    act(() => {
+      harness.setScrollTop(580);
+      harness.viewport.dispatchEvent(new Event("scroll"));
+    });
+    expect(harness.result.current.isPinnedRef.current).toBe(false);
+    expect(harness.result.current.escapedRef.current).toBe(true);
+  });
+
+  it("re-asserts the bottom inside the mutation batch that shrank the content", async () => {
+    const harness = mountPinned({ scrollTop: 600, scrollHeight: 1000 });
+
+    // Collapse clamped the viewport; the height came back in the same task.
+    harness.setScrollHeight(760);
+    harness.setScrollTop(360);
+    harness.setScrollHeight(1000);
+
+    await act(async () => {
+      harness.content.appendChild(document.createElement("div"));
+    });
+
+    expect(harness.scrollTop()).toBe(600);
   });
 });

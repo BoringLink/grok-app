@@ -77,6 +77,9 @@ export const STICK_BOTTOM_REBOUND_SETTLE_MS = 96;
  */
 export const STICK_COLLAPSE_RECOVERY_MS = 250;
 
+/** Maximum upward movement treated as a content-layout rebound. */
+export const STICK_LAYOUT_REBOUND_MAX_PX = 16;
+
 /**
  * Whether a scroll event belongs to the short layout-recovery window after a
  * pinned activity block collapses. Explicit wheel/touch escapes set `escaped`
@@ -415,6 +418,41 @@ export function shouldReleaseStickOnSlowScrollUp(input: {
       input.clientHeight,
     ) >= min
   );
+}
+
+/**
+ * A content-growth reflow can move a viewport a few pixels upward after the
+ * stick hook has written the previous bottom. Treat that compositor rebound as
+ * layout recovery only when the previous position was the old hard bottom and
+ * the new position remains close to the new tail. Explicit wheel/touch escapes
+ * set `escaped` before this native scroll event arrives.
+ */
+export function shouldIgnorePinnedGrowthRebound(input: {
+  pinned: boolean;
+  escaped?: boolean;
+  scrollTop: number;
+  previousScrollTop: number;
+  scrollHeight: number;
+  clientHeight: number;
+  previousScrollHeight?: number;
+  /** Retained for call-site compatibility; growth itself may exceed this band. */
+  thresholdPx?: number;
+  hardPx?: number;
+  prevBottomSlackPx?: number;
+}): boolean {
+  if (!input.pinned || input.escaped) return false;
+  if (input.previousScrollHeight == null) return false;
+  if (input.scrollHeight <= input.previousScrollHeight + 0.5) return false;
+  const upwardDelta = input.previousScrollTop - input.scrollTop;
+  if (upwardDelta < 0.5 || upwardDelta > STICK_LAYOUT_REBOUND_MAX_PX) {
+    return false;
+  }
+  const previousMaxTop = bottomScrollTop(
+    input.previousScrollHeight,
+    input.clientHeight,
+  );
+  const slack = input.prevBottomSlackPx ?? STICK_HEIGHT_NOISE_PX;
+  return input.previousScrollTop >= previousMaxTop - slack;
 }
 
 /**
