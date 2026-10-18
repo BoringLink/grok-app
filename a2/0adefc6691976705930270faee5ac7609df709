@@ -1,0 +1,26 @@
+scripts/run-chat-viewport-scenarios.mjs
+  s_ae30523405d50c::t_c27343d44d31b8 121-136
+  s_ae30523405d50c::t_682fdafbedb9fa 106-108,458-462,468-469
+  s_ae30523405d50c::t_8497de53eaa71f 307,317,321-322,324-325,384-385,389,391-395
+  s_ae30523405d50c::t_6cbbe7f95a2b60 435-457,463-467,513
+  s_ae30523405d50c::t_b5ca7a14f1835f 183,188,190-195,206,210,212-216
+  s_ae30523405d50c::t_914dcb2116ae81 20,22-24,44,73-74,77,80
+  s_ae30523405d50c::t_6d74e5a83832c3 416,424,428-429,431-432
+  s_ae30523405d50c::t_b6eac1a07a2220 120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "a20adefc6691976705930270faee5ac7609df709",
+  "prompts": {},
+  "sessions": {
+    "s_ae30523405d50c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15086-5a4d-7a03-b2b3-8e09c3ff63b8",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
