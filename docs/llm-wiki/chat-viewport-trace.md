@@ -52,7 +52,7 @@ position — the exact quantity the escaped restore corrects — so the C3 bound
 a media element finishing decode. It follows the captured *element*, so a change
 that moves that element moves `a` even when its row box does not, and an
 out-of-band re-growth (rows entering above) does not make it `null`. The one
-exception is the nested-scroller rule (`session-continuity.md`): the anchor is
+exception is the nested-scroller rule (`chat-viewport-invariants.md`): the anchor is
 never planted inside a nested scroller, so such a box reads `a = 0` by design.
 `a` is `null` while pinned (the anchor is then the content end, judged by `d`)
 and when the held element is gone. The media-decode case carries no DOM mutation
@@ -174,7 +174,8 @@ Key event `reason`s:
   of the recent per-frame samples, so a session with no backward move still
   leaves its per-frame distance / shift / follow state / write source in the
   log. Also proves liveness when the capture found nothing. It carries the
-  three budget read-outs the manual pass confirms AC1/AC2 with:
+  three budget read-outs the manual pass confirms the Spec's frame-cost,
+  first-frame and per-frame-write acceptance with:
   - `writeFrames` / `maxWritesPerFrame` / `framesOverWriteBudget` — the
     per-frame position-write summary (`frameWriteSummary`) over the counted
     paint-boundary (`by: "raf"`) frames; `framesOverWriteBudget` must be 0.
@@ -188,6 +189,13 @@ Key event `reason`s:
   - `ledgerMemoryBytes` / `ledgerRows` — the layout ledger's absolute
     typed-array footprint and its row count, so the ledger-memory budget is
     readable without measuring a delta.
+  - `sampledFrames` / `gestureFreeUpwardFrames` / `backwardMoveFrames` /
+    `driftFrames` — the C4 aggregate (with C2 / C3) over the paint-boundary
+    frames (`viewportViolationSummary`): pinned frames that moved up with no
+    gesture, pinned frames whose first visible row moved back, and frames whose
+    visible band or escaped anchor shifted past `VIEWPORT_ANCHOR_TOLERANCE_PX`.
+    This is the C4 violation count the Spec asks for, next to the per-flip
+    `cause`.
 - `viewport-moved-to-older-message` / `viewport-jumped-up` / `viewport-native-jumped-up`:
   the suspicious backward moves you are hunting, published as cause-chain dumps.
 - `occlusion`: paint availability changed. `state: "enter"` when the window
