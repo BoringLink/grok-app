@@ -2,8 +2,9 @@
 
 Scope: the chat transcript viewport delivery's performance budgets
 (`docs/plans/2026-10-18-chat-viewport-scroll-spec.md`, ticket BOR-115). The
-delivery's invariants and diagnostics live in `docs/adr/0006-explicit-chat-viewport-control.md`
-and `docs/llm-wiki/chat-viewport-trace.md`.
+delivery's invariants live in `docs/llm-wiki/chat-viewport-invariants.md`, and
+its diagnostics in `docs/llm-wiki/chat-viewport-trace.md` (architecture:
+`docs/adr/0006-explicit-chat-viewport-control.md`).
 
 Status: **measured on the frontend only, in headless Chromium.** The budgets are
 bounded here; the packaged macOS / WKWebView number is left for the manual pass
@@ -122,14 +123,15 @@ per-frame work sits around 3–4ms p99 with rare single-frame excursions to
 The packaged client's numbers come from the dev trace; each budget is now a
 field on the log, so the pass is a matter of reading it. Enable the trace
 (`localStorage["grok.chatTrace"]="1"` or `?chatTrace=1`, plus a tracking id) and
-reproduce on the 10k-row conversation. Then read, per acceptance criterion:
+reproduce on the 10k-row conversation. Then read, per acceptance criterion from
+the Spec (its own wording, C1–C5 plus these bullets):
 
-| Criterion | Where | Fields (must hold) |
+| Criterion (Spec) | Where | Fields (must hold) |
 |-----------|-------|--------------------|
-| AC1 frame cost ≤ 8.3ms / 120Hz | `heartbeat` (every 10s) | `frameCostP90Ms`, `frameCostMaxMs`, `framesOverFrameBudget` (= 0), `fps`/`frameIntervalMs` (measured cadence, not a fixed 60Hz) |
-| AC2 first frame ≤ 400ms | `chat-first-frame` host line (`first-frame` ring event), once per conversation open | `ms`, with `rows`, `scrollHeight`, `clientHeight` for context |
-| AC2 ledger memory ≤ 20MB | `heartbeat` | `ledgerMemoryBytes`, `ledgerRows` |
-| AC3 ≤ 1 position write per frame | `heartbeat`, and the per-frame `sample` frames | `writeFrames`, `maxWritesPerFrame`, `framesOverWriteBudget` (= 0); on each `by: "raf"` sample, `w` (writes that frame) and `ws` (source) |
+| Scroll frame cost ≤ 8.3ms (120Hz) | `heartbeat` (every 10s) | `frameCostP90Ms`, `frameCostMaxMs`, `framesOverFrameBudget` (= 0), `fps`/`frameIntervalMs` (measured cadence, not a fixed 60Hz) |
+| First frame ≤ 400ms | `chat-first-frame` host line (`first-frame` ring event), once per conversation open | `ms`, with `rows`, `scrollHeight`, `clientHeight` for context |
+| Ledger memory ≤ 20MB | `heartbeat` | `ledgerMemoryBytes`, `ledgerRows` |
+| ≤ 1 position write per frame | `heartbeat`, and the per-frame `sample` frames | `writeFrames`, `maxWritesPerFrame`, `framesOverWriteBudget` (= 0); on each `by: "raf"` sample, `w` (writes that frame) and `ws` (source) |
 
 `frameCost*` is the probe's own paint-boundary work per frame, a lower bound on
 the frame's main-thread cost — the same quantity the harness measures, with the
@@ -149,32 +151,35 @@ anchor shift (C3), and `w`/`ws` the writes and their source per frame.
 ## Scenario runner
 
 `pnpm scenarios:chat-viewport` (or `node scripts/run-chat-viewport-scenarios.mjs`)
-drives the twelve synthetic scenarios the Spec's Testing Decisions name against
-the real controller, and asserts on the trace event sequence plus DOM geometry.
-It exits 0 only when all pass:
+drives the synthetic scenarios the Spec's Testing Decisions name against the real
+controller, and asserts on the trace event sequence plus DOM geometry. It exits 0
+only when all pass:
 
 ```
 PASS  continuous output stays pinned at the end — worst distance to end=0.00px, escapes=0
-PASS  a collapse above does not move the escaped anchor — anchor shift=0.00px
-PASS  a re-growth above does not move the escaped anchor — anchor shift=0.00px
+PASS  a collapse above does not move the escaped anchor or the visible band — anchor shift=0.00px, band shift=0.00px
+PASS  a re-growth above does not move the escaped anchor or the visible band — anchor shift=0.00px, band shift=0.00px
 PASS  small repeated reflow keeps the pin — escapes=0, worst end distance=0.00
 PASS  a gesture-free upward move is a clamp, then a drag — pinned after 1st=true, escaped after 2nd=true
 PASS  a real wheel upward escapes the tail — escaped=true, causes=wheel
 PASS  restore lands back at the end after occlusion — distance to end=0.00px, occlusion events=2
-PASS  occlusion restore holds the escaped anchor, not the end — escaped=true, anchor shift=0.00px
+PASS  occlusion restore holds the escaped anchor, not the end — escaped=true, anchor shift=0.00px, band shift=0.00px
 PASS  no frame carries more than one transcript write — max writes/frame=1
 PASS  a window resize re-follows the end — viewport-size event=true, distance to end=0.00
-PASS  a nested scroller expanding does not move the outer anchor — anchor shift=0.00px
-PASS  a media decode above the anchor does not move it — decoded height=400px, shift=0.00px
-12/12 scenarios passed
+PASS  a nested scroller expanding does not move the outer anchor or band — anchor shift=0.00px, band shift=0.00px
+PASS  a media decode above the anchor does not move it — decoded height=400px, shift=0.00px, band shift=0.00px
+PASS  a fold-heavy long session never drifts or drops the pin — worst settled drift=0.00px, unprompted escapes=0
+13/13 scenarios passed
 ```
 
 What it asserts: pin/escape state per scenario, distance to the content end
-(C1), the escaped anchor element's on-screen shift (C3), the pin-flip causes the
-classifier recorded (C4 — `wheel`, `scrollbar`), the pinned and escaped halves
-of the occlusion restore (C5 — pinned returns to the end, escaped holds the
-anchor), the per-frame write budget (≤ 1), and the `viewport-size` event on
-resize.
+(C1), the visible band's on-screen shift (C2), the escaped anchor element's
+on-screen shift (C3), the pin-flip causes the classifier recorded (C4 —
+`wheel`, `scrollbar`), the pinned and escaped halves of the occlusion restore
+(C5 — pinned returns to the end, escaped holds the anchor), the per-frame write
+budget (≤ 1), and the `viewport-size` event on resize. The last scenario is the
+delivery's original failure shape: a long, fold-heavy session that keeps
+streaming must hold its pin with zero drift and no unprompted escape.
 
 What it cannot assert here: it runs the controller over a hand-built DOM, not
 the resident list / band, and it is Chromium, not the packaged app or WKWebView.

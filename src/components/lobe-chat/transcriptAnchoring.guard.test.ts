@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -9,23 +9,30 @@ import { describe, expect, it } from "vitest";
  * descendant scroll container that does not opt out itself, so the opt-out has
  * to cover the nested scrollers (activity steps, thinking body, tool bodies),
  * not only the transcript viewport.
+ *
+ * Every stylesheet in this directory is scanned, not just `part1`, so a new
+ * nested opt-out — or a stray opt-out elsewhere in the transcript's chrome —
+ * cannot hide in another part file.
  */
-const raw = readFileSync(resolve(__dirname, "lobe-chat.part1.css"), "utf8");
-// Comments in this file contain braces (`*:not(textarea) { … }`), so drop them
-// before splitting rules.
-const css = raw.replace(/\/\*[\s\S]*?\*\//g, "");
+const CSS_FILES = readdirSync(__dirname)
+  .filter((name) => name.endsWith(".css"))
+  .sort();
 
-type CssRule = { selectors: string[]; body: string };
+type CssRule = { file: string; selectors: string[]; body: string };
 
-const rules: CssRule[] = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(
-  (match) => ({
+const rules: CssRule[] = CSS_FILES.flatMap((file) => {
+  const raw = readFileSync(resolve(__dirname, file), "utf8");
+  // Comments contain braces (`*:not(textarea) { … }`), so drop them first.
+  const css = raw.replace(/\/\*[\s\S]*?\*\//g, "");
+  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
+    file,
     selectors: match[1]
       .split(",")
       .map((selector) => selector.trim())
       .filter(Boolean),
     body: match[2],
-  }),
-);
+  }));
+});
 
 const ANCHOR_OFF = /overflow-anchor\s*:\s*none/;
 
@@ -47,9 +54,13 @@ describe("transcript engine anchoring guard", () => {
     // Scoped to the transcript subtree: a rule anchored on a bare `*` would
     // disable anchoring in the composer, rail, sidebar and settings scrollers.
     const unscoped = optOutRules.filter((rule) =>
-      rule.selectors.some((selector) => !selector.startsWith(".lobe-chat__scroll")),
+      rule.selectors.some(
+        (selector) => !selector.startsWith(".lobe-chat__scroll"),
+      ),
     );
 
-    expect(unscoped).toEqual([]);
+    expect(unscoped.map((rule) => `${rule.file}: ${rule.selectors.join(", ")}`)).toEqual(
+      [],
+    );
   });
 });

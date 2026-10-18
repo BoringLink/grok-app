@@ -112,14 +112,13 @@ export function createViewportState(): ViewportState {
   return { phase: "pinned", anchor: null, upStreak: 0, upStreakAt: 0 };
 }
 
-/** Target `scrollTop` that parks the viewport on the content end. */
+/**
+ * Target `scrollTop` that parks the viewport on the content end. Also the
+ * highest `scrollTop` the engine will keep, so it serves as the clamp for any
+ * anchor target: there is exactly one "content end" in this module.
+ */
 export function contentEndScrollTop(geometry: ViewportGeometry): number {
   return bottomScrollTop(geometry.scrollHeight, geometry.clientHeight);
-}
-
-/** Highest `scrollTop` the engine will keep (content end). */
-export function maxScrollTop(geometry: ViewportGeometry): number {
-  return Math.max(0, geometry.scrollHeight - geometry.clientHeight);
 }
 
 /**
@@ -153,7 +152,7 @@ export function scrollTopForAnchor(
   geometry: ViewportGeometry,
 ): number {
   const raw = rows.offsetOf(anchor.rowIndex) - anchor.offsetIntoViewport;
-  return Math.min(Math.max(0, raw), maxScrollTop(geometry));
+  return Math.min(Math.max(0, raw), contentEndScrollTop(geometry));
 }
 
 /**
@@ -278,11 +277,12 @@ export function applyScrollSample(input: {
     scrollHeight: sample.scrollHeight,
     clientHeight: sample.clientHeight,
   };
-  const movedUp = sample.previousScrollTop - sample.scrollTop >= 0.5;
+  const movedUp = sample.previousScrollTop - sample.scrollTop >= VIEWPORT_ANCHOR_TOLERANCE_PX;
   // Compare against the raw content end: an engine-clamped overscroll past
   // max is not "at the end" and must be pulled back.
   const atEnd =
-    Math.abs(sample.scrollTop - contentEndScrollTop(geometry)) <= 0.5;
+    Math.abs(sample.scrollTop - contentEndScrollTop(geometry)) <=
+    VIEWPORT_ANCHOR_TOLERANCE_PX;
 
   if (state.phase === "escaped") {
     if (
@@ -336,7 +336,8 @@ export function applyScrollSample(input: {
     // layout clamp (re-assert the end); two in a row are a scrollbar drag.
     const stableHeight =
       sample.previousScrollHeight == null ||
-      Math.abs(sample.scrollHeight - sample.previousScrollHeight) < 0.5;
+      Math.abs(sample.scrollHeight - sample.previousScrollHeight) <
+        VIEWPORT_ANCHOR_TOLERANCE_PX;
     const streak =
       stableHeight && now - state.upStreakAt < streakWindowMs
         ? state.upStreak + 1

@@ -533,12 +533,20 @@ export function shouldIgnoreProgrammaticStickLeave(
   return ignoreTop != null;
 }
 
+/**
+ * Distance from `scrollTop` to the content end. Clamped to 0 by default — the
+ * follow policy reads this and an overscroll is simply "at the bottom". The
+ * dev trace passes `clamp: false` to keep the raw value, negative on
+ * overscroll, so a trace does not hide a broken position.
+ */
 export function distanceFromBottom(
   scrollTop: number,
   scrollHeight: number,
   clientHeight: number,
+  clamp = true,
 ): number {
-  return Math.max(0, scrollHeight - clientHeight - scrollTop);
+  const raw = scrollHeight - clientHeight - scrollTop;
+  return clamp ? Math.max(0, raw) : raw;
 }
 
 /** True when viewport is close enough to the bottom to re-engage follow. */

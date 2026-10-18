@@ -60,6 +60,14 @@ Judged at the **paint boundary** (after rAF layout, before paint), each with a
   all funnel into `scheduleRestore` → `restoreNow`.
 - **Restore, don't chase.** A caller reports a measured height or a decided
   position and asks the controller to restore. It never writes `scrollTop`.
+- **Distance to the content end is one helper, with an explicit clamp.**
+  `distanceFromBottom` (`src/lib/stickToBottom.ts`) computes
+  `scrollHeight - clientHeight - scrollTop`; the follow policy reads it clamped
+  (an overscroll is simply "at the bottom"), and the dev trace reads it
+  unclamped (`clamp: false`) so a trace does not hide a negative, overscrolling
+  position. `contentEndScrollTop` is the same point expressed as a `scrollTop`,
+  and is also the clamp for any anchor target — one content end, no second name
+  for it.
 
 ### Tolerance
 
@@ -97,8 +105,34 @@ The transcript is a **resident list** (`src/hooks/useChatResidentList.ts`,
 - **Rows carry `data-virt-index`.** The trace and the visible-band shift metric
   (C2) match rows across frames by that attribute.
 - **No shell inside the visible band.** `shellsCrossingViewport`
-  (`src/lib/chatResidentBand.ts`) is the rule; the dev-only check is what AC2
-  forbids.
+  (`src/lib/chatResidentBand.ts`) is the rule; the dev-only paint-boundary check
+  enforces it.
+- **Two "viewport not usable" floors, for two different readers.** The follow
+  guard treats a scroller shorter than `STICK_MIN_VIEWPORT_HEIGHT_PX` (32px) as
+  unusable — there is no room to follow, so no position write is made
+  (`isStickViewportUnreliable`, the same rule `assessViewportOcclusion` uses).
+  The band has its own floor for a scroller that reports 0 (hidden, or not yet
+  measured): `CHAT_RESIDENT_FALLBACK_VIEWPORT_PX` (800px) stands in so the band
+  cannot collapse onto a single row, and the margin floor
+  `CHAT_RESIDENT_OVERSCAN_MIN_PX` keeps the same runway. The floors are
+  independent — the follow guard answers "may this frame drive the position?",
+  the band floor answers "how much must render?".
+
+### Selecting text during a scroll
+
+While a gesture-driven scroll is in flight the controller sets
+`data-scrolling="1"` on the transcript viewport
+(`noteTranscriptScrolling`), and `.lobe-chat__scroll[data-scrolling="1"] > *`
+drops `pointer-events` on the row content for the duration. This is a
+scroll-perf optimization: content moving under a stationary cursor otherwise
+re-resolves `:hover` on every frame. The known interaction is with selection —
+a text selection begun or extended during an active scroll cannot hit the row
+content until the flag clears (`SCROLLING_FLAG_IDLE_MS`, 220ms after the last
+scroll; a gesture-free scroll while pinned does not set it, so stream growth
+never flashes it). The Spec's user story about selecting text while scrolling is
+served by this: the flag is only set while a gesture is actually moving the
+view, and it clears as soon as the gesture stops. Do not remove the flag without
+replacing the hover-recalc rollback.
 
 ## The layout ledger
 

@@ -10,7 +10,6 @@ import {
   chatViewportTraceEvents,
   chatViewportWriteStats,
   classifyPinFlipCause,
-  distanceToContentEnd,
   DUMP_CONTEXT_EVENTS,
   DUMP_MAX_CHARS,
   dumpChatViewportTrace,
@@ -29,6 +28,7 @@ import {
   traceScrollTopWrite,
   traceViewport,
   VIEWPORT_JUMP_MIN_PX,
+  viewportViolationSummary,
   visibleBandShift,
 } from "./chatViewportTrace";
 
@@ -324,25 +324,6 @@ describe("chatViewportTrace recording", () => {
 
     // Assert — vitest sets import.meta.env.DEV, so the default follows the build.
     expect(typeof chatViewportTraceEnabled()).toBe("boolean");
-  });
-});
-
-describe("distanceToContentEnd", () => {
-  it("is zero on the hard bottom and positive above it", () => {
-    // Arrange + Act + Assert
-    expect(
-      distanceToContentEnd({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 }),
-    ).toBe(0);
-    expect(
-      distanceToContentEnd({ scrollTop: 100, scrollHeight: 1000, clientHeight: 400 }),
-    ).toBe(500);
-  });
-
-  it("keeps a negative distance rather than hiding an overscrolling position", () => {
-    // Arrange + Act + Assert
-    expect(
-      distanceToContentEnd({ scrollTop: 620, scrollHeight: 1000, clientHeight: 400 }),
-    ).toBe(-20);
   });
 });
 
@@ -822,6 +803,43 @@ describe("frameCostSummary", () => {
       frameCostMaxMs: 0,
       frameCostP90Ms: 0,
       framesOverFrameBudget: 0,
+    });
+  });
+});
+
+describe("viewportViolationSummary", () => {
+  it("counts gesture-free upward, backward and drift frames over raf samples", () => {
+    // Arrange — three paint-boundary frames plus one timer fallback to ignore.
+    const events = [
+      // Pinned, no gesture, moved up, first visible row went back: both C4
+      // counts, no drift (0.1px band shift is inside the tolerance).
+      { t: 0, kind: "sample", by: "raf", e: false, g: false, dt: -12, i: 5, pi: 8, v: 0.1, a: null },
+      // Escaped: not a pin violation, but the anchor drifted 2.5px (C3).
+      { t: 1, kind: "sample", by: "raf", e: true, g: false, dt: 0, i: 9, pi: 9, v: 0, a: 2.5 },
+      // A backgrounded window's fallback sample covers ~1s: never counted.
+      { t: 2, kind: "sample", by: "fallback", e: false, g: false, dt: -50, i: 1, pi: 9, v: 9, a: null },
+      // A real gesture explains the move, but a 3px band shift is still drift.
+      { t: 3, kind: "sample", by: "raf", e: false, g: true, dt: -40, i: 2, pi: 3, v: 3, a: null },
+    ];
+
+    // Act
+    const summary = viewportViolationSummary(events, 0.5);
+
+    // Assert
+    expect(summary).toEqual({
+      sampledFrames: 3,
+      gestureFreeUpwardFrames: 1,
+      backwardMoveFrames: 1,
+      driftFrames: 2,
+    });
+  });
+
+  it("is zero for an empty window", () => {
+    expect(viewportViolationSummary([], 0.5)).toEqual({
+      sampledFrames: 0,
+      gestureFreeUpwardFrames: 0,
+      backwardMoveFrames: 0,
+      driftFrames: 0,
     });
   });
 });

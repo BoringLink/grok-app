@@ -18,13 +18,13 @@
  */
 
 import { useEffect, useRef, type RefObject } from "react";
+import { distanceFromBottom } from "@/lib/stickToBottom";
 import {
   anchorScreenShift,
   chatTraceSessionId,
   chatViewportTraceEnabled,
   chatViewportTraceEvents,
   chatViewportWriteStats,
-  distanceToContentEnd,
   dumpChatViewportTrace,
   frameCostSummary,
   frameWriteSummary,
@@ -34,6 +34,7 @@ import {
   publishTraceToHost,
   setChatViewportTracePinned,
   traceViewport,
+  viewportViolationSummary,
   visibleBandShift,
   type ViewportTraceEvent,
   type VisibleRowPosition,
@@ -103,7 +104,7 @@ function firstVisibleRowIndex(
  * On-screen position of every row crossing the viewport, for the C2
  * visible-shift metric. Rows are emitted in DOM order (ascending index), so a
  * row that starts below the viewport ends the walk. Crossing rows are also
- * copied into `crossing` (with a shell flag) for the AC2 band check.
+ * copied into `crossing` (with a shell flag) for the visible-band (no-shell) check.
  */
 function visibleRowPositions(
   viewport: HTMLElement,
@@ -317,7 +318,7 @@ export function useChatViewportTraceProbe(input: {
         ? anchorScreenShift(anchorRef?.current ?? null)
         : null;
       lastAnchorShift = anchorShift;
-      // AC2: no shell may sit inside the visible band. Judged here, at the
+      // No shell may sit inside the visible band. Judged here, at the
       // paint boundary, on the same rows the C2 shift metric uses.
       const viewTop = viewport.getBoundingClientRect().top;
       const shellsInBand = shellsCrossingViewport(
@@ -344,11 +345,12 @@ export function useChatViewportTraceProbe(input: {
           publish("shell-in-band", false, trigger);
         }
       }
-      const distFromBottom = distanceToContentEnd({
+      const distFromBottom = distanceFromBottom(
         scrollTop,
         scrollHeight,
         clientHeight,
-      });
+        false,
+      );
       const writeStats = chatViewportWriteStats();
       const dWrites = writeStats.writes - prevWriteCount;
       lastDistFromBottom = distFromBottom;
@@ -524,11 +526,12 @@ export function useChatViewportTraceProbe(input: {
             scrollHeight: Math.round(height),
             clientHeight: Math.round(viewport.clientHeight),
             distFromBottom: Math.round(
-              distanceToContentEnd({
-                scrollTop: top,
-                scrollHeight: height,
-                clientHeight: viewport.clientHeight,
-              }),
+              distanceFromBottom(
+                top,
+                height,
+                viewport.clientHeight,
+                false,
+              ),
             ),
             index: firstVisibleRowIndex(viewport, contentRef?.current ?? null),
             dTop: Math.round(dTop),
@@ -580,6 +583,13 @@ export function useChatViewportTraceProbe(input: {
         ...frameWriteSummary(chatViewportTraceEvents()),
         // The measured frame cost over the window, against the 120Hz budget.
         ...frameCost,
+        // The C4 violation aggregate over the paint-boundary frames read off
+        // the same ring: gesture-free upward moves, backward moves, and frames
+        // whose band / anchor drifted past the tolerance.
+        ...viewportViolationSummary(
+          chatViewportTraceEvents(),
+          VIEWPORT_ANCHOR_TOLERANCE_PX,
+        ),
         // The ledger-memory budget (absolute footprint, not a delta). Absent
         // when no ledger getter was supplied.
         ...(ledgerStats

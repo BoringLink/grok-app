@@ -215,7 +215,8 @@ export type BandRowRect = {
 
 /**
  * Indices of shell rows that cross `[viewTop, viewBottom)` — a placeholder
- * inside the visible band, which AC2 forbids. Pure so the paint-boundary check
+ * inside the visible band, which the visible-band contract forbids. Pure so the
+ * paint-boundary check
  * and its test share the same rule.
  */
 export function shellsCrossingViewport(

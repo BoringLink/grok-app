@@ -758,7 +758,7 @@ describe("useChatViewportController handle", () => {
   });
 
   /**
-   * AC1 — a nested scroller expanding or collapsing must leave the outer anchor
+   * C3 — a nested scroller expanding or collapsing must leave the outer anchor
    * exactly where it is. The nested change reaches the controller as a content
    * mutation, which it restores inside the batch (before paint), not a frame
    * later via a ResizeObserver.

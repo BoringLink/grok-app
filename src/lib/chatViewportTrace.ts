@@ -20,6 +20,8 @@
  * `window.__CHAT_VIEWPORT_TRACE__`.
  */
 
+import { distanceFromBottom } from "@/lib/stickToBottom";
+
 export type ViewportTraceEvent = {
   /** `performance.now()` at record time (ms). */
   t: number;
@@ -212,7 +214,12 @@ export function tracePinState(input: {
   /** Gesture the flip is attributed to when the reason cannot name one. */
   gesture?: PinFlipGesture;
 }): void {
-  const distFromBottom = distanceToContentEnd(input);
+  const distFromBottom = distanceFromBottom(
+    input.scrollTop,
+    input.scrollHeight,
+    input.clientHeight,
+    false,
+  );
   const cause = classifyPinFlipCause({
     reason: input.reason,
     gesture: input.gesture,
@@ -457,19 +464,6 @@ export const HARD_BOTTOM_PX = 1;
 
 const round2 = (value: number): number => Math.round(value * 100) / 100;
 
-/**
- * Distance from the current `scrollTop` to the content end; 0 at the hard
- * bottom. Negative is possible transiently (overscroll) and is left as-is, so
- * a trace does not hide a broken position.
- */
-export function distanceToContentEnd(input: {
-  scrollTop: number;
-  scrollHeight: number;
-  clientHeight: number;
-}): number {
-  return input.scrollHeight - input.clientHeight - input.scrollTop;
-}
-
 /** One row's on-screen position, identified stably by its transcript index. */
 export type VisibleRowPosition = {
   index: number;
@@ -647,6 +641,75 @@ export function frameCostSummary(
     framesOverFrameBudget: sorted.filter((value) => value > FRAME_BUDGET_MS)
       .length,
   };
+}
+
+/**
+ * C4 (with C2 / C3) violation aggregate over the recorded paint-boundary
+ * frames. The Spec's C4 asks for flips *with their cause* and a violation
+ * count; the per-flip cause rides each `pin` event, and this folds the
+ * per-frame samples into the counts a captured session reports without a
+ * manual scan:
+ *
+ * - a gesture-free upward move while pinned is a move no user intent explains
+ *   — the layout clamp that must never be read as the user leaving (C4);
+ * - a pinned frame whose first visible row moved *back* is the backward move
+ *   the delivery exists to eliminate (C4);
+ * - a frame whose visible band or escaped anchor moved past `tolerancePx` is a
+ *   C2 / C3 violation.
+ *
+ * Only `by: "raf"` frames are counted: a timer fallback covers roughly a second
+ * at once and would inflate every count.
+ */
+export type ViewportViolationSummary = {
+  /** Paint-boundary sample frames the counts are drawn from. */
+  sampledFrames: number;
+  /** C4: pinned frames that moved up with no gesture. */
+  gestureFreeUpwardFrames: number;
+  /** C4: pinned frames whose first visible row moved back. */
+  backwardMoveFrames: number;
+  /** C2 / C3: frames whose band or anchor moved past `tolerancePx`. */
+  driftFrames: number;
+};
+
+export function viewportViolationSummary(
+  events: readonly ViewportTraceEvent[],
+  tolerancePx: number,
+): ViewportViolationSummary {
+  return events.reduce<ViewportViolationSummary>(
+    (summary, event) => {
+      if (event.kind !== "sample" || event.by !== "raf") return summary;
+      const pinned = event.e !== true;
+      const gestureFree = event.g !== true;
+      const dTop = typeof event.dt === "number" ? event.dt : 0;
+      const index = typeof event.i === "number" ? event.i : null;
+      const prevIndex = typeof event.pi === "number" ? event.pi : null;
+      const visibleShift = typeof event.v === "number" ? event.v : null;
+      const anchorShift = typeof event.a === "number" ? event.a : null;
+      const gestureFreeUp = pinned && gestureFree && dTop < 0;
+      const backward =
+        pinned &&
+        gestureFree &&
+        index != null &&
+        prevIndex != null &&
+        index < prevIndex;
+      const drift =
+        (visibleShift != null && Math.abs(visibleShift) > tolerancePx) ||
+        (anchorShift != null && Math.abs(anchorShift) > tolerancePx);
+      return {
+        sampledFrames: summary.sampledFrames + 1,
+        gestureFreeUpwardFrames:
+          summary.gestureFreeUpwardFrames + (gestureFreeUp ? 1 : 0),
+        backwardMoveFrames: summary.backwardMoveFrames + (backward ? 1 : 0),
+        driftFrames: summary.driftFrames + (drift ? 1 : 0),
+      };
+    },
+    {
+      sampledFrames: 0,
+      gestureFreeUpwardFrames: 0,
+      backwardMoveFrames: 0,
+      driftFrames: 0,
+    },
+  );
 }
 
 /**

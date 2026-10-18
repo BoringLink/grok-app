@@ -32,7 +32,13 @@ const TRANSCRIPT_SURFACE =
  */
 const WRITE_PATTERNS: readonly { name: string; pattern: RegExp }[] = [
   { name: "scrollTop assign", pattern: /\.scrollTop\s*(?:\+=|-=|=)(?!=)/ },
+  {
+    name: "scrollTop logical assign",
+    pattern: /\.scrollTop\s*(?:\|\|=|&&=|\?\?=)/,
+  },
+  { name: "scrollTop increment", pattern: /\.scrollTop\s*(?:\+\+|--)/ },
   { name: "scrollTo", pattern: /\.scrollTo\s*\(/ },
+  { name: "scrollBy", pattern: /\.scrollBy\s*\(/ },
   { name: "scrollIntoView", pattern: /scrollIntoView\s*\(/ },
 ];
 
@@ -66,10 +72,18 @@ describe("transcript scroll write source guard", () => {
   it("catches every write form, so the guard cannot rot into a no-op", () => {
     expect(writeHits("el.scrollTop = 0;")).toEqual(["scrollTop assign"]);
     expect(writeHits("el.scrollTop += 12;")).toEqual(["scrollTop assign"]);
+    expect(writeHits("el.scrollTop -= 12;")).toEqual(["scrollTop assign"]);
+    expect(writeHits("el.scrollTop ||= 0;")).toEqual(["scrollTop logical assign"]);
+    expect(writeHits("el.scrollTop &&= 0;")).toEqual(["scrollTop logical assign"]);
+    expect(writeHits("el.scrollTop ??= 0;")).toEqual(["scrollTop logical assign"]);
+    expect(writeHits("el.scrollTop++;")).toEqual(["scrollTop increment"]);
+    expect(writeHits("el.scrollTop--;")).toEqual(["scrollTop increment"]);
     expect(writeHits("el.scrollTop >= 0;")).toEqual([]);
     expect(writeHits("el.scrollTop ==")).toEqual([]);
     expect(writeHits("el.scrollTo({ top: 1 });")).toEqual(["scrollTo"]);
     expect(writeHits("el.scrollToTarget = 1;")).toEqual([]);
+    expect(writeHits("el.scrollBy(0, 10);")).toEqual(["scrollBy"]);
+    expect(writeHits("el.scrollBytes = 1;")).toEqual([]);
     expect(writeHits("el.scrollIntoView({ block: 'start' });")).toEqual([
       "scrollIntoView",
     ]);
