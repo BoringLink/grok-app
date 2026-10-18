@@ -58,3 +58,17 @@
    2. **Visual Consistency** — same chrome, spacing, menus, and states as the rest of the app. Do not invent a parallel skin.
    3. **Feature Parity** — same capability as the existing product surface it sits next to (local session, CLI, the other row in the same list). A control that looks like rewind/rollback/fork but does nothing is a Feature Parity miss — same class as the current rewind bug.
 
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in Linear (team `Boring Link`, project `Grok App`), read and written through the Linear MCP tools; blocking uses Linear's native relations. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical triage roles; the label strings equal their names. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the repo root plus `docs/adr/`. See `docs/agents/domain.md`.
