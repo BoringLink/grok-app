@@ -220,8 +220,10 @@ export function useChatViewportTraceProbe(input: {
       const scrollTop = viewport.scrollTop;
       const scrollHeight = viewport.scrollHeight;
       const clientHeight = viewport.clientHeight;
-      const index = firstVisibleRowIndex(viewport, contentRef?.current ?? null);
+      // One layout walk per frame: the first visible index falls out of the
+      // band positions instead of a second `getBoundingClientRect` pass.
       const positions = visibleRowPositions(viewport, contentRef?.current ?? null);
+      const index = positions[0]?.index ?? null;
       const shift = visibleBandShift(prevPositions, positions);
       const distFromBottom = distanceToContentEnd({
         scrollTop,
