@@ -174,7 +174,7 @@ export type PlanScrollToMessageResult =
     };
 
 /**
- * Plan a virtualizer / rail scroll to `messageId`.
+ * Plan a resident-list / rail scroll to `messageId`.
  * Prefers session message nodes; falls back to any messages[] row by id.
  * Soft-missing when the id is absent after the journal is available.
  */

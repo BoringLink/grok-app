@@ -22,7 +22,7 @@ export const STICK_HARD_BOTTOM_PX = 2;
 /**
  * Sub-pixel / font / thought-stream reflows under this delta should not
  * run the full follow machinery (avoids up-down flicker while thinking grows).
- * Slightly higher than 1–2px so virtual-list spacer remeasure does not thrash.
+ * Slightly higher than 1–2px so a shell row's remeasure does not thrash.
  *
  * Callers must still clamp when pinned and scrollTop has drifted off hard
  * bottom — smooth stream often grows 2–7px per frame, and stacking pure
@@ -32,7 +32,7 @@ export const STICK_HARD_BOTTOM_PX = 2;
 export const STICK_HEIGHT_NOISE_PX = 8;
 
 /**
- * Content growth this large is media / virtual-window rebuild, not a stream
+ * Content growth this large is media / resident-list rebuild, not a stream
  * token. Follow immediately and every image decode snaps the transcript up.
  */
 export const STICK_MEDIA_HEIGHT_PX = 24;
@@ -372,7 +372,7 @@ export function shouldReleaseStickOnScrollUp(input: {
   if (previousScrollTop > maxTop + 0.5) {
     return false;
   }
-  // Thought / tool auto-collapse unmounts a tall body. The virtual list may
+  // Thought / tool auto-collapse unmounts a tall body. The controller may
   // then write a restore offset above the new max — not a user leave (#1246).
   if (
     input.previousScrollHeight != null &&
@@ -592,7 +592,7 @@ export function pinnedFollowDelayMs(
 ): number {
   if (!Number.isFinite(heightDelta)) return 0;
   // Thought/tool auto-collapse is a shrink. Delaying follow lets the
-  // virtual list restore an inflated bottom-distance and drop pin (#1246).
+  // controller restore an inflated bottom-distance and drop pin (#1246).
   if (heightDelta < 0) return 0;
   if (Math.abs(heightDelta) < mediaPx) return 0;
   return delayMs;

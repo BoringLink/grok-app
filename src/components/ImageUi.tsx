@@ -104,8 +104,8 @@ interface ImageUiProps {
 
 /**
  * Chat card outer caps (px). Height stays ≤150 so multi-image turns do not
- * dominate the virtual list / stick-to-bottom; width follows natural ratio.
- * Exported for virtual-row height estimates (must stay in sync with CSS).
+ * dominate the resident list / stick-to-bottom; width follows natural ratio.
+ * Exported for row height estimates (must stay in sync with CSS).
  */
 export const CHAT_IMAGE_CARD_MAX_W = 240;
 export const CHAT_IMAGE_CARD_MAX_H = 150;
@@ -606,7 +606,7 @@ export function ImageUi({
             maxWidth: "100%",
             maxHeight: CHAT_IMAGE_CARD_MAX_H,
             // Prefer explicit height over aspect-ratio so width clamps don't
-            // reflow scrollHeight (virtual list + stick thrash).
+            // reflow scrollHeight (resident list + stick thrash).
             aspectRatio: "unset",
             ["--img-ar" as string]: String(box.ar),
           };

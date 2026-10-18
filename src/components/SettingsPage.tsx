@@ -572,7 +572,7 @@ export function SettingsPage({
   const [toolStepsAutoCollapse, setToolStepsAutoCollapse] = useState(() =>
     loadToolStepsAutoCollapsePref(),
   );
-  /** Chat transcript virtual window (localStorage; default on). */
+  /** Chat transcript visible-band mode (localStorage; default on). */
   const [chatVirtualScroll, setChatVirtualScroll] = useState(() =>
     loadChatVirtualScrollPref(),
   );

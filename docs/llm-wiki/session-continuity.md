@@ -327,60 +327,14 @@ Frontend also coalesces stream tokens (~48ms) before React `setState`.
 
 ### 4f. Main chat residency (scroll-safe)
 
-The transcript is a **resident list** (`useChatResidentList` + the geometry
-ledger): every conversation row stays in the DOM for the whole session, its
-box height coming from the ledger. There is no moving window and no spacers.
+The transcript is a **resident list** (`useChatResidentList` + the layout
+ledger): every conversation row stays in the DOM for the whole session, its box
+height coming from the ledger; only the visible band renders content. The rules
+that govern it — the C1–C5 invariants, the single-writer position model, the
+ledger tiers and generation guard, folding, occlusion and jump/find, plus what
+to do when you change transcript height — are the single authority of
+[chat-viewport-invariants.md](./chat-viewport-invariants.md).
 
-- **Scrollbar length honesty is tiered.** A row measured inside the band is
-  exact, and a collapse or a re-growth there changes the real length at once. A
-  row that folds while it is a shell is re-seeded from an *estimate* until it is
-  rendered again, so the length there is approximate, not exact — it moves in the
-  right direction immediately and becomes exact on the next in-band render.
-- **Visible band**: the rows the viewport spans plus a margin render their real
-  content; the rows outside keep only their height (a shell). The band is
-  computed from the ledger per frame, not from a rect walk.
-- **Estimates seed the ledger** before a row is first rendered; a real render
-  upgrades that row to `measured` and the height is remembered.
-- **Fold outside the band** (thinking / work phase collapsing or re-opening
-  while its row is a shell) cannot be measured — the row renders no content — so
-  the model is the only source: `resolveRowActivityFold` mirrors the component
-  fold policy, and when a tracked shell's fold flips the resident list re-seeds
-  its ledger row (`reestimateRow`) and re-renders exactly that shell. A collapse
-  re-seeds to the estimate; a re-growth restores the height remembered from the
-  row's last expanded render (estimate when there is none). The demotion is
-  authoritative: the ledger bumps a per-row generation so a measurement taken
-  before it cannot restore the old shape.
-- **Before paint**: the re-seed runs in a layout effect, and it notifies the
-  band store so only that shell re-renders. React flushes a store update
-  scheduled from a layout effect before the browser paints, and the mutation it
-  produces is restored by the controller's `MutationObserver` in the same task.
-  This rests on React's layout-effect flush guarantee; the tests here drive the
-  decision and the ledger write, not the browser's paint timing.
-- **Escaped anchor vs. decode (C3)**: a media element (image / PDF / media box)
-  finishing decode takes its rendered height with no DOM mutation carrying the
-  new size, so the `MutationObserver` cannot hold the anchor for it. The
-  controller's content `ResizeObserver` restores the escaped anchor on any
-  content-box change, in the observer callback (after layout, before paint),
-  through the frame-latched `scheduleRestore` so it stays one restore per batch.
-  A change above the anchor is compensated by the anchor's own measured
-  displacement; a change below it leaves that displacement at zero, so the
-  anchor is held and the reader is not dragged. The restore's detection, the
-  transcript write's skip and the trace's sample-worthiness all use
-  `VIEWPORT_ANCHOR_TOLERANCE_PX` (0.5px), the Spec's C1/C3 bound.
-- **The anchor is never planted inside a nested scroller**: while resolving the
-  element at the viewport top, the descent stops at the first nested scroll
-  container (the activity steps table, the thinking / fragment bodies) and takes
-  that box as the anchor. A change *inside* one of those — a decode especially —
-  moves an element within the scroller without resizing the scroller's box, so
-  neither the content `ResizeObserver` nor the `MutationObserver` would report
-  it; anchoring on a box whose position the transcript controls keeps the
-  invariant enforceable. The interior of a nested scroller is that scroller's
-  own reading surface, exactly as it is for its `scrollTop`.
-- The viewport controller (`useChatViewportController`, ADR-0006) is the single
-  `scrollTop` writer; the resident list only reports measured heights and asks
-  it to restore the pinned/anchor invariant. Nested scrollers (thinking body,
-  activity steps, tool bodies) write only their own `scrollTop` through the
-  traced helper, never the transcript.
 - **Session open**: existing idle chats hold the transcript behind the
   loading overlay until mounted image/video cards have a measurable box
   (pending imgs, pending video posters). Then one instant scroll-to-bottom

@@ -1,53 +1,53 @@
 # CONTEXT
 
-本仓库的领域术语表。只放术语：不含实现细节、不是规格、不留草稿。术语一旦确定就写在这里，之后的 Spec、issue 标题、测试名一律用这里的说法。
+The domain glossary for this repository. Terms only: no implementation details, not a spec, no drafts. Once a term is settled it is written here, and later Specs, issue titles and test names use these words.
 
-## 会话与回合
+## Sessions and turns
 
-- **会话 (session)** — 与 agent 的一次完整对话，从第一条用户消息到现在。可持久化、可按 id 重新打开。
-- **回合 (turn)** — 一条用户消息，加上 agent 为此产生的全部内容，直到 agent 停下来。一个长回合里思考、工具调用、正文会持续输出数分钟。
-- **进行中的回合 (live turn)** — 仍在产生输出的回合。它的输出持续到达，所以会话流的总高度在用户阅读期间不断增长。
-- **会话流 (transcript)** — 一个会话里可滚动的列。本术语表的主题。
-- **折叠块 (collapsing block)** — 一个回合里「进行时很高、结束后很短」的部分：思考块，或工具步骤的某个阶段。它的切换是视口上方或视口内的一次大幅高度变化。
+- **session** — one complete conversation with the agent, from the first user message to now. Persistable, and reopenable by id.
+- **turn** — one user message plus everything the agent produces for it until the agent stops. In a long turn, thinking, tool calls and the body keep streaming for minutes.
+- **live turn** — a turn still producing output. Its output keeps arriving, so the transcript's total height grows while the user is reading.
+- **transcript** — the scrollable column of one session. The subject of this glossary.
+- **collapsing block** — the part of a turn that is "tall while live, short when done": a thinking block, or one phase of a tool step. Its toggle is a large height change above the viewport or inside it.
 
-## 视口位置
+## Viewport position
 
-- **视口 (viewport)** — 会话流上可见的窗口。用户看到的是它的位置，`scrollTop` 只是它的存储形式。
-- **钉底 (pinned)** — 视口停在内容末端，并在输出到达时保持在那里。钉底描述的是**用户意图**，不是一个坐标。
-- **已脱离 (escaped)** — 用户主动离开内容末端去读历史。只有用户意图能进入这个状态。
-- **用户意图 (user intent)** — 只有人能产生的动作：滚轮、触摸、键盘滚动、拖拽滚动条。布局变化引起的 `scrollTop` 移动**不是**用户意图。
-- **内容末端 (content end)** — 最后一行渲染内容之后的那个点：钉底时用户所处的位置。
-- **锚点 (anchor)** — 其屏幕位置定义「用户此刻在读什么」的那个元素。钉底时锚点是内容末端；已脱离时锚点是视口顶部那个元素。
-- **锚点不变式 (anchor invariant)** — 一次改变高度的变更批次结束后，锚点的屏幕位置保持不变。凡是改动会话流高度的地方，都用它来判定对错。
-- **布局夹取 (layout clamp)** — 高度收缩之后由引擎引起的 `scrollTop` 变化。它不是手势，不表示用户离开。
-- **遮挡 (occlusion)** — 窗口被隐藏或被完全盖住，引擎停止绘制。遮挡期间跟随无法被观测；要求的是恢复可见后的第一帧重新正确。
+- **viewport** — the visible window onto the transcript. What the user sees is its position; `scrollTop` is only its stored form.
+- **pinned** — the viewport sits at the content end and stays there as output arrives. Pinned describes **user intent**, not a coordinate.
+- **escaped** — the user has deliberately left the content end to read history. Only user intent can enter this state.
+- **user intent** — the actions only a person can produce: wheel, touch, keyboard scrolling, scrollbar drag. A `scrollTop` move caused by a layout change is **not** user intent.
+- **content end** — the point after the last rendered content row: where the user is while pinned.
+- **anchor** — the element whose on-screen position defines "what the user is reading right now". While pinned the anchor is the content end; while escaped it is the element at the viewport top.
+- **anchor invariant** — after a batch of height-changing mutations ends, the anchor's on-screen position is unchanged. Everywhere the transcript height changes, this is how correctness is judged.
+- **layout clamp** — a `scrollTop` change caused by the engine after a height shrink. It is not a gesture and does not mean the user left.
+- **occlusion** — the window is hidden or completely covered and the engine stops painting. Follow cannot be observed while occluded; what is required is that the first frame after visibility returns is correct again.
 
-## 视口不变量
+## Viewport invariants
 
-供 Spec、ticket 与测试引用：
+For Specs, tickets and tests to reference:
 
-- **C1 钉底精确** — 钉底期间，每个绘制帧上「到内容末端的距离」为零。
-- **C2 可见内容稳定** — 绘制帧不会移动用户正在看的内容，除非那正是他自己的手势造成的。
-- **C3 阅读稳定** — 已脱离期间，新输出到达与视口上方的高度变化都不移动锚点。
-- **C4 仅意图** — 只有用户意图能改变钉底/已脱离。
-- **C5 恢复正确** — 遮挡结束后的第一个绘制帧满足 C1；若已脱离则满足 C3。
+- **C1 pinned-exact** — while pinned, the distance to the content end is zero on every drawn frame.
+- **C2 visible-content stable** — a drawn frame does not move what the user is looking at, unless that move is the user's own gesture.
+- **C3 reading-stable** — while escaped, neither new output arriving nor a height change above the viewport moves the anchor.
+- **C4 intent-only** — only user intent can change the pinned/escaped state.
+- **C5 restore-correct** — the first drawn frame after occlusion ends satisfies C1; if escaped, it satisfies C3.
 
-## 几何
+## Geometry
 
-- **几何账本 (layout ledger)** — 每一行的高度及其在会话流中偏移的唯一真相来源。行被渲染过至少一次之后，其高度来自实测。
-- **估算 (estimate)** — 从未被渲染过的行的暂定高度。它只负责给长会话里尚未走到的地方一个合理尺寸，**永远不允许**用来描述用户看得见的行。
-- **真实渲染 (rich render)** — 用真实内容渲染的行。可见带内的每一行都必须是真实渲染。
-- **占位渲染 (shell render)** — 用记住的高度画出、但不含内容的行。只允许出现在可见带之外。
-- **可见带 (viewport band)** — 用户能看到的那批行，外加为了「滚动或折叠之后不会露出占位行」而额外保持真实渲染的余量。
-- **长对话 (long conversation)** — 大到会话流的形状必须由账本而不是 DOM 承载的会话：设计量级是 1 万行 / 60 万 px；目前观测到的最大值是单个会话 59,578 px。
+- **layout ledger** — the single source of truth for every row's height and its offset in the transcript. Once a row has been rendered at least once, its height comes from measurement.
+- **estimate** — the provisional height of a row that has never been rendered. It only gives not-yet-reached places in a long conversation a reasonable size, and is **never allowed** to describe a row the user can see.
+- **rich render** — a row rendered with its real content. Every row inside the visible band must be a rich render.
+- **shell render** — a row drawn at its remembered height with no content. Allowed only outside the visible band.
+- **viewport band** — the rows the user can see, plus the margin kept rich so that "a scroll or a fold does not expose a shell row".
+- **long conversation** — a conversation large enough that the transcript's shape must be carried by the ledger instead of the DOM: the design scale is 10k rows / 600k px; the largest observed so far is 59,578 px for a single conversation.
 
-## 引擎
+## Engine
 
-- **引擎锚定 (engine scroll anchoring)** — 引擎自己对「视口上方高度变化」的补偿。Chromium 会补偿；WebKit（macOS、Linux）长期没有，直到 2026 年 2 月才在 stable 启用（Safari 27）。本项目在会话流上主动关闭它，以免引擎与应用的定位写入相互抵消。
-- **显式视口控制 (explicit viewport control)** — 会话流的每一次 `scrollTop` 写入都由本项目负责，只依赖三端引擎都保证的行为（MutationObserver 微任务时机、ResizeObserver 交付时机、scroll 事件语义、spacer 布局）。这是本项目选定的做法。
+- **engine scroll anchoring** — the engine's own compensation for "a height change above the viewport". Chromium compensates; WebKit (macOS, Linux) did not for a long time, until it was enabled in stable in February 2026 (Safari 27). This project turns it off on the transcript on purpose, so the engine and the app's positioning writes do not cancel each other out.
+- **explicit viewport control** — every `scrollTop` write on the transcript is this project's responsibility, relying only on behavior all three engines guarantee (MutationObserver microtask timing, ResizeObserver delivery timing, scroll event semantics, spacer layout). This is the approach this project chose.
 
-## 易混淆
+## Easy to confuse
 
-- **进行中的回合** 与 **仍在到达的输出** 不同：前者是整个回合在跑，后者是其中还在落的文字。
-- **钉底** 与 **在底部** 不同：前者是能挺过高度变化的意图，后者是会被夹取改变的坐标。
-- **已脱离** 与 **未钉底** 不同：未钉底是任何不带钉底的状态；已脱离特指用户选了历史。
+- **live turn** is not the same as **output still arriving**: the former is the whole turn running, the latter is the text still landing within it.
+- **pinned** is not the same as **at the bottom**: the former is intent that survives height changes, the latter is a coordinate a clamp can change.
+- **escaped** is not the same as **not pinned**: not pinned is any state without follow; escaped specifically means the user chose history.

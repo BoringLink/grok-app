@@ -1,95 +1,97 @@
-# 会话视口滚动正确性 — Spec
+# Chat viewport scroll correctness — Spec
 
-> 状态：待评审（阶段 2）。术语见 `CONTEXT.md`，架构决策见 ADR-0006。
-> 本文件在阶段 4 会成为 Linear 父 issue 的描述。
+> Status: in review (stage 2). Terms in `CONTEXT.md`, architecture decision in ADR-0006.
+> In stage 4 this file will become the description of the Linear parent issue.
 
 ## Problem Statement
 
-用户视角：在长会话里让 agent 持续干活时，会话流会**向上闪烁漂移**，并且**丢掉对底部最新输出的追踪**——明明还在输出，视口却停在上面，用户得反复手动滚回底部。当思考块、工具步骤块折叠时最严重。反过来也有一种：用户往上翻着读历史时，上方任何块回流都会把正在读的内容**整块推走**。窗口被其他应用盖住再回来时，位置也常常是错的。
+From the user's point of view: while the agent keeps working in a long conversation, the transcript **flickers upward and drifts**, and **loses the bottom follow** — output is still arriving, yet the viewport stops above it and the user has to scroll back to the bottom over and over. It is worst when a thinking block or a tool-step block collapses. The mirror image also happens: while the user is scrolling up to read history, any reflow of a block above **pushes the content being read away wholesale**. And when the window is covered by another app and comes back, the position is often wrong.
 
-实测证据（来自本机 Host 日志与真实浏览器 harness）：单会话高度 59578px；窗口被遮挡期间偏离底部最大 11175px 并持续 5 分钟；同一天用户点了 17 次「回到最底部」；小型反复回流会造成连续多帧 20px 抖动并直接丢掉钉底。
+Measured evidence (from this machine's Host log and a real browser harness): a single conversation 59578px tall; while the window was occluded the viewport was up to 11175px off the bottom for 5 straight minutes; the user clicked "back to bottom" 17 times the same day; small repeated reflows cause consecutive 20px-jitter frames and drop the pin outright.
 
 ## Solution
 
-用户视角：会话流的位置由应用自己精确控制，而不是靠引擎猜。
+From the user's point of view: the transcript's position is controlled precisely by the app, not guessed by the engine.
 
-- **钉底时**永远贴着最新输出，无论上方折叠、回涨、估算变实测都保持在末端。
-- **往上读时**，你正在读的那一行不会因为上方任何变化而移动，也不会因为新输出到达而被推动。
-- **只有你自己的手势**（滚轮、触摸、键盘、拖拽滚动条）能让你离开底部。
-- **窗口被遮住再回来**，位置立刻正确。
-- **长会话不再依赖估算高度**：每一行的高度都来自实测，可见区域内永远是真实内容，滚动条长度与内容长度始终一致。
+- **While pinned** it is always glued to the newest output, staying at the tail through a fold above, a re-growth, or an estimate becoming a measurement.
+- **While reading up**, the line you are reading does not move because of any change above, nor is it pushed by arriving output.
+- **Only your own gesture** (wheel, touch, keyboard, scrollbar drag) can take you off the bottom.
+- **When the window is covered and returns**, the position is correct at once.
+- **A long conversation no longer relies on estimated heights**: every row's height comes from measurement, the visible area is always real content, and the scrollbar length always matches the content length.
 
 ## User Stories
 
-1. 作为用户，我希望模型持续输出时视口始终贴着最新一行，这样我不必反复手动滚到底。
-2. 作为用户，我希望在输出过程中不再看到会话流向上跳一下又回来。
-3. 作为用户，我希望思考块折叠的那一刻，我正在读的内容一动不动。
-4. 作为用户，我希望工具步骤块的每个阶段（开始/结束/折叠）都不推动我的阅读位置。
-5. 作为用户，我希望往上翻历史时，新到达的输出不会把正在读的那一段挤走。
-6. 作为用户，我希望在历史里阅读时，上方块回涨（例如新的思考轮次展开）也不推动我的位置。
-7. 作为用户，我希望滚轮/触摸板往上滑就立刻脱离底部跟随，不需要滑两次。
-8. 作为用户，我希望只用键盘（PageUp/方向键/Home）也能离开底部跟随。
-9. 作为用户，我希望拖拽滚动条时行为与滚轮一致。
-10. 作为用户，我希望回到硬底时自动重新钉底，而在离底一屏以内不会被强制拉回。
-11. 作为用户，我希望「回到最新」按钮在脱离后可用，点一下立刻回到末端。
-12. 作为用户，我希望窗口被其他应用盖住期间输出继续，回来后我看到的仍是正确的底部（或我原来读的那一行）。
-13. 作为用户，我希望打开一个长会话时直接落在末端，不需要等它“滚下去”。
-14. 作为用户，我希望切换会话再切回来时位置仍然正确。
-15. 作为用户，我希望引用跳转/查找（跳到某条消息）之后，脱离状态与位置都是明确的（跳到某条消息后我处于"已脱离"，除非它就是末尾）。
-16. 作为用户，我希望长会话（一万行以上、数十万像素）滚动仍然顺滑，帧率与短会话一致。
-17. 作为用户，我希望滚动条长度与真实内容长度一致，不会因为折叠/占位而撒谎。
-18. 作为用户，我希望可见区域里的内容永远是真实的（不会看到占位骨架被滚出来）。
-19. 作为用户，我希望在滚动过程中可以正常选中文字、拖拽选择，不被打断。
-20. 作为用户，我希望嵌套滚动器（思考体、工具输出）的展开/收起不移动外层视口。
-21. 作为用户，我希望窗口改变大小（含从外接屏拖回内建屏、120Hz 与 60Hz 切换）后位置与帧率都正确。
-22. 作为用户，我希望媒体（图片/附件卡片）解码完成时不会把会话流推一下。
-23. 作为用户，我希望在 120Hz 屏幕上滚动是 120fps，不出现掉帧式的抖动。
-24. 作为维护者，我希望三端（macOS/Windows/Linux）行为一致，不需要按平台分叉判断滚动逻辑。
-25. 作为维护者，我希望回归被自动化钉住：不变量违反会在客户端内的脚本化场景里被抓到，而不是等用户反馈。
-26. 作为维护者，我希望调试时能从日志直接看出"哪一次布局变化把位置弄歪了"。
-27. 作为维护者，我希望新增任何改变会话流高度的地方时，有一条明确的规则要我遵守（锚点不变式），而不是靠经验。
+1. As a user, I want the viewport glued to the newest line while the model keeps producing, so I do not have to keep scrolling to the bottom by hand.
+2. As a user, I want to stop seeing the transcript jump up and back during output.
+3. As a user, I want what I am reading to stay completely still the moment a thinking block collapses.
+4. As a user, I want every phase of a tool-step block (start / end / collapse) to not push my reading position.
+5. As a user, I want newly arriving output not to push the passage I am reading off when I scroll up through history.
+6. As a user, I want a block above me re-growing (for example a new thinking round expanding) not to push my position while I read history.
+7. As a user, I want one upward wheel / trackpad swipe to leave the bottom follow immediately, without needing a second swipe.
+8. As a user, I want to leave the bottom follow with the keyboard alone (PageUp / arrow keys / Home).
+9. As a user, I want dragging the scrollbar to behave the same as the wheel.
+10. As a user, I want returning to the hard bottom to re-pin automatically, while not being yanked back within one screen of it.
+11. As a user, I want the "back to latest" button to be available after escaping and to return to the tail in one click.
+12. As a user, I want output to continue while the window is covered by another app, and on return to still see the correct bottom (or the line I was reading).
+13. As a user, I want opening a long conversation to land at the tail directly, without waiting for it to "scroll down".
+14. As a user, I want the position to still be correct after switching sessions and back.
+15. As a user, I want the escaped state and the position to be unambiguous after a quote jump / find (after jumping to a message I am "escaped", unless it is the end).
+16. As a user, I want long conversations (tens of thousands of rows, hundreds of thousands of pixels) to still scroll smoothly, at the same frame rate as a short one.
+17. As a user, I want the scrollbar length to match the real content length, not to lie because of a fold or a placeholder.
+18. As a user, I want the content in the visible area to always be real (never a placeholder skeleton scrolled into view).
+19. As a user, I want to select text and drag a selection normally during scrolling, without interruption.
+20. As a user, I want expanding / collapsing a nested scroller (thinking body, tool output) not to move the outer viewport.
+21. As a user, I want the position and frame rate to be correct after a window resize (including dragging back from an external display, and a 120Hz ↔ 60Hz switch).
+22. As a user, I want media (images / attachment cards) not to push the transcript when their decode finishes.
+23. As a user, I want a 120Hz screen to scroll at 120fps, without dropped-frame jitter.
+24. As a maintainer, I want all three platforms (macOS/Windows/Linux) to behave the same, without platform-branched scroll logic.
+25. As a maintainer, I want regressions pinned by automation: an invariant violation is caught by a scripted scenario inside the client, not by user reports.
+26. As a maintainer, I want to read from the log directly "which layout change threw the position off".
+27. As a maintainer, I want a clear rule to obey (the anchor invariant) whenever I add anything that changes transcript height, instead of relying on intuition.
 
 ## Implementation Decisions
 
-- **单一写入者**：新增视口控制器，成为会话流 `scrollTop` 的唯一写入者。虚拟列表不再是写入者，只产出布局（哪些行携带内容、行高由账本决定）。
-- **位置模型**：锚点不变式。钉底时锚点是内容末端，已脱离时锚点是视口顶部元素。每个改变高度的变更批次结束时（变更批次内的微任务、绘制之前）恢复一次；不做"每帧跟随"，不做多帧补偿。
-- **意图模型**：只有 wheel / touch / keydown（含 PageUp、PageDown、方向键、Home、End、空格）/ 滚动条拖拽算用户意图。无手势的上移一律判为布局夹取：保持钉底并补写末端；连续两次"高度不变的上移"升级为拖拽意图。脱离状态只能由意图进入，且只在回到硬底或点按钮时解除。
-- **布局模型**：所有行常驻 DOM，高度由账本设定，离线行加 `contain: strict`。可见带（真实渲染的范围）按**视口高度动态计算**（含余量），不设固定行数上限；可见带内一律真实渲染，带外去内容渲染。行数上限不是正确性参数，只影响性能，由实测确定。
-- **几何账本**：前缀和数组 + 脏区间增量重建。行高来源优先级：实测 > 记住值 > 估算；估算只允许描述从未渲染过的行。
-- **折叠**：从不保留空间。折叠只改变高度，位置由不变式保证；滚动条长度与内容长度始终一致。
-- **重新钉底**：仅硬底（到内容末端的距离为 0）或显式按钮。
-- **遮挡**：遮挡期间不跟随；恢复可见后的第一个绘制帧回到不变量（钉底则回到末端，已脱离则回到原锚点）。
-- **引擎**：保持 `overflow-anchor: none`，且逐个嵌套滚动器落实（规范规定后代滚动容器会自行重新启用）。不依赖 `content-visibility`、`scrollend`、引擎锚定。
-- **诊断**：trace 探针保持 dev-only。dump 改为"触发事件 + 最近 N 条事件"，并解除当前 8192 字符截断造成的"保留最旧、丢掉触发点"的问题；心跳字段保留（pinned/escaped、离底距离、可见位移、写入来源）。
-- **性能预算**：120fps 目标（每帧 ≤ 8.3ms）；滚动期间每帧最多一次布局读 + 一次 `scrollTop` 写；打开 10k 行会话首帧 ≤ 400ms；账本内存增量 ≤ 20MB。
-- **平台**：三端共用同一代码路径；**本机只验证 macOS**，Windows/Linux 的行为一致性声明由上游作者验证（见 Further Notes）。
+- **Single writer**: add a viewport controller that becomes the transcript's only `scrollTop` writer. The transcript list is no longer a writer; it produces layout only (which rows carry content; row height decided by the ledger).
+- **Position model**: the anchor invariant. While pinned the anchor is the content end; while escaped it is the element at the viewport top. Restore once at the end of every height-changing batch (a microtask within the batch, before paint); no "per-frame follow", no multi-frame compensation.
+- **Intent model**: only wheel / touch / keydown (including PageUp, PageDown, arrow keys, Home, End, space) / scrollbar drag counts as user intent. A gesture-free upward move is always classified as a layout clamp: keep the pin and rewrite the end; two consecutive "upward moves at an unchanged height" upgrade to a drag intent. The escaped state can only be entered by intent, and is only exited by returning to the hard bottom or by clicking the button.
+- **Layout model**: every row is resident in the DOM, its height set by the ledger, off-band rows getting `contain: strict`. The visible band (the range that renders real content) is **computed dynamically from the viewport height** (including a margin); there is no fixed row-count cap; everything inside the band is a rich render, everything outside drops its content. The row-count cap is not a correctness parameter — it only affects performance and is decided by measurement.
+- **Layout ledger**: a prefix-sum array plus incremental rebuild of a dirty span. Height-source priority: measured > remembered > estimate; an estimate may only describe a row that has never been rendered.
+- **Folding**: never preserve space. A fold only changes height; the position is guaranteed by the invariant; the scrollbar length always matches the content length.
+- **Re-pin**: only at the hard bottom (distance to the content end is 0) or by an explicit button.
+- **Occlusion**: no follow while occluded; the first drawn frame after visibility returns restores the invariant (pinned → the end, escaped → the original anchor).
+- **Engine**: keep `overflow-anchor: none`, and apply it per nested scroller (the spec says descendant scroll containers re-enable it themselves). Do not rely on `content-visibility`, `scrollend`, or engine anchoring.
+- **Diagnostics**: keep the trace probe dev-only. Change the dump to "the triggering event plus the most recent N events" and remove the current 8192-character truncation problem of "keep the oldest, drop the trigger"; keep the heartbeat fields (pinned/escaped, distance to the end, visible-band shift, write source).
+- **Performance budget**: 120fps target (≤ 8.3ms per frame); at most one layout read + one `scrollTop` write per frame while scrolling; opening a 10k-row conversation in ≤ 400ms first frame; ledger memory growth ≤ 20MB.
+- **Platforms**: all three share one code path; **only macOS is verified locally**, and the claim of Windows/Linux behavioral consistency is verified by the upstream author (see Further Notes).
 
 ## Testing Decisions
 
-- **什么算好测试**：只测外部行为——不变量与可观测输出（每帧偏离、可见位移、脱离状态、写入次数、帧耗时），不测内部结构（不测哪个 hook 调用了谁）。
-- **Seam 一（新增，纯逻辑）**：视口控制器与几何账本做成纯模块——输入是"变更批次描述 + 账本快照 + 意图状态"，输出是"位置指令"。用 vitest 直接覆盖：钉底维持、夹取不脱离、两种意图升级路径、前缀和脏区间重建、估算只用于未渲染行。
-- **Seam 二（复用现有的最高层 seam）**：客户端内的 trace 通道（探针 + Host 日志 + 脚本化场景）。场景在 dev 构建里跑真实会话流，断言日志中的心跳与事件序列。合成场景至少覆盖：持续输出、上方折叠、上方回涨、小型反复回流、无手势上移、真实滚轮上移、遮挡与恢复、窗口缩放、嵌套滚动器展开、媒体解码。
-- **Prior art**：`useStickToBottom.test.tsx` 的 FakeViewport + ControlledResizeObserver 写法；调研期使用的产品 harness（真实 hook + 真实虚拟列表 + 真实 CSS）。
+- **What counts as a good test**: test external behavior only — the invariants and observable output (per-frame distance, visible shift, escaped state, write count, frame cost) — not internal structure (not which hook called whom).
+- **Seam one (new, pure logic)**: make the viewport controller and the layout ledger pure modules — input is "a mutation-batch description + a ledger snapshot + the intent state", output is "a position directive". Cover directly with vitest: pin maintenance, clamping without escaping, the two intent-upgrade paths, prefix-sum dirty-span rebuild, estimate only for unrendered rows.
+- **Seam two (reuse the existing topmost seam)**: the in-client trace channel (probe + Host log + scripted scenarios). Scenarios run the real transcript in a dev build and assert on the heartbeat and event sequence in the log. Synthetic scenarios cover at least: continuous output, a fold above, a re-growth above, small repeated reflow, a gesture-free upward move, a real wheel upward move, occlusion and restore, window resize, nested-scroller expand, media decode.
+- **Prior art**: the `FakeViewport` + `ControlledResizeObserver` pattern first written for the stick hook's test; the product harness used during research (real hook + real resident list + real CSS).
 
-## 验收标准
+## Acceptance criteria
 
-不变量（定义见 `CONTEXT.md`）在**绘制边界**上逐帧判定：
+> The tracker's own copy of these criteria stays in the language of the team's Linear workspace; this listing is the English translation.
 
-- **C1 钉底精确** ≤ 0.5px；**C2 可见内容稳定** ≤ 0.5px；**C3 阅读稳定** ≤ 0.5px；**C4 仅意图** 违反次数 0；**C5 恢复正确** 返回首帧即满足。
-- 上述场景全部通过，且滚动期间每帧写入 ≤ 1 次。
-- 10k 行 / 60 万 px：首帧 ≤ 400ms，滚动帧耗时 ≤ 8.3ms（120fps 目标），账本内存增量 ≤ 20MB。
-- 采样口径必须是**绘制边界**（rAF 之后），不得用变更回调采样——调研期用变更回调一度算出 980px 的假跳变。
+The invariants (defined in `CONTEXT.md`) are judged per frame at the **paint boundary**:
+
+- **C1 pinned-exact** ≤ 0.5px; **C2 visible-content stable** ≤ 0.5px; **C3 reading-stable** ≤ 0.5px; **C4 intent-only** violation count 0; **C5 restore-correct** satisfied on the first returned frame.
+- All the above scenarios pass, and there is ≤ 1 write per frame while scrolling.
+- 10k rows / 600k px: first frame ≤ 400ms, scroll frame cost ≤ 8.3ms (120fps target), ledger memory growth ≤ 20MB.
+- The sampling convention must be the **paint boundary** (after rAF), not a mutation callback — sampling from mutation callbacks during research once produced a false 980px jump.
 
 ## Out of Scope
 
-- Windows / Linux 的本机验证（交上游作者）。
-- `content-visibility` / `scrollend` 的渐进增强路径。
-- 输入框、侧栏、设置面板等非会话流滚动区域。
-- 折叠动画（动画会制造连续高度变化，与不变式相性差；本次不引入）。
-- 会话流以外的产品面（remote IM 面板等）。
+- Local verification on Windows / Linux (left to the upstream author).
+- The progressive-enhancement paths for `content-visibility` / `scrollend`.
+- Non-transcript scroll areas such as the composer, sidebar and settings panel.
+- Fold animations (an animation creates continuous height changes, which pairs badly with the invariant; not introduced this time).
+- Product surfaces outside the transcript (the Remote IM panel, etc.).
 
 ## Further Notes
 
-- **平台承诺**：三端共用同一代码路径；本机验证仅覆盖 macOS（含 120Hz ProMotion）。跨平台验证责任的归属属于个人开发流程，记录在 Linear 的 `Grok App` 项目概览中，不写入本仓库文档，以免把个人流程带进上游。
-- **基线数字**（用于回归对照）：单会话 59578px；遮挡期间最大偏离 11175px；同日 17 次「回到最底部」；现有实现在小型回流下会出现连续多帧 20px 抖动并丢掉钉底。
-- **相关记录**：ADR-0006（显式视口控制与关闭引擎锚定）。第一轮修复已提交为分支基线（补偿进入变更批次 + 意图闸门），本次交付在其上做结构改造。
+- **Platform promise**: all three share one code path; local verification covers macOS only (including 120Hz ProMotion). Ownership of cross-platform verification is part of a personal workflow and is recorded in the Linear `Grok App` project overview, not in this repository, so that a personal process is not carried upstream.
+- **Baseline numbers** (for regression comparison): a single conversation 59578px; maximum deviation during occlusion 11175px; 17 "back to bottom" clicks the same day; the current implementation shows consecutive 20px-jitter frames under small reflow and drops the pin.
+- **Related records**: ADR-0006 (explicit viewport control and turning engine anchoring off). The first round of fixes was committed as the branch baseline (compensation lands in the mutation batch + an intent gate); this delivery does the structural rework on top of it.

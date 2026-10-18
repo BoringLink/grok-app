@@ -1,34 +1,34 @@
-# ADR 0006 — 会话视口由应用显式控制，关闭引擎锚定
+# ADR 0006 — The app controls the chat viewport explicitly; engine anchoring is off
 
-- 状态：已采纳
-- 日期：2026-10-18
+- Status: accepted
+- Date: 2026-10-18
 
-## 背景
+## Background
 
-会话流在持续输出期间会出现「向上闪烁漂移、丢失底部追踪」。第一轮修复把问题定位到跟随器的判据，但真正决定可行方案的是**引擎能力的三端差异**：
+While a stream is producing output, the transcript showed "flickers upward, drifts, and loses the bottom follow". The first round of fixes traced the symptom to the follower's criteria, but what really decided the viable approach was the **three-engine capability gap**:
 
-- 滚动锚定（`overflow-anchor`）的支持情况：Chromium（Windows WebView2）自 56 起、Edge 自 79 起、Firefox 自 66 起支持；**Safari 在 3.1–26.6 全部不支持，27 起才支持**（caniuse，2026-10-18 拉取）。WebKit 直到 2026-02 才把它开进 stable：bug 307734「[Scroll anchoring] Enable in stable」，2026-02-12 报告、RESOLVED FIXED、commit 307475@main（2026-02-13），并把长期存在的 bug 171099「Implement scroll anchoring」标为重复项。
-- 本项目三端都出包（`src-tauri/tauri.{macos,windows,linux}.conf.json`，release workflow 三平台矩阵）：macOS 是 WKWebView、Windows 是 WebView2(Chromium)、Linux 是 WebKitGTK。macOS 构建产物的 `LSMinimumSystemVersion` 为 10.13，**今天所有 macOS 用户的 WKWebView 都没有引擎锚定**；而将来 macOS 随 Safari 27 升级后又会突然有。
-- 即便在有锚定的 Chromium 上，它与本项目的写入也是互斥的：规范规定**滚动位置被脚本改变即令锚点失效**（CSS Scroll Anchoring Level 1 编辑草案 §2.1.1），并把锚点到滚动容器路径上任一元素的 `padding`/`height`/`margin`/`transform`/`position` 计算值变化列为**抑制触发器**（§2.2.2）。会话流恰好持续在做这两件事（跟随写入、spacer 与 padding 更新），所以开着锚定时引擎只会「有时补偿、有时不补偿」——这正是 `lobe-chat.part1.css` 里那句 “browser anchoring fights programmatic scrollTop during stream growth and feels like bounce” 记录到的现象，且无法靠调参消除。
+- Scroll anchoring (`overflow-anchor`) support: Chromium (Windows WebView2) since 56, Edge since 79, Firefox since 66; **Safari does not support it at all in 3.1–26.6, and only from 27** (caniuse, pulled 2026-10-18). WebKit only enabled it in stable in February 2026: bug 307734 "[Scroll anchoring] Enable in stable", reported 2026-02-12, RESOLVED FIXED, commit 307475@main (2026-02-13), with the long-standing bug 171099 "Implement scroll anchoring" marked as its duplicate.
+- This project ships on all three platforms (`src-tauri/tauri.{macos,windows,linux}.conf.json`, a three-platform release-workflow matrix): macOS is WKWebView, Windows is WebView2 (Chromium), Linux is WebKitGTK. The macOS build's `LSMinimumSystemVersion` is 10.13, so **every macOS user's WKWebView has no engine anchoring today** — and will suddenly have it once macOS upgrades with Safari 27.
+- Even on Chromium, where anchoring exists, it and this project's writes are mutually exclusive: the spec says **a scripted scroll-position change invalidates the anchor** (CSS Scroll Anchoring Level 1 editor's draft §2.1.1), and lists a computed-value change to the `padding`/`height`/`margin`/`transform`/`position` of any element on the anchor's path to its scroll container as a **suppression trigger** (§2.2.2). The transcript does exactly these two things continuously (follow writes, spacer and padding updates), so with anchoring on the engine "sometimes compensates, sometimes not" — the phenomenon recorded in `lobe-chat.part1.css` as "browser anchoring fights programmatic scrollTop during stream growth and feels like bounce", and one that cannot be tuned away.
 
-## 决策
+## Decision
 
-**会话流的位置由应用显式控制；引擎锚定被明确关闭。**
+**The app controls the transcript's position explicitly; engine anchoring is explicitly turned off.**
 
-- 会话流滚动容器及其内部每一个嵌套滚动器（阶段步骤表、思考体、工具输出）都保持 `overflow-anchor: none`。规范 §3 注明：`overflow-anchor: none` 元素的**后代滚动容器会自动重新启用**锚定，除非它自己也设了该属性——所以这条规则必须逐个嵌套滚动器落实，不能只写在最外层。
-- 只依赖三端引擎共同保证的行为：MutationObserver 回调是微任务（在渲染步骤之前）、ResizeObserver 通知的交付时机、`scroll` 事件语义、spacer 布局。
-- `content-visibility`、`scrollend`、引擎锚定都不作为承重能力；将来使用只能作为渐进增强，且不得改变上述不变量。
+- The transcript's scroll container and every nested scroller inside it (the phase steps table, the thinking body, the tool output) keep `overflow-anchor: none`. The spec's §3 notes that a **descendant scroll container of an `overflow-anchor: none` element re-enables anchoring automatically**, unless it also sets the property itself — so this rule has to be applied to every nested scroller, not only the outermost one.
+- Rely only on behavior all three engines guarantee: MutationObserver callbacks are microtasks (before the render step), ResizeObserver delivery timing, `scroll` event semantics, spacer layout.
+- `content-visibility`, `scrollend` and engine anchoring are not load-bearing capabilities; a future use of them can only be a progressive enhancement, and must not change the invariants above.
 
-## 影响
+## Consequences
 
-- **行为确定**：三端同一条代码路径、同一套验收。操作系统升级带来引擎锚定时，本项目的行为也不会悄悄变化。
-- **代价是我们必须自己补偿**，且必须与布局变化同批次完成、在绘制之前——所以补偿由变更批次内的微任务驱动，而不是等 ResizeObserver 再等一帧。
-- `overflow-anchor: none` 从「顺手关掉的浏览器特性」变成**承重配置**：它是让三端与各代引擎行为一致的开关，注释与文档都要按这个理由写，不允许被后来者当成无用样式删掉。
-- 虚拟列表不再允许写 `scrollTop`（它是第二个写入者，会令锚点在引擎侧反复失效，也让不变量无法被单点维护）；它只产出布局。
-- 若某天要改用引擎锚定，需要同时推翻本 ADR 与位置模型（单一写入者 + 锚点不变式），并接受 macOS 用户在 Safari 27 之前无法获得正确行为。
+- **Deterministic behavior**: one code path and one acceptance across all three engines. When an OS upgrade brings engine anchoring, this project's behavior will not silently change.
+- **The cost is that we must compensate ourselves**, and it must happen in the same batch as the layout change, before paint — so the compensation is driven by a microtask inside the mutation batch, not by waiting for a ResizeObserver and then a frame.
+- `overflow-anchor: none` turns from "a browser feature switched off in passing" into a **load-bearing configuration**: it is the switch that keeps behavior consistent across all three engines and engine generations, so comments and docs must give this reason, and a later contributor must not delete it as dead style.
+- The resident list is no longer allowed to write `scrollTop` (it is a second writer, which repeatedly invalidates the anchor on the engine side and makes the invariant impossible to maintain in one place); it produces layout only.
+- If engine anchoring is ever adopted, it needs this ADR and the position model (single writer + anchor invariant) overturned together, and accepting that macOS users have no correct behavior until Safari 27.
 
-## 备选方案
+## Alternatives
 
-- **交给引擎锚定**：macOS 与 Linux（WebKit）今天没有该能力，无法作为地基；即便将来有，脚本写入使其失效与抑制触发器的存在也让补偿时机不可预测。
-- **按平台分支**（Windows 交给 Chromium、WebKit 用应用补偿）：三份行为路径、三份验收，且仍需判断「何时不该让引擎介入」，复杂度换来的是不一致。
-- **底端原点滚动器（`flex-direction: column-reverse`）**：实测钉底只需一次写入且天然免疫遮挡，但阅读者在流式期间持续被推动（每帧 24px，实测），且 `scrollTop` 在该模式下为 0/负值语义、Safari 会把回弹写进 `scrollTop`。不满足 C3。
+- **Hand it to engine anchoring**: macOS and Linux (WebKit) do not have it today, so it cannot be a foundation; and even when they do, scripted writes invalidating it and the suppression triggers make the compensation timing unpredictable.
+- **Branch by platform** (hand Windows to Chromium, compensate in the app for WebKit): three behavior paths, three acceptances, and still the need to decide "when the engine must not step in" — complexity bought for inconsistency.
+- **Bottom-origin scroller (`flex-direction: column-reverse`)**: measured, a pin takes only one write and is naturally immune to occlusion, but the reader is pushed continuously during streaming (24px per frame, measured), `scrollTop` has 0/negative semantics in that mode, and Safari writes the rubber-band into `scrollTop`. It does not satisfy C3.

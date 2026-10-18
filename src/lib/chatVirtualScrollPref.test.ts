@@ -32,7 +32,7 @@ describe("chatVirtualScrollPref", () => {
     vi.restoreAllMocks();
   });
 
-  it("defaults to on (virtual window, previous product behavior)", () => {
+  it("defaults to on", () => {
     expect(DEFAULT_CHAT_VIRTUAL_SCROLL).toBe(true);
     expect(parseChatVirtualScrollPref(null)).toBe(true);
     expect(parseChatVirtualScrollPref("")).toBe(true);

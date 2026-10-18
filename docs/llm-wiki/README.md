@@ -11,6 +11,7 @@ Agent 与贡献者的**可执行知识库**。改产品行为或 UI 文案前，
 | [automations.md](./automations.md) | 自动化任务设计（Build `/loop` / scheduler；不阻塞 P0） |
 | [slash-composer.md](./slash-composer.md) | 斜杠面板、技能标签、Goal 模式、Doctor |
 | [session-continuity.md](./session-continuity.md) | Agent 续会话（load/bootstrap）、自动压缩归属 |
+| [chat-viewport-invariants.md](./chat-viewport-invariants.md) | **Chat viewport invariants**: transcript C1–C5, single-writer position model, resident list + layout ledger, folding / occlusion / jump, and what to do when you change transcript height |
 | [session-api.md](./session-api.md) | **本机会话接口**：列表 + session id 续跑（#626 第一刀；非新建、非打断） |
 | [ssh-remote.md](./ssh-remote.md) | **SSH 远端工作区**：OpenSSH Host、Watch、远端会话/文件/终端/Skills/localhost 转发；远端路径不当本地盘 |
 | [account.md](./account.md) | 官方登录 / 会员额度 / 热力图 / 调用日志 |

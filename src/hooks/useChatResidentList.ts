@@ -1,7 +1,8 @@
 /**
- * Resident transcript list (会话流：全量行常驻 + 视口动态可见带).
+ * Resident transcript list (transcript: every row resident + a viewport-driven
+ * visible band).
  *
- * Replaces the moving virtual window: every conversation row stays in the DOM
+ * Every conversation row stays in the DOM
  * for the whole session, its box height coming from the viewport controller's
  * layout ledger. The rows inside the visible band render their real content;
  * the rows outside keep only their height (a shell) — a placeholder is allowed

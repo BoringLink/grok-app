@@ -63,9 +63,10 @@ export function MessageNodeRail({
   labels,
   scrollParentRef,
   /**
-   * Paint list (filtered transcript) for height-estimate fallback when rows
-   * are virtualized away. Must match the virtualizer item list — not the full
-   * journal — or free-scroll highlight drifts past hidden tool rows.
+   * Paint list (filtered transcript) for height-estimate fallback when a row
+   * is outside the visible band (a shell). Must match the resident list's item
+   * list — not the full journal — or free-scroll highlight drifts past hidden
+   * tool rows.
    */
   messages,
   /** When performance.now() < this ref value, ignore scroll-driven highlight. */

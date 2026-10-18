@@ -83,7 +83,7 @@ export function saveTranscriptFilterPref(
  * Pure paint-list filter for the chat transcript.
  *
  * Always drops tool_step journal rows already woven into an assistant timeline
- * (virtualization hygiene — same as {@link filterTranscriptMessages}).
+ * (resident-list hygiene — same as {@link filterTranscriptMessages}).
  *
  * When `mode === "conversation"`, also drops every remaining standalone
  * tool_step row. Assistant Worked-for phases stay (tools live in segments).

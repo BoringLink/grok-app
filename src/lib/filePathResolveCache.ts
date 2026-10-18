@@ -1,6 +1,6 @@
 /**
  * In-memory cache of chat FilePathCard resolve results.
- * Prevents plain-code → card layout flash when the virtual list remounts
+ * Prevents plain-code → card layout flash when the resident list remounts
  * a row on scroll (each remount used to re-run host resolve async).
  *
  * - string = verified absolute path

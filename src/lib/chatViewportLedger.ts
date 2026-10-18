@@ -1,5 +1,5 @@
 /**
- * Chat transcript layout ledger (几何账本).
+ * Chat transcript layout ledger (the layout ledger).
  *
  * Single source of truth for the transcript's row geometry: how tall every row
  * is and where it starts. The viewport controller reads offsets, the total

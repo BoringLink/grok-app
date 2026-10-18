@@ -181,8 +181,9 @@
   min-height: 28px;
 }
 
-/* Scroll-perf: while a gesture/fling is in motion the virtualizer flags the
- * scroller; killing pointer events on content stops per-frame :hover style
+/* Scroll-perf: while a gesture/fling is in motion the viewport controller
+ * (`useChatViewportController`) flags the scroller with `data-scrolling`; killing
+ * pointer events on content stops per-frame :hover style
  * recalc (content moves under a stationary cursor → hover re-resolution can
  * burn 10ms+ of style/layout per frame that JS profiling cannot see).
  * Wheel still targets the scroller itself, so scrolling is unaffected.
@@ -273,7 +274,7 @@ html[data-chat-width="full"] .lobe-chat__inner,
   flex-shrink: 0;
   /* Isolate layout so stream growth on the tail row dirties less of the
    * surrounding tree during markdown reflow (Intel Retina). Avoid
-   * content-visibility here — the list is already virtualized.
+   * content-visibility here — the list already renders only the band's rows.
    * paint: keep one tall article from compositing the whole transcript. */
   contain: layout style paint;
 }
