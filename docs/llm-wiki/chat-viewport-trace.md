@@ -156,7 +156,10 @@ Key event `reason`s:
 - `heartbeat`: every 10 s. Publishes a dump (anchored on the heartbeat event)
   of the recent per-frame samples, so a session with no backward move still
   leaves its per-frame distance / shift / follow state / write source in the
-  log. Also proves liveness when the capture found nothing.
+  log. Also proves liveness when the capture found nothing. Carries
+  `frames` / `maxWritesPerFrame` / `framesOverBudget` — the per-frame
+  position-write budget summary (`frameWriteSummary`) the manual pass reads to
+  confirm "≤ 1 write per frame"; `framesOverBudget` must be 0.
 - `viewport-moved-to-older-message` / `viewport-jumped-up` / `viewport-native-jumped-up`:
   the suspicious backward moves you are hunting, published as cause-chain dumps.
 - `occlusion`: paint availability changed. `state: "enter"` when the window

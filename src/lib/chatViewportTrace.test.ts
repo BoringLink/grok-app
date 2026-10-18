@@ -14,6 +14,7 @@ import {
   DUMP_CONTEXT_EVENTS,
   DUMP_MAX_CHARS,
   dumpChatViewportTrace,
+  frameWriteSummary,
   isBackwardViewportMove,
   isSuspiciousUpwardJump,
   lastPinFlipCause,
@@ -733,5 +734,51 @@ describe("chatViewportWriteStats", () => {
     expect(chatViewportWriteStats().writes).toBe(1);
     resetChatViewportTrace();
     expect(chatViewportWriteStats()).toEqual({ writes: 0, lastSource: null });
+  });
+});
+
+describe("frameWriteSummary", () => {
+  it("reads the peak writes-per-frame and the frames over the budget", () => {
+    // Arrange — one write on two frames, two writes on a third.
+    const events = [
+      { t: 0, kind: "sample", w: 1 },
+      { t: 1, kind: "sample", w: 0 },
+      { t: 2, kind: "scrollTop", w: undefined },
+      { t: 3, kind: "sample", w: 2 },
+    ];
+
+    // Act
+    const summary = frameWriteSummary(events);
+
+    // Assert — only sample frames count; the write event is ignored.
+    expect(summary).toEqual({
+      frames: 3,
+      maxWritesPerFrame: 2,
+      framesOverBudget: 1,
+    });
+  });
+
+  it("reports a clean scroll as never exceeding one write per frame", () => {
+    // Arrange — the spec's budget holds: every frame writes at most once.
+    const events = Array.from({ length: 50 }, (_, i) => ({
+      t: i,
+      kind: "sample",
+      w: i % 2,
+    }));
+
+    // Act + Assert
+    expect(frameWriteSummary(events)).toEqual({
+      frames: 50,
+      maxWritesPerFrame: 1,
+      framesOverBudget: 0,
+    });
+  });
+
+  it("is empty for an empty ring", () => {
+    expect(frameWriteSummary([])).toEqual({
+      frames: 0,
+      maxWritesPerFrame: 0,
+      framesOverBudget: 0,
+    });
   });
 });

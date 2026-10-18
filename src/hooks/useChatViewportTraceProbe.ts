@@ -22,9 +22,11 @@ import {
   anchorScreenShift,
   chatTraceSessionId,
   chatViewportTraceEnabled,
+  chatViewportTraceEvents,
   chatViewportWriteStats,
   distanceToContentEnd,
   dumpChatViewportTrace,
+  frameWriteSummary,
   isBackwardViewportMove,
   isSuspiciousUpwardJump,
   lastPinFlipCause,
@@ -533,6 +535,10 @@ export function useChatViewportTraceProbe(input: {
       // anchors on.
       traceViewport("heartbeat", {
         ...geometry(),
+        // The spec's per-frame write budget, read off the sampled frames: the
+        // peak and how many frames exceeded one write. This is what the manual
+        // macOS pass reads to confirm "≤ 1 position write per frame".
+        ...frameWriteSummary(chatViewportTraceEvents()),
         sampled,
         mutations,
         backward: backwardCount,

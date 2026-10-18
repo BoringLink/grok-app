@@ -572,6 +572,41 @@ export function chatViewportWriteStats(): {
 }
 
 /**
+ * Per-frame transcript position-write summary over the recorded sample frames.
+ *
+ * The spec's budget is at most one `scrollTop` write per frame during a scroll
+ * (one layout read plus one position write). Each frame sample carries `w`, the
+ * writes it saw, so the two headline numbers of a captured scroll — the peak
+ * and how many frames exceeded it — read straight off the ring or a dumped
+ * heartbeat without a manual scan.
+ */
+export type FrameWriteSummary = {
+  /** Sample frames seen (paint-boundary and fallback). */
+  frames: number;
+  /** Largest number of transcript writes any one sampled frame carried. */
+  maxWritesPerFrame: number;
+  /** Frames that carried more than one write — the budget is zero of these. */
+  framesOverBudget: number;
+};
+
+export function frameWriteSummary(
+  events: readonly ViewportTraceEvent[],
+): FrameWriteSummary {
+  return events.reduce<FrameWriteSummary>(
+    (summary, event) => {
+      if (event.kind !== "sample") return summary;
+      const writes = typeof event.w === "number" ? event.w : 0;
+      return {
+        frames: summary.frames + 1,
+        maxWritesPerFrame: Math.max(summary.maxWritesPerFrame, writes),
+        framesOverBudget: summary.framesOverBudget + (writes > 1 ? 1 : 0),
+      };
+    },
+    { frames: 0, maxWritesPerFrame: 0, framesOverBudget: 0 },
+  );
+}
+
+/**
  * Send a compact trace payload (a heartbeat, not the event ring) to the Host
  * log. Silent when not under Tauri.
  */
