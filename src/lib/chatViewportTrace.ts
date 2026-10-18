@@ -440,7 +440,8 @@ export type PinFlipCause =
   | "scrollbar"
   | "layout-clamp"
   | "hard-bottom"
-  | "button";
+  | "button"
+  | "jump";
 
 /** Gesture a flip is attributed to; "none" when no gesture explains it. */
 export type PinFlipGesture =
@@ -522,10 +523,11 @@ export function anchorScreenShift(anchor: {
  * Normalize a pin/escape flip into one of {@link PinFlipCause}.
  *
  * The reason's prefix wins where it already names a gesture (`wheel-*`,
- * `touch-*`, `key-*`); the callers that cannot name a gesture from the reason
- * alone pass `gesture`. A flip that landed on the hard bottom is a hard-bottom
- * flip even when a gesture is recent, because that is what actually re-engaged
- * follow; anything else without a gesture is layout clamping.
+ * `touch-*`, `key-*`) or a programmatic jump (`jump:*`); the callers that
+ * cannot name a gesture from the reason alone pass `gesture`. A flip that
+ * landed on the hard bottom is a hard-bottom flip even when a gesture is
+ * recent, because that is what actually re-engaged follow; anything else
+ * without a gesture is layout clamping.
  */
 export function classifyPinFlipCause(input: {
   reason: string;
@@ -536,6 +538,9 @@ export function classifyPinFlipCause(input: {
 }): PinFlipCause {
   const reason = input.reason.toLowerCase();
   if (reason.includes("button")) return "button";
+  // Rail / find / deep-link jumps carry a `jump:` prefix. They are the reader
+  // choosing a position, never a gesture-free layout clamp.
+  if (reason.startsWith("jump")) return "jump";
   if (reason.startsWith("wheel")) return "wheel";
   if (reason.startsWith("touch")) return "touch";
   if (reason.startsWith("key")) return "keyboard";

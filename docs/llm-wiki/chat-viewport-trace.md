@@ -101,7 +101,9 @@ Every pin/escape flip records a normalized `cause` (`tracePinState`):
 - `layout-clamp` — no gesture explains the move; a height change moved
   `scrollTop`. This is the cause that must never be read as the user leaving;
 - `hard-bottom` — the flip landed on the content end and re-engaged follow;
-- `button` — the explicit "back to bottom" control.
+- `button` — the explicit "back to bottom" control;
+- `jump` — a rail / find / deep-link jump landed (the reason carries a `jump:`
+  prefix). It is the reader choosing a position, so it is never a layout clamp.
 
 `classifyPinFlipCause` derives the cause from the flip's reason prefix, the
 caller's gesture hint, and the distance from the content end. The `scroll-escape`
