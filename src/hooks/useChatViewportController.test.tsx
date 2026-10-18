@@ -422,6 +422,7 @@ describe("useChatViewportController handle", () => {
     ControlledResizeObserver.reset();
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    document.body.replaceChildren();
   });
 
   function mount(initial: { scrollTop: number; scrollHeight: number }) {
@@ -467,6 +468,83 @@ describe("useChatViewportController handle", () => {
     };
   }
 
+  /** Viewport with a row above and a row at the viewport top, both measured. */
+  function mountWithRows(input: { scrollTop: number; aboveHeight: number }) {
+    let scrollTop = input.scrollTop;
+    let aboveHeight = input.aboveHeight;
+    const rowHeight = 300;
+    const viewport = document.createElement("div");
+    const content = document.createElement("div");
+    const above = document.createElement("div");
+    const anchorRow = document.createElement("div");
+    content.append(above, anchorRow);
+    viewport.appendChild(content);
+    document.body.appendChild(viewport);
+
+    const rect = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 800,
+        width: 800,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    Object.defineProperties(viewport, {
+      scrollTop: {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      },
+      scrollHeight: { configurable: true, get: () => 1000 },
+      clientHeight: { configurable: true, get: () => 400 },
+      clientWidth: { configurable: true, get: () => 800 },
+    });
+    Object.defineProperty(viewport, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(0, 400),
+    });
+    Object.defineProperty(content, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(-scrollTop, 1000),
+    });
+    Object.defineProperty(above, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(-scrollTop, aboveHeight),
+    });
+    Object.defineProperty(anchorRow, "getBoundingClientRect", {
+      configurable: true,
+      value: () => rect(aboveHeight - scrollTop, rowHeight),
+    });
+
+    const { result, rerender } = renderHook(
+      ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
+      { initialProps: { keyName: "before-attach" } },
+    );
+    Object.assign(result.current.viewportRef, { current: viewport });
+    Object.assign(result.current.contentRef, { current: content });
+    rerender({ keyName: "attached" });
+    act(() => vi.advanceTimersByTime(40));
+    // Undo the conversation-switch pin so the test controls the position.
+    scrollTop = input.scrollTop;
+
+    return {
+      controller: result.current.controller,
+      isPinnedRef: result.current.isPinnedRef,
+      escapedRef: result.current.escapedRef,
+      scrollTop: () => scrollTop,
+      setAboveHeight: (value: number) => {
+        aboveHeight = value;
+      },
+    };
+  }
+
   it("writes the transcript position through assign", () => {
     const harness = mount({ scrollTop: 600, scrollHeight: 1000 });
 
@@ -476,7 +554,6 @@ describe("useChatViewportController handle", () => {
 
     expect(harness.scrollTop()).toBe(240);
   });
-
   it("escape detaches from the bottom and clears the pin", () => {
     const harness = mount({ scrollTop: 600, scrollHeight: 1000 });
 
@@ -501,6 +578,48 @@ describe("useChatViewportController handle", () => {
 
     expect(harness.scrollTop()).toBe(600);
     expect(harness.isPinnedRef.current).toBe(true);
+  });
+
+  /**
+   * A rail / find jump is a programmatic escape: after it the viewport must
+   * hold the landed position, not re-snap to the tail (user story 15).
+   */
+  it("holds the landed position after a programmatic escape", () => {
+    const harness = mount({ scrollTop: 600, scrollHeight: 1000 });
+
+    act(() => {
+      harness.controller.escape("test:locate");
+      harness.controller.assign("test:locate", 320);
+      harness.setScrollHeight(1000);
+      harness.controller.restoreLayout();
+    });
+
+    expect(harness.scrollTop()).toBe(320);
+    expect(harness.isPinnedRef.current).toBe(false);
+    expect(harness.escapedRef.current).toBe(true);
+  });
+
+  /**
+   * The anchor is the element at the viewport top, measured directly, so a
+   * height change the ledger and the observer cannot see (a collapse above the
+   * mounted band) still holds its on-screen position.
+   */
+  it("holds the anchor element across a height change above it", () => {
+    const harness = mountWithRows({ scrollTop: 200, aboveHeight: 200 });
+
+    act(() => {
+      harness.controller.escape("test:locate");
+      harness.controller.restoreLayout(); // capture the anchor element
+    });
+
+    act(() => {
+      // The row above the anchor grows 100px; the browser shifts the anchor down.
+      harness.setAboveHeight(300);
+      harness.controller.restoreLayout();
+    });
+
+    expect(harness.scrollTop()).toBe(300);
+    expect(harness.isPinnedRef.current).toBe(false);
   });
 });
 

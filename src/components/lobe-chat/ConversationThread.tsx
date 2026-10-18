@@ -2160,7 +2160,7 @@ export function ConversationThread({
         0,
         viewport.scrollTop + (alignRootRect.top - alignViewportRect.top),
       );
-      viewportController.scrollTo("thread:locate", alignTop, "instant");
+      viewportController.assign("thread:locate", alignTop, "instant");
       traceViewport("locate:align", {
         nodeId: node.id,
         before: Math.round(beforeAlignScroll),
@@ -2375,7 +2375,7 @@ export function ConversationThread({
           viewport.scrollTop +
           (targetRect.top - viewportRect.top) -
           (viewport.clientHeight - targetRect.height) / 2;
-        viewportController.scrollTo(
+        viewportController.assign(
           "find:scrollIntoView",
           Math.max(0, centered),
           "smooth",

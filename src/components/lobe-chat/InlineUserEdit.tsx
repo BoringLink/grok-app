@@ -81,7 +81,9 @@ export function InlineUserEdit({
   useEffect(() => {
     const el = taRef.current;
     if (!el) return;
-    el.focus();
+    // The editor lives inside the transcript scroller; a focusing scroll would
+    // move the viewport outside the controller's single write point.
+    el.focus({ preventScroll: true });
     el.selectionStart = el.value.length;
     el.selectionEnd = el.value.length;
     // Grow to content

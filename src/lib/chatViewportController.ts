@@ -20,7 +20,7 @@
  * the one exception — a scrollbar drag produces exactly that signature, so it
  * upgrades to a real escape.
  *
- * Geometry offsets come from the layout ledger (几何账本) so the planner never
+ * Geometry offsets come from the layout ledger so the planner never
  * re-derives whole-conversation math from the DOM.
  */
 
@@ -29,6 +29,7 @@ import {
   bottomScrollTop,
   isHardBottom,
   shouldEscapePinnedScroll,
+  shouldSettleBottomRebound,
   STICK_ESCAPE_MIN_DELTA_PX,
   STICK_ESCAPE_WHEEL_DELTA,
 } from "@/lib/stickToBottom";
@@ -185,6 +186,14 @@ function escapeState(
   };
 }
 
+/** The result of a user gesture: new state, a position, and the effect kind. */
+export type ViewportIntentDecision = {
+  state: ViewportState;
+  directive: ViewportDirective;
+  /** The caller arms its bottom-intent window on `towardEnd`, clears on `escape`. */
+  effect: ViewportIntentEffect;
+};
+
 /**
  * Transition for a user gesture. Escape is immediate and does not move the
  * viewport (the user's own scroll already landed); a move toward the tail
@@ -196,19 +205,23 @@ export function applyIntent(input: {
   geometry: ViewportGeometry;
   rows: ViewportRows;
   now: number;
-}): { state: ViewportState; directive: ViewportDirective } {
+}): ViewportIntentDecision {
   const { state, intent, geometry, rows, now } = input;
   const effect = intentEffect(intent);
   if (effect === "escape") {
-    return { state: escapeState(geometry, rows, now), directive: { kind: "none" } };
+    return {
+      state: escapeState(geometry, rows, now),
+      directive: { kind: "none" },
+      effect,
+    };
   }
   if (
     effect === "towardEnd" &&
     isHardBottom(geometry.scrollTop, geometry.scrollHeight, geometry.clientHeight)
   ) {
-    return { state: createViewportState(), directive: { kind: "end" } };
+    return { state: createViewportState(), directive: { kind: "end" }, effect };
   }
-  return { state, directive: { kind: "none" } };
+  return { state, directive: { kind: "none" }, effect };
 }
 
 export type ViewportScrollSample = {
@@ -219,12 +232,27 @@ export type ViewportScrollSample = {
   clientHeight: number;
   /** A real gesture happened within the escape window. */
   gestureRecent: boolean;
+  /** A recent gesture pointed toward the tail; elastic rebound may follow. */
+  downIntentActive: boolean;
+  /** A collapse/reflow is being absorbed; a matching upward move is layout. */
+  recoveryWindow: boolean;
+  thresholdPx?: number;
 };
 
+function resetStreak(state: ViewportState): ViewportState {
+  return state.upStreak === 0 ? state : { ...state, upStreak: 0, upStreakAt: 0 };
+}
+
 /**
- * Transition for a scroll event. A gesture-less upward move is layout
- * clamping — keep the pin and put the viewport back on the end. Two of them at
- * an unchanged height are a scrollbar drag, which escapes.
+ * Transition for a scroll event — the single policy for a scroll after a
+ * gesture has been classified. Ordering matters:
+ *
+ * 1. escaped — hold position; re-pin only on a gesture landing at the end.
+ * 2. elastic rebound after a downward gesture — settle to the end.
+ * 3. a gesture that reads history — escape.
+ * 4. a gesture-free upward move — layout clamp; a run at a stable height is a
+ *    scrollbar drag and escapes.
+ * 5. otherwise while pinned — steer back to the content end.
  */
 export function applyScrollSample(input: {
   state: ViewportState;
@@ -241,13 +269,16 @@ export function applyScrollSample(input: {
     clientHeight: sample.clientHeight,
   };
   const movedUp = sample.previousScrollTop - sample.scrollTop >= 0.5;
-  const movedDown = sample.scrollTop - sample.previousScrollTop >= 0.5;
+  // Compare against the raw content end: an engine-clamped overscroll past
+  // max is not "at the end" and must be pulled back.
+  const atEnd =
+    Math.abs(sample.scrollTop - contentEndScrollTop(geometry)) <= 0.5;
 
   if (state.phase === "escaped") {
     if (
-      movedDown &&
-      sample.gestureRecent &&
-      isHardBottom(sample.scrollTop, sample.scrollHeight, sample.clientHeight)
+      (movedUp === false) &&
+      (sample.gestureRecent || sample.downIntentActive) &&
+      atEnd
     ) {
       return { state: createViewportState(), directive: { kind: "end" } };
     }
@@ -255,51 +286,69 @@ export function applyScrollSample(input: {
     return { state, directive: { kind: "none" } };
   }
 
-  if (!movedUp) {
-    return {
-      state: state.upStreak === 0 ? state : { ...state, upStreak: 0, upStreakAt: 0 },
-      directive: { kind: "none" },
-    };
+  if (
+    shouldSettleBottomRebound({
+      downIntentActive: sample.downIntentActive,
+      scrollTop: sample.scrollTop,
+      previousScrollTop: sample.previousScrollTop,
+      scrollHeight: sample.scrollHeight,
+      clientHeight: sample.clientHeight,
+      thresholdPx: sample.thresholdPx,
+    })
+  ) {
+    // A downward gesture overshot the tail and the elastic upward move follows.
+    return { state: resetStreak(state), directive: { kind: "end" } };
   }
 
-  const escapeCandidate = shouldEscapePinnedScroll({
-    pinned: true,
-    scrollTop: sample.scrollTop,
-    previousScrollTop: sample.previousScrollTop,
-    scrollHeight: sample.scrollHeight,
-    clientHeight: sample.clientHeight,
-    previousScrollHeight: sample.previousScrollHeight,
-  });
+  const escapeCandidate =
+    movedUp &&
+    shouldEscapePinnedScroll({
+      pinned: true,
+      scrollTop: sample.scrollTop,
+      previousScrollTop: sample.previousScrollTop,
+      scrollHeight: sample.scrollHeight,
+      clientHeight: sample.clientHeight,
+      previousScrollHeight: sample.previousScrollHeight,
+    });
+
+  if (escapeCandidate && sample.recoveryWindow) {
+    // A collapse is being absorbed: an upward move here is layout, not a leave.
+    // A real wheel/touch escape already flipped the phase before this event.
+    return { state: resetStreak(state), directive: { kind: "end" } };
+  }
 
   if (escapeCandidate && sample.gestureRecent) {
     return { state: escapeState(geometry, rows, now), directive: { kind: "none" } };
   }
 
-  if (!escapeCandidate) {
-    // Height shrink / hard-bottom clamp: layout, not the user.
+  if (escapeCandidate) {
+    // Gesture-free upward move at an effectively unchanged height. One is a
+    // layout clamp (re-assert the end); two in a row are a scrollbar drag.
+    const stableHeight =
+      sample.previousScrollHeight == null ||
+      Math.abs(sample.scrollHeight - sample.previousScrollHeight) < 0.5;
+    const streak =
+      stableHeight && now - state.upStreakAt < streakWindowMs
+        ? state.upStreak + 1
+        : stableHeight
+          ? 1
+          : 0;
+    if (streak >= 2) {
+      return {
+        state: escapeState(geometry, rows, now),
+        directive: { kind: "none" },
+      };
+    }
     return {
-      state: state.upStreak === 0 ? state : { ...state, upStreak: 0, upStreakAt: 0 },
+      state: { ...state, upStreak: streak, upStreakAt: now },
       directive: { kind: "end" },
     };
   }
 
-  // Gesture-free upward move at an effectively unchanged height. One is a
-  // layout clamp (re-assert the end); two in a row are a scrollbar drag.
-  const stableHeight =
-    sample.previousScrollHeight == null ||
-    Math.abs(sample.scrollHeight - sample.previousScrollHeight) < 0.5;
-  const streak =
-    stableHeight && now - state.upStreakAt < streakWindowMs
-      ? state.upStreak + 1
-      : stableHeight
-        ? 1
-        : 0;
-  if (streak >= 2) {
-    return { state: escapeState(geometry, rows, now), directive: { kind: "none" } };
-  }
+  // Pinned, no leave: steer back to the content end.
   return {
-    state: { ...state, upStreak: streak, upStreakAt: now },
-    directive: { kind: "end" },
+    state: resetStreak(state),
+    directive: atEnd ? { kind: "none" } : { kind: "end" },
   };
 }
 

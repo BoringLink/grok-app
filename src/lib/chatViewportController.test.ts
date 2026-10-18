@@ -143,6 +143,8 @@ describe("chatViewportController scroll samples", () => {
     previousScrollHeight: 1000,
     clientHeight: 400,
     gestureRecent: false,
+    downIntentActive: false,
+    recoveryWindow: false,
   };
 
   it("treats a single gesture-free upward move as a clamp and re-asserts the end", () => {
@@ -216,6 +218,56 @@ describe("chatViewportController scroll samples", () => {
     const { state, directive } = applyScrollSample({
       state: pinned(),
       sample: { ...base, scrollHeight: 900, previousScrollHeight: 1000 },
+      rows: rowsOf(),
+      now: 0,
+      streakWindowMs: STREAK_WINDOW_MS,
+    });
+
+    expect(state.phase).toBe("pinned");
+    expect(directive).toEqual({ kind: "end" });
+  });
+
+  it("settles an elastic rebound after a downward gesture", () => {
+    const { state, directive } = applyScrollSample({
+      state: pinned(),
+      sample: {
+        ...base,
+        scrollTop: 600,
+        previousScrollTop: 620,
+        downIntentActive: true,
+        gestureRecent: true,
+      },
+      rows: rowsOf(),
+      now: 0,
+      streakWindowMs: STREAK_WINDOW_MS,
+    });
+
+    expect(state.phase).toBe("pinned");
+    expect(directive).toEqual({ kind: "end" });
+  });
+
+  it("treats an upward move during collapse recovery as layout, not a leave", () => {
+    const { state, directive } = applyScrollSample({
+      state: pinned(),
+      sample: { ...base, gestureRecent: true, recoveryWindow: true },
+      rows: rowsOf(),
+      now: 0,
+      streakWindowMs: STREAK_WINDOW_MS,
+    });
+
+    expect(state.phase).toBe("pinned");
+    expect(directive).toEqual({ kind: "end" });
+  });
+
+  it("steers back to the content end while pinned and off the end", () => {
+    const { state, directive } = applyScrollSample({
+      state: pinned(),
+      sample: {
+        ...base,
+        scrollTop: 580,
+        previousScrollTop: 560,
+        scrollHeight: 1040,
+      },
       rows: rowsOf(),
       now: 0,
       streakWindowMs: STREAK_WINDOW_MS,
