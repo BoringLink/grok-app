@@ -1,0 +1,35 @@
+src/lib/chatViewportController.ts
+  s_ae30523405d50c::t_c229e7b91966c3 280,284-285,339-340
+  s_ae30523405d50c::t_6148a0ba574bf8 115-119,155
+src/hooks/useChatResidentList.ts
+  s_ae30523405d50c::t_a1efa648ccf99e 435-436
+src/hooks/useChatViewportController.test.tsx
+  s_ae30523405d50c::t_0c1f29b5d56acb 761
+src/lib/stickToBottom.test.ts
+  s_ae30523405d50c::t_aedddd2ae9a6cf 104-105,108
+  s_ae30523405d50c::t_a88241066dca12 106-107
+src/hooks/useChatViewportController.ts
+  s_ae30523405d50c::t_b77cf0358e4b25 648
+src/lib/chatResidentBand.ts
+  s_ae30523405d50c::t_9b0cd33348aa71 218-219
+src/lib/stickToBottom.ts
+  s_ae30523405d50c::t_de09d2e03ef347 536-541,546,548-549
+src/lib/chatViewportController.test.ts
+  s_ae30523405d50c::t_e2565027f927d8 359
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "8a2bd555b36e7a030f9294d04e79a01ef116702a",
+  "prompts": {},
+  "sessions": {
+    "s_ae30523405d50c": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15086-5a4d-7a03-b2b3-8e09c3ff63b8",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
