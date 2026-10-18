@@ -53,6 +53,14 @@ that never sampled by the `heartbeat`.
 A `sample` is only recorded when something changed (index, pin, or a geometry
 move past the 4px noise floor), so an idle viewport does not fill the ring.
 
+Samples reach the log through a dump: either the trigger dumps below, or the
+10 s heartbeat dump, which carries the recent samples even when no trigger
+fired. So one real session leaves the per-frame sequence on disk without any
+manual flush.
+
+The latest `distFromBottom` / `visibleShiftPx` also ride the heartbeat event
+(inside that dump) and the `tracking-live` payload as a live tail.
+
 ## Pin / escape flip causes
 
 Every pin/escape flip records a normalized `cause` (`tracePinState`):
@@ -95,7 +103,10 @@ Key event `reason`s:
   bottom rebound, height-change re-pin) with `cause` = the stick reason. The button
   click logs a separate `button-scroll-to-bottom` with `distFromBottom` before the
   jump. Watch these two to tell "the user pinned" from "the code snapped".
-- `heartbeat`: every 10 s when the capture found nothing (proves liveness).
+- `heartbeat`: every 10 s. Publishes a dump (anchored on the heartbeat event)
+  of the recent per-frame samples, so a session with no backward move still
+  leaves its per-frame `distFromBottom` / `visibleShiftPx` / write sources in
+  the log. Also proves liveness when the capture found nothing.
 - `viewport-moved-to-older-message` / `viewport-jumped-up` / `viewport-native-jumped-up`:
   the suspicious backward moves you are hunting, published as cause-chain dumps.
 - `manual`: flush after an episode ends, e.g. `window.__CHAT_VIEWPORT_DUMP__()`.
