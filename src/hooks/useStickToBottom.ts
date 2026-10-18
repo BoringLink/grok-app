@@ -51,6 +51,7 @@ import {
   applyScrollTopTraced,
   tracePinState,
   traceViewport,
+  type PinFlipGesture,
 } from "@/lib/chatViewportTrace";
 
 
@@ -139,6 +140,8 @@ export function useStickToBottom(
    * first gesture, `now - last` must never look like a fresh gesture.
    */
   const lastGestureAtRef = useRef(Number.NEGATIVE_INFINITY);
+  /** Which gesture set `lastGestureAtRef`, so a flip can be attributed (trace). */
+  const lastGestureTypeRef = useRef<PinFlipGesture>("none");
   /** Consecutive upward scroll events that happened at an unchanged height. */
   const upStreakRef = useRef({ count: 0, at: 0 });
   const thresholdRef = useRef(thresholdPx);
@@ -474,6 +477,9 @@ export function useStickToBottom(
           scrollTop,
           scrollHeight: el.scrollHeight,
           clientHeight: el.clientHeight,
+          // A recent gesture names itself; the gesture-free path is the
+          // repeated upward events at a stable height, i.e. a scrollbar drag.
+          gesture: gestureRecent ? lastGestureTypeRef.current : "scrollbar",
         });
         syncShowBack();
         return;
@@ -621,6 +627,10 @@ export function useStickToBottom(
             scrollTop: el.scrollTop,
             scrollHeight: el.scrollHeight,
             clientHeight: el.clientHeight,
+            gesture:
+              stickNowMs() - lastGestureAtRef.current < GESTURE_ESCAPE_WINDOW_MS
+                ? lastGestureTypeRef.current
+                : "none",
           });
         }
         if (next.pinned) {
@@ -635,6 +645,7 @@ export function useStickToBottom(
 
     const handleWheel = (e: WheelEvent) => {
       lastGestureAtRef.current = stickNowMs();
+      lastGestureTypeRef.current = "wheel";
       if (
         shouldPreventPinnedBottomWheel({
           pinned: isPinnedRef.current,
@@ -725,6 +736,7 @@ export function useStickToBottom(
     };
     const onTouchMove = (e: TouchEvent) => {
       lastGestureAtRef.current = stickNowMs();
+      lastGestureTypeRef.current = "touch";
       const y = e.touches[0]?.clientY;
       if (touchY == null || y == null) return;
       const dy = y - touchY;
@@ -792,6 +804,7 @@ export function useStickToBottom(
         e.key === "Spacebar"
       ) {
         lastGestureAtRef.current = stickNowMs();
+        lastGestureTypeRef.current = "keyboard";
       }
     };
 

@@ -19,12 +19,17 @@ import { useEffect, type RefObject } from "react";
 import {
   chatTraceSessionId,
   chatViewportTraceEnabled,
+  distanceToContentEnd,
   dumpChatViewportTrace,
   isBackwardViewportMove,
   isSuspiciousUpwardJump,
+  lastPinFlipCause,
   publishTraceToHost,
   setChatViewportTracePinned,
   traceViewport,
+  visibleBandShift,
+  type ViewportTraceEvent,
+  type VisibleRowPosition,
 } from "@/lib/chatViewportTrace";
 
 /** A real gesture within this window means the move was the user's, not a bug. */
@@ -67,6 +72,31 @@ function firstVisibleRowIndex(
   return null;
 }
 
+/**
+ * On-screen position of every row crossing the viewport, for the C2
+ * visible-shift metric. Rows are emitted in DOM order (ascending index), so a
+ * row that starts below the viewport ends the walk.
+ */
+function visibleRowPositions(
+  viewport: HTMLElement,
+  content: HTMLElement | null,
+): VisibleRowPosition[] {
+  const root = content ?? viewport;
+  const rows = root.querySelectorAll<HTMLElement>("[data-virt-index]");
+  const viewTop = viewport.getBoundingClientRect().top;
+  const viewBottom = viewTop + viewport.clientHeight;
+  const positions: VisibleRowPosition[] = [];
+  for (const row of rows) {
+    const rect = row.getBoundingClientRect();
+    if (rect.top >= viewBottom) break;
+    if (rect.bottom <= viewTop) continue;
+    const raw = row.dataset.virtIndex;
+    const index = raw == null ? Number.NaN : Number(raw);
+    if (Number.isFinite(index)) positions.push({ index, top: rect.top });
+  }
+  return positions;
+}
+
 export function useChatViewportTraceProbe(input: {
   viewportRef: RefObject<HTMLElement | null>;
   isPinnedRef: RefObject<boolean>;
@@ -90,6 +120,8 @@ export function useChatViewportTraceProbe(input: {
     let previousNativeScrollTop = viewport.scrollTop;
     let prevScrollHeight = viewport.scrollHeight;
     let prevPinned = isPinnedRef.current;
+    /** Visible-band row positions from the previous frame, for the shift metric. */
+    let prevPositions: VisibleRowPosition[] = [];
     let lastDTop = 0;
     let lastDHeight = 0;
     let sampled = 0;
@@ -118,11 +150,15 @@ export function useChatViewportTraceProbe(input: {
         typeof document !== "undefined" ? document.visibilityState : null,
     });
 
-    const publish = (reason: string, force: boolean) => {
+    const publish = (
+      reason: string,
+      force: boolean,
+      trigger: ViewportTraceEvent | null = null,
+    ) => {
       const now = performance.now();
       if (!force && now - lastDumpAt < DUMP_COOLDOWN_MS) return;
       lastDumpAt = now;
-      void publishTraceToHost(dumpChatViewportTrace(reason));
+      void publishTraceToHost(dumpChatViewportTrace(reason, trigger));
     };
 
     // Manual flush for devtools use, e.g. after an episode ends.
@@ -154,7 +190,7 @@ export function useChatViewportTraceProbe(input: {
         });
       }
       if (isSuspiciousUpwardJump({ userGestureRecent: gestureRecent, deltaTop: dTop })) {
-        traceViewport("upward-jump-native", {
+        const trigger = traceViewport("upward-jump-native", {
           dTop: Math.round(dTop),
           scrollTop: Math.round(scrollTop),
           scrollHeight: Math.round(viewport.scrollHeight),
@@ -162,11 +198,14 @@ export function useChatViewportTraceProbe(input: {
           pinned: !!isPinnedRef.current,
           gestureRecent,
         });
-        publish("viewport-native-jumped-up", false);
+        publish("viewport-native-jumped-up", false, trigger);
       }
     };
 
-    /** One sample of the viewport; records only when something changed. */
+    /**
+     * One sample of the viewport, taken on the paint boundary (see
+     * {@link frame}); records only when something changed.
+     */
     const takeSample = () => {
       if (cancelled) return;
       const pinned = !!isPinnedRef.current;
@@ -175,6 +214,13 @@ export function useChatViewportTraceProbe(input: {
       const scrollHeight = viewport.scrollHeight;
       const clientHeight = viewport.clientHeight;
       const index = firstVisibleRowIndex(viewport, contentRef?.current ?? null);
+      const positions = visibleRowPositions(viewport, contentRef?.current ?? null);
+      const shift = visibleBandShift(prevPositions, positions);
+      const distFromBottom = distanceToContentEnd({
+        scrollTop,
+        scrollHeight,
+        clientHeight,
+      });
       const dTop = scrollTop - prevScrollTop;
       const dHeight = scrollHeight - prevScrollHeight;
       const dMutations = mutations - prevMutations;
@@ -196,10 +242,15 @@ export function useChatViewportTraceProbe(input: {
           scrollTop: Math.round(scrollTop),
           scrollHeight: Math.round(scrollHeight),
           clientHeight: Math.round(clientHeight),
+          distFromBottom: Math.round(distFromBottom),
+          visibleShiftPx: shift,
           dTop: Math.round(dTop),
           dHeight: Math.round(dHeight),
           dMutations,
           pinned,
+          // A pin flip the sampler sees between the hook's own flip records is
+          // attributed to the cause that flip recorded (C4).
+          ...(pinned !== prevPinned ? { pinFlipCause: lastPinFlipCause() } : {}),
           gestureRecent,
         });
       }
@@ -216,7 +267,7 @@ export function useChatViewportTraceProbe(input: {
       ) {
         const backward = index !== null && prevIndex !== null && index < prevIndex;
         if (backward) backwardCount += 1;
-        traceViewport(backward ? "backward" : "upward-jump", {
+        const trigger = traceViewport(backward ? "backward" : "upward-jump", {
           fromIndex: prevIndex,
           toIndex: index,
           dTop: Math.round(dTop),
@@ -225,7 +276,7 @@ export function useChatViewportTraceProbe(input: {
           scrollTop: Math.round(scrollTop),
           scrollHeight: Math.round(scrollHeight),
           clientHeight: Math.round(clientHeight),
-          distFromBottom: Math.round(scrollHeight - clientHeight - scrollTop),
+          distFromBottom: Math.round(distFromBottom),
           pinned,
           gestureRecent,
         });
@@ -233,6 +284,7 @@ export function useChatViewportTraceProbe(input: {
         publish(
           backward ? "viewport-moved-to-older-message" : "viewport-jumped-up",
           true,
+          trigger,
         );
       }
 
@@ -240,9 +292,14 @@ export function useChatViewportTraceProbe(input: {
       prevScrollTop = scrollTop;
       prevScrollHeight = scrollHeight;
       prevPinned = pinned;
+      prevPositions = positions;
       prevMutations = mutations;
     };
 
+    // Sampling boundary: the rAF callback runs after the browser has applied
+    // this frame's layout and immediately before it paints, so a sample
+    // describes what the user is about to see. Sampling from mutation or scroll
+    // callbacks instead reported a false 980px jump — those fire mid-layout.
     const frame = () => {
       if (cancelled) return;
       takeSample();

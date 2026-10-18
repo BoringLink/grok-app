@@ -7,9 +7,14 @@ import {
   chatTraceSessionId,
   chatViewportTraceEnabled,
   chatViewportTraceEvents,
+  classifyPinFlipCause,
+  distanceToContentEnd,
+  DUMP_CONTEXT_EVENTS,
+  DUMP_MAX_CHARS,
   dumpChatViewportTrace,
   isBackwardViewportMove,
   isSuspiciousUpwardJump,
+  lastPinFlipCause,
   resetChatViewportTrace,
   setChatTraceSessionId,
   setChatViewportTraceEnabled,
@@ -18,6 +23,7 @@ import {
   traceScrollTopWrite,
   traceViewport,
   VIEWPORT_JUMP_MIN_PX,
+  visibleBandShift,
 } from "./chatViewportTrace";
 
 afterEach(() => {
@@ -163,10 +169,23 @@ describe("chatViewportTrace recording", () => {
     setChatViewportTraceEnabled(false);
 
     // Act
-    traceViewport("sample", { index: 1 });
+    const event = traceViewport("sample", { index: 1 });
 
     // Assert
+    expect(event).toBeNull();
     expect(chatViewportTraceEvents()).toHaveLength(0);
+  });
+
+  it("returns the recorded event so a trigger can be passed to the dump", () => {
+    // Arrange
+    setChatViewportTraceEnabled(true);
+
+    // Act
+    const event = traceViewport("backward", { fromIndex: 9, toIndex: 4 });
+
+    // Assert
+    expect(event?.kind).toBe("backward");
+    expect(chatViewportTraceEvents()).toEqual([event]);
   });
 
   it("keeps the newest events when the ring buffer overflows", () => {
@@ -299,5 +318,223 @@ describe("chatViewportTrace recording", () => {
 
     // Assert — vitest sets import.meta.env.DEV, so the default follows the build.
     expect(typeof chatViewportTraceEnabled()).toBe("boolean");
+  });
+});
+
+describe("distanceToContentEnd", () => {
+  it("is zero on the hard bottom and positive above it", () => {
+    // Arrange + Act + Assert
+    expect(
+      distanceToContentEnd({ scrollTop: 600, scrollHeight: 1000, clientHeight: 400 }),
+    ).toBe(0);
+    expect(
+      distanceToContentEnd({ scrollTop: 100, scrollHeight: 1000, clientHeight: 400 }),
+    ).toBe(500);
+  });
+
+  it("keeps a negative distance rather than hiding an overscrolling position", () => {
+    // Arrange + Act + Assert
+    expect(
+      distanceToContentEnd({ scrollTop: 620, scrollHeight: 1000, clientHeight: 400 }),
+    ).toBe(-20);
+  });
+});
+
+describe("visibleBandShift", () => {
+  it("reports the shared on-screen displacement of rows present in both frames", () => {
+    // Arrange — every visible row slid up by 6px between frames.
+    const previous = [
+      { index: 10, top: 100 },
+      { index: 11, top: 200 },
+      { index: 12, top: 300 },
+    ];
+    const current = [
+      { index: 10, top: 94 },
+      { index: 11, top: 194 },
+      { index: 12, top: 294 },
+    ];
+
+    // Act
+    const shift = visibleBandShift(previous, current);
+
+    // Assert
+    expect(shift).toBe(-6);
+  });
+
+  it("matches by index, so a row that merely reused a slot is not counted", () => {
+    // Arrange — row 10 left the band, row 13 entered; only 11 and 12 persist.
+    const previous = [
+      { index: 10, top: 100 },
+      { index: 11, top: 200 },
+      { index: 12, top: 300 },
+    ];
+    const current = [
+      { index: 11, top: 196 },
+      { index: 12, top: 296 },
+      { index: 13, top: 396 },
+    ];
+
+    // Act
+    const shift = visibleBandShift(previous, current);
+
+    // Assert
+    expect(shift).toBe(-4);
+  });
+
+  it("returns null when no row persisted", () => {
+    // Arrange + Act + Assert
+    expect(
+      visibleBandShift([{ index: 1, top: 0 }], [{ index: 2, top: 0 }]),
+    ).toBeNull();
+    expect(visibleBandShift([], [{ index: 2, top: 0 }])).toBeNull();
+  });
+});
+
+describe("classifyPinFlipCause", () => {
+  it("attributes the reason's own gesture prefix", () => {
+    // Arrange + Act + Assert
+    expect(classifyPinFlipCause({ reason: "wheel-escape", distFromBottom: 500 })).toBe("wheel");
+    expect(classifyPinFlipCause({ reason: "touch-repin", distFromBottom: 0 })).toBe("touch");
+    expect(classifyPinFlipCause({ reason: "keyboard-escape", distFromBottom: 500 })).toBe("keyboard");
+  });
+
+  it("classifies a gesture-free upward escape as layout clamping", () => {
+    // Arrange + Act + Assert
+    expect(
+      classifyPinFlipCause({ reason: "scroll-escape", distFromBottom: 700 }),
+    ).toBe("layout-clamp");
+  });
+
+  it("uses the caller's gesture when the reason cannot name one", () => {
+    // Arrange + Act + Assert
+    expect(
+      classifyPinFlipCause({ reason: "scroll-escape", gesture: "wheel", distFromBottom: 700 }),
+    ).toBe("wheel");
+    expect(
+      classifyPinFlipCause({ reason: "scroll-escape", gesture: "scrollbar", distFromBottom: 700 }),
+    ).toBe("scrollbar");
+  });
+
+  it("classifies a flip that landed on the hard bottom as hard-bottom", () => {
+    // Arrange + Act + Assert
+    expect(
+      classifyPinFlipCause({ reason: "scroll-state-transition", gesture: "wheel", distFromBottom: 0 }),
+    ).toBe("hard-bottom");
+    expect(
+      classifyPinFlipCause({ reason: "height-change-repin", distFromBottom: 0 }),
+    ).toBe("hard-bottom");
+  });
+
+  it("classifies the explicit button", () => {
+    // Arrange + Act + Assert
+    expect(
+      classifyPinFlipCause({ reason: "button-scroll-to-bottom", distFromBottom: 0 }),
+    ).toBe("button");
+  });
+});
+
+describe("tracePinState cause", () => {
+  it("records the normalized cause and mirrors it for the frame sampler", () => {
+    // Arrange
+    setChatViewportTraceEnabled(true);
+
+    // Act
+    tracePinState({
+      reason: "wheel-escape",
+      pinned: false,
+      escaped: true,
+      scrollTop: 120,
+      scrollHeight: 1000,
+      clientHeight: 400,
+    });
+
+    // Assert
+    const [event] = chatViewportTraceEvents();
+    expect(event?.cause).toBe("wheel");
+    expect(lastPinFlipCause()).toBe("wheel");
+  });
+
+  it("classifies a gesture-free escape as layout clamping", () => {
+    // Arrange
+    setChatViewportTraceEnabled(true);
+
+    // Act
+    tracePinState({
+      reason: "scroll-escape",
+      pinned: false,
+      escaped: true,
+      scrollTop: 120,
+      scrollHeight: 1000,
+      clientHeight: 400,
+    });
+
+    // Assert
+    expect(lastPinFlipCause()).toBe("layout-clamp");
+  });
+});
+
+describe("dumpChatViewportTrace trigger anchoring", () => {
+  it("anchors the window on the trigger, not on the newest event", () => {
+    // Arrange
+    setChatViewportTraceEnabled(true);
+    traceViewport("sample", { seq: 1 });
+    const trigger = traceViewport("backward", { seq: 2 });
+    traceViewport("sample", { seq: 3 });
+    traceViewport("sample", { seq: 4 });
+
+    // Act
+    const dump = dumpChatViewportTrace("test", trigger);
+
+    // Assert — the trigger is the last event in the window; later noise is out.
+    expect(dump.trigger).toBe(trigger);
+    expect(dump.events.at(-1)).toBe(trigger);
+    expect(dump.events.map((event) => event.seq)).toEqual([1, 2]);
+    expect(dump.truncated).toBe(false);
+  });
+
+  it("keeps the trigger in the window after a flood of later events", () => {
+    // Arrange
+    setChatViewportTraceEnabled(true);
+    traceViewport("sample", { seq: 0 });
+    const trigger = traceViewport("backward", { seq: 1 });
+    for (let i = 2; i < 300; i++) traceViewport("sample", { seq: i });
+
+    // Act
+    const dump = dumpChatViewportTrace("flood", trigger);
+
+    // Assert — the newest events are excluded; the trigger is retained.
+    expect(dump.events.at(-1)).toBe(trigger);
+    expect(dump.events.some((event) => event.seq === 299)).toBe(false);
+  });
+
+  it("drops the oldest context first and always keeps the trigger", () => {
+    // Arrange — each event carries a payload, so the char budget bites.
+    setChatViewportTraceEnabled(true);
+    const filler = "x".repeat(400);
+    for (let i = 0; i < 100; i++) traceViewport("sample", { seq: i, filler });
+    const trigger = traceViewport("backward", { seq: 100, filler });
+
+    // Act
+    const dump = dumpChatViewportTrace("budget", trigger);
+
+    // Assert
+    expect(dump.truncated).toBe(true);
+    expect(dump.events.at(-1)).toBe(trigger);
+    expect(dump.events.length).toBeLessThanOrEqual(DUMP_CONTEXT_EVENTS);
+    expect(JSON.stringify(dump).length).toBeLessThanOrEqual(DUMP_MAX_CHARS);
+  });
+
+  it("falls back to the newest event when the trigger was never recorded", () => {
+    // Arrange
+    setChatViewportTraceEnabled(true);
+    traceViewport("sample", { seq: 1 });
+    traceViewport("sample", { seq: 2 });
+
+    // Act
+    const dump = dumpChatViewportTrace("no-trigger", { t: 0, kind: "ghost" });
+
+    // Assert
+    expect(dump.trigger?.seq).toBe(2);
+    expect(dump.events.at(-1)?.seq).toBe(2);
   });
 });
