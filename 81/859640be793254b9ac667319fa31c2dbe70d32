@@ -1,0 +1,26 @@
+src/lib/grokActivityVirtualize.ts
+  s_90d80b5dac4733::t_dc60d1839f6c0b 10,122,128
+  s_90d80b5dac4733::t_107818516e5e1c 123-127
+src/components/lobe-chat/TimelinePhaseBlock.tsx
+  s_90d80b5dac4733::t_8378f64cbc18b4 70,603
+src/components/VirtualList.tsx
+  s_90d80b5dac4733::t_f309a913224d73 27,219-221
+src/hooks/useThoughtBodyFollow.ts
+  s_90d80b5dac4733::t_19ee993e8f6f83 7,35-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "81859640be793254b9ac667319fa31c2dbe70d32",
+  "prompts": {},
+  "sessions": {
+    "s_90d80b5dac4733": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14e74-f7c0-7853-889b-dcf49bda4f36",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
