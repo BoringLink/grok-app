@@ -1854,6 +1854,7 @@ export function ConversationThread({
     isPinnedRef,
     escapedRef,
     subscribeShowBack,
+    anchorRef,
     controller: viewportController,
   } = useChatViewportController({
     conversationKey: conversationKeyForStick,
@@ -2775,6 +2776,7 @@ export function ConversationThread({
     isPinnedRef,
     escapedRef,
     contentRef,
+    anchorRef,
     sessionId,
   });
 

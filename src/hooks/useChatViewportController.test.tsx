@@ -782,6 +782,164 @@ describe("useChatViewportController handle", () => {
       return harness;
     }
 
+    const rect = (top: number, height: number): DOMRect =>
+      ({
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 800,
+        width: 800,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    /**
+     * Viewport whose top sits inside a nested scroll container (an activity /
+     * thinking body): the scroller box and an element inside it, both measured.
+     */
+    function mountNestedScroller(input: {
+      scrollTop: number;
+      scrollerTop: number;
+      scrollerHeight: number;
+      innerTop: number;
+    }) {
+      let scrollTop = input.scrollTop;
+      let scrollerTop = input.scrollerTop;
+      const scrollerHeight = input.scrollerHeight;
+      let innerTop = input.innerTop;
+      const scrollHeight = 4000;
+      const viewport = document.createElement("div");
+      const content = document.createElement("div");
+      const scroller = document.createElement("div");
+      const inner = document.createElement("div");
+      scroller.style.overflowY = "auto"; // a real nested scroller
+      scroller.appendChild(inner);
+      content.appendChild(scroller);
+      viewport.appendChild(content);
+      document.body.appendChild(viewport);
+
+      Object.defineProperties(viewport, {
+        scrollTop: {
+          configurable: true,
+          get: () => scrollTop,
+          set: (value: number) => {
+            scrollTop = value;
+          },
+        },
+        scrollHeight: { configurable: true, get: () => scrollHeight },
+        clientHeight: { configurable: true, get: () => 400 },
+        clientWidth: { configurable: true, get: () => 800 },
+      });
+      Object.defineProperty(viewport, "getBoundingClientRect", {
+        configurable: true,
+        value: () => rect(0, 400),
+      });
+      Object.defineProperty(content, "getBoundingClientRect", {
+        configurable: true,
+        value: () => rect(-scrollTop, scrollHeight),
+      });
+      Object.defineProperty(scroller, "getBoundingClientRect", {
+        configurable: true,
+        value: () => rect(scrollerTop - scrollTop, scrollerHeight),
+      });
+      Object.defineProperty(inner, "getBoundingClientRect", {
+        configurable: true,
+        value: () => rect(innerTop - scrollTop, 40),
+      });
+
+      const { result, rerender } = renderHook(
+        ({ keyName }) => useChatViewportController({ conversationKey: keyName }),
+        { initialProps: { keyName: "before-attach" } },
+      );
+      Object.assign(result.current.viewportRef, { current: viewport });
+      Object.assign(result.current.contentRef, { current: content });
+      rerender({ keyName: "attached" });
+      act(() => vi.advanceTimersByTime(40));
+      scrollTop = input.scrollTop;
+
+      return {
+        controller: result.current.controller,
+        escapedRef: result.current.escapedRef,
+        scrollTop: () => scrollTop,
+        inner: () => inner,
+        setScrollerTop: (value: number) => {
+          scrollerTop = value;
+        },
+        setInnerTop: (value: number) => {
+          innerTop = value;
+        },
+      };
+    }
+
+    it("corrects an anchor move just past the tolerance in a mutation batch", async () => {
+      // Arrange — the write path used to skip anything under 1px, so a 0.6px
+      // slide was detected and then deliberately left uncorrected.
+      const harness = mountEscaped({ scrollTop: 200, aboveHeight: 200 });
+
+      // Act
+      await act(async () => {
+        harness.setAboveHeight(200.6);
+        harness.content.appendChild(document.createElement("div"));
+      });
+
+      // Assert — corrected, back inside the 0.5px bound.
+      expect(harness.scrollTop()).toBeCloseTo(200.6, 5);
+      expect(anchorScreenTop(harness)).toBeCloseTo(0, 5);
+    });
+
+    it("writes nothing for a move inside the tolerance", async () => {
+      // Arrange
+      const harness = mountEscaped({ scrollTop: 200, aboveHeight: 200 });
+
+      // Act — 0.4px is noise, below the bound.
+      await act(async () => {
+        harness.setAboveHeight(200.4);
+        harness.content.appendChild(document.createElement("div"));
+      });
+
+      // Assert
+      expect(harness.scrollTop()).toBe(200);
+    });
+
+    /**
+     * The anchor is never planted inside a nested scroller. A change inside one
+     * (a decode especially) is not reported by the content ResizeObserver or the
+     * MutationObserver, so the anchor is the scroller box instead — a position
+     * the transcript controls.
+     */
+    it("anchors on the nested scroller box, not an element inside it", () => {
+      // Arrange — the viewport top sits inside the scroller.
+      const harness = mountNestedScroller({
+        scrollTop: 150,
+        scrollerTop: 300,
+        scrollerHeight: 300,
+        innerTop: 320,
+      });
+      act(() => {
+        harness.controller.escape("test:locate");
+        harness.controller.restoreLayout();
+      });
+      const held = harness.scrollTop();
+
+      // Act 1 — an interior change (the inner element slides down 80px inside
+      // the scroller) moves the scroller's content, not its box.
+      harness.setInnerTop(400);
+      act(() => harness.controller.restoreLayout());
+
+      // Assert 1 — the anchor is unmoved; nothing wrote the transcript.
+      expect(harness.scrollTop()).toBe(held);
+
+      // Act 2 — the scroller box itself moves 80px; the anchor follows it.
+      harness.setScrollerTop(380);
+      act(() => harness.controller.restoreLayout());
+
+      // Assert 2 — proving the held anchor is the scroller box.
+      expect(harness.scrollTop()).toBe(held + 80);
+      expect(harness.escapedRef.current).toBe(true);
+    });
+
     it("holds the anchor when a block above it folds in a mutation batch", async () => {
       // Arrange
       const harness = mountEscaped({ scrollTop: 300, aboveHeight: 300 });

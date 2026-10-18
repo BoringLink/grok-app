@@ -238,8 +238,11 @@ export function useChatResidentList(
       const delta = next - prevHeight;
       if (Math.abs(delta) > 0.5) {
         if (nowMs() < scrollActiveUntilRef.current) {
-          // Mid-scroll: the controller learns at scroll idle so its restore
-          // does not fight the user's own move.
+          // Mid-scroll: the controller learns at scroll idle. This only gates
+          // the ledger-commit restore (a pin re-assert / band re-seed), never an
+          // escaped anchor — the row's own resize also changes the content
+          // column, and the controller's content ResizeObserver holds the
+          // escaped anchor each frame regardless of this deferral.
           pendingRestoreRef.current = true;
         } else {
           controller?.restoreLayout();

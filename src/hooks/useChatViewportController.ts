@@ -74,12 +74,14 @@ import {
   createViewportState,
   maxScrollTop,
   planRestore,
+  VIEWPORT_ANCHOR_TOLERANCE_PX,
   type ViewportDirective,
   type ViewportGeometry,
   type ViewportIntent,
   type ViewportState,
 } from "@/lib/chatViewportController";
 import {
+  anchorScreenShift,
   applyScrollTopTraced,
   chatViewportTraceEnabled,
   traceOcclusion,
@@ -98,6 +100,16 @@ export type UseChatViewportControllerOptions = {
   /** px from bottom still considered "near" for re-engage. Default 100. */
   thresholdPx?: number;
   enabled?: boolean;
+};
+
+/**
+ * The escaped reader's held anchor: the element taken at the viewport top and
+ * the screen top recorded for it. Exposed to the trace probe so the C3 read-out
+ * measures the same element the restore corrects.
+ */
+export type EscapedAnchorElement = {
+  element: HTMLElement | null;
+  screenTop: number;
 };
 
 /**
@@ -165,6 +177,12 @@ export type UseChatViewportControllerResult = {
   showBack: boolean;
   /** Fine-grained subscription for BackBottom button to avoid parent component re-renders. */
   subscribeShowBack: (cb: (val: boolean) => void) => () => void;
+  /**
+   * The escaped reader's held anchor (element + recorded screen top), or null
+   * while pinned. The trace probe reads it so its C3 metric measures the same
+   * element the restore holds (dev-only).
+   */
+  anchorRef: RefObject<EscapedAnchorElement | null>;
   /** Handle other transcript writers use instead of assigning scrollTop. */
   controller: ChatViewportControllerHandle;
 };
@@ -180,6 +198,18 @@ function stickNowMs(): number {
     typeof performance.now === "function"
     ? performance.now()
     : Date.now();
+}
+
+/**
+ * Whether an element is a scroll container the user can scroll on its own
+ * (the transcript's nested scrollers), read from the computed style so a
+ * content-overflow element (`overflow: hidden`) is not mistaken for one.
+ */
+function isScrollContainer(el: HTMLElement): boolean {
+  if (typeof getComputedStyle !== "function") return false;
+  const style = getComputedStyle(el);
+  const scrollable = (value: string) => value === "auto" || value === "scroll";
+  return scrollable(style.overflowY) || scrollable(style.overflowX);
 }
 
 export function useChatViewportController(
@@ -213,10 +243,7 @@ export function useChatViewportController(
    * the ledger and the MutationObserver cannot see (a collapse above the
    * mounted band); the ledger is the fallback when it cannot be resolved.
    */
-  const escapedAnchorRef = useRef<{
-    element: HTMLElement | null;
-    screenTop: number;
-  } | null>(null);
+  const escapedAnchorRef = useRef<EscapedAnchorElement | null>(null);
   /** Coalesces batch-end restores to at most one per frame. */
   const restoreScheduledRef = useRef(false);
   /**
@@ -391,7 +418,10 @@ export function useChatViewportController(
     (top: number, source = "stick:applyScrollTop") => {
       const el = viewportRef.current;
       if (!el) return;
-      if (Math.abs(el.scrollTop - top) < 1) {
+      // Never write for noise, always write for a violation: a target within the
+      // C1/C3 bound of the current position is not worth a write, and anything
+      // past it is.
+      if (Math.abs(el.scrollTop - top) <= VIEWPORT_ANCHOR_TOLERANCE_PX) {
         ignoreScrollTopRef.current = el.scrollTop;
         return;
       }
@@ -417,6 +447,14 @@ export function useChatViewportController(
   /**
    * The deepest element straddling the viewport top. Its on-screen position is
    * what "the user is reading here" means while escaped.
+   *
+   * The descent never enters a nested scroll container (the activity steps
+   * table, the thinking / fragment bodies): a change *inside* one of those —
+   * most importantly a decode, which carries no DOM mutation — moves an
+   * element within the scroller without resizing the scroller's box, so neither
+   * the content `ResizeObserver` nor the `MutationObserver` would report it and
+   * the anchor could not be held. Stopping at the scroller keeps the anchor on a
+   * box whose position the transcript controls.
    */
   const resolveTopAnchorElement = useCallback(
     (viewport: HTMLElement): HTMLElement | null => {
@@ -431,6 +469,7 @@ export function useChatViewportController(
         }) as HTMLElement | undefined;
         if (!next) break;
         anchor = next;
+        if (isScrollContainer(next)) break;
         current = next;
       }
       return anchor;
@@ -511,9 +550,11 @@ export function useChatViewportController(
       captureEscapeAnchor();
       return;
     }
-    if (anchor.element && anchor.element.isConnected) {
-      const delta = anchor.element.getBoundingClientRect().top - anchor.screenTop;
-      if (Math.abs(delta) > 0.5) {
+    // Same helper the trace samples with, so the restore and the C3 read-out
+    // can never disagree about the anchor's displacement.
+    const delta = anchorScreenShift(anchor);
+    if (delta != null) {
+      if (Math.abs(delta) > VIEWPORT_ANCHOR_TOLERANCE_PX) {
         applyScrollTop(
           Math.min(Math.max(0, el.scrollTop + delta), maxScrollTop(g)),
           "restore:anchor",
@@ -1094,27 +1135,28 @@ export function useChatViewportController(
           escaped: escapedRef.current,
         });
       }
+
       // A viewport resize reflows the column and changes the usable height, so
-      // the invariant must be re-asserted on this frame, not the next one. The
-      // RO callback runs after layout but before paint, so restoring here is
-      // already correct for the resized frame: pinned → the new content end,
-      // escaped → the anchor's on-screen position. Following via the rAF
-      // measurement instead would paint one frame off the end.
+      // the invariant must be re-asserted on this frame, not the next one
+      // (pinned → the new content end, escaped → the anchor's position).
+      //
+      // Both this and the content-decode case below go through the frame latch:
+      // one callback still restores once, and `scheduleRestore` runs
+      // `restoreNow` synchronously on its first call, so the restore is still
+      // before paint.
       if (viewportResized) {
-        restoreNow();
+        scheduleRestore();
       }
 
-      // A media element finishing decode takes its rendered height without a
-      // DOM mutation carrying the new size, so the MutationObserver cannot see
-      // it; only this content-box change reports it. While escaped the anchor
-      // must hold, so restore it here — the RO callback runs after layout but
-      // before paint, and `scheduleRestore` coalesces with any mutation restore
-      // in the same frame into one.
       if (contentHeight != null) {
         const contentChanged =
           previousContentHeight == null ||
           Math.abs(contentHeight - previousContentHeight) >= 0.5;
         previousContentHeight = contentHeight;
+        // A media element finishing decode takes its rendered height without a
+        // DOM mutation carrying the new size, so the MutationObserver cannot see
+        // it; only this content-box change reports it. While escaped the anchor
+        // must hold.
         if (contentChanged && escapedRef.current) {
           scheduleRestore();
         }
@@ -1306,6 +1348,7 @@ export function useChatViewportController(
     escapedRef,
     showBack: showBackRef.current,
     subscribeShowBack,
+    anchorRef: escapedAnchorRef,
     controller,
   };
 }

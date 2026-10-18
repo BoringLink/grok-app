@@ -3,6 +3,7 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  anchorScreenShift,
   applyScrollTopTraced,
   chatTraceSessionId,
   chatViewportTraceEnabled,
@@ -26,7 +27,6 @@ import {
   traceViewport,
   VIEWPORT_JUMP_MIN_PX,
   visibleBandShift,
-  visibleTopRowShift,
 } from "./chatViewportTrace";
 
 afterEach(() => {
@@ -393,43 +393,49 @@ describe("visibleBandShift", () => {
   });
 });
 
-describe("visibleTopRowShift", () => {
-  it("reports the top row's own displacement, not the band average", () => {
-    // Arrange — the anchor (row 10) moved 2px while the lower rows moved 20px.
-    const previous = [
-      { index: 10, top: 100 },
-      { index: 11, top: 200 },
-      { index: 12, top: 300 },
-    ];
-    const current = [
-      { index: 10, top: 102 },
-      { index: 11, top: 222 },
-      { index: 12, top: 322 },
-    ];
+describe("anchorScreenShift", () => {
+  /** Minimal connected element with a fixed `getBoundingClientRect().top`. */
+  function anchorElement(top: number, connected = true) {
+    const el = document.createElement("div");
+    Object.defineProperty(el, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ top }) as DOMRect,
+    });
+    if (connected) document.body.appendChild(el);
+    return el;
+  }
+
+  it("reports the anchor element's own screen-top shift from its recorded top", () => {
+    // Arrange
+    const element = anchorElement(140);
 
     // Act
-    const shift = visibleTopRowShift(previous, current);
+    const shift = anchorScreenShift({ element, screenTop: 100 });
 
     // Assert
-    expect(shift).toBe(2);
-    expect(visibleBandShift(previous, current)).toBe(15.33);
+    expect(shift).toBe(40);
   });
 
-  it("returns null when the current top row was not visible before", () => {
-    // Arrange — the frame jumped so far that the new top row is fresh.
-    const previous = [
-      { index: 10, top: 100 },
-      { index: 11, top: 200 },
-    ];
-    const current = [{ index: 14, top: 50 }];
+  it("reads a negative shift when the anchor moved up", () => {
+    // Arrange
+    const element = anchorElement(80);
 
     // Act + Assert
-    expect(visibleTopRowShift(previous, current)).toBeNull();
+    expect(anchorScreenShift({ element, screenTop: 100 })).toBe(-20);
   });
 
-  it("returns null for an empty current frame", () => {
+  it("returns null when no anchor is held", () => {
     // Arrange + Act + Assert
-    expect(visibleTopRowShift([{ index: 1, top: 0 }], [])).toBeNull();
+    expect(anchorScreenShift(null)).toBeNull();
+    expect(anchorScreenShift({ element: null, screenTop: 100 })).toBeNull();
+  });
+
+  it("returns null when the held element is disconnected", () => {
+    // Arrange — the row was re-rendered; the captured node is gone.
+    const element = anchorElement(140, false);
+
+    // Act + Assert
+    expect(anchorScreenShift({ element, screenTop: 100 })).toBeNull();
   });
 });
 

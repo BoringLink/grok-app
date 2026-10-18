@@ -500,24 +500,22 @@ export function visibleBandShift(
 }
 
 /**
- * On-screen displacement (px) of the topmost row present in both frames — the
- * escaped reader's anchor displacement, the quantity C3 is measured on.
+ * On-screen displacement (px) of a held element from the screen top recorded
+ * for it — one frame of the C3 read-out.
  *
- * `visibleBandShift` averages every visible row, which can dilute the one row
- * whose position defines "what the user is reading". This follows that row and
- * matches it by index, so a row that merely reused the slot is not counted.
- * Returns null when the current frame's top row was not visible on the previous
- * frame (nothing to compare against).
+ * Both the escaped restore and the sampler call this on the same source of
+ * truth (the controller's anchor ref), so the trace measures exactly the
+ * quantity the restore corrects: the captured anchor element's own screen-top
+ * shift. A row whose interior layout changed moves the anchor element even when
+ * the row's box does not, so this follows the element, not the top row.
+ * Returns null when no anchor is held or its element is gone.
  */
-export function visibleTopRowShift(
-  previous: readonly VisibleRowPosition[],
-  current: readonly VisibleRowPosition[],
-): number | null {
-  const top = current[0];
-  if (!top) return null;
-  const before = previous.find((row) => row.index === top.index);
-  if (!before) return null;
-  return round2(top.top - before.top);
+export function anchorScreenShift(anchor: {
+  element: HTMLElement | null;
+  screenTop: number;
+} | null): number | null {
+  if (!anchor || !anchor.element || !anchor.element.isConnected) return null;
+  return round2(anchor.element.getBoundingClientRect().top - anchor.screenTop);
 }
 
 /**

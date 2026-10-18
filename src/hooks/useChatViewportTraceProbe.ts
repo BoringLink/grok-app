@@ -19,6 +19,7 @@
 
 import { useEffect, type RefObject } from "react";
 import {
+  anchorScreenShift,
   chatTraceSessionId,
   chatViewportTraceEnabled,
   chatViewportWriteStats,
@@ -31,10 +32,11 @@ import {
   setChatViewportTracePinned,
   traceViewport,
   visibleBandShift,
-  visibleTopRowShift,
   type ViewportTraceEvent,
   type VisibleRowPosition,
 } from "@/lib/chatViewportTrace";
+import { VIEWPORT_ANCHOR_TOLERANCE_PX } from "@/lib/chatViewportController";
+import type { EscapedAnchorElement } from "@/hooks/useChatViewportController";
 import {
   shellsCrossingViewport,
   type BandRowRect,
@@ -125,10 +127,13 @@ export function useChatViewportTraceProbe(input: {
   isPinnedRef: RefObject<boolean>;
   escapedRef?: RefObject<boolean>;
   contentRef?: RefObject<HTMLElement | null>;
+  /** The escaped anchor the controller holds, for the C3 read-out. */
+  anchorRef?: RefObject<EscapedAnchorElement | null>;
   /** The chat's own session/conversation id, for correlating a viewport run. */
   sessionId?: string | null;
 }): void {
-  const { viewportRef, isPinnedRef, escapedRef, contentRef, sessionId } = input;
+  const { viewportRef, isPinnedRef, escapedRef, contentRef, anchorRef, sessionId } =
+    input;
 
   useEffect(() => {
     if (!chatViewportTraceEnabled()) return;
@@ -273,10 +278,12 @@ export function useChatViewportTraceProbe(input: {
       );
       const index = positions[0]?.index ?? null;
       const shift = visibleBandShift(prevPositions, positions);
-      // C3 read-out: while escaped the top visible row is the anchor, so its
-      // on-screen displacement is the quantity the ≤ 0.5px bound is judged on.
+      // C3 read-out: the captured anchor element's own screen-top shift from
+      // the position the controller recorded — the same source of truth the
+      // restore corrects. Null while pinned (the anchor is then the content
+      // end, judged by `d`).
       const anchorShift = escaped
-        ? visibleTopRowShift(prevPositions, positions)
+        ? anchorScreenShift(anchorRef?.current ?? null)
         : null;
       lastAnchorShift = anchorShift;
       // AC2: no shell may sit inside the visible band. Judged here, at the
@@ -329,7 +336,7 @@ export function useChatViewportTraceProbe(input: {
         // A ≤ 0.5px C3 bound is below the geometry noise floor, so an escaped
         // anchor drift must itself count as "moved" or it would never reach the
         // ring and the manual pass could not read it.
-        (anchorShift != null && Math.abs(anchorShift) > 0.5);
+        (anchorShift != null && Math.abs(anchorShift) > VIEWPORT_ANCHOR_TOLERANCE_PX);
 
       if (moved) {
         lastDTop = dTop;
@@ -554,5 +561,5 @@ export function useChatViewportTraceProbe(input: {
         delete host.__CHAT_VIEWPORT_DUMP__;
       }
     };
-  }, [viewportRef, isPinnedRef, contentRef, sessionId, escapedRef]);
+  }, [viewportRef, isPinnedRef, contentRef, anchorRef, sessionId, escapedRef]);
 }
