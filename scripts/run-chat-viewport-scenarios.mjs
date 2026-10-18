@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Run the chat-viewport delivery's synthetic scenarios and assert on the
  * resulting trace event sequence.
@@ -10,11 +11,12 @@
  * MutationObserver delivery, and checks each scenario against the trace ring
  * (`src/lib/chatViewportTrace.ts`) plus the DOM's own geometry:
  *
- *   1. continuous output          6. a real wheel upward
- *   2. a collapse above           7. occlusion and restore
- *   3. a re-growth above          8. a window resize
- *   4. small repeated reflow      9. a nested scroller expanding
- *   5. a gesture-free upward move 10. a media decode
+ *   1.  continuous output           7.  occlusion and restore (pinned)
+ *   2.  a collapse above            8.  occlusion and restore (escaped)
+ *   3.  a re-growth above           9.  the per-frame write budget
+ *   4.  small repeated reflow       10. a window resize
+ *   5.  a gesture-free upward move  11. a nested scroller expanding
+ *   6.  a real wheel upward         12. a media decode
  *
  * It is a repeatable artifact: exit code 0 when every scenario passes, 1
  * otherwise. Nothing is left running — the harness tears Chrome, the server
@@ -32,6 +34,7 @@ import { createElement } from "react";
 import { useChatViewportController } from "@/hooks/useChatViewportController";
 import {
   chatViewportTraceEvents,
+  chatViewportWriteStats,
   resetChatViewportTrace,
   setChatViewportTraceEnabled,
 } from "@/lib/chatViewportTrace";
@@ -111,6 +114,23 @@ const anchorShift = () => {
 const pinEvents = () =>
   chatViewportTraceEvents().filter((event) => event.kind === "pin");
 const kinds = () => chatViewportTraceEvents().map((event) => event.kind);
+
+/**
+ * Drive Page Visibility directly. The controller reads document.hidden, so this
+ * is the same signal a hidden window delivers; clearHidden removes the override
+ * so a later scenario runs against the real document.
+ */
+function setHidden(value) {
+  Object.defineProperty(document, "hidden", {
+    configurable: true,
+    get: () => value,
+  });
+  document.dispatchEvent(new Event("visibilitychange"));
+}
+function clearHidden() {
+  delete document.hidden;
+  document.dispatchEvent(new Event("visibilitychange"));
+}
 
 window.__SCENARIOS__ = {
   async continuousOutput() {
@@ -227,30 +247,82 @@ window.__SCENARIOS__ = {
     await pin();
     const vp = document.getElementById("viewport");
     const below = document.getElementById("below");
-    let hidden = false;
-    Object.defineProperty(document, "hidden", {
-      configurable: true,
-      get: () => hidden,
-    });
-    hidden = true;
-    document.dispatchEvent(new Event("visibilitychange"));
+    setHidden(true);
     await frame();
     // Output continues while the window is covered.
     below.style.height = "2600px";
     void vp.scrollHeight;
     await frame();
-    hidden = false;
-    document.dispatchEvent(new Event("visibilitychange"));
+    setHidden(false);
     await frames(2);
     const occlusionEvents = chatViewportTraceEvents().filter(
       (event) => event.kind === "occlusion",
     );
+    clearHidden();
     record(
       "restore lands back at the end after occlusion",
       Math.abs(distFromEnd(vp)) <= 0.5 &&
         occlusionEvents.some((event) => event.state === "exit"),
       "distance to end=" + distFromEnd(vp).toFixed(2) + "px, occlusion events=" +
         occlusionEvents.length,
+    );
+  },
+
+  async escapeOcclusionRestore() {
+    resetChatViewportTrace();
+    await pin();
+    await escapeOntoAnchor();
+    const above = document.getElementById("above");
+    setHidden(true);
+    await frame();
+    // A block above the anchor reflows while the window is covered.
+    above.style.height = "300px";
+    await frames(2);
+    setHidden(false);
+    await frames(2);
+    const shift = anchorShift();
+    clearHidden();
+    record(
+      "occlusion restore holds the escaped anchor, not the end",
+      window.__CTL__.escapedRef.current && shift != null && Math.abs(shift) <= 0.5,
+      "escaped=" + window.__CTL__.escapedRef.current + ", anchor shift=" +
+        (shift == null ? "null" : shift.toFixed(2) + "px"),
+    );
+  },
+
+  async writeBudget() {
+    resetChatViewportTrace();
+    await pin();
+    const vp = document.getElementById("viewport");
+    const below = document.getElementById("below");
+    let prev = chatViewportWriteStats().writes;
+    let maxWrites = 0;
+    const sampleWrites = () => {
+      const writes = chatViewportWriteStats().writes;
+      maxWrites = Math.max(maxWrites, writes - prev);
+      prev = writes;
+    };
+    // Pinned streaming: the controller restores the end on every growth.
+    for (let k = 0; k < 50; k += 1) {
+      below.style.height = 2000 + (k + 1) * 20 + "px";
+      void vp.scrollHeight;
+      await frame();
+      sampleWrites();
+    }
+    // Escaped read scroll: the controller holds the anchor.
+    vp.dispatchEvent(new WheelEvent("wheel", { deltaY: -120, bubbles: true }));
+    await frame();
+    prev = chatViewportWriteStats().writes;
+    for (let k = 0; k < 50; k += 1) {
+      vp.scrollTop = Math.max(0, vp.scrollTop - 20);
+      vp.dispatchEvent(new Event("scroll"));
+      await frame();
+      sampleWrites();
+    }
+    record(
+      "no frame carries more than one transcript write",
+      maxWrites <= 1,
+      "max writes/frame=" + maxWrites,
     );
   },
 
@@ -323,6 +395,7 @@ async function boot() {
   // Restore the state a scenario may have left behind between scenarios by
   // re-pinning and resetting the blocks the next one mutates.
   const reset = async () => {
+    clearHidden();
     document.getElementById("above").style.height = "800px";
     document.getElementById("below").style.height = "2000px";
     document.getElementById("nestedInner").style.height = "400px";
@@ -339,38 +412,54 @@ boot();
 const output = await withChromeHarness(
   ENTRY,
   async (page) => {
-  await page.waitFor("window.__HARNESS_READY__ === true", (value) => value === true);
-  const names = [
-    "continuousOutput",
-    "collapseAbove",
-    "regrowthAbove",
-    "smallRepeatedReflow",
-    "gestureFreeUpward",
-    "realWheelUpward",
-    "occlusionRestore",
-    "windowResize",
-    "nestedScroller",
-    "mediaDecode",
-  ];
-  const results = [];
-  for (const name of names) {
-    await page.evaluate("__SCENARIOS__.reset()", { awaitPromise: true });
-    await page.evaluate("__SCENARIO_RESULTS__.length = 0");
-    await page.evaluate(`__SCENARIOS__.${name}()`, { awaitPromise: true });
-    results.push(...(await page.evaluate("__SCENARIO_RESULTS__")));
-  }
-  return results;
+    await page.waitFor(
+      "window.__HARNESS_READY__ === true",
+      (value) => value === true,
+    );
+    const names = [
+      "continuousOutput",
+      "collapseAbove",
+      "regrowthAbove",
+      "smallRepeatedReflow",
+      "gestureFreeUpward",
+      "realWheelUpward",
+      "occlusionRestore",
+      "escapeOcclusionRestore",
+      "writeBudget",
+      "windowResize",
+      "nestedScroller",
+      "mediaDecode",
+    ];
+    const results = [];
+    for (const name of names) {
+      await page.evaluate("__SCENARIOS__.reset()", { awaitPromise: true });
+      await page.evaluate("__SCENARIO_RESULTS__.length = 0");
+      await page.evaluate(`__SCENARIOS__.${name}()`, { awaitPromise: true });
+      results.push(...(await page.evaluate("__SCENARIO_RESULTS__")));
+    }
+    return results;
   },
-  { define: { "process.env.NODE_ENV": '"development"', "import.meta.env.DEV": "true" } },
-);
+  {
+    define: {
+      "process.env.NODE_ENV": '"development"',
+      "import.meta.env.DEV": "true",
+    },
+  },
+).catch((error) => {
+  console.error(
+    `chat-scenarios: ${error instanceof Error ? error.message : error}`,
+  );
+  process.exitCode = 1;
+  return null;
+});
 
-let failed = 0;
-for (const result of output) {
-  const mark = result.ok ? "PASS" : "FAIL";
-  if (!result.ok) failed += 1;
-  console.log(`${mark}  ${result.name} — ${result.detail}`);
+if (output) {
+  let failed = 0;
+  for (const result of output) {
+    const mark = result.ok ? "PASS" : "FAIL";
+    if (!result.ok) failed += 1;
+    console.log(`${mark}  ${result.name} — ${result.detail}`);
+  }
+  console.log(`${output.length - failed}/${output.length} scenarios passed`);
+  process.exitCode = failed === 0 ? 0 : 1;
 }
-console.log(
-  `${output.length - failed}/${output.length} scenarios passed`,
-);
-process.exitCode = failed === 0 ? 0 : 1;

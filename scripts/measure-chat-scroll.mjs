@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Measure the per-frame cost and the position-write budget of a 10k-row chat
  * conversation.
@@ -6,8 +7,9 @@
  * list plus the *real* viewport controller (the single transcript writer), then
  * drives two phases over the conversation and reports, per phase:
  *
- *   - the distribution of main-thread task durations during the phase (CDP
- *     `devtools.timeline` `RunTask` events), read against the 120 Hz budget of
+ *   - the per-frame cost from a CDP trace: the `FireAnimationFrame` callback
+ *     durations (the app's paint-boundary work) and, beside them, the
+ *     `UpdateLayoutTree` + `Layout` durations, read against the 120Hz budget of
  *     8.3ms;
  *   - the transcript position writes each frame carried, from the controller's
  *     own write counter.
@@ -281,26 +283,34 @@ const output = await withChromeHarness(ENTRY, async (page) => {
   const streamEvents = await stopStream();
 
   return { meta, read, readEvents, stream, streamEvents };
+}).catch((error) => {
+  console.error(
+    `chat-scroll: ${error instanceof Error ? error.message : error}`,
+  );
+  process.exitCode = 1;
+  return null;
 });
 
-console.log(`rows: ${output.meta.rows} (ledger ${output.meta.ledgerRows})`);
-console.log(
-  `trace events: read ${output.readEvents.length}, stream ${output.streamEvents.length}`,
-);
-console.log(
-  `conversation height: ${output.meta.scrollHeight}px, viewport ${output.meta.clientHeight}px`,
-);
-console.log(`first-frame: ${output.meta.firstFrameMs.toFixed(0)}ms`);
-console.log(
-  `ledger memory: ${(output.meta.ledgerMemoryBytes / 1024).toFixed(1)}KB (${output.meta.ledgerMemoryBytes} bytes)`,
-);
-printFrameCost("read-phase frame cost", output.readEvents);
-printLayoutCost("read-phase style+layout", output.readEvents);
-console.log(
-  `read phase: escaped=${output.read.escaped}, ${output.read.fromTop}px -> ${output.read.toTop}px`,
-);
-printWrites("read-phase writes", output.read);
-printFrameCost("stream-phase frame cost", output.streamEvents);
-printLayoutCost("stream-phase style+layout", output.streamEvents);
-console.log(`stream phase: pinned=${output.stream.pinned}`);
-printWrites("stream-phase writes", output.stream);
+if (output) {
+  console.log(`rows: ${output.meta.rows} (ledger ${output.meta.ledgerRows})`);
+  console.log(
+    `trace events: read ${output.readEvents.length}, stream ${output.streamEvents.length}`,
+  );
+  console.log(
+    `conversation height: ${output.meta.scrollHeight}px, viewport ${output.meta.clientHeight}px`,
+  );
+  console.log(`first-frame: ${output.meta.firstFrameMs.toFixed(0)}ms`);
+  console.log(
+    `ledger memory: ${(output.meta.ledgerMemoryBytes / 1024).toFixed(1)}KB (${output.meta.ledgerMemoryBytes} bytes)`,
+  );
+  printFrameCost("read-phase frame cost", output.readEvents);
+  printLayoutCost("read-phase style+layout", output.readEvents);
+  console.log(
+    `read phase: escaped=${output.read.escaped}, ${output.read.fromTop}px -> ${output.read.toTop}px`,
+  );
+  printWrites("read-phase writes", output.read);
+  printFrameCost("stream-phase frame cost", output.streamEvents);
+  printLayoutCost("stream-phase style+layout", output.streamEvents);
+  console.log(`stream phase: pinned=${output.stream.pinned}`);
+  printWrites("stream-phase writes", output.stream);
+}

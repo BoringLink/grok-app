@@ -100,17 +100,43 @@ export function serveDir(dir) {
   });
 }
 
-/** Launch headless Chrome with a remote-debugging port. */
+/**
+ * Launch headless Chrome with an OS-assigned remote-debugging port.
+ *
+ * `--remote-debugging-port=0` lets the OS pick a free port (a fixed or random
+ * range can collide when two harnesses run at once); Chrome writes the chosen
+ * port to `DevToolsActivePort` in the user-data dir, which this polls until it
+ * appears.
+ */
 export async function launchChrome(dir) {
-  const port = 9200 + Math.floor(Math.random() * 500);
+  const profileDir = join(dir, "profile");
   const child = spawn(CHROME, [
     "--headless=new",
     "--disable-gpu",
     "--no-sandbox",
-    `--remote-debugging-port=${port}`,
-    "--user-data-dir=" + join(dir, "profile"),
+    "--remote-debugging-port=0",
+    "--user-data-dir=" + profileDir,
     "about:blank",
   ]);
+  const portFile = join(profileDir, "DevToolsActivePort");
+  let port = null;
+  for (let i = 0; i < 200; i++) {
+    try {
+      const lines = readFileSync(portFile, "utf8").split("\n");
+      const parsed = Number(lines[0]);
+      if (Number.isInteger(parsed) && parsed > 0) {
+        port = parsed;
+        break;
+      }
+    } catch {
+      // Not written yet.
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  if (port == null) {
+    child.kill("SIGKILL");
+    throw new Error("Chrome never reported a devtools port");
+  }
   return {
     port,
     kill: () => child.kill("SIGKILL"),
@@ -136,6 +162,7 @@ async function waitForDevtools(port) {
  * events can be consumed without a full client.
  */
 class CdpPage {
+  /** Wire the browser websocket: dispatch responses by id, events by method. */
   constructor(ws) {
     this.ws = ws;
     this.id = 0;
@@ -156,6 +183,7 @@ class CdpPage {
     });
   }
 
+  /** Send one CDP command; resolves with the full reply message. */
   send(method, params, sessionId) {
     return new Promise((resolvePromise) => {
       const msgId = ++this.id;
@@ -164,17 +192,20 @@ class CdpPage {
     });
   }
 
+  /** Subscribe to a CDP event method; returns an unsubscribe. */
   on(method, handler) {
     if (!this.eventHandlers.has(method)) this.eventHandlers.set(method, new Set());
     this.eventHandlers.get(method).add(handler);
     return () => this.eventHandlers.get(method)?.delete(handler);
   }
 
+  /** Subscribe to every CDP event; returns an unsubscribe. */
   onEvent(handler) {
     this.globalHandlers.add(handler);
     return () => this.globalHandlers.delete(handler);
   }
 
+  /** Create the page target, attach a flat session and navigate to `url`. */
   async open(url) {
     await new Promise((r) => this.ws.addEventListener("open", r, { once: true }));
     const { result } = await this.send("Target.createTarget", { url: "about:blank" });
@@ -188,6 +219,10 @@ class CdpPage {
     await this.send("Page.navigate", { url }, this.sessionId);
   }
 
+  /**
+   * Evaluate `expression` in the page and return its value by value. Rethrows a
+   * page exception and fails on a timeout.
+   */
   async evaluate(expression, { awaitPromise = false, timeoutMs = 120_000 } = {}) {
     const res = await Promise.race([
       this.send(
@@ -250,6 +285,7 @@ class CdpPage {
     };
   }
 
+  /** Close the browser websocket. */
   close() {
     this.ws.close();
   }

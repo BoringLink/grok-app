@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Measure the first-frame cost of opening a 10k-row conversation.
  *
@@ -10,7 +11,8 @@
  *
  * It does NOT run the packaged app on WKWebView, so it cannot report a number
  * for the macOS client's own first frame; it bounds the frontend work. The
- * ledger's own footprint at this scale is reported by `measure-chat-ledger.mjs`.
+ * ledger's own footprint at this scale is reported by `measure-chat-scroll.mjs`
+ * and, in the packaged client, on the trace heartbeat.
  *
  *   node scripts/measure-chat-first-frame.mjs [rows]
  */
@@ -130,19 +132,26 @@ requestAnimationFrame(() =>
 );
 `;
 
-const result = await withChromeHarness(ENTRY, (page) =>
-  page.waitFor(
-    "({ms: window.__FIRST_FRAME_MS ?? null, rows: window.__ROW_COUNT ?? null, appMount: window.__APP_RENDERS_AT_MOUNT__ ?? null, appScroll: window.__APP_RENDERS_AFTER_SCROLL__ ?? null, rowRenders: window.__ROW_RENDERS_DURING_SCROLL__ ?? null, err: window.__ERR__ ?? null})",
-    (value) => value?.appScroll != null,
-  ),
-);
+try {
+  const result = await withChromeHarness(ENTRY, (page) =>
+    page.waitFor(
+      "({ms: window.__FIRST_FRAME_MS ?? null, rows: window.__ROW_COUNT ?? null, appMount: window.__APP_RENDERS_AT_MOUNT__ ?? null, appScroll: window.__APP_RENDERS_AFTER_SCROLL__ ?? null, rowRenders: window.__ROW_RENDERS_DURING_SCROLL__ ?? null, err: window.__ERR__ ?? null})",
+      (value) => value?.appScroll != null,
+    ),
+  );
 
-console.log(
-  `first-frame: ${result.ms.toFixed(0)}ms for ${result.rows} rows (${ROWS} expected)`,
-);
-console.log(
-  `parent renders: ${result.appMount} at mount, ${result.appScroll} after 40 scroll frames`,
-);
-console.log(
-  `row re-renders during those 40 scroll frames: ${result.rowRenders}`,
-);
+  console.log(
+    `first-frame: ${result.ms.toFixed(0)}ms for ${result.rows} rows (${ROWS} expected)`,
+  );
+  console.log(
+    `parent renders: ${result.appMount} at mount, ${result.appScroll} after 40 scroll frames`,
+  );
+  console.log(
+    `row re-renders during those 40 scroll frames: ${result.rowRenders}`,
+  );
+} catch (error) {
+  console.error(
+    `chat-first-frame: ${error instanceof Error ? error.message : error}`,
+  );
+  process.exitCode = 1;
+}
