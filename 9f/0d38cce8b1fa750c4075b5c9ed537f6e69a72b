@@ -1,0 +1,69 @@
+src/styles/chat.part3.css
+  s_e49d6188cd724a::t_84e1e4c9e6b09c 241
+src/components/lobe-chat/MessageNodeRail.tsx
+  s_e49d6188cd724a::t_4761e6faf95e32 66-69
+src/components/ImageUi.tsx
+  s_e49d6188cd724a::t_65c0350f43835b 107-108,609
+src/components/SettingsPage.tsx
+  s_e49d6188cd724a::t_63f993a68d8a51 575
+src/hooks/useChatResidentList.ts
+  s_e49d6188cd724a::t_539c339d999604 5
+  s_e49d6188cd724a::t_231a1fb1bd3146 2-3
+src/lib/chatViewportLedger.ts
+  s_e49d6188cd724a::t_7e69c25ca26d40 2
+src/lib/chatViewportLedger.test.ts
+  s_e49d6188cd724a::t_2087fbcc05b7e4 575
+src/lib/filePathResolveCache.ts
+  s_e49d6188cd724a::t_38b7c98a02b317 3
+src/lib/transcriptFilterPref.ts
+  s_e49d6188cd724a::t_8a88ed25b2ee1b 86
+src/components/lobe-chat/lobe-chat.part1.css
+  s_e49d6188cd724a::t_3e61292a471096 276
+src/hooks/useChatViewportController.ts
+  s_e49d6188cd724a::t_18822822df3ac8 118,243,291,943,973-974,1059,1336
+src/components/lobe-chat/ConversationThread.tsx
+  s_e49d6188cd724a::t_6d0e86a51a0695 2250
+  s_e49d6188cd724a::t_ca7e1bf10e21c7 915,2271,2739
+  s_e49d6188cd724a::t_62438c5e0b1625 520,1955,2099,2166,2212,2288,2301,2538-2539,2550
+src/lib/chatResidentBand.ts
+  s_e49d6188cd724a::t_34cab488bfc9b0 2,8
+src/lib/chatViewportTrace.ts
+  s_e49d6188cd724a::t_609c053eb2562f 44,51-52,433
+src/lib/session/tools.ts
+  s_e49d6188cd724a::t_4d8ef6b94f4ed5 263,265-268
+src/lib/stickToBottom.core.test.ts
+  s_e49d6188cd724a::t_10a020ac366c37 123
+  s_e49d6188cd724a::t_9a4fbc8899e087 239
+src/hooks/useChatViewportController.test.tsx
+  s_e49d6188cd724a::t_25974f1f47a2c7 492
+src/components/lobe-chat/LongAssistantSpillNote.tsx
+  s_e49d6188cd724a::t_c5e18ed22d769f 4
+src/lib/messageNodeDeepLink.ts
+  s_e49d6188cd724a::t_f2cb5d68faec1b 177
+src/lib/stickToBottom.ts
+  s_e49d6188cd724a::t_1f9b52aa3f5a6f 25,35
+  s_e49d6188cd724a::t_1271f92570aae0 375,595
+src/lib/chatViewportController.ts
+  s_e49d6188cd724a::t_f327ba9d0cb15b 370-371
+src/lib/chatVirtualScrollPref.test.ts
+  s_e49d6188cd724a::t_7e3a8a64208d53 35
+src/styles/bottom-terminal.css
+  s_e49d6188cd724a::t_d903df5a4efd11 5
+  s_e49d6188cd724a::t_3523872519fc9c 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "9f0d38cce8b1fa750c4075b5c9ed537f6e69a72b",
+  "prompts": {},
+  "sessions": {
+    "s_e49d6188cd724a": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15061-ecc1-7bd0-9493-9932f6061665",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
