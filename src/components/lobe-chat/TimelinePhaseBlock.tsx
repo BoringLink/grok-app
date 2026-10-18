@@ -67,6 +67,7 @@ import {
   shouldVirtualizeActivityWithExpand,
   type ActivityStepExpandState,
 } from "@/lib/grokActivityVirtualize";
+import { applyScrollTopTraced } from "@/lib/chatViewportTrace";
 import { VirtualList } from "@/components/VirtualList";
 import { useThoughtBodyFollow } from "@/hooks/useThoughtBodyFollow";
 import { ToolExpandBody } from "./ToolExpandBody";
@@ -599,7 +600,7 @@ export function GrokActivitySteps({
       scrollChildIntoContainer(root, el);
       return;
     }
-    root.scrollTop = root.scrollHeight;
+    applyScrollTopTraced("activity:tailPin", root, root.scrollHeight);
   }, [live, followKey, total]);
 
   const getKey = useCallback((step: GrokActivityStep) => step.key, []);

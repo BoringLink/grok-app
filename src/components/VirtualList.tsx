@@ -24,6 +24,7 @@ import {
   isTreeRevealMotionActive,
   runAfterTreeRevealMotion,
 } from "@/lib/treeReveal";
+import { applyScrollTopTraced } from "@/lib/chatViewportTrace";
 
 export type VirtualListProps<T> = {
   items: readonly T[];
@@ -215,7 +216,9 @@ export function VirtualList<T>({
         currentScrollTop: parent.scrollTop,
         listOffsetTop,
       });
-      if (nextTop !== parent.scrollTop) parent.scrollTop = nextTop;
+      if (nextTop !== parent.scrollTop) {
+        applyScrollTopTraced("list:alignScrollToKey", parent, nextTop);
+      }
       recompute();
     };
 

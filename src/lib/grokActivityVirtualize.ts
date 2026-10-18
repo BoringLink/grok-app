@@ -7,6 +7,7 @@
  * Expand open/user-toggled sets live on the parent so remounts do not wipe them.
  */
 
+import { applyScrollTopTraced } from "./chatViewportTrace";
 import { toolStepDefaultOpen } from "./toolStepsAutoCollapsePref";
 
 /** Virtualize when step count exceeds this (≤ threshold → full map). */
@@ -118,7 +119,13 @@ export function scrollChildIntoContainer(
     container.getBoundingClientRect(),
     child.getBoundingClientRect(),
   );
-  if (delta !== 0) container.scrollTop += delta;
+  if (delta !== 0) {
+    applyScrollTopTraced(
+      "nested:childIntoView",
+      container,
+      container.scrollTop + delta,
+    );
+  }
 }
 
 /**
