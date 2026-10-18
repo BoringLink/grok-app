@@ -97,8 +97,16 @@ export type ChatViewportControllerHandle = {
    * "back to bottom" control. Every write is recorded for the trace.
    */
   assign(source: string, top: number, behavior?: ScrollBehavior): void;
+  /**
+   * The single geometry ledger (ADR 0006). The resident list seeds estimates
+   * and reads shell heights from it; measured heights go through
+   * `reportRowHeight` so the controller stays the writer of the ledger.
+   */
+  ledger(): LayoutLedger;
   /** A row's measured height changed — restore the invariant before paint. */
   reportRowHeight(index: number, height: number): void;
+  /** Drop every remembered height (conversation / row-identity change). */
+  resetLedger(): void;
   /** A layout batch changed the transcript height — restore before paint. */
   restoreLayout(source?: string): void;
   /** Programmatic escape (rail / find jump): the user is reading history. */
@@ -1104,10 +1112,19 @@ export function useChatViewportController(
   const controller = useMemo<ChatViewportControllerHandle>(
     () => ({
       assign,
+      ledger() {
+        return ledgerRef.current;
+      },
       reportRowHeight(index, height) {
         const ledger = ledgerRef.current;
         if (index >= ledger.rowCount()) ledger.setCount(index + 1);
         ledger.setRowHeight(index, height, "measured");
+      },
+      resetLedger() {
+        ledgerRef.current = createLayoutLedger({
+          count: 0,
+          estimateHeight: LEDGER_FALLBACK_ESTIMATE_PX,
+        });
       },
       restoreLayout() {
         restoreNow();
