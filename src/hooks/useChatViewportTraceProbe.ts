@@ -10,7 +10,9 @@
  *
  * Sampling runs on rAF plus a timer fallback: WebKit throttles rAF in a
  * background window, and the heartbeat exists so a capture that finds nothing
- * can be told apart from a probe that never sampled.
+ * can be told apart from a probe that never sampled. The heartbeat also dumps
+ * the recent per-frame samples (distance to the content end, visible-band
+ * shift, write sources), which otherwise only leave the process on a trigger.
  *
  * Cost when disabled: one cached boolean check, no rAF loop, no listeners.
  */
@@ -124,6 +126,9 @@ export function useChatViewportTraceProbe(input: {
     let prevPositions: VisibleRowPosition[] = [];
     let lastDTop = 0;
     let lastDHeight = 0;
+    /** Latest frame metrics, surfaced on the heartbeat so the log reads out. */
+    let lastDistFromBottom = 0;
+    let lastVisibleShift: number | null = null;
     let sampled = 0;
     let backwardCount = 0;
     let cancelled = false;
@@ -144,6 +149,8 @@ export function useChatViewportTraceProbe(input: {
       scrollTop: Math.round(viewport.scrollTop),
       scrollHeight: Math.round(viewport.scrollHeight),
       clientHeight: Math.round(viewport.clientHeight),
+      distFromBottom: Math.round(lastDistFromBottom),
+      visibleShiftPx: lastVisibleShift,
       pinned: !!isPinnedRef.current,
       hidden: typeof document !== "undefined" ? document.hidden : null,
       visibility:
@@ -221,6 +228,8 @@ export function useChatViewportTraceProbe(input: {
         scrollHeight,
         clientHeight,
       });
+      lastDistFromBottom = distFromBottom;
+      lastVisibleShift = shift;
       const dTop = scrollTop - prevScrollTop;
       const dHeight = scrollHeight - prevScrollHeight;
       const dMutations = mutations - prevMutations;
@@ -367,6 +376,13 @@ export function useChatViewportTraceProbe(input: {
             scrollTop: Math.round(top),
             scrollHeight: Math.round(height),
             clientHeight: Math.round(viewport.clientHeight),
+            distFromBottom: Math.round(
+              distanceToContentEnd({
+                scrollTop: top,
+                scrollHeight: height,
+                clientHeight: viewport.clientHeight,
+              }),
+            ),
             index: firstVisibleRowIndex(viewport, contentRef?.current ?? null),
             dTop: Math.round(dTop),
             dHeight: Math.round(dHeight),
@@ -386,8 +402,12 @@ export function useChatViewportTraceProbe(input: {
     }, 2000);
 
     const heartbeat = window.setInterval(() => {
-      void publishTraceToHost({
-        reason: "heartbeat",
+      // A dump, not a bare status line: the per-frame samples (distance to the
+      // content end, visible-band shift, write sources) only reach the log
+      // through a dump, so a session with no trigger would otherwise keep them
+      // in the ring. The heartbeat event is itself the newest event the dump
+      // anchors on.
+      traceViewport("heartbeat", {
         ...geometry(),
         sampled,
         mutations,
@@ -397,6 +417,7 @@ export function useChatViewportTraceProbe(input: {
         gestureMsAgo:
           lastGestureAt === 0 ? null : Math.round(performance.now() - lastGestureAt),
       });
+      publish("heartbeat", true);
     }, HEARTBEAT_MS);
 
     return () => {
