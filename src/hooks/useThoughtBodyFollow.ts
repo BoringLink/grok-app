@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { applyScrollTopTraced } from "@/lib/chatViewportTrace";
 import {
   nextThoughtBodyEscaped,
   shouldFollowThoughtBody,
@@ -31,7 +32,9 @@ export function useThoughtBodyFollow(input: {
     const el = ref.current;
     if (!el) return;
     const top = thoughtBodyFollowTop(el.scrollHeight, el.clientHeight);
-    if (Math.abs(el.scrollTop - top) > 0.5) el.scrollTop = top;
+    if (Math.abs(el.scrollTop - top) > 0.5) {
+      applyScrollTopTraced("thought:bodyPin", el, top);
+    }
   };
 
   const follow = () => {
