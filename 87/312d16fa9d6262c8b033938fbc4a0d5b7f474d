@@ -1,0 +1,31 @@
+docs/llm-wiki/chat-viewport-budget.md
+  s_30909c381b1e41::t_66cce252b097b5 1-15,19-74,76-78,81,85,88-91,94-95,97-176
+  s_30909c381b1e41::t_92526a384f2eb5 16-18
+  s_30909c381b1e41::t_90a6ef39375db7 75,79-80,82-84,86-87,92-93,96
+package.json
+  s_30909c381b1e41::t_9bc3e8b1d2de29 42-44
+scripts/run-chat-viewport-scenarios.mjs
+  s_30909c381b1e41::t_6e11441a3ec71e 358-360
+  s_30909c381b1e41::t_b314b018f683ea 311,314-315
+  s_30909c381b1e41::t_7c4da0a0d6236a 363-365
+  s_30909c381b1e41::t_f72ec0fe43fd51 80
+  s_30909c381b1e41::t_df7ab3b5e78b62 339-341
+  s_30909c381b1e41::t_5d40a47f5569fe 1-79,81-82,84-310,312-313,316-338,342-357,361-362,366-376
+  s_30909c381b1e41::t_cdea2479b11342 83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "87312d16fa9d6262c8b033938fbc4a0d5b7f474d",
+  "prompts": {},
+  "sessions": {
+    "s_30909c381b1e41": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1500d-088d-7321-8bcc-1bcc062dca5a",
+        "model": "auto(free)"
+      },
+      "human_author": null
+    }
+  }
+}
