@@ -1050,7 +1050,9 @@ describe("useChatViewportController handle", () => {
       const harness = mountWithRows({ scrollTop: 200, aboveHeight: 200 });
 
       // Act — a find jump to a non-tail message.
-      act(() => harness.controller.jumpTo("jump:test", 320));
+      act(() =>
+        harness.controller.jumpTo("jump:test", { kind: "position", top: 320 }),
+      );
 
       // Assert — escaped, landed, with the landing as the anchor.
       expect(harness.isPinnedRef.current).toBe(false);
@@ -1076,7 +1078,7 @@ describe("useChatViewportController handle", () => {
       expect(harness.escapedRef.current).toBe(true);
 
       // Act — a jump to the last row (the tail), even while it streams.
-      act(() => harness.controller.jumpTo("jump:test", 200, true));
+      act(() => harness.controller.jumpTo("jump:test", { kind: "end" }));
 
       // Assert — pinned at the content end.
       expect(harness.isPinnedRef.current).toBe(true);
@@ -1089,7 +1091,9 @@ describe("useChatViewportController handle", () => {
       const harness = mount({ scrollTop: 0, scrollHeight: 1000 });
 
       // Act
-      act(() => harness.controller.jumpTo("jump:test", 5000));
+      act(() =>
+        harness.controller.jumpTo("jump:test", { kind: "position", top: 5000 }),
+      );
 
       // Assert — the engine clamped the write to the end, so follow re-engages.
       expect(harness.scrollTop()).toBe(600);

@@ -389,6 +389,15 @@ export function planRestore(input: {
 }
 
 /**
+ * A programmatic jump target: the content end, or a specific position. The
+ * caller names the case it decided (the target is the conversation's last row,
+ * or a measured position), rather than passing a bare boolean.
+ */
+export type JumpTarget =
+  | { kind: "end" }
+  | { kind: "position"; top: number };
+
+/**
  * The outcome of a programmatic jump. `end` re-engages follow at the content
  * end; `land` escapes onto a specific position, which becomes the anchor.
  */
@@ -399,20 +408,23 @@ export type JumpDecision =
 /**
  * Plan a programmatic jump (rail / find / deep link).
  *
- * A target that is the conversation's last row is a jump to the end: the reader
- * is at the tail, so follow re-engages (and stays there while that row streams).
- * Every other target lands at `top`, clamped to the scroller, and escapes onto
- * it — unless the clamp puts the landing on the content end, where the reader is
- * also at the tail and follow re-engages instead of pinning an anchor to the
- * bottom.
+ * A target of the content end (a jump to the last row) re-engages follow, and
+ * so does any position that clamps to the content end: the reader is at the
+ * tail either way, so follow does not hold an escaped anchor there. Every other
+ * target lands on its position and escapes onto it.
+ *
+ * "The content end" is `contentEndScrollTop`, the same helper the `end`
+ * directive uses, so the two can never disagree about where the end is.
  */
 export function planJump(input: {
-  atTail: boolean;
-  top: number;
+  target: JumpTarget;
   geometry: ViewportGeometry;
 }): JumpDecision {
-  if (input.atTail) return { kind: "end" };
-  const top = Math.min(Math.max(0, input.top), maxScrollTop(input.geometry));
+  if (input.target.kind === "end") return { kind: "end" };
+  const top = Math.min(
+    Math.max(0, input.target.top),
+    contentEndScrollTop(input.geometry),
+  );
   if (
     isHardBottom(top, input.geometry.scrollHeight, input.geometry.clientHeight)
   ) {

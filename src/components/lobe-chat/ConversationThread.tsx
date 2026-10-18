@@ -151,7 +151,7 @@ import { BackBottom } from "./BackBottom";
 import { InlineUserEdit } from "./InlineUserEdit";
 import { HighlightedText } from "@/components/HighlightedText";
 import { UserMessageBody } from "./ThreadUserBody";
-import { findChatMatches } from "@/lib/chatFind";
+import { findCenteredScrollTop, findChatMatches } from "@/lib/chatFind";
 import { extractAutomationPayload } from "@/lib/automationSetup";
 import {
   isToolStepMessage,
@@ -210,6 +210,13 @@ type AttachLabels = {
   addToComposer: string;
   remove: string;
 };
+
+/**
+ * Frames to wait for a jumped-to row's find mark to exist. A hit outside the
+ * band lands on the row box first; the band re-bands it rich in the write path
+ * and the mark renders on that commit, so a couple of frames is ample.
+ */
+const FIND_MARK_ALIGN_ATTEMPTS = 8;
 
 /** Keep path-map object identity when tool paths did not change (stream text growth). */
 function useStableSessionPathMap(
@@ -2105,13 +2112,6 @@ export function ConversationThread({
     () => latestContinuableEndMessageId(transcriptMessages),
     [transcriptMessages],
   );
-  /**
-   * Id of the last painted transcript row. A rail / find jump whose target is
-   * this row is a jump to the end: the controller re-engages follow instead of
-   * escaping onto it.
-   */
-  const tailMessageIdRef = useRef<string | null>(null);
-  tailMessageIdRef.current = transcriptMessages.at(-1)?.id ?? null;
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [locateTargetId, setLocateTargetId] = useState<string | null>(null);
   const [focusMessageId, setFocusMessageId] = useState<string | null>(null);
@@ -2120,7 +2120,15 @@ export function ConversationThread({
     null,
   );
   const locateRafRef = useRef<number | null>(null);
-  /** Records find-jump scroll position after the smooth animation settles. */
+  /**
+   * Whether the in-flight rail / deep-link jump targets the conversation's last
+   * row. Set by the jump handler (not during render), read by the locate effect
+   * that re-runs the landing after the force-mount commit.
+   */
+  const locateAtTailRef = useRef(false);
+  /** Cancels the find mark-alignment frame when the active match changes. */
+  const findAlignRafRef = useRef<number | null>(null);
+  /** Logs the find landing once the scroll has settled. */
   const findSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -2146,7 +2154,7 @@ export function ConversationThread({
   }, []);
 
   const applyScrollToNodeDom = useCallback(
-    (node: SessionMessageNode, attempt = 0) => {
+    (node: SessionMessageNode, attempt = 0, atTail = false) => {
       const viewport = scrollRef.current;
       if (!viewport) return;
 
@@ -2159,41 +2167,44 @@ export function ConversationThread({
         if (attempt < 8) {
           locateRafRef.current = window.requestAnimationFrame(() => {
             locateRafRef.current = null;
-            applyScrollToNodeDom(node, attempt + 1);
+            applyScrollToNodeDom(node, attempt + 1, atTail);
           });
         }
         return;
       }
 
-      // Align the node to the upper band so tall previous messages leave the
-      // focus line. The controller owns the write — `scrollIntoView` would also
-      // move unrelated scrollable ancestors and bypass the single writer.
-      const atTail = tailMessageIdRef.current === node.id;
-      const beforeAlignScroll = viewport.scrollTop;
-      const alignViewportRect = viewport.getBoundingClientRect();
-      const alignRootRect = root.getBoundingClientRect();
-      const alignTop = Math.max(
-        0,
-        viewport.scrollTop + (alignRootRect.top - alignViewportRect.top),
-      );
-      viewportController.jumpTo("jump:locate", alignTop, atTail);
-      traceViewport("locate:align", {
-        nodeId: node.id,
-        before: Math.round(beforeAlignScroll),
-        after: Math.round(viewport.scrollTop),
-      });
-      // Nudge: keep a small top inset so the bubble isn't under chrome. A jump
-      // to the tail lands on the content end instead, so it skips the nudge.
+      // A jump to the last row is a jump to the end: the controller re-engages
+      // follow (already done in the handler), so there is no element to align.
       if (!atTail) {
+        // Align the node to the upper band so tall previous messages leave the
+        // focus line. The controller owns the write — `scrollIntoView` would
+        // also move unrelated scrollable ancestors and bypass the single writer.
+        const beforeAlignScroll = viewport.scrollTop;
+        const alignViewportRect = viewport.getBoundingClientRect();
+        const alignRootRect = root.getBoundingClientRect();
+        const alignTop = Math.max(
+          0,
+          viewport.scrollTop + (alignRootRect.top - alignViewportRect.top),
+        );
+        viewportController.jumpTo("jump:locate", {
+          kind: "position",
+          top: alignTop,
+        });
+        traceViewport("locate:align", {
+          nodeId: node.id,
+          before: Math.round(beforeAlignScroll),
+          after: Math.round(viewport.scrollTop),
+        });
+        // Nudge: keep a small top inset so the bubble isn't under chrome.
         const vr = viewport.getBoundingClientRect();
         const rr = root.getBoundingClientRect();
         const desiredTop = vr.top + Math.min(48, viewport.clientHeight * 0.1);
         const delta = rr.top - desiredTop;
         if (Math.abs(delta) > 2) {
-          viewportController.jumpTo(
-            "jump:locateNudge",
-            Math.max(0, viewport.scrollTop + delta),
-          );
+          viewportController.jumpTo("jump:locateNudge", {
+            kind: "position",
+            top: Math.max(0, viewport.scrollTop + delta),
+          });
         }
       }
 
@@ -2214,9 +2225,10 @@ export function ConversationThread({
       const viewport = scrollRef.current;
       if (!viewport) return;
 
-      // Leave stick-to-bottom so programmatic jumps are not yanked back; the
-      // controller records the escape. The landing below settles the state.
-      viewportController.escape("jump:locate");
+      // Decide the tail case before any write: a jump whose target is the last
+      // row is a jump to the end and must never pass through the escaped phase.
+      const atTail = transcriptMessages.at(-1)?.id === node.id;
+      locateAtTailRef.current = atTail;
 
       railCursorRef.current = node.id;
       navLockUntilRef.current = performance.now() + 1200;
@@ -2229,22 +2241,29 @@ export function ConversationThread({
         focusClearTimerRef.current = null;
       }, 1600);
 
-      // Coarse jump via the paint list so estimates match the virtualizer.
-      // node.messageIndex is journal-space; tool rows may be filtered out.
-      const paintIndex = transcriptMessages.findIndex((m) => m.id === node.id);
-      const approx =
-        paintIndex >= 0
-          ? estimateStartScrollTop(
-              transcriptMessages,
-              paintIndex,
-              viewport.clientHeight,
-            )
-          : estimateStartScrollTop(
-              messages,
-              node.messageIndex,
-              viewport.clientHeight,
-            );
-      viewportController.assign("jump:locate", approx);
+      if (atTail) {
+        viewportController.jumpTo("jump:locate", { kind: "end" });
+      } else {
+        // Leave stick-to-bottom so the coarse estimate is not yanked back; the
+        // landing below settles the state.
+        viewportController.escape("jump:locate");
+        // Coarse jump via the paint list so estimates match the virtualizer.
+        // node.messageIndex is journal-space; tool rows may be filtered out.
+        const paintIndex = transcriptMessages.findIndex((m) => m.id === node.id);
+        const approx =
+          paintIndex >= 0
+            ? estimateStartScrollTop(
+                transcriptMessages,
+                paintIndex,
+                viewport.clientHeight,
+              )
+            : estimateStartScrollTop(
+                messages,
+                node.messageIndex,
+                viewport.clientHeight,
+              );
+        viewportController.assign("jump:locate", approx);
+      }
 
       if (locateRafRef.current != null) {
         window.cancelAnimationFrame(locateRafRef.current);
@@ -2253,7 +2272,7 @@ export function ConversationThread({
       locateRafRef.current = window.requestAnimationFrame(() => {
         locateRafRef.current = window.requestAnimationFrame(() => {
           locateRafRef.current = null;
-          applyScrollToNodeDom(node, 0);
+          applyScrollToNodeDom(node, 0, atTail);
         });
       });
     },
@@ -2271,7 +2290,9 @@ export function ConversationThread({
     if (!locateTargetId) return;
     const node = messageNodes.find((n) => n.id === locateTargetId);
     if (!node) return;
-    const t = window.requestAnimationFrame(() => applyScrollToNodeDom(node, 0));
+    const t = window.requestAnimationFrame(() =>
+      applyScrollToNodeDom(node, 0, locateAtTailRef.current),
+    );
     return () => window.cancelAnimationFrame(t);
   }, [locateTargetId, messageNodes, applyScrollToNodeDom]);
 
@@ -2357,50 +2378,85 @@ export function ConversationThread({
     [tr],
   );
 
-  // Scroll the current find match into view (mark if present, else message).
+  // Scroll the current find match into view (the mark; the row is the fallback).
   useEffect(() => {
     if (!findActive?.messageId) return;
     const q = findQuery.trim();
     if (!q) return;
     const id = findActive.messageId;
-    const t = window.requestAnimationFrame(() => {
-      const root = document.querySelector(
-        `[data-message-id="${CSS.escape(id)}"]`,
-      ) as HTMLElement | null;
-      if (!root) return;
-      const currentMark = root.querySelector(
-        '[data-find-mark="current"]',
-      ) as HTMLElement | null;
-      const target = currentMark ?? root;
+
+    const queryRoot = (): HTMLElement | null =>
+      document.querySelector(`[data-message-id="${CSS.escape(id)}"]`);
+
+    /** Center `target` through the controller (the single writer). */
+    const centerOn = (
+      target: HTMLElement,
+      reason: string,
+      label: "mark" | "row",
+    ): void => {
       const viewport = scrollRef.current;
-      const before = viewport?.scrollTop ?? null;
+      if (!viewport) return;
+      const targetRect = target.getBoundingClientRect();
+      const viewportRect = viewport.getBoundingClientRect();
+      const top = findCenteredScrollTop({
+        scrollTop: viewport.scrollTop,
+        targetTop: targetRect.top,
+        viewportTop: viewportRect.top,
+        viewportHeight: viewport.clientHeight,
+        targetHeight: targetRect.height,
+      });
+      const before = viewport.scrollTop;
+      viewportController.jumpTo("jump:find", { kind: "position", top });
       const payload = {
-        reason: "find:scrollIntoView",
+        reason,
         messageId: id,
-        target: currentMark ? "current-mark" : "message",
+        target: label,
         before,
-        scrollHeight: viewport?.scrollHeight ?? null,
-        clientHeight: viewport?.clientHeight ?? null,
+        after: scrollRef.current?.scrollTop ?? null,
+        scrollHeight: viewport.scrollHeight,
+        clientHeight: viewport.clientHeight,
         pinnedBefore: isPinnedRef.current,
       };
-      traceViewport("find:scrollIntoView", payload);
+      traceViewport(reason, payload);
       void publishTraceToHost(payload);
-      if (viewport) {
-        // Land the match through the controller (the single writer);
-        // `scrollIntoView` would also move unrelated scrollable ancestors.
-        // Instant, so the resident list re-bands in the write path and the
-        // jumped-to row renders real content in the frame that paints it. A
-        // match in the last row is a jump to the end, which re-engages follow.
-        const viewportRect = viewport.getBoundingClientRect();
-        const targetRect = target.getBoundingClientRect();
-        const centered =
-          viewport.scrollTop +
-          (targetRect.top - viewportRect.top) -
-          (viewport.clientHeight - targetRect.height) / 2;
-        viewportController.jumpTo(
-          "jump:find",
-          Math.max(0, centered),
-          tailMessageIdRef.current === id,
+    };
+
+    /**
+     * Center the mark once it exists. A hit outside the band lands on the row
+     * box first; the controller write re-bands the row rich in the same write
+     * path and the mark renders on that commit, so this retries a few frames.
+     */
+    const alignToMark = (attempt: number): void => {
+      const mark = queryRoot()?.querySelector(
+        '[data-find-mark="current"]',
+      ) as HTMLElement | null;
+      if (!mark) {
+        if (attempt < FIND_MARK_ALIGN_ATTEMPTS) {
+          findAlignRafRef.current = window.requestAnimationFrame(() =>
+            alignToMark(attempt + 1),
+          );
+        }
+        return;
+      }
+      findAlignRafRef.current = null;
+      centerOn(mark, "find:align-mark", "mark");
+    };
+
+    const t = window.requestAnimationFrame(() => {
+      const root = queryRoot();
+      if (!root || !scrollRef.current) return;
+      const mark = root.querySelector(
+        '[data-find-mark="current"]',
+      ) as HTMLElement | null;
+      if (mark) {
+        // The hit is already inside the band: one write centers the mark.
+        centerOn(mark, "find:scrollIntoView", "mark");
+      } else {
+        // Land on the row box so the band renders it rich in the write path,
+        // then align to the mark on the frame it exists.
+        centerOn(root, "find:scrollIntoView", "row");
+        findAlignRafRef.current = window.requestAnimationFrame(() =>
+          alignToMark(0),
         );
       }
       if (findSettleTimerRef.current != null) {
@@ -2422,6 +2478,10 @@ export function ConversationThread({
     });
     return () => {
       window.cancelAnimationFrame(t);
+      if (findAlignRafRef.current != null) {
+        window.cancelAnimationFrame(findAlignRafRef.current);
+        findAlignRafRef.current = null;
+      }
       if (findSettleTimerRef.current != null) {
         clearTimeout(findSettleTimerRef.current);
         findSettleTimerRef.current = null;
@@ -2436,6 +2496,9 @@ export function ConversationThread({
       if (findSettleTimerRef.current) clearTimeout(findSettleTimerRef.current);
       if (locateRafRef.current != null) {
         window.cancelAnimationFrame(locateRafRef.current);
+      }
+      if (findAlignRafRef.current != null) {
+        window.cancelAnimationFrame(findAlignRafRef.current);
       }
     };
   }, []);

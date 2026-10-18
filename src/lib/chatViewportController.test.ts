@@ -385,15 +385,14 @@ describe("chatViewportController restore", () => {
 
 /**
  * A rail / find / deep-link jump either lands on a historical position (escape
- * onto it) or re-engages follow at the end (`atTail`, or a landing that clamps
- * to the content end). User story 15.
+ * onto it) or re-engages follow at the end (an `end` target, or a position that
+ * clamps to the content end). User story 15.
  */
 describe("planJump", () => {
-  it("lands a non-tail jump on the escaped position", () => {
+  it("lands a position jump on the escaped position", () => {
     // Arrange + Act
     const decision = planJump({
-      atTail: false,
-      top: 250,
+      target: { kind: "position", top: 250 },
       geometry: geometry({ scrollTop: 600 }),
     });
 
@@ -402,10 +401,9 @@ describe("planJump", () => {
   });
 
   it("re-engages follow for a jump whose target is the last row", () => {
-    // Arrange + Act — the target row is the conversation's last row.
+    // Arrange + Act — the caller named the target as the content end.
     const decision = planJump({
-      atTail: true,
-      top: 250,
+      target: { kind: "end" },
       geometry: geometry({ scrollTop: 600 }),
     });
 
@@ -416,8 +414,7 @@ describe("planJump", () => {
   it("re-engages follow when the landing clamps to the content end", () => {
     // Arrange + Act — past the content end (600), so the engine clamps to it.
     const decision = planJump({
-      atTail: false,
-      top: 5000,
+      target: { kind: "position", top: 5000 },
       geometry: geometry({ scrollTop: 0 }),
     });
 
@@ -425,11 +422,36 @@ describe("planJump", () => {
     expect(decision).toEqual({ kind: "end" });
   });
 
+  it("treats the content end the same as the end directive when the scroller has a bottom inset", () => {
+    // Arrange — 800px of rows plus a 200px bottom inset (the floating composer
+    // gutter) make scrollHeight 1000 with clientHeight 400: content end 600.
+    const insetGeometry = (): ViewportGeometry => ({
+      scrollTop: 0,
+      scrollHeight: 1000,
+      clientHeight: 400,
+    });
+    expect(contentEndScrollTop(insetGeometry())).toBe(600);
+
+    // Act + Assert — exactly at the end re-engages; past the hard-bottom
+    // tolerance (2px) it lands on the position instead.
+    expect(
+      planJump({
+        target: { kind: "position", top: 600 },
+        geometry: insetGeometry(),
+      }),
+    ).toEqual({ kind: "end" });
+    expect(
+      planJump({
+        target: { kind: "position", top: 597 },
+        geometry: insetGeometry(),
+      }),
+    ).toEqual({ kind: "land", top: 597 });
+  });
+
   it("clamps a negative landing to the top of the transcript", () => {
     // Arrange + Act
     const decision = planJump({
-      atTail: false,
-      top: -50,
+      target: { kind: "position", top: -50 },
       geometry: geometry({ scrollTop: 600 }),
     });
 
