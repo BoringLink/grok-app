@@ -1,0 +1,22 @@
+CONTEXT.md
+  s_39e12dca10916e::t_803fb88dbed5a5 1-2,4,6,12,14,24,26,28,34,36,43,45,48,50
+  s_39e12dca10916e::t_b5385366a2baa8 3,5,7-11,13,15-23,25,27,29-33,35,37-42,44,46-47,49,51-53
+docs/adr/0006-explicit-chat-viewport-control.md
+  s_39e12dca10916e::t_9710d363e35c44 1-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "b7532fa48246c3bc344a3458fe63b256cbd6c346",
+  "prompts": {},
+  "sessions": {
+    "s_39e12dca10916e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14af1-a628-7f83-b692-898c6acaa413",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
