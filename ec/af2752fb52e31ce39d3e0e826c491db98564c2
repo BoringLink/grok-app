@@ -1,0 +1,20 @@
+src/hooks/useChatViewportController.test.tsx
+  s_30909c381b1e41::t_942fa55b585194 432-464
+  s_30909c381b1e41::t_d763215fb62fd9 5-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "ecaf2752fb52e31ce39d3e0e826c491db98564c2",
+  "prompts": {},
+  "sessions": {
+    "s_30909c381b1e41": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1500d-088d-7321-8bcc-1bcc062dca5a",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
