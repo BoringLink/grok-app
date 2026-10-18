@@ -1,0 +1,50 @@
+src/hooks/useChatViewportTraceProbe.guard.test.ts
+  s_507bc940edf249::t_e144f4abb7f686 1-43
+src/lib/chatViewportTrace.ts
+  s_507bc940edf249::t_07edfd5428977c 229
+  s_507bc940edf249::t_09a83c1ec85511 42-45
+  s_507bc940edf249::t_f303c6d1da7978 116-123,127-134,136
+  s_507bc940edf249::t_d9f4c88123a273 201-202,204-209,213,216
+  s_507bc940edf249::t_d7f13b1b2a40d6 309-313,315,333
+  s_507bc940edf249::t_b00f8bf50d108d 385-490,492-493
+  s_507bc940edf249::t_18dacf0f6e3589 254-268,272-275,277-294,301-308,316-320,323-327,329-332,334,336,339-341,345,347-351
+  s_507bc940edf249::t_bb8530933f7d38 46,210,491,521
+  s_507bc940edf249::t_0e7e81ab3d0189 314,321-322,328,335
+  s_507bc940edf249::t_2f13c4e45f7cdb 295-300
+src/hooks/useChatViewportTraceProbe.ts
+  s_507bc940edf249::t_777b0a922e7d73 299-302
+  s_507bc940edf249::t_2c327e31e9e723 153-157,161
+  s_507bc940edf249::t_3ed85c92d41a2b 205-208,217-223,245-246,251-253,270,279,287,295
+  s_507bc940edf249::t_a10755ae7c6d89 123-124
+  s_507bc940edf249::t_d23547dce90e83 193,201
+  s_507bc940edf249::t_2085c69c153fe8 22,26,30-32
+  s_507bc940edf249::t_07cf7f2722a25a 75-99
+src/lib/chatViewportTrace.test.ts
+  s_507bc940edf249::t_96ec8ab68cfe10 323-540
+  s_507bc940edf249::t_9476e98bbf1bbe 172,175,179-188
+  s_507bc940edf249::t_2861b56a854ae3 10-13,17,26
+src/hooks/useStickToBottom.ts
+  s_507bc940edf249::t_f9994792b83dbc 54
+  s_507bc940edf249::t_e62e847ba94beb 480-482
+  s_507bc940edf249::t_d64091c96d5682 630-633
+  s_507bc940edf249::t_dfe65a5e670831 143-144
+  s_507bc940edf249::t_896b21974c7a95 648
+  s_507bc940edf249::t_a9ab21d97c806e 739
+  s_507bc940edf249::t_8f1c7cf56bf230 807
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "3fad3ee130f579ff99031c52ac4ab694728a0140",
+  "prompts": {},
+  "sessions": {
+    "s_507bc940edf249": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14ef7-28c0-71f2-b95e-c78c726b524c",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
