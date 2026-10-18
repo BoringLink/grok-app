@@ -73,8 +73,10 @@ import {
   contentEndScrollTop,
   createViewportState,
   maxScrollTop,
+  planJump,
   planRestore,
   VIEWPORT_ANCHOR_TOLERANCE_PX,
+  type JumpTarget,
   type ViewportDirective,
   type ViewportGeometry,
   type ViewportIntent,
@@ -157,8 +159,21 @@ export type ChatViewportControllerHandle = {
    * frame — a programmatic jump must not paint a shell inside the band.
    */
   subscribePosition(listener: () => void): () => void;
-  /** Programmatic escape (rail / find jump): the user is reading history. */
+  /**
+   * Programmatic escape (rail / find jump). Drops the held anchor and enters
+   * the escaped phase: the caller's landing write becomes the anchor, which
+   * `jumpTo` captures so the landed position is held, not re-derived.
+   */
   escape(reason: string): void;
+  /**
+   * Land a programmatic jump (rail / find / deep link).
+   *
+   * A target of the content end (a jump to the conversation's last row, or a
+   * position that clamps to the bottom) re-engages follow. Any other target
+   * escapes onto the landed position, which becomes the anchor so a later
+   * height change above leaves the landed message where it is.
+   */
+  jumpTo(source: string, target: JumpTarget): void;
   /** Pin to the content end (send, force-stick, back-to-bottom). */
   pinToEnd(source: string, behavior?: ScrollBehavior): void;
 };
@@ -501,7 +516,13 @@ export function useChatViewportController(
 
   /** Commit a state decided by the pure planner and trace the transition. */
   const commitState = useCallback(
-    (state: ViewportState, reason: string, gesture?: PinFlipGesture) => {
+    (
+      state: ViewportState,
+      reason: string,
+      gesture?: PinFlipGesture,
+      /** Caller's already-read geometry, so a flip does not read it twice. */
+      geometry?: ViewportGeometry,
+    ) => {
       const pinned = state.phase === "pinned";
       const changed =
         pinned !== isPinnedRef.current || !pinned !== escapedRef.current;
@@ -510,7 +531,7 @@ export function useChatViewportController(
       escapedRef.current = !pinned;
       if (pinned) escapedAnchorRef.current = null;
       if (changed) {
-        const g = readGeometry();
+        const g = geometry ?? readGeometry();
         if (g) {
           tracePinState({
             reason,
@@ -526,6 +547,30 @@ export function useChatViewportController(
       }
     },
     [readGeometry, syncShowBack],
+  );
+
+  /**
+   * Enter the escaped phase programmatically (rail / find / deep link). The
+   * held anchor is dropped: the caller writes the landing position next, and
+   * `jumpTo` captures that landing as the new anchor so a later height change
+   * above restores it instead of displacing the landed message.
+   */
+  const beginEscape = useCallback(
+    (reason: string, geometry?: ViewportGeometry) => {
+      escapedAnchorRef.current = null;
+      commitState(
+        {
+          phase: "escaped",
+          anchor: null,
+          upStreak: 0,
+          upStreakAt: stickNowMs(),
+        },
+        reason,
+        undefined,
+        geometry,
+      );
+    },
+    [commitState],
   );
 
   const clearBottomIntent = useCallback(() => {
@@ -1324,19 +1369,45 @@ export function useChatViewportController(
         };
       },
       escape(reason) {
-        // A rail / find jump: the caller assigns the landed position next, so
-        // drop the held anchor and capture the landing on the first restore.
-        escapedAnchorRef.current = null;
-        commitState(
-          { phase: "escaped", anchor: null, upStreak: 0, upStreakAt: stickNowMs() },
-          reason,
-        );
+        beginEscape(reason);
+      },
+      jumpTo(source, target) {
+        const el = viewportRef.current;
+        if (!el) return;
+        // One geometry read backs the whole decision (planJump and the pin-flip
+        // trace); the landing write then reads only what it needs.
+        const geometry = readGeometry();
+        if (!geometry) return;
+        const decision = planJump({ target, geometry });
+        if (decision.kind === "end") {
+          // The landing is the content end (the target is the last row, or its
+          // position clamps to the bottom): the reader is at the tail, so follow
+          // re-engages instead of holding an escaped anchor there.
+          scrollToBottom(
+            "instant",
+            target.kind === "end" ? `${source}:tail` : `${source}:end`,
+          );
+          return;
+        }
+        beginEscape(source, geometry);
+        applyScrollTop(decision.top, source);
+        // The landing is the anchor: capture it now so a later height change
+        // above restores it instead of displacing the landed message.
+        captureEscapeAnchor();
       },
       pinToEnd(source, behavior = "instant") {
         scrollToBottom(behavior, source);
       },
     }),
-    [assign, commitState, restoreNow, scrollToBottom],
+    [
+      applyScrollTop,
+      assign,
+      beginEscape,
+      captureEscapeAnchor,
+      readGeometry,
+      restoreNow,
+      scrollToBottom,
+    ],
   );
 
   return {

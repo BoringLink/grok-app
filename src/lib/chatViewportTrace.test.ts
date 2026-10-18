@@ -454,6 +454,16 @@ describe("classifyPinFlipCause", () => {
     ).toBe("layout-clamp");
   });
 
+  it("classifies a programmatic jump as a jump, not a layout clamp", () => {
+    // Arrange + Act + Assert — the reader chose the position (rail / find).
+    expect(
+      classifyPinFlipCause({ reason: "jump:find", distFromBottom: 700 }),
+    ).toBe("jump");
+    expect(
+      classifyPinFlipCause({ reason: "jump:locate", gesture: "wheel", distFromBottom: 0 }),
+    ).toBe("jump");
+  });
+
   it("uses the caller's gesture when the reason cannot name one", () => {
     // Arrange + Act + Assert
     expect(

@@ -387,3 +387,48 @@ export function planRestore(input: {
   }
   return { kind: "anchor", top: scrollTopForAnchor(state.anchor, rows, geometry) };
 }
+
+/**
+ * A programmatic jump target: the content end, or a specific position. The
+ * caller names the case it decided (the target is the conversation's last row,
+ * or a measured position), rather than passing a bare boolean.
+ */
+export type JumpTarget =
+  | { kind: "end" }
+  | { kind: "position"; top: number };
+
+/**
+ * The outcome of a programmatic jump. `end` re-engages follow at the content
+ * end; `land` escapes onto a specific position, which becomes the anchor.
+ */
+export type JumpDecision =
+  | { kind: "end" }
+  | { kind: "land"; top: number };
+
+/**
+ * Plan a programmatic jump (rail / find / deep link).
+ *
+ * A target of the content end (a jump to the last row) re-engages follow, and
+ * so does any position that clamps to the content end: the reader is at the
+ * tail either way, so follow does not hold an escaped anchor there. Every other
+ * target lands on its position and escapes onto it.
+ *
+ * "The content end" is `contentEndScrollTop`, the same helper the `end`
+ * directive uses, so the two can never disagree about where the end is.
+ */
+export function planJump(input: {
+  target: JumpTarget;
+  geometry: ViewportGeometry;
+}): JumpDecision {
+  if (input.target.kind === "end") return { kind: "end" };
+  const top = Math.min(
+    Math.max(0, input.target.top),
+    contentEndScrollTop(input.geometry),
+  );
+  if (
+    isHardBottom(top, input.geometry.scrollHeight, input.geometry.clientHeight)
+  ) {
+    return { kind: "end" };
+  }
+  return { kind: "land", top };
+}

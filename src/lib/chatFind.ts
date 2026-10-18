@@ -184,3 +184,27 @@ export function formatChatFindCount(activeIndex: number, total: number): {
   const current = activeIndex >= 0 && activeIndex < total ? activeIndex + 1 : 1;
   return { current, total };
 }
+
+/**
+ * `scrollTop` that centers a find target vertically in the viewport.
+ *
+ * The rects are `getBoundingClientRect()` values in viewport coordinates, so
+ * `targetTop - viewportTop` is the target's on-screen offset. Negative results
+ * are clamped to the top: the scroller cannot go above its content. Whether the
+ * centered position actually reaches the content end (and so re-engages follow)
+ * is the controller's decision, not this helper's.
+ */
+export function findCenteredScrollTop(input: {
+  scrollTop: number;
+  targetTop: number;
+  viewportTop: number;
+  viewportHeight: number;
+  targetHeight: number;
+}): number {
+  return Math.max(
+    0,
+    input.scrollTop +
+      (input.targetTop - input.viewportTop) -
+      (input.viewportHeight - input.targetHeight) / 2,
+  );
+}
