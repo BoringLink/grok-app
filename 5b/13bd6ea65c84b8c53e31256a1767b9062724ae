@@ -1,0 +1,28 @@
+src/hooks/useChatViewportController.ts
+  s_79ab047f810040::t_38930ba386e64e 908-909
+  s_79ab047f810040::t_d266cbb8d0d84f 1106-1122
+  s_79ab047f810040::t_360dade79f1bf2 986-994
+src/hooks/useChatViewportController.test.tsx
+  s_79ab047f810040::t_c258eca42ee62e 600-602
+  s_79ab047f810040::t_9c36ae7b4e0b0c 558,568
+  s_79ab047f810040::t_d6fe1733e4e9b2 527
+  s_79ab047f810040::t_9098bd5f5af141 764-877
+docs/llm-wiki/session-continuity.md
+  s_79ab047f810040::t_188b3429db0822 359-367
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "5b13bd6ea65c84b8c53e31256a1767b9062724ae",
+  "prompts": {},
+  "sessions": {
+    "s_79ab047f810040": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14fbd-583e-7330-8d4e-a768e4e7aa5b",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
