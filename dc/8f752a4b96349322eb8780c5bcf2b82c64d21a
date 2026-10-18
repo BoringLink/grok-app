@@ -1,0 +1,25 @@
+src/lib/chatViewportTrace.test.ts
+  s_41ce35b1895b05::t_dee6c609260819 457-466
+docs/llm-wiki/chat-viewport-trace.md
+  s_41ce35b1895b05::t_bbed3fae58072a 104-106
+src/lib/chatViewportTrace.ts
+  s_41ce35b1895b05::t_143391a0fb6c89 541-543
+  s_41ce35b1895b05::t_795e3eb3a145e6 443-444
+  s_41ce35b1895b05::t_27f93287936934 526-530
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "dc8f752a4b96349322eb8780c5bcf2b82c64d21a",
+  "prompts": {},
+  "sessions": {
+    "s_41ce35b1895b05": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14fe9-48dd-7690-be14-9368f293df84",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
