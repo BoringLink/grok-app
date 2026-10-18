@@ -1,0 +1,82 @@
+src/lib/chatViewportOcclusion.test.ts
+  s_ea3a0627a24ff2::t_5a6762a756a2d5 4,6,10-11,15,23,27-34,40,44,53,55-64,67-101
+  s_5a98cfc153b25e::t_e47086a0950bd1 1-3,5,7-9,12-14,16-22,24-26,35-39,41-43,45-52,54,65-66,102-153
+src/lib/chatViewportTrace.test.ts
+  s_5a98cfc153b25e::t_fe78d1e0b6734c 23
+  s_ea3a0627a24ff2::t_00a61389c64bbe 470-488
+  s_5a98cfc153b25e::t_abbd26dc175572 438-469,489-506
+src/hooks/useChatViewportTraceProbe.ts
+  s_5a98cfc153b25e::t_df9ebeebffa0a0 168-169
+  s_5a98cfc153b25e::t_1b2e0afb28a55d 41-42,44-46
+  s_5a98cfc153b25e::t_a228c90b2fd23d 188-189
+  s_5a98cfc153b25e::t_24cc92c1f532bd 494-497,499-505
+  s_5a98cfc153b25e::t_62c272d4e31474 398-401
+  s_5a98cfc153b25e::t_0638c85084723f 498,506
+  s_5a98cfc153b25e::t_20553b665966fd 43
+src/hooks/useChatViewportController.test.tsx
+  s_5a98cfc153b25e::t_ce5622bdc7c3b3 678-690,692-768,770-939,941-945,947,1032-1033
+  s_5a98cfc153b25e::t_473aa05ddee1dd 59,62
+  s_ea3a0627a24ff2::t_e810ad270e33e0 9-28,30-35
+  s_ea3a0627a24ff2::t_ec877ce7fe2d80 950-1008,1011,1013-1014,1017-1031
+  s_ea3a0627a24ff2::t_4b236041ec399e 29
+  s_ea3a0627a24ff2::t_0ef6d6044e1712 691
+  s_ea3a0627a24ff2::t_4dab3d01da3492 940,946
+  s_ea3a0627a24ff2::t_866ab0a03f1de7 1009-1010,1012,1015-1016
+  s_ea3a0627a24ff2::t_2a687cb851f2a1 769
+src/lib/stickToBottom.ts
+  s_ea3a0627a24ff2::t_4a5109aae77f3b 504-507,512,516,518
+  s_ea3a0627a24ff2::t_0cdc853376f168 508-511
+src/lib/chatViewportTrace.ts
+  s_5a98cfc153b25e::t_8cd68055d68d01 245-254,256-278
+  s_ea3a0627a24ff2::t_a7a28d2bcec741 255
+src/lib/chatViewportOcclusion.ts
+  s_ea3a0627a24ff2::t_2a8d44395c5852 6-7,14-20,25-27,29,41-42,46-56,69-78
+  s_ea3a0627a24ff2::t_3fd98869ae5cf7 2
+  s_ea3a0627a24ff2::t_7ab3328179a06f 8-12
+  s_5a98cfc153b25e::t_caa81f4c9084b5 1,3-5,13,21-24,28,30-40,43-45,57-68,79-102
+src/hooks/useChatViewportController.ts
+  s_ea3a0627a24ff2::t_4eb411f555d8e2 520,523-528,533-539
+  s_ea3a0627a24ff2::t_0ab94a2beff23f 649
+  s_5a98cfc153b25e::t_71564d295e30da 1118-1119,1122-1123,1127-1131,1134,1136-1147,1151-1155,1157,1184,1196
+  s_5a98cfc153b25e::t_09d5320b1beebb 84
+  s_ea3a0627a24ff2::t_163e779f355361 317-331
+  s_ea3a0627a24ff2::t_2ab1f0892a90ba 1076-1082
+  s_5a98cfc153b25e::t_1bf5a0aa7f3598 50,52,54,56
+  s_5a98cfc153b25e::t_6c095cce4494e9 891
+  s_ea3a0627a24ff2::t_cdc6f1c3fec557 1099,1116,1120-1121,1126,1158-1181,1191-1194,1205
+  s_ea3a0627a24ff2::t_4610046c383d5d 206-217
+  s_ea3a0627a24ff2::t_c5612dbb6fedfe 51,53,57-63
+  s_5a98cfc153b25e::t_d2998a4a17393e 55
+  s_ea3a0627a24ff2::t_475ce1fd6994aa 629,631
+  s_5a98cfc153b25e::t_4facf8a801ce3b 1044,1048,1054-1060,1063-1064,1068-1075,1083
+  s_5a98cfc153b25e::t_16ed0ef3faab88 85
+  s_ea3a0627a24ff2::t_158241b71e4879 897
+  s_5a98cfc153b25e::t_75f6baec455c61 1065-1067
+docs/llm-wiki/chat-viewport-trace.md
+  s_ea3a0627a24ff2::t_035a20ad06e75c 139-147
+  s_5a98cfc153b25e::t_28d5ea66edb168 148-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "eaf4c3b04d5ba954094f979c9a73df3ba811c174",
+  "prompts": {},
+  "sessions": {
+    "s_5a98cfc153b25e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f5f-a6b2-7292-94bf-4bb7ac27c5f3",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_ea3a0627a24ff2": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f74-a604-78d2-9232-d696a242f304",
+        "model": "auto(free)"
+      },
+      "human_author": null
+    }
+  }
+}
