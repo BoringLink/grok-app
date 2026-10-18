@@ -19,6 +19,7 @@ include!("workspace.rs");
 include!("automation.rs");
 include!("settings.rs");
 include!("doctor_p1.rs");
+include!("chat_trace.rs");
 include!("doctor_p2.rs");
 include!("extensions_p1.rs");
 include!("extensions_p2.rs");

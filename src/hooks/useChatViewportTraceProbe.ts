@@ -17,6 +17,7 @@
 
 import { useEffect, type RefObject } from "react";
 import {
+  chatTraceSessionId,
   chatViewportTraceEnabled,
   dumpChatViewportTrace,
   isBackwardViewportMove,
@@ -44,6 +45,8 @@ const DUMP_COOLDOWN_MS = 1500;
 const HEARTBEAT_MS = 10_000;
 /** Sampling cadence for throttled / background windows. */
 const FALLBACK_SAMPLE_MS = 1000;
+/** Cadence of the live follower published for an external tracking session. */
+const LIVE_FOLLOW_MS = 250;
 
 function firstVisibleRowIndex(
   viewport: HTMLElement,
@@ -67,9 +70,12 @@ function firstVisibleRowIndex(
 export function useChatViewportTraceProbe(input: {
   viewportRef: RefObject<HTMLElement | null>;
   isPinnedRef: RefObject<boolean>;
+  escapedRef?: RefObject<boolean>;
   contentRef?: RefObject<HTMLElement | null>;
+  /** The chat's own session/conversation id, for correlating a viewport run. */
+  sessionId?: string | null;
 }): void {
-  const { viewportRef, isPinnedRef, contentRef } = input;
+  const { viewportRef, isPinnedRef, escapedRef, contentRef, sessionId } = input;
 
   useEffect(() => {
     if (!chatViewportTraceEnabled()) return;
@@ -81,6 +87,7 @@ export function useChatViewportTraceProbe(input: {
     let lastDumpAt = Number.NEGATIVE_INFINITY;
     let prevIndex: number | null = null;
     let prevScrollTop = viewport.scrollTop;
+    let previousNativeScrollTop = viewport.scrollTop;
     let prevScrollHeight = viewport.scrollHeight;
     let prevPinned = isPinnedRef.current;
     let lastDTop = 0;
@@ -127,6 +134,38 @@ export function useChatViewportTraceProbe(input: {
       lastGestureAt = performance.now();
     };
 
+    const onNativeScroll = () => {
+      if (cancelled) return;
+      const scrollTop = viewport.scrollTop;
+      const dTop = scrollTop - previousNativeScrollTop;
+      previousNativeScrollTop = scrollTop;
+      const gestureRecent = performance.now() - lastGestureAt < GESTURE_WINDOW_MS;
+      if (
+        Math.abs(dTop) >= GEOMETRY_EPSILON_PX ||
+        gestureRecent
+      ) {
+        traceViewport("native-scroll", {
+          scrollTop: Math.round(scrollTop),
+          scrollHeight: Math.round(viewport.scrollHeight),
+          clientHeight: Math.round(viewport.clientHeight),
+          dTop: Math.round(dTop),
+          pinned: !!isPinnedRef.current,
+          gestureRecent,
+        });
+      }
+      if (isSuspiciousUpwardJump({ userGestureRecent: gestureRecent, deltaTop: dTop })) {
+        traceViewport("upward-jump-native", {
+          dTop: Math.round(dTop),
+          scrollTop: Math.round(scrollTop),
+          scrollHeight: Math.round(viewport.scrollHeight),
+          clientHeight: Math.round(viewport.clientHeight),
+          pinned: !!isPinnedRef.current,
+          gestureRecent,
+        });
+        publish("viewport-native-jumped-up", false);
+      }
+    };
+
     /** One sample of the viewport; records only when something changed. */
     const takeSample = () => {
       if (cancelled) return;
@@ -168,7 +207,7 @@ export function useChatViewportTraceProbe(input: {
       if (
         isBackwardViewportMove({
           pinned,
-          escaped: false,
+          escaped: !!escapedRef?.current,
           userGestureRecent: gestureRecent,
           previousIndex: prevIndex,
           index,
@@ -193,7 +232,7 @@ export function useChatViewportTraceProbe(input: {
         // The chain matters more than later samples: publish now (rate limited).
         publish(
           backward ? "viewport-moved-to-older-message" : "viewport-jumped-up",
-          false,
+          true,
         );
       }
 
@@ -222,12 +261,65 @@ export function useChatViewportTraceProbe(input: {
 
     viewport.addEventListener("wheel", onGesture, { passive: true });
     viewport.addEventListener("touchmove", onGesture, { passive: true });
-    viewport.addEventListener("pointerdown", onGesture, { passive: true });
+    viewport.addEventListener("scroll", onNativeScroll, { passive: true });
+    traceViewport("probe-mounted", {
+      ...geometry(),
+      probeVersion: 4,
+      session: chatTraceSessionId(),
+      chatSession: sessionId ?? null,
+    });
+    void publishTraceToHost({
+      reason: "tracking-begin",
+      probeVersion: 4,
+      session: chatTraceSessionId(),
+      chatSession: sessionId ?? null,
+      ...geometry(),
+    });
     raf = requestAnimationFrame(frame);
 
     // Timer fallback: rAF is throttled in a background window, timers are not
     // (as aggressively), so a capture still yields samples while unfocused.
     const fallback = window.setInterval(takeSample, FALLBACK_SAMPLE_MS);
+
+    // Live follower for an external tracking session: while a session id is
+    // set, publish a compact per-frame-ish summary so `tail -F
+    // logs/app.log.<day> | grep <id>` follows the reproduction in near-real
+    // time (pin flips, big scrollTop moves, the chain before an upward jump).
+    let livePrevTop: number | null = null;
+    let livePrevHeight: number | null = null;
+    let livePeakTopMove = 0;
+    const liveTimer = chatTraceSessionId()
+      ? window.setInterval(() => {
+          if (cancelled) return;
+          const top = viewport.scrollTop;
+          const height = viewport.scrollHeight;
+          const dTop = livePrevTop == null ? 0 : top - livePrevTop;
+          const dHeight = livePrevHeight == null ? 0 : height - livePrevHeight;
+          if (Math.abs(dTop) > Math.abs(livePeakTopMove)) {
+            livePeakTopMove = dTop;
+          }
+          livePrevTop = top;
+          livePrevHeight = height;
+          if (Math.abs(dTop) < GEOMETRY_EPSILON_PX && livePeakTopMove === 0) {
+            return; // not moving — only emit the begin marker until something changes
+          }
+          void publishTraceToHost({
+            reason: "tracking-live",
+            session: chatTraceSessionId(),
+            chatSession: sessionId ?? null,
+            scrollTop: Math.round(top),
+            scrollHeight: Math.round(height),
+            clientHeight: Math.round(viewport.clientHeight),
+            index: firstVisibleRowIndex(viewport, contentRef?.current ?? null),
+            dTop: Math.round(dTop),
+            dHeight: Math.round(dHeight),
+            peakTopMove: Math.round(livePeakTopMove),
+            pinned: !!isPinnedRef.current,
+            escaped: !!escapedRef?.current,
+          });
+          livePeakTopMove = 0;
+        }, LIVE_FOLLOW_MS)
+      : null;
 
     // Baseline: proves the console → Host → log channel works, and records the
     // geometry at mount.
@@ -255,15 +347,16 @@ export function useChatViewportTraceProbe(input: {
       window.clearTimeout(startTimer);
       window.clearInterval(fallback);
       window.clearInterval(heartbeat);
+      if (liveTimer != null) window.clearInterval(liveTimer);
       mutationObserver.disconnect();
       cancelAnimationFrame(raf);
       viewport.removeEventListener("wheel", onGesture);
       viewport.removeEventListener("touchmove", onGesture);
-      viewport.removeEventListener("pointerdown", onGesture);
+      viewport.removeEventListener("scroll", onNativeScroll);
       const host = window as unknown as { __CHAT_VIEWPORT_DUMP__?: () => void };
       if (host.__CHAT_VIEWPORT_DUMP__ === manualDump) {
         delete host.__CHAT_VIEWPORT_DUMP__;
       }
     };
-  }, [viewportRef, isPinnedRef, contentRef]);
+  }, [viewportRef, isPinnedRef, contentRef, sessionId, escapedRef]);
 }

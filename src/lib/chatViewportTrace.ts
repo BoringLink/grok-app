@@ -38,6 +38,41 @@ let dumps = 0;
  * changes.
  */
 let pinned = false;
+/**
+ * Optional tracking-session id. When set, every line the Host appends to
+ * `logs/app.log.<day>` is prefixed `[session=<id>]` so an external session can
+ * `tail -F` that log and filter a reproduction by its id. Read from
+ * `localStorage["grok.chatTraceSession"]` or `?chatTraceSession=` at runtime —
+ * no rebuild is needed to switch which session is being tracked.
+ */
+let sessionCache: string | null | undefined; // undefined = not resolved yet
+
+/** The tracking-session id this build/runtime should tag its trace lines with. */
+export function chatTraceSessionId(): string | null {
+  if (sessionCache !== undefined) return sessionCache;
+  let id: string | null = null;
+  try {
+    const fromQuery =
+      typeof location !== "undefined"
+        ? new URLSearchParams(location.search).get("chatTraceSession")
+        : null;
+    const fromStorage =
+      typeof localStorage !== "undefined"
+        ? localStorage.getItem("grok.chatTraceSession")
+        : null;
+    const raw = fromQuery ?? fromStorage;
+    id = raw && raw.trim().length > 0 ? raw.trim() : null;
+  } catch {
+    id = null;
+  }
+  sessionCache = id;
+  return id;
+}
+
+/** Test seam / programmatic override for the tracking-session id. */
+export function setChatTraceSessionId(next: string | null): void {
+  sessionCache = next == null ? null : next.trim().length > 0 ? next.trim() : null;
+}
 
 /** True when the trace is explicitly enabled in a dev build. */
 export function chatViewportTraceEnabled(): boolean {
@@ -153,6 +188,22 @@ export function tracePinState(input: {
       input.scrollHeight - input.clientHeight - input.scrollTop,
     ),
   });
+  // Natural scroll-to-bottom: the user landed back on the tail and the stick
+  // hook re-engaged follow (wheel/touch/scroll / bottom-rebound / height-change
+  // all funnel through this point). Surface it to a tracking session so the
+  // follower sees exactly when follow re-arns while a repro is running.
+  if (input.pinned && !input.escaped && chatTraceSessionId()) {
+    void publishTraceToHost({
+      reason: "landed-bottom",
+      cause: input.reason,
+      scrollTop: Math.round(input.scrollTop),
+      scrollHeight: Math.round(input.scrollHeight),
+      clientHeight: Math.round(input.clientHeight),
+      distFromBottom: Math.round(
+        input.scrollHeight - input.clientHeight - input.scrollTop,
+      ),
+    });
+  }
 }
 
 /**
@@ -179,9 +230,10 @@ export function isBackwardViewportMove(input: {
 export function dumpChatViewportTrace(reason: string): {
   reason: string;
   dumps: number;
+  session: string | null;
   events: ViewportTraceEvent[];
 } {
-  const payload = { reason, dumps: dumps + 1, events: events.slice() };
+  const payload = { reason, dumps: dumps + 1, session: chatTraceSessionId(), events: events.slice() };
   if (!chatViewportTraceEnabled()) return payload;
   dumps += 1;
   if (typeof window !== "undefined") {
@@ -232,11 +284,20 @@ export function isSuspiciousUpwardJump(input: {
  */
 export async function publishTraceToHost(payload: unknown): Promise<void> {
   if (!chatViewportTraceEnabled()) return;
+  const session = chatTraceSessionId();
+  const line = session
+    ? `[session=${session}] ${JSON.stringify(payload)}`
+    : JSON.stringify(payload);
   try {
     const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("chat_viewport_trace", { line: JSON.stringify(payload) });
-  } catch {
-    /* Browser preview or a build without the command: the console copy stands. */
+    await invoke("chat_viewport_trace", { line });
+  } catch (error) {
+    // Keep the failure in the in-memory ring so a browser-only reproduction
+    // still proves that the probe attempted to publish to the Host.
+    traceViewport("host-publish-failed", {
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
+    console.warn("[chatTrace] Host publish failed", error instanceof Error ? error.name : "unknown");
   }
 }
 

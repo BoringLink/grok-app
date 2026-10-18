@@ -182,6 +182,7 @@ pub fn app_invoke_handler(
         commands::import_grok_go_config,
         // ── Doctor, diagnostics, audit ledger & export ──
         commands::doctor_report,
+        commands::chat_viewport_trace,
         commands::network_probe,
         commands::probe_streaming_acp_ndjson,
         commands::agents_recycle_all,

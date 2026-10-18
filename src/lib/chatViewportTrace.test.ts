@@ -4,14 +4,17 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   applyScrollTopTraced,
+  chatTraceSessionId,
   chatViewportTraceEnabled,
   chatViewportTraceEvents,
   dumpChatViewportTrace,
   isBackwardViewportMove,
   isSuspiciousUpwardJump,
   resetChatViewportTrace,
+  setChatTraceSessionId,
   setChatViewportTraceEnabled,
   setChatViewportTracePinned,
+  tracePinState,
   traceScrollTopWrite,
   traceViewport,
   VIEWPORT_JUMP_MIN_PX,
@@ -21,6 +24,37 @@ afterEach(() => {
   resetChatViewportTrace();
   setChatViewportTraceEnabled(null);
   setChatViewportTracePinned(false);
+  setChatTraceSessionId(null);
+});
+
+describe("chatTraceSessionId tracking-session tagging", () => {
+  it("round-trips an explicit tracking-session id", () => {
+    // Arrange
+    setChatTraceSessionId("tracker-123");
+    // Act / Assert
+    expect(chatTraceSessionId()).toBe("tracker-123");
+  });
+
+  it("trims whitespace and rejects empty ids", () => {
+    // Arrange
+    setChatTraceSessionId("  ");
+    expect(chatTraceSessionId()).toBeNull();
+    setChatTraceSessionId("  sess  ");
+    expect(chatTraceSessionId()).toBe("sess");
+  });
+
+  it("carries the tracking-session id on a dumped trace payload", () => {
+    // Arrange
+    setChatViewportTraceEnabled(true);
+    setChatTraceSessionId("tracker-abc");
+    traceViewport("sample", { scrollTop: 10 });
+    // Act
+    const dump = dumpChatViewportTrace("test-session");
+    // Assert
+    expect(dump.session).toBe("tracker-abc");
+    expect(dump.reason).toBe("test-session");
+    expect(dump.events.some((e) => e.kind === "sample")).toBe(true);
+  });
 });
 
 describe("isBackwardViewportMove", () => {
@@ -199,6 +233,29 @@ describe("chatViewportTrace recording", () => {
     expect(event?.source).toBe("stick:applyScrollTop");
     expect(event?.before).toBe(250);
     expect(event?.after).toBe(300);
+  });
+
+  it("records pin state transitions with bottom distance", () => {
+    // Arrange
+    setChatViewportTraceEnabled(true);
+
+    // Act
+    tracePinState({
+      reason: "wheel-escape",
+      pinned: false,
+      escaped: true,
+      scrollTop: 120,
+      scrollHeight: 1000,
+      clientHeight: 400,
+    });
+
+    // Assert
+    const [event] = chatViewportTraceEvents();
+    expect(event?.kind).toBe("pin");
+    expect(event?.reason).toBe("wheel-escape");
+    expect(event?.pinned).toBe(false);
+    expect(event?.escaped).toBe(true);
+    expect(event?.distFromBottom).toBe(480);
   });
 
   it("publishes the trace on the window when dumped", () => {
