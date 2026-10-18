@@ -19,11 +19,12 @@
  * this ledger, so the total — and the scrollbar drawn from it — is exact for
  * every measured row and estimated only for rows never rendered yet.
  *
- * Memory: heights (Float64Array) + offsets (Float64Array, count + 1) + sources
- * (Uint8Array) = 17 bytes per row plus one 8-byte offset slot. At the design
- * scale of 10k rows that is ~170KB, and ~1.7MB at 100k rows — two orders of
- * magnitude under the 20MB ledger budget from the spec, so resident DOM rows,
- * not the ledger, are the memory constraint.
+ * Memory: heights (Float64Array) + offsets (Float64Array, count + 1) +
+ * sources (Uint8Array) + generations (Float64Array) = 25 bytes per row plus
+ * one 8-byte offset slot. At the design scale of 10k rows that is ~250KB
+ * ({@link LayoutLedgerStats.memoryBytes}), and ~2.5MB at 100k rows — far under
+ * the 20MB ledger budget from the spec, so resident DOM rows, not the ledger,
+ * are the memory constraint.
  *
  * Incremental rebuild: a write burst collapses into one dirty span [lo, hi).
  * Only offsets[lo + 1..hi] are summed again from row heights, and only the tail
@@ -76,11 +77,14 @@ export type LayoutLedgerOptions = {
 /**
  * Rebuild work since creation. `rebuiltRows` is the dirty span re-summed from
  * row heights; `shiftedRows` is the suffix carried by the span delta.
+ * `memoryBytes` is the exact footprint of the ledger's own typed arrays, the
+ * number the spec's ledger-memory budget (≤ 20MB at 10k rows) is read against.
  */
 export type LayoutLedgerStats = {
   rebuilds: number;
   rebuiltRows: number;
   shiftedRows: number;
+  memoryBytes: number;
 };
 
 export type LayoutLedger = {
@@ -183,7 +187,7 @@ export function createLayoutLedger(options: LayoutLedgerOptions): LayoutLedger {
   let offsets = new Float64Array(capacity + 1);
   let sources = new Uint8Array(capacity);
   let generations = new Float64Array(capacity);
-  const stats: LayoutLedgerStats = {
+  const stats: Omit<LayoutLedgerStats, "memoryBytes"> = {
     rebuilds: 0,
     rebuiltRows: 0,
     shiftedRows: 0,
@@ -420,7 +424,14 @@ export function createLayoutLedger(options: LayoutLedgerOptions): LayoutLedger {
     },
 
     stats() {
-      return { ...stats };
+      return {
+        ...stats,
+        memoryBytes:
+          heights.byteLength +
+          offsets.byteLength +
+          sources.byteLength +
+          generations.byteLength,
+      };
     },
   };
 }
