@@ -1,0 +1,48 @@
+src/lib/chatViewportOcclusion.ts
+  s_5a98cfc153b25e::t_caa81f4c9084b5 1-77
+src/hooks/useChatViewportController.test.tsx
+  s_5a98cfc153b25e::t_473aa05ddee1dd 32,35
+  s_5a98cfc153b25e::t_ce5622bdc7c3b3 651-923
+src/lib/chatViewportTrace.test.ts
+  s_5a98cfc153b25e::t_fe78d1e0b6734c 23
+  s_5a98cfc153b25e::t_abbd26dc175572 438-487
+docs/llm-wiki/chat-viewport-trace.md
+  s_5a98cfc153b25e::t_28d5ea66edb168 139-151
+src/hooks/useChatViewportController.ts
+  s_5a98cfc153b25e::t_16ed0ef3faab88 77
+  s_5a98cfc153b25e::t_d2998a4a17393e 54
+  s_5a98cfc153b25e::t_75f6baec455c61 1036-1038
+  s_5a98cfc153b25e::t_6c095cce4494e9 857
+  s_5a98cfc153b25e::t_1bf5a0aa7f3598 51-53,55
+  s_5a98cfc153b25e::t_09d5320b1beebb 76
+  s_5a98cfc153b25e::t_4facf8a801ce3b 1015,1019,1025-1031,1034-1035,1039-1052
+  s_5a98cfc153b25e::t_71564d295e30da 1092-1094,1097,1099-1104,1107-1108,1111-1115,1118,1120-1131,1135-1139,1141,1144,1152
+src/lib/chatViewportOcclusion.test.ts
+  s_5a98cfc153b25e::t_e47086a0950bd1 1-98
+src/lib/chatViewportTrace.ts
+  s_5a98cfc153b25e::t_8cd68055d68d01 245-278
+src/hooks/useChatViewportTraceProbe.ts
+  s_5a98cfc153b25e::t_24cc92c1f532bd 494-497,499-505
+  s_5a98cfc153b25e::t_0638c85084723f 498,506
+  s_5a98cfc153b25e::t_20553b665966fd 43
+  s_5a98cfc153b25e::t_a228c90b2fd23d 188-189
+  s_5a98cfc153b25e::t_1b2e0afb28a55d 41-42,44-46
+  s_5a98cfc153b25e::t_62c272d4e31474 398-401
+  s_5a98cfc153b25e::t_df9ebeebffa0a0 168-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "2b9df1b7ca9ded1e37bcd5ff4d85d45b84530c58",
+  "prompts": {},
+  "sessions": {
+    "s_5a98cfc153b25e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f5f-a6b2-7292-94bf-4bb7ac27c5f3",
+        "model": "auto(free)"
+      },
+      "human_author": null
+    }
+  }
+}
