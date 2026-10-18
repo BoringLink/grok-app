@@ -14,7 +14,9 @@ import {
   DUMP_CONTEXT_EVENTS,
   DUMP_MAX_CHARS,
   dumpChatViewportTrace,
+  frameCostSummary,
   frameWriteSummary,
+  FRAME_BUDGET_MS,
   isBackwardViewportMove,
   isSuspiciousUpwardJump,
   lastPinFlipCause,
@@ -739,22 +741,38 @@ describe("chatViewportWriteStats", () => {
 
 describe("frameWriteSummary", () => {
   it("reads the peak writes-per-frame and the frames over the budget", () => {
-    // Arrange — one write on two frames, two writes on a third.
+    // Arrange — one write on two paint-boundary frames, two on a third.
     const events = [
-      { t: 0, kind: "sample", w: 1 },
-      { t: 1, kind: "sample", w: 0 },
+      { t: 0, kind: "sample", by: "raf", w: 1 },
+      { t: 1, kind: "sample", by: "raf", w: 0 },
       { t: 2, kind: "scrollTop", w: undefined },
-      { t: 3, kind: "sample", w: 2 },
+      { t: 3, kind: "sample", by: "raf", w: 2 },
     ];
 
     // Act
     const summary = frameWriteSummary(events);
 
-    // Assert — only sample frames count; the write event is ignored.
+    // Assert — only paint-boundary sample frames count; the write event is ignored.
     expect(summary).toEqual({
-      frames: 3,
+      writeFrames: 3,
       maxWritesPerFrame: 2,
-      framesOverBudget: 1,
+      framesOverWriteBudget: 1,
+    });
+  });
+
+  it("ignores timer fallback samples, which aggregate a second of writes", () => {
+    // Arrange — a backgrounded window: the fallback sample saw a burst.
+    const events = [
+      { t: 0, kind: "sample", by: "raf", w: 1 },
+      { t: 1, kind: "sample", by: "fallback", w: 4 },
+      { t: 2, kind: "sample", by: "fallback", w: 3 },
+    ];
+
+    // Act + Assert — the fallback writes must not read as a per-frame violation.
+    expect(frameWriteSummary(events)).toEqual({
+      writeFrames: 1,
+      maxWritesPerFrame: 1,
+      framesOverWriteBudget: 0,
     });
   });
 
@@ -763,22 +781,47 @@ describe("frameWriteSummary", () => {
     const events = Array.from({ length: 50 }, (_, i) => ({
       t: i,
       kind: "sample",
+      by: "raf",
       w: i % 2,
     }));
 
     // Act + Assert
     expect(frameWriteSummary(events)).toEqual({
-      frames: 50,
+      writeFrames: 50,
       maxWritesPerFrame: 1,
-      framesOverBudget: 0,
+      framesOverWriteBudget: 0,
     });
   });
 
   it("is empty for an empty ring", () => {
     expect(frameWriteSummary([])).toEqual({
-      frames: 0,
+      writeFrames: 0,
       maxWritesPerFrame: 0,
-      framesOverBudget: 0,
+      framesOverWriteBudget: 0,
+    });
+  });
+});
+
+describe("frameCostSummary", () => {
+  it("aggregates the maximum, the p90 and the frames over the budget", () => {
+    // Arrange — ten frames, one above the 8.3ms budget.
+    const durations = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12];
+
+    // Act
+    const summary = frameCostSummary(durations);
+
+    // Assert
+    expect(summary.frameCostMaxMs).toBe(12);
+    expect(summary.frameCostP90Ms).toBe(9);
+    expect(summary.framesOverFrameBudget).toBe(2);
+    expect(FRAME_BUDGET_MS).toBe(8.3);
+  });
+
+  it("is zero for an empty window", () => {
+    expect(frameCostSummary([])).toEqual({
+      frameCostMaxMs: 0,
+      frameCostP90Ms: 0,
+      framesOverFrameBudget: 0,
     });
   });
 });
