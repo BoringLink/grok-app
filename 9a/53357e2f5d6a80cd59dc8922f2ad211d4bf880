@@ -1,0 +1,35 @@
+scripts/lib/chatHeadlessHarness.mjs
+  s_30909c381b1e41::t_132493caeac740 1-234,242-279
+  s_30909c381b1e41::t_6aa122e869870f 235-241
+scripts/measure-chat-scroll.mjs
+  s_30909c381b1e41::t_42be9c59a66e4f 247-248,250
+  s_30909c381b1e41::t_fae4685e6ae488 288-290
+  s_30909c381b1e41::t_a0926060d8b17d 298,304
+  s_30909c381b1e41::t_f18826a0c93aa3 1-37,39-43,46-169,211-229,244-245,249,260-287,291-296,299-302,305-306
+  s_30909c381b1e41::t_c448ac8892c96b 170,174,178-182,184
+  s_30909c381b1e41::t_500a41e235bdd7 171-173,175-176,183,186-189,191,199,201
+  s_30909c381b1e41::t_ed0c32550a4072 190,192-198,200,202-210
+  s_30909c381b1e41::t_13890a7d9ab47f 38,44-45
+  s_30909c381b1e41::t_6336b2413bc7a4 297,303
+  s_30909c381b1e41::t_b4b30bfed83fa5 246
+  s_30909c381b1e41::t_c0c61cd03753df 230-243,251-259
+  s_30909c381b1e41::t_0651314b9cb7a2 177,185
+scripts/measure-chat-first-frame.mjs
+  s_30909c381b1e41::t_fd0ed63f8d5762 12-13,18,133-138,140-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "9a53357e2f5d6a80cd59dc8922f2ad211d4bf880",
+  "prompts": {},
+  "sessions": {
+    "s_30909c381b1e41": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1500d-088d-7321-8bcc-1bcc062dca5a",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
