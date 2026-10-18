@@ -1,0 +1,21 @@
+docs/llm-wiki/chat-viewport-trace.md
+  s_507bc940edf249::t_de667a646b3679 56-60,63
+  s_507bc940edf249::t_65c417c5b3ad54 61-62
+  s_507bc940edf249::t_bcb9c9fa542dc9 106-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "7d0f719f1404249c5adb3c335afdc158ba885379",
+  "prompts": {},
+  "sessions": {
+    "s_507bc940edf249": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14ef7-28c0-71f2-b95e-c78c726b524c",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
