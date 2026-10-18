@@ -1,0 +1,28 @@
+src/hooks/useChatViewportController.ts
+  s_f3a7a00dfb815d::t_d4eafb918ae5cc 900,925
+  s_f3a7a00dfb815d::t_5e2f6de1e3e488 211-220
+  s_f3a7a00dfb815d::t_26e83924ec6a0d 833-837
+  s_f3a7a00dfb815d::t_5b1f457c01815c 958,984-986,996-997
+  s_f3a7a00dfb815d::t_45abcd9a4b029a 304-307
+  s_f3a7a00dfb815d::t_23ab6d2466b7fb 378-408
+src/components/lobe-chat/lobe-chat.part1.css
+  s_f3a7a00dfb815d::t_3e9cfd74976277 184-186
+src/hooks/useChatViewportController.test.tsx
+  s_f3a7a00dfb815d::t_dbdd40a2cc7dc7 1500-1643
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "6ab8a1189e1e790ee5756ec38f7bd566cefa6124",
+  "prompts": {},
+  "sessions": {
+    "s_f3a7a00dfb815d": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15074-d9c4-7cd0-aea2-55c807f7674e",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
