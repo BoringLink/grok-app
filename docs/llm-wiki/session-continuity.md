@@ -356,6 +356,15 @@ box height coming from the ledger. There is no moving window and no spacers.
   produces is restored by the controller's `MutationObserver` in the same task.
   This rests on React's layout-effect flush guarantee; the tests here drive the
   decision and the ledger write, not the browser's paint timing.
+- **Escaped anchor vs. decode (C3)**: a media element (image / PDF / media box)
+  finishing decode takes its rendered height with no DOM mutation carrying the
+  new size, so the `MutationObserver` cannot hold the anchor for it. The
+  controller's content `ResizeObserver` restores the escaped anchor on any
+  content-box change, in the observer callback (after layout, before paint),
+  through the frame-latched `scheduleRestore` so it stays one restore per batch.
+  A change above the anchor is compensated by the anchor's own measured
+  displacement; a change below it leaves that displacement at zero, so the
+  anchor is held and the reader is not dragged.
 - The viewport controller (`useChatViewportController`, ADR-0006) is the single
   `scrollTop` writer; the resident list only reports measured heights and asks
   it to restore the pinned/anchor invariant. Nested scrollers (thinking body,

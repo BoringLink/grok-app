@@ -905,6 +905,8 @@ export function useChatViewportController(
     let previousHeight: number | undefined;
     let previousViewportWidth: number | undefined = el.clientWidth;
     let previousViewportHeight: number | undefined = el.clientHeight;
+    /** Last content-box height the ResizeObserver reported, for the decode path. */
+    let previousContentHeight: number | undefined;
     let viewportWidthChanged = false;
     let raf = 0;
     let mediaFollowTimer: ReturnType<typeof setTimeout> | null = null;
@@ -981,12 +983,15 @@ export function useChatViewportController(
       }
 
       // Grow, shrink, or viewport-only resize: follow only while pinned.
-      // Do NOT compensate scrollTop while escaped — stream growth is almost
-      // always at the bottom; adding the full height delta would yank the
-      // user down. Large jumps (image/PDF decode) wait so a storm of
-      // screenshots is one snap, not one per file. Width interpolation
-      // (aside / env gutter) must follow this frame or the column jumps
-      // up until the motion ends, then snaps back.
+      // Never compensate with the full height delta while escaped — stream
+      // growth is almost always at the bottom, so adding the delta would yank
+      // the user down. The escaped anchor is held against its own measured
+      // displacement instead (the RO callback's decode path and the mutation
+      // restore), which is zero when the growth is below it.
+      // Large jumps (image/PDF decode) wait so a storm of screenshots is one
+      // snap, not one per file. Width interpolation (aside / env gutter) must
+      // follow this frame or the column jumps up until the motion ends, then
+      // snaps back.
       // Opening a chat: image cards / journal rows often land after the
       // first pin. Follow immediately only while still pinned — never
       // re-engage if the user already scrolled into history.
@@ -1098,6 +1103,23 @@ export function useChatViewportController(
       if (viewportResized) {
         restoreNow();
       }
+
+      // A media element finishing decode takes its rendered height without a
+      // DOM mutation carrying the new size, so the MutationObserver cannot see
+      // it; only this content-box change reports it. While escaped the anchor
+      // must hold, so restore it here — the RO callback runs after layout but
+      // before paint, and `scheduleRestore` coalesces with any mutation restore
+      // in the same frame into one.
+      if (contentHeight != null) {
+        const contentChanged =
+          previousContentHeight == null ||
+          Math.abs(contentHeight - previousContentHeight) >= 0.5;
+        previousContentHeight = contentHeight;
+        if (contentChanged && escapedRef.current) {
+          scheduleRestore();
+        }
+      }
+
       scheduleMeasure();
     });
 

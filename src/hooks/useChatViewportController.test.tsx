@@ -524,6 +524,7 @@ describe("useChatViewportController handle", () => {
   function mountWithRows(input: { scrollTop: number; aboveHeight: number }) {
     let scrollTop = input.scrollTop;
     let aboveHeight = input.aboveHeight;
+    let scrollHeight = 1000;
     const rowHeight = 300;
     const viewport = document.createElement("div");
     const content = document.createElement("div");
@@ -554,7 +555,7 @@ describe("useChatViewportController handle", () => {
           scrollTop = value;
         },
       },
-      scrollHeight: { configurable: true, get: () => 1000 },
+      scrollHeight: { configurable: true, get: () => scrollHeight },
       clientHeight: { configurable: true, get: () => 400 },
       clientWidth: { configurable: true, get: () => 800 },
     });
@@ -564,7 +565,7 @@ describe("useChatViewportController handle", () => {
     });
     Object.defineProperty(content, "getBoundingClientRect", {
       configurable: true,
-      value: () => rect(-scrollTop, 1000),
+      value: () => rect(-scrollTop, scrollHeight),
     });
     Object.defineProperty(above, "getBoundingClientRect", {
       configurable: true,
@@ -595,6 +596,9 @@ describe("useChatViewportController handle", () => {
       aboveHeight: () => aboveHeight,
       setAboveHeight: (value: number) => {
         aboveHeight = value;
+      },
+      setScrollHeight: (value: number) => {
+        scrollHeight = value;
       },
     };
   }
@@ -756,6 +760,120 @@ describe("useChatViewportController handle", () => {
     // the observable claim is the pin state, not a coordinate).
     expect(harness.isPinnedRef.current).toBe(true);
     expect(harness.escapedRef.current).toBe(false);
+  });
+
+  /**
+   * C3 — reading stability. While escaped, the element at the viewport top is
+   * the anchor and each of these height-changing batches must leave its
+   * on-screen position unchanged (within the 0.5px bound).
+   */
+  describe("escaped reading stability (C3)", () => {
+    const anchorScreenTop = (harness: {
+      aboveHeight: () => number;
+      scrollTop: () => number;
+    }) => harness.aboveHeight() - harness.scrollTop();
+
+    function mountEscaped(input: { scrollTop: number; aboveHeight: number }) {
+      const harness = mountWithRows(input);
+      act(() => {
+        harness.controller.escape("test:locate");
+        harness.controller.restoreLayout(); // capture the anchor element
+      });
+      return harness;
+    }
+
+    it("holds the anchor when a block above it folds in a mutation batch", async () => {
+      // Arrange
+      const harness = mountEscaped({ scrollTop: 300, aboveHeight: 300 });
+      const before = anchorScreenTop(harness);
+
+      // Act — a thinking block above collapses 120px with the height change
+      // landing in the same task as the mutation.
+      await act(async () => {
+        harness.setAboveHeight(180);
+        harness.setScrollHeight(880);
+        harness.content.appendChild(document.createElement("div"));
+      });
+
+      // Assert
+      expect(anchorScreenTop(harness)).toBe(before);
+      expect(harness.escapedRef.current).toBe(true);
+    });
+
+    it("holds the anchor when a block above it re-grows in a mutation batch", async () => {
+      // Arrange
+      const harness = mountEscaped({ scrollTop: 200, aboveHeight: 200 });
+      const before = anchorScreenTop(harness);
+
+      // Act — a streamed block above grows 140px in the same task.
+      await act(async () => {
+        harness.setAboveHeight(340);
+        harness.setScrollHeight(1140);
+        harness.content.appendChild(document.createElement("div"));
+      });
+
+      // Assert
+      expect(anchorScreenTop(harness)).toBe(before);
+      expect(harness.escapedRef.current).toBe(true);
+    });
+
+    it("holds the anchor while output keeps arriving at the bottom", async () => {
+      // Arrange
+      const harness = mountEscaped({ scrollTop: 200, aboveHeight: 200 });
+      const before = anchorScreenTop(harness);
+      const beforeTop = harness.scrollTop();
+
+      // Act — two stream frames grow the content below the anchor.
+      await act(async () => {
+        harness.setScrollHeight(1200);
+        harness.content.appendChild(document.createElement("span"));
+      });
+      await act(async () => {
+        harness.setScrollHeight(1500);
+        harness.content.appendChild(document.createElement("b"));
+      });
+
+      // Assert — the reader is not dragged and the anchor does not move.
+      expect(harness.scrollTop()).toBe(beforeTop);
+      expect(anchorScreenTop(harness)).toBe(before);
+      expect(harness.escapedRef.current).toBe(true);
+    });
+
+    it("holds the anchor when a media element above it finishes decode", () => {
+      // Arrange
+      const harness = mountEscaped({ scrollTop: 200, aboveHeight: 200 });
+      const before = anchorScreenTop(harness);
+
+      // Act — a decode takes its rendered height with no DOM mutation carrying
+      // the new size: only the content ResizeObserver reports it.
+      act(() => {
+        harness.setAboveHeight(340);
+        harness.setScrollHeight(1140);
+        ControlledResizeObserver.emit(harness.content, 1140, 800);
+      });
+
+      // Assert — restored in the observer callback, before any frame advances.
+      expect(anchorScreenTop(harness)).toBe(before);
+      expect(harness.escapedRef.current).toBe(true);
+    });
+
+    it("does not move the escaped anchor when a media element below it finishes decode", () => {
+      // Arrange
+      const harness = mountEscaped({ scrollTop: 200, aboveHeight: 200 });
+      const before = anchorScreenTop(harness);
+      const beforeTop = harness.scrollTop();
+
+      // Act — a decode below the anchor grows the content column only.
+      act(() => {
+        harness.setScrollHeight(1600);
+        ControlledResizeObserver.emit(harness.content, 1600, 800);
+      });
+
+      // Assert — a change below the anchor leaves it at zero displacement.
+      expect(harness.scrollTop()).toBe(beforeTop);
+      expect(anchorScreenTop(harness)).toBe(before);
+      expect(harness.escapedRef.current).toBe(true);
+    });
   });
 });
 
