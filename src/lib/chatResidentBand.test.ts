@@ -152,6 +152,43 @@ describe("createChatResidentBandStore", () => {
     store.setBand({ start: 2, end: 6 });
     expect(listener).not.toHaveBeenCalled();
   });
+
+  it("bumps one row's height revision and notifies only that row", () => {
+    // Arrange
+    const store = createChatResidentBandStore({ start: 0, end: 10 });
+    const seen: number[] = [];
+    store.subscribeFor(4)(() => seen.push(4));
+    store.subscribeFor(5)(() => seen.push(5));
+    expect(store.heightRevision(4)).toBe(0);
+
+    // Act
+    store.notifyHeightChanged(4);
+
+    // Assert: the changed row re-renders; the revision is monotonic.
+    expect(seen).toEqual([4]);
+    expect(store.heightRevision(4)).toBe(1);
+    expect(store.heightRevision(5)).toBe(0);
+    store.notifyHeightChanged(4);
+    expect(store.heightRevision(4)).toBe(2);
+  });
+
+  it("drops per-row state on clearRowState and keeps serving subscribers", () => {
+    // Arrange
+    const store = createChatResidentBandStore({ start: 0, end: 10 });
+    store.notifyHeightChanged(4);
+    expect(store.heightRevision(4)).toBe(1);
+
+    // Act
+    store.clearRowState();
+
+    // Assert: revisions reset; a fresh subscription still observes band changes.
+    expect(store.heightRevision(4)).toBe(0);
+    expect(store.subscribeFor(4)).toBe(store.subscribeFor(4));
+    const listener = vi.fn();
+    store.subscribeFor(4)(listener);
+    store.setBand({ start: 5, end: 15 });
+    expect(listener).toHaveBeenCalled();
+  });
 });
 
 describe("shellsCrossingViewport", () => {

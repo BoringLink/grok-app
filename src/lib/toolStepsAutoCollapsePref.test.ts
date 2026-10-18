@@ -3,9 +3,11 @@ import {
   DEFAULT_TOOL_STEPS_AUTO_COLLAPSE,
   TOOL_STEPS_AUTO_COLLAPSE_CHANGE_EVENT,
   TOOL_STEPS_AUTO_COLLAPSE_STORAGE_KEY,
+  activityUnitDefaultOpen,
   loadToolStepsAutoCollapsePref,
   parseToolStepsAutoCollapsePref,
   saveToolStepsAutoCollapsePref,
+  thoughtDefaultOpen,
   toolStepDefaultOpen,
   workPhaseDefaultOpen,
   resolveFoldExpanded,
@@ -136,6 +138,67 @@ describe("toolStepsAutoCollapsePref", () => {
         autoCollapse: false,
       }),
     ).toBe(true);
+  });
+
+  /**
+   * The shell-side fold model (`chatRowCollapse`) reads the fold from
+   * `activityUnitDefaultOpen`, so this pins that composition to the exact rule
+   * functions the rich components call (TimelinePhaseBlock, GrokActivitySteps,
+   * Thinking). A change to any rule that is not reflected here fails the test.
+   */
+  it("activityUnitDefaultOpen stays pinned to the component fold rules", () => {
+    [true, false].forEach((running) => {
+      [true, false].forEach((streaming) => {
+        [true, false].forEach((autoCollapse) => {
+          expect(
+            activityUnitDefaultOpen({
+              kind: "phase",
+              hasBody: true,
+              running,
+              streaming,
+              autoCollapse,
+            }),
+          ).toBe(workPhaseDefaultOpen({ running, autoCollapse }));
+          expect(
+            activityUnitDefaultOpen({
+              kind: "thought",
+              hasBody: true,
+              running,
+              streaming,
+              autoCollapse,
+            }),
+          ).toBe(thoughtDefaultOpen(streaming));
+          expect(
+            activityUnitDefaultOpen({
+              kind: "tool",
+              hasBody: true,
+              running,
+              streaming,
+              autoCollapse,
+            }),
+          ).toBe(toolStepDefaultOpen(false, autoCollapse));
+        });
+      });
+    });
+  });
+
+  it("a unit without a body can never be open", () => {
+    (["phase", "thought", "tool"] as const).forEach((kind) => {
+      expect(
+        activityUnitDefaultOpen({
+          kind,
+          hasBody: false,
+          running: true,
+          streaming: true,
+          autoCollapse: false,
+        }),
+      ).toBe(false);
+    });
+  });
+
+  it("thoughtDefaultOpen expands only while the episode is live", () => {
+    expect(thoughtDefaultOpen(true)).toBe(true);
+    expect(thoughtDefaultOpen(false)).toBe(false);
   });
 
   it("dispatches change event on save when window exists", () => {

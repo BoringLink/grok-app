@@ -114,13 +114,17 @@ import {
   TRANSCRIPT_OPEN_REVEAL_TIMEOUT_MS,
 } from "@/lib/transcriptOpenReveal";
 import { useChatResidentList } from "@/hooks/useChatResidentList";
-import type { ChatResidentBandStore } from "@/hooks/chatResidentListShared";
+import type {
+  ChatResidentBandStore,
+  RowActivityFoldSnapshot,
+} from "@/hooks/chatResidentListShared";
 import { useChatViewportTraceProbe } from "@/hooks/useChatViewportTraceProbe";
 import {
   publishTraceToHost,
   traceViewport,
 } from "@/lib/chatViewportTrace";
 import { estimateChatRowHeight } from "@/lib/chatRowHeight";
+import { resolveRowActivityFold } from "@/lib/chatRowCollapse";
 import { countFailedToolSegments } from "@/lib/phaseErrorExcerpt";
 import { scrollPerfDebug } from "@/lib/scrollPerfDebug";
 import { StructuredJsonPanel } from "./StructuredJsonPanel";
@@ -788,6 +792,13 @@ const TranscriptMessageRow = memo(function TranscriptMessageRow({
   const rich = useSyncExternalStore(
     bandStore.subscribeFor(msgIndex),
     () => bandStore.isRich(msgIndex),
+  );
+  // A shell's height can change without its band membership moving (a collapse
+  // re-seeded from the model while the row was out of band). This snapshot is
+  // read only to re-render, so the shell picks up the new ledger height.
+  useSyncExternalStore(
+    bandStore.subscribeFor(msgIndex),
+    () => bandStore.heightRevision(msgIndex),
   );
   const paint: "rich" | "shell" = rich ? "rich" : "shell";
   const shellHeight = paint === "shell" ? rowHeight(msgIndex) : 0;
@@ -2703,6 +2714,44 @@ export function ConversationThread({
     ],
   );
 
+  /**
+   * Model fold of a row, for the rows the band keeps as shells (no DOM to ask).
+   * A shell whose fold flips re-seeds its ledger height, so the scrollbar follows
+   * a collapse or a re-growth that happened outside the band. The WeakMap keeps
+   * the per-row projection off the per-token path: only the live message gets a
+   * new object each token, so only it recomputes.
+   */
+  const activityFoldCacheRef = useRef(
+    new WeakMap<ChatMessage, { autoCollapse: boolean; fold: RowActivityFoldSnapshot }>(),
+  );
+  const getActivityFold = useCallback(
+    (index: number): RowActivityFoldSnapshot | null => {
+      const m = transcriptMessages[index];
+      if (!m) return null;
+      const cache = activityFoldCacheRef.current;
+      const hit = cache.get(m);
+      if (hit && hit.autoCollapse === toolStepsAutoCollapse) return hit.fold;
+      const fold = resolveRowActivityFold({
+        streaming: !!m.streaming,
+        segments: m.segments,
+        autoCollapse: toolStepsAutoCollapse,
+      });
+      const snapshot: RowActivityFoldSnapshot = {
+        ...fold,
+        inputs: [m.segments, m.streaming, toolStepsAutoCollapse],
+      };
+      cache.set(m, { autoCollapse: toolStepsAutoCollapse, fold: snapshot });
+      return snapshot;
+    },
+    [transcriptMessages, toolStepsAutoCollapse],
+  );
+  // Re-check the tracked rows when either the transcript or the fold preference
+  // moves; the per-row inputs then decide which of them actually recompute.
+  const activityRevision = useMemo(
+    () => ({ transcriptMessages, toolStepsAutoCollapse }),
+    [transcriptMessages, toolStepsAutoCollapse],
+  );
+
   const {
     bandStore,
     rowHeight,
@@ -2715,6 +2764,8 @@ export function ConversationThread({
     controller: viewportController,
     resetKey: residentListResetKey,
     enabled: chatVirtualScroll,
+    getActivityFold,
+    activityRevision,
   });
 
   // DEV-only: records a cause chain when the viewport moves to an older message

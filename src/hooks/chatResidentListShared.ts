@@ -25,6 +25,35 @@ export type UseChatResidentListArgs = {
   resetKey?: string | number | null;
   /** When false, every row renders real content (no shell band). */
   enabled?: boolean;
+  /**
+   * Model-derived fold state of row `index`. A shell has no DOM to answer
+   * whether its thinking / work phase is open, so the model must. The list
+   * re-seeds a shell whose fold flipped — collapse to the estimate, re-growth to
+   * the height remembered from its last expanded render — so the scrollbar
+   * follows a fold that happened outside the band. Omit to disable.
+   *
+   * `inputs` is the identity of everything the fold reads; the list compares it
+   * element-wise and only recomputes on a change, so this may be called for every
+   * tracked row on every revision.
+   */
+  getActivityFold?: (index: number) => RowActivityFoldSnapshot | null;
+  /**
+   * Opaque revision of the transcript model: change it whenever any row's
+   * activity fold could have changed (a token, a turn settling, the
+   * auto-collapse preference, collapse-all). It only gates when the list
+   * re-checks tracked rows, so it may change on every render.
+   */
+  activityRevision?: unknown;
+};
+
+/** One row's model fold, plus the identity of the inputs that produced it. */
+export type RowActivityFoldSnapshot = {
+  /** The row has foldable content (a failed folded phase included). */
+  hasActivity: boolean;
+  /** At least one unit renders its body open right now. */
+  expanded: boolean;
+  /** Identity of the fold inputs, compared element-wise for a change. */
+  inputs: readonly unknown[];
 };
 
 /**

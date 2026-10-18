@@ -353,4 +353,31 @@ describe("chatViewportController restore", () => {
 
     expect(directive).toEqual({ kind: "anchor", top: 350 });
   });
+
+  /**
+   * AC3, per the Spec's position model (`docs/plans/2026-10-18-chat-viewport-scroll-spec.md`):
+   * while escaped the anchor is the element at the viewport top, so its on-screen
+   * position is what is held. A collapse below the anchor leaves that element's
+   * offset untouched, so the top of the viewport stays fixed and the content
+   * beneath it moves up into the reclaimed space.
+   */
+  it("keeps the viewport top fixed when a row below the anchor changes height", () => {
+    const rows = rowsOf(12, 100);
+    const state: ViewportState = {
+      phase: "escaped",
+      anchor: anchorAtViewportTop(geometry({ scrollTop: 250 }), rows),
+      upStreak: 0,
+      upStreakAt: 0,
+    };
+    // A row below the anchor (row 8) shrinks; the anchor row's offset is unchanged.
+    rows.setRowHeight(8, 40, "measured");
+
+    const directive = planRestore({
+      state,
+      geometry: geometry({ scrollTop: 250 }),
+      rows,
+    });
+
+    expect(directive).toEqual({ kind: "anchor", top: 250 });
+  });
 });

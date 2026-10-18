@@ -101,6 +101,50 @@ export function workPhaseDefaultOpen(opts: {
 }
 
 /**
+ * Bare thinking fold. It expands while its episode is live and folds the moment
+ * the episode ends — regardless of the tool-step preference (Thinking.tsx).
+ */
+export function thoughtDefaultOpen(streaming: boolean): boolean {
+  return streaming;
+}
+
+/** What kind of foldable activity a row unit is. */
+export type ActivityFoldKind = "phase" | "thought" | "tool";
+
+/**
+ * The single fold-default policy: whether one activity unit renders its body
+ * open. The rich components and the shell-side fold model
+ * (`chatRowCollapse`) both read the rule from here, so a shell's ledger height
+ * cannot disagree with what the row would render if it were in the band.
+ *
+ * A unit without a body can never expand, so it contributes nothing to height:
+ * a collapsed and an expanded render are identical.
+ */
+export function activityUnitDefaultOpen(input: {
+  kind: ActivityFoldKind;
+  /** Does the unit have an expandable body at all? */
+  hasBody: boolean;
+  /** Phase / tool still running. */
+  running: boolean;
+  /** Thought episode still live. */
+  streaming: boolean;
+  autoCollapse: boolean;
+}): boolean {
+  if (!input.hasBody) return false;
+  switch (input.kind) {
+    case "phase":
+      return workPhaseDefaultOpen({
+        running: input.running,
+        autoCollapse: input.autoCollapse,
+      });
+    case "thought":
+      return thoughtDefaultOpen(input.streaming);
+    case "tool":
+      return toolStepDefaultOpen(false, input.autoCollapse);
+  }
+}
+
+/**
  * Live→idle folds must follow `defaultOpen` on the same render the turn
  * settles. Waiting on useEffect paints one expanded idle frame then collapses.
  */

@@ -39,6 +39,13 @@ export type LayoutRowHeight = {
   index: number;
   height: number;
   source: LayoutRowSource;
+  /**
+   * Generation this measurement was taken at, when the caller can stamp it. A
+   * measurement older than the row's current generation is rejected, so a
+   * measurement queued before a {@link LayoutLedger.reestimateRow} cannot undo
+   * the demotion (see that method).
+   */
+  generation?: number;
 };
 
 /** Rows that must carry real content for one viewport position. */
@@ -82,9 +89,40 @@ export type LayoutLedger = {
    * changed (offsets moved), false when the write was rejected or was a
    * source-only upgrade at the same height.
    */
-  setRowHeight(index: number, height: number, source: LayoutRowSource): boolean;
+  setRowHeight(
+    index: number,
+    height: number,
+    source: LayoutRowSource,
+    generation?: number,
+  ): boolean;
   /** Batched writes, collapsed into one dirty span. Returns rows that changed. */
   applyRowHeights(changes: readonly LayoutRowHeight[]): number;
+  /**
+   * Force a row back to the estimate tier, even after it was measured.
+   *
+   * Used for a row that is outside the viewport band (a shell): when the model
+   * knows the row's collapsible content changed while it was a shell — a
+   * thinking / tool block folded — the remembered measured height describes
+   * content that is gone, so the scrollbar would under-report the shrink until
+   * the row is rendered again. Demoting it to the estimate lets the total, and
+   * the scrollbar drawn from it, follow the collapse immediately; the next real
+   * render measures the row exactly and upgrades it back to `measured`.
+   *
+   * This deliberately bypasses the tier rule in {@link setRowHeight}: that rule
+   * protects a measured row from a stale estimate, which is exactly what must
+   * NOT happen when the estimate is the newer, correct shape.
+   *
+   * It is authoritative: it bumps the row's generation, so a measurement taken
+   * before this call — even one queued in the same frame — is rejected by
+   * {@link setRowHeight} instead of restoring the old shape.
+   */
+  reestimateRow(index: number, height: number): boolean;
+  /**
+   * The row's current generation. A caller stamps a measurement with the
+   * generation it observed at, so a measurement queued across a
+   * {@link reestimateRow} is rejected rather than undoing the demotion.
+   */
+  generationOf(index: number): number;
   /** Grow / shrink the conversation. Appended rows start at the estimate. */
   setCount(count: number): void;
   rowCount(): number;
@@ -144,6 +182,7 @@ export function createLayoutLedger(options: LayoutLedgerOptions): LayoutLedger {
   let heights = new Float64Array(capacity);
   let offsets = new Float64Array(capacity + 1);
   let sources = new Uint8Array(capacity);
+  let generations = new Float64Array(capacity);
   const stats: LayoutLedgerStats = {
     rebuilds: 0,
     rebuiltRows: 0,
@@ -164,9 +203,12 @@ export function createLayoutLedger(options: LayoutLedgerOptions): LayoutLedger {
     nextOffsets.set(offsets.subarray(0, count + 1));
     const nextSources = new Uint8Array(grown);
     nextSources.set(sources.subarray(0, count));
+    const nextGenerations = new Float64Array(grown);
+    nextGenerations.set(generations.subarray(0, count));
     heights = nextHeights;
     offsets = nextOffsets;
     sources = nextSources;
+    generations = nextGenerations;
     capacity = grown;
   };
 
@@ -204,6 +246,14 @@ export function createLayoutLedger(options: LayoutLedgerOptions): LayoutLedger {
       if (!Number.isFinite(index) || index < 0 || index >= count) continue;
       const height = change.height;
       if (!Number.isFinite(height) || height < 0) continue;
+      // A measurement taken before this row's last re-estimate describes the
+      // old shape; refuse it so it cannot undo the demotion.
+      if (
+        change.generation != null &&
+        change.generation < generations[index]
+      ) {
+        continue;
+      }
       // Tier rule: a lower tier never overwrites a higher one, so a stale
       // estimate cannot move a row that has already been rendered.
       if (sources[index] > rank) continue;
@@ -235,6 +285,7 @@ export function createLayoutLedger(options: LayoutLedgerOptions): LayoutLedger {
     for (let i = from; i < count; i++) {
       heights[i] = estimateFor(i);
       sources[i] = SOURCE_RANK.estimate;
+      generations[i] = 0;
     }
     // Appended rows only change the suffix of the prefix table.
     let sum = offsets[from];
@@ -282,13 +333,38 @@ export function createLayoutLedger(options: LayoutLedgerOptions): LayoutLedger {
     return lo;
   };
 
+  const reestimate = (index: number, height: number): boolean => {
+    if (!Number.isFinite(index) || index < 0 || index >= count) return false;
+    if (!Number.isFinite(height) || height < 0) return false;
+    const i = Math.floor(index);
+    // Bump first: the demotion must outrank any measurement still in flight for
+    // the old shape, even when the new estimate happens to equal the old height.
+    generations[i] += 1;
+    if (heights[i] === height && sources[i] === SOURCE_RANK.estimate) {
+      return false;
+    }
+    heights[i] = height;
+    sources[i] = SOURCE_RANK.estimate;
+    rebuild(i, i + 1);
+    return true;
+  };
+
   return {
-    setRowHeight(index, height, source) {
-      return writeHeights([{ index, height, source }]) > 0;
+    setRowHeight(index, height, source, generation) {
+      return writeHeights([{ index, height, source, generation }]) > 0;
     },
 
     applyRowHeights(changes) {
       return writeHeights(changes);
+    },
+
+    reestimateRow(index, height) {
+      return reestimate(index, height);
+    },
+
+    generationOf(index) {
+      if (count === 0) return 0;
+      return generations[clampIndex(index, count - 1)];
     },
 
     setCount,

@@ -65,6 +65,16 @@ function nowMs(): number {
     : Date.now();
 }
 
+/** Element-wise identity compare of two fold-input lists. */
+function sameFoldInputs(
+  a: readonly unknown[],
+  b: readonly unknown[],
+): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((value, i) => Object.is(value, b[i]));
+}
+
 /** Seed bookkeeping: which ledger is in use and how many rows it holds. */
 export type ResidentLedgerSeed = {
   ledger: LayoutLedger | null;
@@ -113,12 +123,16 @@ export function useChatResidentList(
     controller,
     resetKey = null,
     enabled = true,
+    getActivityFold,
+    activityRevision,
   } = args;
 
   const itemCountRef = useRef(itemCount);
   itemCountRef.current = itemCount;
   const estimateRef = useRef(getEstimateHeight);
   estimateRef.current = getEstimateHeight;
+  const activityFoldRef = useRef(getActivityFold);
+  activityFoldRef.current = getActivityFold;
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
 
@@ -174,12 +188,29 @@ export function useChatResidentList(
   const sharedRowObserverRef = useRef<ResizeObserver | null>(null);
   const observedElementsRef = useRef<Map<HTMLElement, number>>(new Map());
   const observedIndicesRef = useRef<Map<number, HTMLElement>>(new Map());
+  /**
+   * Rows with foldable activity, tracked from their last render. A row outside
+   * the band can only hold a stale height if its fold changed since, so only
+   * these are re-checked when the model revision moves — never a scan over every
+   * resident row. `expandedHeight` remembers the last height measured while the
+   * fold was open, so an out-of-band re-growth can restore it.
+   */
+  const activityRowsRef = useRef<
+    Map<number, { inputs: readonly unknown[]; expanded: boolean; expandedHeight: number | null }>
+  >(new Map());
+  /** Generation observed when a row element was attached, stamped on its measurement. */
+  const observedGenerationsRef = useRef<Map<HTMLElement, number>>(new Map());
   const scrollActiveUntilRef = useRef(0);
   const pendingRestoreRef = useRef(false);
   const scrollIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const commitRowHeight = useCallback(
-    (index: number, el: HTMLElement, measuredHeight?: number) => {
+    (
+      index: number,
+      el: HTMLElement,
+      measuredHeight?: number,
+      generation?: number,
+    ) => {
       const ledger = controller?.ledger();
       if (!ledger) return;
       const next =
@@ -192,7 +223,18 @@ export function useChatResidentList(
       const prevMeasured =
         ledger.sourceOf(index) === "measured" ? prevHeight : undefined;
       if (!shouldCommitRowHeight(prevMeasured, next)) return;
-      controller?.reportRowHeight(index, next);
+      controller?.reportRowHeight(index, next, generation);
+      const fold = activityFoldRef.current?.(index) ?? null;
+      if (!fold || !fold.hasActivity) {
+        activityRowsRef.current.delete(index);
+      } else {
+        const prev = activityRowsRef.current.get(index);
+        activityRowsRef.current.set(index, {
+          inputs: fold.inputs,
+          expanded: fold.expanded,
+          expandedHeight: fold.expanded ? next : (prev?.expandedHeight ?? null),
+        });
+      }
       const delta = next - prevHeight;
       if (Math.abs(delta) > 0.5) {
         if (nowMs() < scrollActiveUntilRef.current) {
@@ -233,7 +275,12 @@ export function useChatResidentList(
           height = entry.contentRect.height;
         }
         if (height <= 0) continue;
-        commitRowHeightRef.current(index, el, height);
+        commitRowHeightRef.current(
+          index,
+          el,
+          height,
+          observedGenerationsRef.current.get(el),
+        );
       }
     });
     sharedRowObserverRef.current = ro;
@@ -258,18 +305,25 @@ export function useChatResidentList(
         if (prevEl && prevEl !== el) {
           ro?.unobserve(prevEl);
           observedElementsRef.current.delete(prevEl);
+          observedGenerationsRef.current.delete(prevEl);
           observedIndicesRef.current.delete(index);
         }
-        if (!el) return;
+        if (!el) {
+          return;
+        }
+        // Stamp the generation at attach: a measurement delivered after the row
+        // was re-estimated carries this older generation and is refused.
+        const generation = controller?.ledger().generationOf(index) ?? 0;
         observedElementsRef.current.set(el, index);
         observedIndicesRef.current.set(index, el);
+        observedGenerationsRef.current.set(el, generation);
         if (ro) ro.observe(el);
-        else commitRowHeightRef.current(index, el);
+        else commitRowHeightRef.current(index, el, undefined, generation);
       };
       measureCallbackCacheRef.current.set(index, cb);
       return cb;
     },
-    [ensureSharedObserver],
+    [ensureSharedObserver, controller],
   );
 
   /**
@@ -296,9 +350,56 @@ export function useChatResidentList(
     sharedRowObserverRef.current = null;
     observedElementsRef.current.clear();
     observedIndicesRef.current.clear();
+    observedGenerationsRef.current.clear();
     measureCallbackCacheRef.current.clear();
+    activityRowsRef.current.clear();
+    bandStore.clearRowState();
     pendingRestoreRef.current = false;
-  }, [resetKey]);
+  }, [resetKey, bandStore]);
+
+  /**
+   * Re-seed a shell whose activity fold changed since it was last rendered.
+   *
+   * When a thinking / tool block folds while its row is outside the band,
+   * nothing renders to measure, so the ledger would keep the old height and the
+   * scrollbar would lie. The model fold is the only source here; for a shell it
+   * re-seeds the ledger and re-renders exactly that row before paint:
+   *
+   * - fold closed  → the estimate (the collapsed shape);
+   * - fold opened  → the height remembered from the row's last expanded render,
+   *   falling back to the estimate. This is what carries an out-of-band
+   *   re-growth, not only a collapse.
+   *
+   * A rich row is left alone — its own measurement is exact — but its tracked
+   * fold is advanced so the next revision does not re-fire on a stale input.
+   */
+  useLayoutEffect(() => {
+    const getFold = activityFoldRef.current;
+    if (!getFold || !controller) return;
+    const rows = activityRowsRef.current;
+    if (rows.size === 0) return;
+    let changed = false;
+    for (const [index, state] of [...rows]) {
+      const fold = getFold(index);
+      if (!fold || !fold.hasActivity) {
+        rows.delete(index);
+        continue;
+      }
+      if (sameFoldInputs(state.inputs, fold.inputs)) continue;
+      const wasExpanded = state.expanded;
+      state.inputs = fold.inputs;
+      state.expanded = fold.expanded;
+      if (wasExpanded === fold.expanded) continue;
+      if (bandStore.isRich(index)) continue;
+      const height = fold.expanded
+        ? (state.expandedHeight ?? estimateFor(index))
+        : estimateFor(index);
+      controller.reestimateRow(index, height, bandStore.isRich);
+      bandStore.notifyHeightChanged(index);
+      changed = true;
+    }
+    if (changed) refreshBand();
+  }, [activityRevision, controller, bandStore, estimateFor, refreshBand]);
 
   // Seed, then band, before paint: the first painted frame must know every
   // shell's height and which rows carry content. Layout effects run before
