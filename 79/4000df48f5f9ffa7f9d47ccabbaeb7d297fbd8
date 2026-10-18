@@ -1,0 +1,33 @@
+src/lib/chatViewportTrace.ts
+  s_7e89d9a0551b97::t_2ec96fcca4ef8f 582-586,589-591,594,602,605,607-608,611,615-648
+src/hooks/useChatViewportTraceProbe.ts
+  s_7e89d9a0551b97::t_ef6cf51604f04a 577-579,581-590
+  s_7e89d9a0551b97::t_57e8f8c27326ce 455-458,460
+  s_7e89d9a0551b97::t_68e69b61afd5bd 20
+  s_7e89d9a0551b97::t_d98284c04fcbac 565-569
+  s_7e89d9a0551b97::t_62cc1743c3af6d 29
+  s_7e89d9a0551b97::t_e81b17338abcf5 75-82
+  s_7e89d9a0551b97::t_d563b14eedfbdc 145-150,152-162
+  s_7e89d9a0551b97::t_5064fd91a7aa93 191-195
+src/components/lobe-chat/ConversationThread.tsx
+  s_7e89d9a0551b97::t_2fe10e78c47591 2858-2862
+src/lib/chatViewportTrace.test.ts
+  s_7e89d9a0551b97::t_9816c76f1471a1 17,19
+  s_7e89d9a0551b97::t_c3d12dc0df662f 744,746-747,749,755,757,759-775,784,790,792,798,800-824
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "794000df48f5f9ffa7f9d47ccabbaeb7d297fbd8",
+  "prompts": {},
+  "sessions": {
+    "s_7e89d9a0551b97": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15049-c63c-77b1-862f-6755c09a7336",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
