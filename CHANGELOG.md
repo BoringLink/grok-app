@@ -13,13 +13,27 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+- The desktop pet can dictate, send a prompt, and stop the chat.
+- Turkish is now an interface language.
+
+**中文 · 新增**
+- 桌面宠物可以听写、发送提示，以及停掉对话。
+- 界面语言现在可以选择土耳其语。
+
 ### Fixed
+- A streaming reply stays at the bottom instead of bouncing.
+- Opening the desktop pet on Windows no longer freezes the app.
+- A stalled chat connect can be taken over once it expires.
 - Pinyin candidates stay at the caret after selecting text or switching windows.
 - Reopening a full side pane no longer stretches the window downward.
 - Sandbox can start a chat again. The sealed home copies its config and bundled files instead of linking them.
 - A custom channel stays on its own server when a model allowlist is already set. A refusal is shown instead of silently using another provider.
 
 **中文 · 修复**
+- 正在输出的回复会停在底部，不再上下跳动。
+- 在 Windows 上打开桌面宠物，不再把整个应用卡住。
+- 卡住的连接过期后，可以被新的连接接过去。
 - 选中聊天文字或切换窗口后，拼音候选框仍在输入光标旁边。
 - 右栏拉满后再打开，窗口不再往下变高。
 - 沙箱又能开始对话了。密封目录改为复制配置和内置文件，不再做链接。
