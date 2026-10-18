@@ -1,0 +1,19 @@
+src/hooks/useChatResidentList.test.tsx
+  s_e4ea3552f322ba::t_0fa19ef788e3b0 155-188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "fbbdaa7a3dc77388577c200952efe9cd99da060a",
+  "prompts": {},
+  "sessions": {
+    "s_e4ea3552f322ba": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14f2b-17c5-7622-87e0-3bd161420d7c",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
