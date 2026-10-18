@@ -1,0 +1,65 @@
+src/components/lobe-chat/ConversationThread.tsx
+  s_0c73529708e7f4::t_0f01545447cc13 1857
+  s_0c73529708e7f4::t_60d47849287ef8 2779
+src/hooks/useChatViewportController.ts
+  s_0c73529708e7f4::t_f234c97baf6663 246
+  s_0c73529708e7f4::t_881275c16f6c34 106-114
+  s_0c73529708e7f4::t_fa4b23a32fc7f6 421-424
+  s_0c73529708e7f4::t_3c318cea0aaab3 553-557
+  s_0c73529708e7f4::t_b905314a4e9906 77,84
+  s_0c73529708e7f4::t_353ccb079a120e 203-214
+  s_0c73529708e7f4::t_56779e9ef515f0 1156-1159
+  s_0c73529708e7f4::t_a41d0a380857cf 450-457,472
+  s_0c73529708e7f4::t_ff3124aabe0285 1351
+  s_0c73529708e7f4::t_e3b820ed26e24c 180-185
+  s_0c73529708e7f4::t_58131e74cb5ef0 1140-1146,1148
+src/lib/chatViewportTrace.ts
+  s_0c73529708e7f4::t_6d02ffa6bb41b7 503-504,506-511,513-518
+src/hooks/useChatViewportTraceProbe.ts
+  s_0c73529708e7f4::t_2c28dda0e136ed 339
+  s_0c73529708e7f4::t_c89d44ccd7de66 564
+  s_0c73529708e7f4::t_cefd9590ccf030 130-131,135-136
+  s_0c73529708e7f4::t_602dbb328e24b7 22,38-39
+  s_0c73529708e7f4::t_7e2e512dda8366 281-284,286
+docs/llm-wiki/chat-viewport-trace.md
+  s_0c73529708e7f4::t_dfaeb42d05c3ac 52-58
+  s_0c73529708e7f4::t_1d54608b265748 46-49,51
+  s_0c73529708e7f4::t_809cb49ada059a 74
+src/hooks/useChatResidentList.ts
+  s_0c73529708e7f4::t_fce223522540d7 241-245
+src/lib/chatViewportTrace.test.ts
+  s_0c73529708e7f4::t_89b892d152af1b 6
+  s_0c73529708e7f4::t_c5bf44d6054894 396-410,413,416,419-421,424,427,429-438
+docs/llm-wiki/session-continuity.md
+  s_0c73529708e7f4::t_f552495c142349 367-378
+src/hooks/useChatViewportController.test.tsx
+  s_0c73529708e7f4::t_4d18b6774a7d2d 785-942
+src/hooks/chatEscapedAnchorFold.test.tsx
+  s_0c73529708e7f4::t_f82d7324b950e2 258-262,265
+  s_0c73529708e7f4::t_153bb30ee70956 257,263-264,266-270,272,279,283-285,288
+  s_0c73529708e7f4::t_a2c4ac69507368 290-291,293-294,296-297,300
+  s_0c73529708e7f4::t_a132a793e2a0ac 17
+  s_0c73529708e7f4::t_f87d28c63e262c 165
+  s_0c73529708e7f4::t_09c53f48c690d7 247-249,251
+  s_0c73529708e7f4::t_6097b0f3174466 164,166
+  s_0c73529708e7f4::t_231535080f96e7 309
+  s_0c73529708e7f4::t_a91ff846353ba7 1-16,18-163,167-246,250,252-256,271,273-278,280-282,286-287,289,292,295,298-299,301-308,310-321
+src/lib/chatViewportController.ts
+  s_0c73529708e7f4::t_62cdd626e0ba14 40-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "2ff3d659c8a6b5c8204db0e647150017cbdc337c",
+  "prompts": {},
+  "sessions": {
+    "s_0c73529708e7f4": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a14fc9-da5a-7ef2-b0ab-516e35cea185",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
