@@ -501,30 +501,25 @@ export function shouldEscapePinnedScroll(input: {
  */
 export const STICK_MIN_VIEWPORT_HEIGHT_PX = 32;
 
-/** True when metrics must not drive pin, escape, follow, or virtual snap. */
+/**
+ * True when metrics must not drive pin, escape, follow, refresh or restore.
+ *
+ * `hidden` is the Page Visibility signal; `covered` is the macOS host's report
+ * that the window is completely covered by another app. In both the engine
+ * stops painting, so `maxTop = scrollHeight - clientHeight` no longer describes
+ * a drawn frame and following would write an unobservable, possibly wrong
+ * position.
+ */
 export function isStickViewportUnreliable(input: {
   clientHeight: number;
   hidden?: boolean;
+  covered?: boolean;
 }): boolean {
-  if (input.hidden === true) return true;
+  if (input.hidden === true || input.covered === true) return true;
   return (
     !Number.isFinite(input.clientHeight) ||
     input.clientHeight < STICK_MIN_VIEWPORT_HEIGHT_PX
   );
-}
-
-/**
- * App became visible again with a real viewport. Restore tail follow only
- * if the user was still pinned — never yank someone who scrolled into history.
- */
-export function shouldRestorePinnedFollowOnViewportReady(input: {
-  pinned: boolean;
-  escaped: boolean;
-  viewportWasUnreliable: boolean;
-  viewportIsReliable: boolean;
-}): boolean {
-  if (!input.viewportWasUnreliable || !input.viewportIsReliable) return false;
-  return input.pinned && !input.escaped;
 }
 
 /**

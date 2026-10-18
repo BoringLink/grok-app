@@ -38,6 +38,12 @@ import {
   shellsCrossingViewport,
   type BandRowRect,
 } from "@/lib/chatResidentBand";
+import {
+  measuredFrameIntervalMs,
+  measuredRefreshRateHz,
+  nominalRefreshRateHz,
+  noteAnimationFrame,
+} from "@/lib/frameCadence";
 
 /** A real gesture within this window means the move was the user's, not a bug. */
 const GESTURE_WINDOW_MS = 400;
@@ -159,6 +165,8 @@ export function useChatViewportTraceProbe(input: {
      */
     let mutations = 0;
     let prevMutations = 0;
+    /** Nominal refresh rate at the previous heartbeat; null until the first. */
+    let lastNominalRefreshHz: number | null = null;
 
     const geometry = () => ({
       rows: contentRef?.current
@@ -177,6 +185,8 @@ export function useChatViewportTraceProbe(input: {
       hidden: typeof document !== "undefined" ? document.hidden : null,
       visibility:
         typeof document !== "undefined" ? document.visibilityState : null,
+      frameIntervalMs: Math.round(measuredFrameIntervalMs() * 100) / 100,
+      fps: Math.round(measuredRefreshRateHz()),
     });
 
     const publish = (
@@ -385,6 +395,10 @@ export function useChatViewportTraceProbe(input: {
     // callbacks instead reported a false 980px jump — those fire mid-layout.
     const frame = () => {
       if (cancelled) return;
+      // This is the sampled rAF loop, so it also feeds the shared cadence
+      // estimate: a refresh-rate change (120 Hz ↔ 60 Hz) or a cross-display
+      // move then shows up in the heartbeat without a separate timer.
+      noteAnimationFrame(performance.now());
       takeSample("raf");
       raf = requestAnimationFrame(frame);
     };
@@ -477,6 +491,19 @@ export function useChatViewportTraceProbe(input: {
     }, 2000);
 
     const heartbeat = window.setInterval(() => {
+      // A refresh-rate change (120 Hz ↔ 60 Hz) or a cross-display move is worth
+      // its own event: the position criteria are judged per drawn frame, so the
+      // cadence the frames arrived at has to be readable next to them.
+      const nominalHz = nominalRefreshRateHz();
+      if (lastNominalRefreshHz != null && nominalHz !== lastNominalRefreshHz) {
+        traceViewport("refresh-rate", {
+          fromHz: lastNominalRefreshHz,
+          toHz: nominalHz,
+          frameIntervalMs: Math.round(measuredFrameIntervalMs() * 100) / 100,
+          fps: Math.round(measuredRefreshRateHz()),
+        });
+      }
+      lastNominalRefreshHz = nominalHz;
       // A dump, not a bare status line: the per-frame samples (distance to the
       // content end, visible-band shift, write sources) only reach the log
       // through a dump, so a session with no trigger would otherwise keep them

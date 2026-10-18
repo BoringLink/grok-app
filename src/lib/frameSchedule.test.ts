@@ -1,6 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  MIXED_DISPLAY_FRAME_FALLBACK_MS,
+  FRAME_INTERVAL_MIN_MS,
+  measuredFrameIntervalMs,
+  noteAnimationFrame,
+  resetFrameCadence,
+} from "./frameCadence";
+import {
   cancelFrameSchedule,
   emptyFrameSchedule,
   isFrameSchedulePending,
@@ -13,6 +18,7 @@ function mockHost() {
   let toId = 0;
   const rafs = new Map<number, FrameRequestCallback>();
   const tos = new Map<number, () => void>();
+  let lastTimeoutMs = -1;
   const host: FrameScheduleHost = {
     raf: (cb) => {
       const id = ++rafId;
@@ -22,7 +28,8 @@ function mockHost() {
     cancelRaf: (id) => {
       rafs.delete(id);
     },
-    timeout: (cb, _ms) => {
+    timeout: (cb, ms) => {
+      lastTimeoutMs = ms;
       const id = ++toId;
       tos.set(id, cb);
       return id as unknown as ReturnType<typeof setTimeout>;
@@ -33,12 +40,13 @@ function mockHost() {
   };
   return {
     host,
-    flushRaf: () => {
+    lastTimeoutMs: () => lastTimeoutMs,
+    flushRaf: (timestamp = 16.7) => {
       const first = rafs.entries().next().value;
       if (!first) return;
       const [id, cb] = first;
       rafs.delete(id);
-      cb(0);
+      cb(timestamp);
     },
     flushTimeout: () => {
       const first = tos.entries().next().value;
@@ -52,11 +60,9 @@ function mockHost() {
   };
 }
 
-describe("scheduleOnFrame", () => {
-  it("uses an 8ms fallback constant definition", () => {
-    expect(MIXED_DISPLAY_FRAME_FALLBACK_MS).toBe(8);
-  });
+beforeEach(resetFrameCadence);
 
+describe("scheduleOnFrame", () => {
   it("runs once when rAF fires and clears pending state", () => {
     const m = mockHost();
     const state = emptyFrameSchedule();
@@ -83,6 +89,38 @@ describe("scheduleOnFrame", () => {
     expect(isFrameSchedulePending(state)).toBe(false);
     expect(m.rafCount()).toBe(0);
     expect(m.timeoutCount()).toBe(0);
+  });
+
+  it("feeds the measured cadence from the delivered rAF timestamp", () => {
+    const m = mockHost();
+    // Arrange — two deliveries with a 120 Hz gap.
+    scheduleOnFrame(emptyFrameSchedule(), vi.fn(), m.host);
+    m.flushRaf(16.7);
+    scheduleOnFrame(emptyFrameSchedule(), vi.fn(), m.host);
+    m.flushRaf(25.0);
+
+    // Assert — the estimate moved down from the 60 Hz seed toward 120 Hz.
+    expect(measuredFrameIntervalMs()).toBeLessThan(1000 / 60);
+  });
+
+  it("sizes the fallback from the measured interval, so 120 Hz waits less than 60 Hz", () => {
+    // Arrange — a converged 120 Hz cadence.
+    for (let i = 0; i < 30; i++) noteAnimationFrame(i * 8.3);
+    const m120 = mockHost();
+    scheduleOnFrame(emptyFrameSchedule(), vi.fn(), m120.host);
+    const fast = m120.lastTimeoutMs();
+
+    // Arrange — a converged 60 Hz cadence.
+    resetFrameCadence();
+    for (let i = 0; i < 30; i++) noteAnimationFrame(i * 16.7);
+    const m60 = mockHost();
+    scheduleOnFrame(emptyFrameSchedule(), vi.fn(), m60.host);
+    const slow = m60.lastTimeoutMs();
+
+    // Assert — cadence-proportional, never a fixed constant.
+    expect(fast).toBeGreaterThanOrEqual(FRAME_INTERVAL_MIN_MS);
+    expect(fast).toBeLessThan(slow);
+    expect(slow).toBeLessThan(1000 / 60);
   });
 
   it("cancelFrameSchedule cancels pending rAF", () => {

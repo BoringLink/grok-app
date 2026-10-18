@@ -20,6 +20,7 @@ import {
   setChatTraceSessionId,
   setChatViewportTraceEnabled,
   setChatViewportTracePinned,
+  traceOcclusion,
   tracePinState,
   traceScrollTopWrite,
   traceViewport,
@@ -431,6 +432,75 @@ describe("classifyPinFlipCause", () => {
     expect(
       classifyPinFlipCause({ reason: "button-scroll-to-bottom", distFromBottom: 0 }),
     ).toBe("button");
+  });
+});
+
+describe("traceOcclusion", () => {
+  it("records the enter and exit boundaries with their cause and phase", () => {
+    // Arrange
+    setChatViewportTraceEnabled(true);
+
+    // Act
+    traceOcclusion({
+      state: "enter",
+      cause: "hidden",
+      clientHeight: 612.4,
+      pinned: true,
+      escaped: false,
+    });
+    traceOcclusion({
+      state: "exit",
+      cause: "hidden",
+      clientHeight: 612.4,
+      pinned: false,
+      escaped: true,
+    });
+
+    // Assert
+    const [enter, exit] = chatViewportTraceEvents();
+    expect(enter?.kind).toBe("occlusion");
+    expect(enter?.state).toBe("enter");
+    expect(enter?.cause).toBe("hidden");
+    expect(enter?.clientHeight).toBe(612);
+    expect(enter?.pinned).toBe(true);
+    expect(exit?.state).toBe("exit");
+    expect(exit?.escaped).toBe(true);
+  });
+
+  it("records the covered boundary the host reports", () => {
+    // Arrange
+    setChatViewportTraceEnabled(true);
+
+    // Act — the macOS host reported the window completely covered.
+    traceOcclusion({
+      state: "enter",
+      cause: "covered",
+      clientHeight: 612,
+      pinned: true,
+      escaped: false,
+    });
+
+    // Assert
+    const [event] = chatViewportTraceEvents();
+    expect(event?.kind).toBe("occlusion");
+    expect(event?.cause).toBe("covered");
+  });
+
+  it("records nothing while the trace is off", () => {
+    // Arrange
+    setChatViewportTraceEnabled(false);
+
+    // Act
+    traceOcclusion({
+      state: "exit",
+      cause: "collapsed",
+      clientHeight: 0,
+      pinned: true,
+      escaped: false,
+    });
+
+    // Assert
+    expect(chatViewportTraceEvents()).toHaveLength(0);
   });
 });
 

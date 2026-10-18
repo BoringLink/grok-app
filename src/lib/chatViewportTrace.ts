@@ -242,6 +242,41 @@ export function tracePinState(input: {
 }
 
 /**
+ * Record a paint-availability boundary (occlusion enter / exit).
+ *
+ * A window that is hidden or collapses its scroller stops the render loop, so
+ * the position cannot be observed while it is occluded; the frame the occlusion
+ * ends is the moment C5 is judged. Publishing the exit directly (under a
+ * tracking session) puts that frame in the log without waiting for the 10s
+ * heartbeat dump, so a reproduction can be read instead of reasoned about.
+ */
+export function traceOcclusion(input: {
+  state: "enter" | "exit";
+  cause: "hidden" | "covered" | "collapsed" | null;
+  clientHeight: number;
+  pinned: boolean;
+  escaped: boolean;
+}): void {
+  const event = traceViewport("occlusion", {
+    state: input.state,
+    cause: input.cause,
+    clientHeight: Math.round(input.clientHeight),
+    pinned: input.pinned,
+    escaped: input.escaped,
+  });
+  if (input.state === "exit" && event && chatTraceSessionId()) {
+    void publishTraceToHost({
+      reason: "occlusion-restored",
+      cause: input.cause,
+      clientHeight: Math.round(input.clientHeight),
+      pinned: input.pinned,
+      escaped: input.escaped,
+      session: chatTraceSessionId(),
+    });
+  }
+}
+
+/**
  * Would this sample count as "the viewport moved to an OLDER message"?
  *
  * Deliberately narrow so the trace is not flooded: the view must be following

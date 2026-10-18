@@ -18,7 +18,6 @@ import {
   shouldIgnoreProgrammaticStickLeave,
   shouldReleaseStickOnScrollUp,
   shouldReleaseStickOnSlowScrollUp,
-  shouldRestorePinnedFollowOnViewportReady,
 } from "./stickToBottom";
 
 describe("isHardBottom", () => {
@@ -355,33 +354,6 @@ describe("unreliable viewport / programmatic leave", () => {
     ).toBe(true);
     expect(
       isStickViewportUnreliable({ clientHeight: 800, hidden: false }),
-    ).toBe(false);
-  });
-
-  it("restores tail follow only when coming back while still pinned", () => {
-    expect(
-      shouldRestorePinnedFollowOnViewportReady({
-        pinned: true,
-        escaped: false,
-        viewportWasUnreliable: true,
-        viewportIsReliable: true,
-      }),
-    ).toBe(true);
-    expect(
-      shouldRestorePinnedFollowOnViewportReady({
-        pinned: false,
-        escaped: true,
-        viewportWasUnreliable: true,
-        viewportIsReliable: true,
-      }),
-    ).toBe(false);
-    expect(
-      shouldRestorePinnedFollowOnViewportReady({
-        pinned: true,
-        escaped: false,
-        viewportWasUnreliable: false,
-        viewportIsReliable: true,
-      }),
     ).toBe(false);
   });
 
