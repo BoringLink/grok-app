@@ -127,9 +127,6 @@
    * overscroll looked like "can pull a little then snap back + flash"). */
   overscroll-behavior: none;
   overscroll-behavior-y: none;
-  /* We manage stick-to-bottom ourselves; browser anchoring fights
-   * programmatic scrollTop during stream growth and feels like bounce. */
-  overflow-anchor: none;
   /* Reserve gutter so image max-width / text wrap don't thrash when the
    * scrollbar appears mid-load (classic width↔height oscillation).
    * Must beat `*:not(textarea) { scrollbar-width: none }` or the gutter
@@ -140,6 +137,19 @@
   scrollbar-color: var(--scrollbar-thumb, rgba(128, 128, 128, 0.35)) transparent
     !important;
   -ms-overflow-style: auto !important;
+}
+
+/* We manage stick-to-bottom ourselves; browser anchoring fights programmatic
+ * scrollTop during stream growth and feels like bounce. Scoped to the whole
+ * transcript subtree on purpose: CSS Scroll Anchoring Level 1 §3 re-enables
+ * anchoring for every descendant scroll container that does not set it itself,
+ * so the nested scrollers (activity steps, thinking body, tool / fragment
+ * bodies) need their own opt-out. Load-bearing, not dead style — see ADR 0006.
+ * Descendant-only, so it can never reach the composer, rail, sidebar or
+ * settings scrollers. */
+.lobe-chat__scroll,
+.lobe-chat__scroll * {
+  overflow-anchor: none;
 }
 
 .lobe-chat__scroll::-webkit-scrollbar {
