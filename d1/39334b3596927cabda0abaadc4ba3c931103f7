@@ -1,0 +1,36 @@
+docs/llm-wiki/chat-viewport-budget.md
+  s_5f515ab34de0a9::t_5f2ce627854ee5 143-148
+src/lib/chatViewportTrace.test.ts
+  s_5f515ab34de0a9::t_eecff1616c4e71 675,677
+  s_5f515ab34de0a9::t_887f4c87089e33 722-743
+  s_5f515ab34de0a9::t_94f1a3c3b4cebf 839
+  s_5f515ab34de0a9::t_8aa9427a455134 844-846
+  s_5f515ab34de0a9::t_c004984fa4a154 861-862,865,868-873
+  s_5f515ab34de0a9::t_b387cd2cd9be31 863-864,866-867,874
+src/lib/chatViewportTrace.ts
+  s_5f515ab34de0a9::t_6cc49c07ed6056 158-162,171-174
+  s_5f515ab34de0a9::t_a4c33982f52745 474-486
+  s_5f515ab34de0a9::t_c5fb64075dd456 54-56
+  s_5f515ab34de0a9::t_709d83c05273ab 724,726
+  s_5f515ab34de0a9::t_3e9fa92ee0b643 679-687,699,715,725
+docs/llm-wiki/chat-viewport-trace.md
+  s_5f515ab34de0a9::t_4c4c5e945f63ef 198-199
+  s_5f515ab34de0a9::t_6583d90aa15312 200-206
+  s_5f515ab34de0a9::t_660e86d8114fd1 183-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "d139334b3596927cabda0abaadc4ba3c931103f7",
+  "prompts": {},
+  "sessions": {
+    "s_5f515ab34de0a9": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1522a-8192-7142-a4e5-2fcbf19baf16",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
