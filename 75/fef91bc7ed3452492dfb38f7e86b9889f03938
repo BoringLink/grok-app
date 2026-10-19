@@ -1,0 +1,40 @@
+src-tauri/src/commands/automation.rs
+  s_dc6e98a83bee89::t_ce3d17437f0f08 23-38
+src/app/AppWorkbench.tsx
+  s_dc6e98a83bee89::t_707f4a7d65996c 4182
+  s_dc6e98a83bee89::t_bff6a942bc3d58 3929,3932-3937,3944-3947,3950-3953
+  s_dc6e98a83bee89::t_c02582e55f93ce 4084-4087
+  s_dc6e98a83bee89::t_29c3236f1466e2 4147,4150-4152,4155
+  s_dc6e98a83bee89::t_f573203c90cfd2 3894-3906,3913
+src/lib/api/automations.ts
+  s_dc6e98a83bee89::t_063107f97196d5 143-144,148-149
+  s_dc6e98a83bee89::t_b2a99abd7027a4 235-270
+  s_dc6e98a83bee89::t_19538e4605d48f 189-190,192
+src-tauri/src/automation_runner.rs
+  s_dc6e98a83bee89::t_c8e3f4da91599a 478-479
+src-tauri/src/command_registry.rs
+  s_dc6e98a83bee89::t_dc564bb4b7493d 339
+src/components/AutomationsPage.tsx
+  s_dc6e98a83bee89::t_50fb361420618b 1848-1850
+src/lib/automations.ts
+  s_dc6e98a83bee89::t_2e35864b8c3577 19
+src-tauri/src/store.rs
+  s_dc6e98a83bee89::t_214e191cae2f70 3150-3166,3169-3170
+  s_dc6e98a83bee89::t_f88cf5cc2311c6 3167-3168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "75fef91bc7ed3452492dfb38f7e86b9889f03938",
+  "prompts": {},
+  "sessions": {
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
