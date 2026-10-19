@@ -1,0 +1,99 @@
+src/lib/automations.ts
+  s_4e4d693d576d2d::t_4e3fe444b6d2c4 8-9
+  s_4e4d693d576d2d::t_4e183a4848ef84 19-20
+  s_4e4d693d576d2d::t_553efc654aa13e 40-41
+  s_4e4d693d576d2d::t_8e0f7a13c9458a 51-70
+src/lib/api/automations.ts
+  s_4e4d693d576d2d::t_76d4af512427c2 18-19
+  s_4e4d693d576d2d::t_3b867e5c9f03cf 37-38
+  s_4e4d693d576d2d::t_152ec9acb6d864 142,146,149
+  s_4e4d693d576d2d::t_e9624a30a53030 144-145,148
+  s_4e4d693d576d2d::t_0e4990c714c781 187,189-198
+  s_4e4d693d576d2d::t_41926f8b75d4bd 207-208
+  s_dc6e98a83bee89::t_b2a99abd7027a4 229-230
+src-tauri/src/automation_runner.rs
+  s_4e4d693d576d2d::t_404b8469215506 347-359,375-376,401-408,411-413,430,433,454-457,467-469
+  s_4e4d693d576d2d::t_30dcfab1d9189b 360-369
+  s_4e4d693d576d2d::t_9efe4eced8cb77 387-400,418-425,434-439
+  s_4e4d693d576d2d::t_95065c58da2d9a 609-610
+  s_4e4d693d576d2d::t_44eafc8f87096e 681-685,690-693
+src/components/AutomationsPage.tsx
+  s_4e4d693d576d2d::t_6cf7a69d7d51fc 14
+  s_4e4d693d576d2d::t_f7cd69ada950cb 74-80,84-85
+  s_4e4d693d576d2d::t_7e0871b6a98feb 91
+  s_4e4d693d576d2d::t_f198f28b895133 120-121,134-135
+  s_4e4d693d576d2d::t_09970317859e6b 145
+  s_4e4d693d576d2d::t_9cb7c41b222f54 171-172
+  s_4e4d693d576d2d::t_5572a8bdd80fbf 244-270
+  s_4e4d693d576d2d::t_172eba28522e29 379,381
+  s_4e4d693d576d2d::t_7416c493d16f1d 601,609
+  s_4e4d693d576d2d::t_ef7c5f05e4f4b9 616-624
+  s_4e4d693d576d2d::t_4284b01102068c 649-652
+  s_4e4d693d576d2d::t_db7bc256036a08 666-667
+  s_4e4d693d576d2d::t_e6a9f6cfe3ec81 701-702
+  s_4e4d693d576d2d::t_b8b65b7bb81452 767-773,790-792,800-804
+  s_4e4d693d576d2d::t_bb9932be992216 774-777
+  s_4e4d693d576d2d::t_bef83ef9061776 778-789,793-799
+  s_4e4d693d576d2d::t_322d2c02187fde 1179-1181
+  s_4e4d693d576d2d::t_85316ca2a0c048 1797
+  s_4e4d693d576d2d::t_fd4ae739d97697 1803,1805-1814,1817-1847,1849-1855
+  s_4e4d693d576d2d::t_aed41b0dc09615 1856-1885
+src/lib/automationsSession.test.ts
+  s_4e4d693d576d2d::t_118b54acb2fe8c 1-29
+docs/llm-wiki/automations.md
+  s_4e4d693d576d2d::t_a14a7677d90b30 13
+  s_4e4d693d576d2d::t_66fad4efa066b3 45-46
+  s_4e4d693d576d2d::t_c0605b3b9931b2 52
+  s_4e4d693d576d2d::t_f4aefa77bdb481 128
+CHANGELOG.md
+  s_4e4d693d576d2d::t_8ced8868c12fc4 16-21
+src/app/AppWorkbench.tsx
+  s_4e4d693d576d2d::t_8a1c4042d572a1 540
+  s_4e4d693d576d2d::t_dcf53c16f4c9b3 3931,3933,3935-3939
+  s_4e4d693d576d2d::t_14895610490b5e 3966-3968,3970-4007,4011-4012
+  s_4e4d693d576d2d::t_c7b7e34bfafbba 4030-4036
+  s_4e4d693d576d2d::t_9a58d00a1b268f 4049,4051-4061,4063-4064
+  s_4e4d693d576d2d::t_bab80172d1c10b 4050,4062
+  s_4e4d693d576d2d::t_c3a3975017cbc9 4106
+  s_4e4d693d576d2d::t_d4b2c4eab4cb63 4127-4131,4137,4145
+  s_4e4d693d576d2d::t_989e30e588a8a0 4176-4177,4192-4196
+  s_4e4d693d576d2d::t_78cd1ff5f7ecba 4231
+  s_4e4d693d576d2d::t_a57d0bb64e7ade 12719-12725
+src-tauri/src/store.rs
+  s_4e4d693d576d2d::t_58cb2de73345a2 2953-2957
+  s_4e4d693d576d2d::t_07ec931df6b80a 2982-2984
+  s_4e4d693d576d2d::t_81f33a77d2824f 3001-3002
+  s_4e4d693d576d2d::t_9928d92c34aa8c 3022-3041
+  s_4e4d693d576d2d::t_286954a037b2eb 3052-3055,3064-3065
+  s_4e4d693d576d2d::t_b40611047be5fc 3111-3115,3120-3123
+  s_4e4d693d576d2d::t_c4716218b3866c 3145-3152
+  s_4e4d693d576d2d::t_5fe6521194cda6 3167-3168
+  s_4e4d693d576d2d::t_eacad8234a7cd0 3694-3736
+  s_4e4d693d576d2d::t_8d7e74204b8cd5 3739-3760,3765-3770,3772-3776
+src/styles/modals.part1.css
+  s_4e4d693d576d2d::t_a0e84fa20021d2 151-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "071d912f6764612762595bfc84ece18178a07cc4",
+  "prompts": {},
+  "sessions": {
+    "s_4e4d693d576d2d": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15474-20b0-71f2-b55b-017c1113440b",
+        "model": "auto(free)"
+      },
+      "human_author": null
+    },
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
