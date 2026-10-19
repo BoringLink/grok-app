@@ -15,6 +15,8 @@ export interface AutomationDto {
   projectId: string | null;
   modelId: string | null;
   effort: string | null;
+  sessionMode?: string;
+  sessionId?: string | null;
   frequency: string;
   time: string;
   weekdays: number[];
@@ -32,6 +34,8 @@ export interface AutomationInputDto {
   projectId?: string | null;
   modelId?: string | null;
   effort?: string | null;
+  sessionMode?: string;
+  sessionId?: string | null;
   frequency?: string;
   time?: string;
   weekdays?: number[];
@@ -135,6 +139,14 @@ export async function automationCreate(
       projectId: input.projectId ?? null,
       modelId: input.modelId ?? null,
       effort: input.effort ?? null,
+      sessionMode:
+        input.sessionMode === "reuse" && input.sessionId?.trim()
+          ? "reuse"
+          : "new",
+      sessionId:
+        input.sessionMode === "reuse" && input.sessionId?.trim()
+          ? input.sessionId.trim()
+          : null,
       frequency: input.frequency ?? "daily",
       time: input.time ?? "09:00",
       weekdays: input.weekdays ?? [],
@@ -172,6 +184,18 @@ export async function automationUpdate(
     const idx = list.findIndex((a) => a.id === id);
     if (idx < 0) throw new Error("automation not found");
     const prev = list[idx];
+    const nextMode =
+      input.sessionMode === "reuse" && input.sessionId?.trim()
+        ? "reuse"
+        : input.sessionMode !== undefined
+          ? "new"
+          : (prev.sessionMode ?? "new");
+    const nextSessionId =
+      nextMode === "reuse"
+        ? input.sessionId !== undefined
+          ? input.sessionId?.trim() || prev.sessionId
+          : prev.sessionId
+        : null;
     const next = {
       ...prev,
       title: input.title.trim(),
@@ -180,6 +204,8 @@ export async function automationUpdate(
       projectId: input.projectId !== undefined ? input.projectId : prev.projectId,
       modelId: input.modelId !== undefined ? input.modelId : prev.modelId,
       effort: input.effort !== undefined ? input.effort : prev.effort,
+      sessionMode: nextMode,
+      sessionId: nextSessionId,
       frequency: input.frequency ?? prev.frequency,
       time: input.time ?? prev.time,
       weekdays: input.weekdays ?? prev.weekdays,

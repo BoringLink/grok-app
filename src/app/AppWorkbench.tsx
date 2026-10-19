@@ -537,6 +537,7 @@ import { PhoneComposerToolsSheet } from "@/components/PhoneComposerToolsSheet";
 import { type ContextMenuItem } from "@/components/ContextMenu";
 import {
   aiCreateSeedPrompt,
+  automationReuseSessionId,
   computeNextRunAt,
   type Automation,
 } from "@/lib/automations";
@@ -3927,9 +3928,15 @@ export function AppWorkbench() {
       automationRunLock.current = true;
       let createdSessionId: string | null = null;
       try {
-        const proj = auto.projectId
-          ? projects.find((p) => p.id === auto.projectId) ?? null
+        const reuseId = automationReuseSessionId(auto);
+        const reusedRow = reuseId
+          ? sessions.find((s) => s.id === reuseId) ?? null
           : null;
+        const proj = reusedRow
+          ? projects.find((p) => p.id === reusedRow.projectId) ?? null
+          : auto.projectId
+            ? projects.find((p) => p.id === auto.projectId) ?? null
+            : null;
         if (proj && !proj.trusted) {
           const detail = tr("project.trustFirst", { name: proj.name });
           setLocalError(detail);
@@ -3956,48 +3963,53 @@ export function AppWorkbench() {
         }
         setMainPane("chat");
         closeSettings();
-        setActiveProject(proj);
-        if (proj) {
-          setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+        if (reusedRow) {
+          // Show the configured chat first; its journal stays intact.
+          await openSessionRef.current(reusedRow, proj);
         } else {
-          setHistoryOpen(true);
-        }
-        openingSessionIdRef.current = null;
-        invalidateOpenPipelines();
-        bumpViewEpoch();
-        viewingSessionIdRef.current = null;
-        sessionTranscriptStore.setViewingSessionId(null);
-        sessionTranscriptStore.clearJournalLoad();
-        setMessages([]);
-        setAttachments([]);
-        setQuotes([]);
-        setPerm(null);
-        setAskUser(null);
-        setRetryStatus(null);
-        setLocalError(null);
-        setDraft("");
-        if (api.isTauri()) {
-          try {
-            await api.sessionDisconnect();
-          } catch {
-            /* ignore */
+          setActiveProject(proj);
+          if (proj) {
+            setExpandedProjects((e) => ({ ...e, [proj.id]: true }));
+          } else {
+            setHistoryOpen(true);
+          }
+          openingSessionIdRef.current = null;
+          invalidateOpenPipelines();
+          bumpViewEpoch();
+          viewingSessionIdRef.current = null;
+          sessionTranscriptStore.setViewingSessionId(null);
+          sessionTranscriptStore.clearJournalLoad();
+          setMessages([]);
+          setAttachments([]);
+          setQuotes([]);
+          setPerm(null);
+          setAskUser(null);
+          setRetryStatus(null);
+          setLocalError(null);
+          setDraft("");
+          if (api.isTauri()) {
+            try {
+              await api.sessionDisconnect();
+            } catch {
+              /* ignore */
+            }
+          }
+          setSession({
+            ...IDLE_SNAPSHOT,
+            sessionId: null,
+            title: auto.title || tr("session.new"),
+            state: "idle",
+            backend: "grok_agent_stdio",
+          });
+          {
+            const idle = { ...IDLE_SNAPSHOT };
+            setLiveHost(idle);
+            liveHostRef.current = idle;
           }
         }
-        setSession({
-          ...IDLE_SNAPSHOT,
-          sessionId: null,
-          title: auto.title || tr("session.new"),
-          state: "idle",
-          backend: "grok_agent_stdio",
-        });
-        {
-          const idle = { ...IDLE_SNAPSHOT };
-          setLiveHost(idle);
-          liveHostRef.current = idle;
-        }
 
-        let sessionId: string | null = null;
-        if (api.isTauri()) {
+        let sessionId: string | null = reusedRow?.id ?? null;
+        if (!sessionId && api.isTauri()) {
           const meta = (await api.sessionCreate(
             proj?.id,
             auto.title || tr("session.new"),
@@ -4015,7 +4027,13 @@ export function AppWorkbench() {
         }
 
         // Persist model/effort for this session before connect when possible.
-        if (sessionId && api.isTauri() && (auto.modelId || auto.effort)) {
+        // A reused chat keeps its own model and reasoning.
+        if (
+          sessionId &&
+          !reusedRow &&
+          api.isTauri() &&
+          (auto.modelId || auto.effort)
+        ) {
           try {
             await api.composerPrefsSet({
               sessionId,
@@ -4028,12 +4046,22 @@ export function AppWorkbench() {
           }
         }
 
-        const snap = await api.sessionConnect({
-          projectPath: proj?.path || generalWorkspacePath || undefined,
-          sessionId: sessionId ?? undefined,
-          mode: "agent",
-          sshAlias: proj?.sshAlias ?? null,
-        });
+        const claimed = sessionId
+          ? sessionNavHostRef.current.connect.claim(sessionId)
+          : false;
+        let snap;
+        try {
+          snap = await api.sessionConnect({
+            projectPath: proj?.path || generalWorkspacePath || undefined,
+            sessionId: sessionId ?? undefined,
+            mode: "agent",
+            sshAlias: proj?.sshAlias ?? null,
+          });
+        } finally {
+          if (claimed && sessionId) {
+            sessionNavHostRef.current.connect.release(sessionId);
+          }
+        }
         setLiveHost(snap);
         liveHostRef.current = snap;
         if (snap.sessionId) {
@@ -4075,7 +4103,7 @@ export function AppWorkbench() {
           return false;
         }
 
-        if (sessionId && auto.modelId && api.isTauri()) {
+        if (sessionId && !reusedRow && auto.modelId && api.isTauri()) {
           try {
             await api.sessionSetModel(auto.modelId, {
               sessionId,
@@ -4096,15 +4124,17 @@ export function AppWorkbench() {
             createdAt: new Date().toISOString(),
           },
         ];
-        if (sessionId) {
-          messagesBySessionRef.current.set(sessionId, autoMsgs);
+        if (!reusedRow) {
+          if (sessionId) {
+            messagesBySessionRef.current.set(sessionId, autoMsgs);
+          }
+          setMessages(autoMsgs);
         }
-        setMessages(autoMsgs);
         setSession((prev) => ({
           ...prev,
           state: "streaming",
           lastError: null,
-          title: auto.title || prev.title,
+          title: reusedRow ? prev.title : auto.title || prev.title,
         }));
 
         try {
@@ -4112,7 +4142,7 @@ export function AppWorkbench() {
         } catch (sendErr) {
           const errText = String(sendErr);
           const failed: ChatMessage[] = [
-            ...autoMsgs,
+            ...(reusedRow ? sessionTranscriptStore.getMessages() : autoMsgs),
             {
               id: `err-auto-${Date.now()}`,
               role: "assistant",
@@ -4139,6 +4169,29 @@ export function AppWorkbench() {
             error: errText,
           });
           return false;
+        }
+
+        // The configured chat was gone and we created a replacement. Persist
+        // it like the host runner does, so the next run reuses one chat.
+        if (reuseId && !reusedRow && sessionId && api.isTauri()) {
+          try {
+            await api.automationUpdate(auto.id, {
+              title: auto.title,
+              prompt: auto.prompt,
+              enabled: auto.enabled,
+              projectId: auto.projectId,
+              modelId: auto.modelId,
+              effort: auto.effort,
+              sessionMode: "reuse",
+              sessionId,
+              frequency: auto.frequency,
+              time: auto.time,
+              weekdays: auto.weekdays,
+              notify: auto.notify,
+            });
+          } catch {
+            /* soft-fail: a later run will retry the fallback */
+          }
         }
 
         const lastRunAt = new Date().toISOString();
@@ -4175,7 +4228,7 @@ export function AppWorkbench() {
         automationRunLock.current = false;
       }
     },
-    [projects, session.state, connecting, tr],
+    [projects, sessions, session.state, connecting, tr],
   );
 
   // Host automation_runner ticks while the process is alive (including tray).
@@ -12663,6 +12716,13 @@ export function AppWorkbench() {
               tr(k as Parameters<typeof tr>[0], vars as Record<string, string | number>)
               }
               projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+              sessionOptions={sessions
+                .filter((s) => !s.archived)
+                .map((s) => ({
+                  id: s.id,
+                  title: s.title,
+                  projectId: s.projectId,
+                }))}
               defaultModelId={modelId}
               defaultEffort={effort}
               models={availableModels}

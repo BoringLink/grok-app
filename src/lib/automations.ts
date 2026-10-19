@@ -5,6 +5,8 @@
 
 export type AutomationFrequency = "daily" | "weekly" | "weekdays" | "once";
 export type AutomationNotify = "all" | "failures" | "none";
+/** Fresh chat per run, or send into a chosen existing chat. */
+export type AutomationSessionMode = "new" | "reuse";
 
 export interface Automation {
   id: string;
@@ -14,6 +16,8 @@ export interface Automation {
   projectId: string | null;
   modelId: string | null;
   effort: string | null;
+  sessionMode?: AutomationSessionMode | string;
+  sessionId?: string | null;
   frequency: AutomationFrequency | string;
   /** Local wall-clock `HH:MM` (24h). */
   time: string;
@@ -33,6 +37,8 @@ export interface AutomationInput {
   projectId?: string | null;
   modelId?: string | null;
   effort?: string | null;
+  sessionMode?: string;
+  sessionId?: string | null;
   frequency?: string;
   time?: string;
   weekdays?: number[];
@@ -41,6 +47,26 @@ export interface AutomationInput {
 }
 
 const LS_KEY = "grok-app.automations";
+
+/** Normalize persisted values; a missing chat id falls back to a fresh run. */
+export function normalizeAutomationSessionMode(
+  mode: string | null | undefined,
+  sessionId: string | null | undefined,
+): AutomationSessionMode {
+  return mode?.trim().toLowerCase() === "reuse" && sessionId?.trim()
+    ? "reuse"
+    : "new";
+}
+
+/** Chat to send into, or `null` for a fresh chat. */
+export function automationReuseSessionId(
+  auto: Pick<Automation, "sessionMode" | "sessionId">,
+): string | null {
+  const id = auto.sessionId?.trim() ?? "";
+  return normalizeAutomationSessionMode(auto.sessionMode, id) === "reuse"
+    ? id
+    : null;
+}
 
 /** Browser / fallback store when Tauri is unavailable. */
 export function loadAutomationsLocal(): Automation[] {

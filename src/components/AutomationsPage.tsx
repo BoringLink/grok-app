@@ -11,6 +11,7 @@ import {
   computeNextRunAt,
   formatNextRunRelative,
   formatScheduleSummary,
+  normalizeAutomationSessionMode,
   type Automation,
 } from "@/lib/automations";
 import { automationsRunnerBanner } from "@/lib/automationsRunnerPolicy";
@@ -70,15 +71,24 @@ export interface AutomationsProjectOption {
   name: string;
 }
 
+/** Chat the user can reuse for a scheduled task. */
+export interface AutomationsSessionOption {
+  id: string;
+  title: string;
+  projectId?: string | null;
+}
+
 export interface AutomationsPageProps {
   t: (key: string, vars?: Record<string, string | number>) => string;
   projects: AutomationsProjectOption[];
+  /** Recent chats available for "run in an existing chat". */
+  sessionOptions?: AutomationsSessionOption[];
   defaultModelId?: string;
   defaultEffort?: string;
   /** Live selectable models; falls back to catalog. */
   models?: ModelOption[];
   onAiCreate: () => void;
-  onRunNow?: (auto: Automation) => void;
+  onRunNow?: (auto: Automation) => void | Promise<unknown>;
   /**
    * Open a session linked from an Inbox row (when sessionId was observed).
    * Soft — App resolves live session; may toast if missing.
@@ -107,6 +117,8 @@ type FormState = {
   projectId: string; // "" = none
   modelId: string;
   effort: string;
+  sessionMode: "new" | "reuse";
+  sessionId: string;
   frequency: string;
   time: string;
   notify: string;
@@ -119,6 +131,8 @@ const emptyForm = (modelId: string, effort: string): FormState => ({
   projectId: "",
   modelId,
   effort,
+  sessionMode: "new",
+  sessionId: "",
   frequency: "daily",
   time: "09:00",
   notify: "all",
@@ -128,6 +142,7 @@ const emptyForm = (modelId: string, effort: string): FormState => ({
 export function AutomationsPage({
   t,
   projects,
+  sessionOptions = [],
   defaultModelId = DEFAULT_MODEL_ID,
   defaultEffort = DEFAULT_EFFORT,
   models,
@@ -153,6 +168,8 @@ export function AutomationsPage({
   const [form, setForm] = useState<FormState>(() =>
     emptyForm(defaultModelId, defaultEffort),
   );
+  /** Filter for the existing-chat picker (long session lists). */
+  const [sessionQuery, setSessionQuery] = useState("");
   const [createMenu, setCreateMenu] = useState(false);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   /** Pending delete — never use window.confirm in Tauri WebView. */
@@ -223,6 +240,33 @@ export function AutomationsPage({
     void refresh();
     void refreshRunner();
   }, [refresh, refreshRunner]);
+
+  // Host fires can rewrite an automation row (e.g. a reused chat was deleted
+  // and the runner stored its replacement). Refresh the open list in place.
+  useEffect(() => {
+    if (!api.isTauri()) return;
+    let cancelled = false;
+    const unsubs: Array<() => void> = [];
+    const track = (name: "automation://ran" | "automation://error") => {
+      void api
+        .listen(name, () => {
+          if (!cancelled) void refresh();
+        })
+        .then((unsub) => {
+          if (cancelled) unsub();
+          else unsubs.push(unsub);
+        })
+        .catch(() => {
+          /* soft-fail: list still refreshes on next mount */
+        });
+    };
+    track("automation://ran");
+    track("automation://error");
+    return () => {
+      cancelled = true;
+      unsubs.forEach((unsub) => unsub());
+    };
+  }, [refresh]);
 
   // Refresh runner status occasionally while page is open.
   useEffect(() => {
@@ -332,9 +376,9 @@ export function AutomationsPage({
       const auto = list.find((a) => a.id === plan.taskId);
       if (!auto) return;
       onMarkInboxRead(item);
-      onRunNow(auto);
+      void Promise.resolve(onRunNow(auto)).then(() => refresh());
     },
-    [list, onRunNow, onMarkInboxRead],
+    [list, onRunNow, onMarkInboxRead, refresh],
   );
 
   const banner = useMemo(
@@ -554,6 +598,7 @@ export function AutomationsPage({
   const openCreateManual = () => {
     setCreateMenu(false);
     setEditingId(null);
+    setSessionQuery("");
     setForm(emptyForm(defaultModelId, defaultEffort));
     setPanelOpen(true);
   };
@@ -561,12 +606,22 @@ export function AutomationsPage({
   const openEdit = (auto: Automation) => {
     setRowMenuId(null);
     setEditingId(auto.id);
+    setSessionQuery("");
     setForm({
       title: auto.title,
       prompt: auto.prompt,
       projectId: auto.projectId ?? "",
       modelId: auto.modelId || defaultModelId,
       effort: auto.effort || defaultEffort,
+      sessionMode: normalizeAutomationSessionMode(
+        auto.sessionMode,
+        auto.sessionId,
+      ),
+      sessionId:
+        normalizeAutomationSessionMode(auto.sessionMode, auto.sessionId) ===
+        "reuse"
+          ? (auto.sessionId ?? "")
+          : "",
       frequency: auto.frequency || "daily",
       time: auto.time || "09:00",
       notify: auto.notify || "all",
@@ -591,6 +646,10 @@ export function AutomationsPage({
       setError(t("automations.errPrompt"));
       return;
     }
+    if (form.sessionMode === "reuse" && !form.sessionId) {
+      setError(t("automations.errSession"));
+      return;
+    }
     const nextRunAt = computeNextRunAt({
       frequency: form.frequency,
       time: form.time,
@@ -604,6 +663,8 @@ export function AutomationsPage({
       projectId: form.projectId || null,
       modelId: form.modelId || null,
       effort: form.effort || null,
+      sessionMode: form.sessionMode,
+      sessionId: form.sessionMode === "reuse" ? form.sessionId : null,
       frequency: form.frequency,
       time: form.time,
       weekdays: [],
@@ -637,6 +698,8 @@ export function AutomationsPage({
             projectId: next.projectId,
             modelId: next.modelId,
             effort: next.effort,
+            sessionMode: next.sessionMode,
+            sessionId: next.sessionId,
             frequency: next.frequency,
             time: next.time,
             weekdays: next.weekdays,
@@ -700,6 +763,44 @@ export function AutomationsPage({
     ],
     [projects, t],
   );
+
+  const runInOptions = [
+    { value: "new", label: t("automations.sessionMode.new") },
+    { value: "reuse", label: t("automations.sessionMode.reuse") },
+  ];
+
+  const sessionPickerOptions = useMemo(() => {
+    const query = sessionQuery.trim().toLowerCase();
+    const rows: Array<{ value: string; label: string; disabled?: boolean }> =
+      sessionOptions
+        .filter((s) => !query || s.title.toLowerCase().includes(query))
+        .map((s) => {
+        const projectName = s.projectId
+          ? projects.find((p) => p.id === s.projectId)?.name
+          : null;
+        return {
+          value: s.id,
+          label: projectName
+            ? `${s.title || t("session.untitled")} · ${projectName}`
+            : s.title || t("session.untitled"),
+        };
+      });
+    // The current pick must stay visible (and selectable) under any filter.
+    if (form.sessionId && !rows.some((r) => r.value === form.sessionId)) {
+      rows.unshift({
+        value: form.sessionId,
+        label: t("automations.sessionMissing"),
+      });
+    }
+    if (!form.sessionId) {
+      rows.unshift({
+        value: "",
+        label: t("automations.sessionNone"),
+        disabled: true,
+      });
+    }
+    return rows;
+  }, [form.sessionId, projects, sessionOptions, sessionQuery, t]);
 
   const modelOptions = (models?.length ? models : GROK_BUILD_MODELS).map((m) => ({
     value: m.id,
@@ -1075,7 +1176,9 @@ export function AutomationsPage({
                                 role="menuitem"
                                 onClick={() => {
                                   setRowMenuId(null);
-                                  onRunNow(auto);
+                                  void Promise.resolve(onRunNow(auto)).then(
+                                    () => refresh(),
+                                  );
                                 }}
                               >
                                 {t("automations.runNow")}
@@ -1691,28 +1794,95 @@ export function AutomationsPage({
                 <Select
                   value={form.projectId}
                   options={projectOptions}
+                  disabled={form.sessionMode === "reuse"}
                   onChange={(v) => setForm((f) => ({ ...f, projectId: v }))}
                   aria-label={t("automations.field.project")}
                 />
               </div>
               <div className="auto-field auto-field--row">
-                <span>{t("automations.field.model")}</span>
+                <span>{t("automations.field.runIn")}</span>
                 <Select
-                  value={form.modelId}
-                  options={modelOptions}
-                  onChange={(v) => setForm((f) => ({ ...f, modelId: v }))}
-                  aria-label={t("automations.field.model")}
+                  value={form.sessionMode}
+                  options={runInOptions}
+                  onChange={(v) =>
+                    setForm((f) => ({
+                      ...f,
+                      sessionMode: v === "reuse" ? "reuse" : "new",
+                      sessionId: v === "reuse" ? f.sessionId : "",
+                    }))
+                  }
+                  aria-label={t("automations.field.runIn")}
                 />
               </div>
-              <div className="auto-field auto-field--row">
-                <span>{t("automations.field.effort")}</span>
-                <Select
-                  value={form.effort}
-                  options={effortOptions}
-                  onChange={(v) => setForm((f) => ({ ...f, effort: v }))}
-                  aria-label={t("automations.field.effort")}
-                />
-              </div>
+              {form.sessionMode === "reuse" && (
+                <>
+                  <label className="auto-field">
+                    <span>{t("automations.field.sessionSearch")}</span>
+                    <input
+                      type="search"
+                      value={sessionQuery}
+                      onChange={(e) => setSessionQuery(e.target.value)}
+                      placeholder={t("automations.field.sessionSearchPh")}
+                    />
+                  </label>
+                  <div className="auto-field auto-field--row">
+                    <span>{t("automations.field.session")}</span>
+                    <Select
+                      value={form.sessionId}
+                      options={
+                        sessionPickerOptions.length
+                          ? sessionPickerOptions
+                          : [
+                              {
+                                value: "",
+                                label: t("automations.sessionNone"),
+                                disabled: true,
+                              },
+                            ]
+                      }
+                      onChange={(v) => {
+                        const picked = sessionOptions.find((s) => s.id === v);
+                        setForm((f) => ({
+                          ...f,
+                          sessionId: v,
+                          projectId: picked?.projectId ?? f.projectId,
+                        }));
+                      }}
+                      aria-label={t("automations.field.session")}
+                    />
+                  </div>
+                </>
+              )}
+              {form.sessionMode === "new" ? (
+                <>
+                  <div className="auto-field auto-field--row">
+                    <span>{t("automations.field.model")}</span>
+                    <Select
+                      value={form.modelId}
+                      options={modelOptions}
+                      onChange={(v) =>
+                        setForm((f) => ({ ...f, modelId: v }))
+                      }
+                      aria-label={t("automations.field.model")}
+                    />
+                  </div>
+                  <div className="auto-field auto-field--row">
+                    <span>{t("automations.field.effort")}</span>
+                    <Select
+                      value={form.effort}
+                      options={effortOptions}
+                      onChange={(v) =>
+                        setForm((f) => ({ ...f, effort: v }))
+                      }
+                      aria-label={t("automations.field.effort")}
+                    />
+                  </div>
+                </>
+              ) : (
+                <p className="auto-field__hint">
+                  {t("automations.sessionModelHint")}
+                </p>
+              )}
             </div>
 
             <div className="auto-panel__section">
