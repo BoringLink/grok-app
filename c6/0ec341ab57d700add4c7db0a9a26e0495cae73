@@ -1,0 +1,61 @@
+src-tauri/src/store.rs
+  s_dc6e98a83bee89::t_f88cf5cc2311c6 3167-3168
+  s_dc6e98a83bee89::t_214e191cae2f70 3150-3166,3169-3170
+src-tauri/src/commands/automation.rs
+  s_dc6e98a83bee89::t_ce3d17437f0f08 23-38
+src/components/AutomationsPage.tsx
+  s_dc6e98a83bee89::t_50fb361420618b 1848-1850
+src-tauri/src/command_registry.rs
+  s_dc6e98a83bee89::t_dc564bb4b7493d 340
+src/app/AppWorkbench.tsx
+  s_dc6e98a83bee89::t_0313ea097ff84d 547
+  s_dc6e98a83bee89::t_254d2f06707271 3904
+  s_dc6e98a83bee89::t_707f4a7d65996c 4169
+  s_dc6e98a83bee89::t_2d08759db78433 545
+  s_dc6e98a83bee89::t_7550fe8a48984b 16-19,3915,4057,4089
+  s_dc6e98a83bee89::t_c02582e55f93ce 3934-3935,3937,3940-3941,3943,4072-4075
+  s_dc6e98a83bee89::t_ae811893a0e2f1 12662
+  s_4e4d693d576d2d::t_989e30e588a8a0 3905
+  s_dc6e98a83bee89::t_f573203c90cfd2 3903,3912
+  s_dc6e98a83bee89::t_bff6a942bc3d58 3921-3922,3936,3942
+  s_dc6e98a83bee89::t_180e2392522733 3923-3927
+  s_dc6e98a83bee89::t_29c3236f1466e2 4134,4137-4139,4142
+src/hooks/useAutomationRunFailure.ts
+  s_dc6e98a83bee89::t_dd865e8b36a96b 1-26
+  s_dc6e98a83bee89::t_0c214d69089f74 27-38
+src/lib/automations.ts
+  s_dc6e98a83bee89::t_3b389358bd8f0d 72-85
+  s_dc6e98a83bee89::t_359acf321f9a6e 86-102
+  s_dc6e98a83bee89::t_2e35864b8c3577 19
+src/lib/api/automations.ts
+  s_dc6e98a83bee89::t_19538e4605d48f 189-190,192
+  s_dc6e98a83bee89::t_063107f97196d5 143-144,148-149
+  s_dc6e98a83bee89::t_b2a99abd7027a4 235-270
+src-tauri/src/automation_runner.rs
+  s_dc6e98a83bee89::t_c8e3f4da91599a 478-479
+  s_4e4d693d576d2d::t_44eafc8f87096e 483-484
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "c60ec341ab57d700add4c7db0a9a26e0495cae73",
+  "prompts": {},
+  "sessions": {
+    "s_4e4d693d576d2d": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15474-20b0-71f2-b55b-017c1113440b",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": null
+    }
+  }
+}
