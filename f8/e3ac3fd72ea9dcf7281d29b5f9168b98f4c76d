@@ -1,0 +1,64 @@
+src-tauri/src/store.rs
+  s_4e4d693d576d2d::t_7c4f7a57a0fc8d 3033
+  s_4e4d693d576d2d::t_e59db2779383ef 2952-2954
+  s_4e4d693d576d2d::t_a9afe64a1bbb35 2995
+  s_4e4d693d576d2d::t_220f7ae9fb3788 3079
+src/lib/automationSetup.ts
+  s_4e4d693d576d2d::t_714e32f0061b13 152-155
+src/lib/api/automations.ts
+  s_4e4d693d576d2d::t_7afaf831e20062 185-186
+  s_4e4d693d576d2d::t_50d496c70c3b09 35
+  s_4e4d693d576d2d::t_817bf58b55b16f 139
+  s_4e4d693d576d2d::t_9f08f3efd8d57a 17
+src/lib/automations.ts
+  s_4e4d693d576d2d::t_ed4d8a0842d141 37
+  s_4e4d693d576d2d::t_6162bd4adf4ab5 16-17
+src/lib/automationModelRoute.test.ts
+  s_4e4d693d576d2d::t_5adde7a1b063f5 1-75
+src/app/AppWorkbench.tsx
+  s_4e4d693d576d2d::t_520bb017ace4f6 4015-4019,4031
+  s_4e4d693d576d2d::t_2a55b974ebb84b 4020-4024
+  s_4e4d693d576d2d::t_9abbac6431a88e 540
+  s_4e4d693d576d2d::t_3b81b2dcaf8ef4 12649
+  s_4e4d693d576d2d::t_815c17bae6ae86 4185
+src/lib/automationModelRoute.ts
+  s_4e4d693d576d2d::t_8dc96a3b818c3c 1-77
+docs/llm-wiki/automations.md
+  s_4e4d693d576d2d::t_0ab5aa07ab72bf 45-46
+  s_4e4d693d576d2d::t_240bc1b0fd24c1 128
+src/components/AutomationsPage.tsx
+  s_4e4d693d576d2d::t_a9f1974bf69a3c 60,65-72
+  s_4e4d693d576d2d::t_76d1f3bcf4ebe1 638
+  s_4e4d693d576d2d::t_e3168cd9f2c353 738-768,770-774
+  s_4e4d693d576d2d::t_01e93343cd9abd 143
+  s_4e4d693d576d2d::t_1f50e50f8e25a8 672
+  s_4e4d693d576d2d::t_f625979006ede3 129-130
+  s_4e4d693d576d2d::t_a74d5e651ab5bf 1764,1766-1788
+  s_4e4d693d576d2d::t_510f3fabb7ff68 595-600
+  s_4e4d693d576d2d::t_43c06d2836fb32 176-177
+  s_4e4d693d576d2d::t_cc1f160f2cebb2 87
+  s_4e4d693d576d2d::t_ac3355e585bf5a 82-86,88-90,94-95
+  s_4e4d693d576d2d::t_965b08bff50a39 154
+src-tauri/src/automation_runner.rs
+  s_4e4d693d576d2d::t_64882986e40354 347-367
+  s_4e4d693d576d2d::t_1c7cd3cbe43fdb 566
+  s_4e4d693d576d2d::t_19a94c09368490 394
+  s_4e4d693d576d2d::t_162c99d10e19ee 638-659
+  s_4e4d693d576d2d::t_0b827608e4c44c 398-405,407,410,412
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "f8e3ac3fd72ea9dcf7281d29b5f9168b98f4c76d",
+  "prompts": {},
+  "sessions": {
+    "s_4e4d693d576d2d": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15474-20b0-71f2-b55b-017c1113440b",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
