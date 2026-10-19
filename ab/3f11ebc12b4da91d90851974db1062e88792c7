@@ -1,0 +1,67 @@
+src-tauri/src/store.rs
+  s_4e4d693d576d2d::t_9928d92c34aa8c 3022-3041
+  s_4e4d693d576d2d::t_286954a037b2eb 3052-3055,3064-3065
+  s_4e4d693d576d2d::t_81f33a77d2824f 3001-3002
+  s_4e4d693d576d2d::t_07ec931df6b80a 2982-2984
+  s_4e4d693d576d2d::t_58cb2de73345a2 2953-2957
+  s_4e4d693d576d2d::t_b40611047be5fc 3111-3123
+  s_4e4d693d576d2d::t_5fe6521194cda6 3145-3160
+  s_4e4d693d576d2d::t_eacad8234a7cd0 3686-3730
+src-tauri/src/automation_runner.rs
+  s_4e4d693d576d2d::t_44eafc8f87096e 655-667
+  s_4e4d693d576d2d::t_9d73d104438e3e 453
+  s_4e4d693d576d2d::t_404b8469215506 347-359,365-388,390,397-399,403-405,413,416,418,432-435,445-447,451-452,454
+  s_4e4d693d576d2d::t_95065c58da2d9a 583-584
+src/components/AutomationsPage.tsx
+  s_4e4d693d576d2d::t_09970317859e6b 145
+  s_4e4d693d576d2d::t_b8b65b7bb81452 740-765
+  s_4e4d693d576d2d::t_f7cd69ada950cb 74-80,84-85
+  s_4e4d693d576d2d::t_7416c493d16f1d 574,582
+  s_4e4d693d576d2d::t_9cb7c41b222f54 171-172
+  s_4e4d693d576d2d::t_e6a9f6cfe3ec81 674-675
+  s_4e4d693d576d2d::t_f198f28b895133 120-121,134-135
+  s_4e4d693d576d2d::t_6cf7a69d7d51fc 14
+  s_4e4d693d576d2d::t_ef7c5f05e4f4b9 589-597
+  s_4e4d693d576d2d::t_db7bc256036a08 639-640
+  s_4e4d693d576d2d::t_4284b01102068c 622-625
+  s_4e4d693d576d2d::t_fd4ae739d97697 1761-1813
+docs/llm-wiki/automations.md
+  s_4e4d693d576d2d::t_66fad4efa066b3 45-46
+  s_4e4d693d576d2d::t_f4aefa77bdb481 128
+  s_4e4d693d576d2d::t_46cdc4e58632f5 52
+src/lib/automations.ts
+  s_4e4d693d576d2d::t_553efc654aa13e 40-41
+  s_4e4d693d576d2d::t_4e3fe444b6d2c4 8-9
+  s_4e4d693d576d2d::t_4e183a4848ef84 19-20
+  s_4e4d693d576d2d::t_8e0f7a13c9458a 51-70
+src/lib/automationsSession.test.ts
+  s_4e4d693d576d2d::t_118b54acb2fe8c 1-29
+src/lib/api/automations.ts
+  s_4e4d693d576d2d::t_3b867e5c9f03cf 37-38
+  s_4e4d693d576d2d::t_d5c85dd235d4d4 193-202
+  s_4e4d693d576d2d::t_152ec9acb6d864 142-147
+  s_4e4d693d576d2d::t_76d4af512427c2 18-19
+src/app/AppWorkbench.tsx
+  s_4e4d693d576d2d::t_8a1c4042d572a1 537
+  s_4e4d693d576d2d::t_14895610490b5e 3963-3965,3967-4004,4008-4009
+  s_4e4d693d576d2d::t_a57d0bb64e7ade 12650-12657
+  s_4e4d693d576d2d::t_dcf53c16f4c9b3 3928-3930,3932-3936
+  s_4e4d693d576d2d::t_d4b2c4eab4cb63 4108-4112,4118,4126
+  s_4e4d693d576d2d::t_78cd1ff5f7ecba 4189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "ab3f11ebc12b4da91d90851974db1062e88792c7",
+  "prompts": {},
+  "sessions": {
+    "s_4e4d693d576d2d": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15474-20b0-71f2-b55b-017c1113440b",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
