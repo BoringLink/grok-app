@@ -1,0 +1,74 @@
+src/lib/automationModelRoute.test.ts
+  s_dc6e98a83bee89::t_fa8cf72cd91b58 49,53-57,60-64,68,84-103
+src/components/AutomationsPage.tsx
+  s_dc6e98a83bee89::t_c0e27be12aed8d 192-198
+  s_4e4d693d576d2d::t_85c5da82cc1e58 147-151,156
+  s_dc6e98a83bee89::t_e4e670bf2fbfe8 631
+  s_4e4d693d576d2d::t_e825e36acbe6a1 103-104
+  s_dc6e98a83bee89::t_9341928da5e5e8 60,62,65
+  s_dc6e98a83bee89::t_3355044e30764b 787-800,802-810,820-822
+  s_4e4d693d576d2d::t_3a83080b4dd11d 1858-1870
+  s_dc6e98a83bee89::t_c8a3995aa4260f 674
+  s_4e4d693d576d2d::t_afce06a5519489 1825-1839
+  s_4e4d693d576d2d::t_d7268ceabfbe62 813-819
+  s_4e4d693d576d2d::t_33aa40bed94127 168
+  s_dc6e98a83bee89::t_eee8fe5067f544 1855-1857
+  s_dc6e98a83bee89::t_43bf9a68983031 203-205
+  s_4e4d693d576d2d::t_d0eb92c43c68cd 774-775,778
+  s_4e4d693d576d2d::t_a56144fe9d6a61 832-844
+  s_4e4d693d576d2d::t_a9e98f523f0a5e 76
+  s_4e4d693d576d2d::t_c69a06a914b7a5 618,623-630,632-637
+  s_4e4d693d576d2d::t_2e8e19aff7474c 199-202
+  s_4e4d693d576d2d::t_e22f131b497f40 84-85,93
+docs/llm-wiki/automations.md
+  s_dc6e98a83bee89::t_1c16afaa658bdb 46
+src-tauri/src/automation_runner.rs
+  s_dc6e98a83bee89::t_f93472ef98c652 677
+  s_4e4d693d576d2d::t_6e83c1bc0fd6f7 412-419,430-432
+  s_dc6e98a83bee89::t_4b356192e465ff 349-351,362-372,375
+src-tauri/src/providers.rs
+  s_dc6e98a83bee89::t_01ae580c559170 1666-1678,1680-1686
+src/app/AppWorkbench.tsx
+  s_dc6e98a83bee89::t_46deabe08b69e7 4016
+  s_4e4d693d576d2d::t_9b30db424adc70 12643-12647,12650-12654
+  s_4e4d693d576d2d::t_7bc5a1e88cd2c3 2937-2940
+  s_dc6e98a83bee89::t_a5d1e8da296ebe 4010-4015
+  s_dc6e98a83bee89::t_abe057c4097cbf 4178
+  s_dc6e98a83bee89::t_a0fe98740abb34 3898-3910
+  s_dc6e98a83bee89::t_01c349b261b79a 3917
+  s_dc6e98a83bee89::t_d3b4607ceeae9e 4093-4096
+  s_4e4d693d576d2d::t_3715057d59cd75 4019-4030,4032,4046-4054
+  s_dc6e98a83bee89::t_2bbd6a88300e5a 4031
+  s_dc6e98a83bee89::t_c063956bb46d95 4055
+  s_dc6e98a83bee89::t_720e34397c0082 3936-3939,3942-3945
+  s_dc6e98a83bee89::t_e90b76c9b81e89 4154
+CHANGELOG.md
+  s_dc6e98a83bee89::t_4756a74a123a3a 17,22
+src/lib/automationModelRoute.ts
+  s_4e4d693d576d2d::t_a9e4d22573143b 85
+  s_dc6e98a83bee89::t_7de28b199750cb 32-54,56-58,63,68-70,75-77,83-84,90,92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "5d70258e7ca8869afdee58f089ad1b677ae1f849",
+  "prompts": {},
+  "sessions": {
+    "s_4e4d693d576d2d": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15474-20b0-71f2-b55b-017c1113440b",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
