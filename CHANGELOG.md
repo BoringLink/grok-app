@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.42] - 2026-10-19
+
+> **Highlight:** The desktop pet can dictate, send, and stop a chat.
+>
+> **中文 · 亮点：** 桌面宠物可以听写、发送，以及停掉对话。
+
 ### Added
 - The desktop pet can dictate, send a prompt, and stop the chat.
 - Turkish is now an interface language.
@@ -30,6 +36,8 @@ See `docs/llm-wiki/release.md`.
 - Reopening a full side pane no longer stretches the window downward.
 - Sandbox can start a chat again. The sealed home copies its config and bundled files instead of linking them.
 - A custom channel stays on its own server when a model allowlist is already set. A refusal is shown instead of silently using another provider.
+- A WSL chat starts the Linux grok directly. The open project is reached through its distro path.
+- The WSL agent home stays inside Linux. Only the login file is shared from Windows.
 
 **中文 · 修复**
 - 下次打开应用时，桌面宠物还在上次放下的地方。
@@ -40,6 +48,8 @@ See `docs/llm-wiki/release.md`.
 - 右栏拉满后再打开，窗口不再往下变高。
 - 沙箱又能开始对话了。密封目录改为复制配置和内置文件，不再做链接。
 - 已经写了模型白名单时，自定义通道仍走自己的服务器。被拒绝时会直接提示，不再静默换到别的通道。
+- WSL 对话会直接启动 Linux 里的 grok。打开的项目会走发行版里的对应路径。
+- WSL 的代理目录留在 Linux 里。只有登录文件从 Windows 共享过来。
 
 ## [0.2.41] - 2026-10-14
 
