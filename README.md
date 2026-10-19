@@ -316,7 +316,7 @@ Contributions, bug reports, and suggestions are warmly welcomed!
 ## 👥 Contributors
 
 <!-- CONTRIBUTORS:START -->
-Thanks to everyone who has contributed to Grok App. All human GitHub contributors (by commit count, updated 2026-10-15).
+Thanks to everyone who has contributed to Grok App. All human GitHub contributors (by commit count, updated 2026-10-19).
 
 <p align="center">
   <a href="https://github.com/RongleCat" title="RongleCat"><img src="https://github.com/RongleCat.png?size=96" width="72" height="72" alt="RongleCat" style="border-radius:50%" /></a>
@@ -343,6 +343,8 @@ Thanks to everyone who has contributed to Grok App. All human GitHub contributor
   <a href="https://github.com/lunar-me" title="lunar-me"><img src="https://github.com/lunar-me.png?size=96" width="72" height="72" alt="lunar-me" style="border-radius:50%" /></a>
   <a href="https://github.com/ericyiu9819" title="ericyiu9819"><img src="https://github.com/ericyiu9819.png?size=96" width="72" height="72" alt="ericyiu9819" style="border-radius:50%" /></a>
   <a href="https://github.com/falser101" title="falser101"><img src="https://github.com/falser101.png?size=96" width="72" height="72" alt="falser101" style="border-radius:50%" /></a>
+  <a href="https://github.com/nebofeng" title="nebofeng"><img src="https://github.com/nebofeng.png?size=96" width="72" height="72" alt="nebofeng" style="border-radius:50%" /></a>
+  <a href="https://github.com/overahead" title="overahead"><img src="https://github.com/overahead.png?size=96" width="72" height="72" alt="overahead" style="border-radius:50%" /></a>
   <a href="https://github.com/salasebas" title="salasebas"><img src="https://github.com/salasebas.png?size=96" width="72" height="72" alt="salasebas" style="border-radius:50%" /></a>
   <a href="https://github.com/Sdefendre" title="Sdefendre"><img src="https://github.com/Sdefendre.png?size=96" width="72" height="72" alt="Sdefendre" style="border-radius:50%" /></a>
   <a href="https://github.com/Thibaultjaigu" title="Thibaultjaigu"><img src="https://github.com/Thibaultjaigu.png?size=96" width="72" height="72" alt="Thibaultjaigu" style="border-radius:50%" /></a>
@@ -350,8 +352,10 @@ Thanks to everyone who has contributed to Grok App. All human GitHub contributor
   <a href="https://github.com/2530185073" title="2530185073"><img src="https://github.com/2530185073.png?size=96" width="72" height="72" alt="2530185073" style="border-radius:50%" /></a>
   <a href="https://github.com/86208620" title="86208620"><img src="https://github.com/86208620.png?size=96" width="72" height="72" alt="86208620" style="border-radius:50%" /></a>
   <a href="https://github.com/apple-ouyang" title="apple-ouyang"><img src="https://github.com/apple-ouyang.png?size=96" width="72" height="72" alt="apple-ouyang" style="border-radius:50%" /></a>
+  <a href="https://github.com/ayzekhdawy" title="ayzekhdawy"><img src="https://github.com/ayzekhdawy.png?size=96" width="72" height="72" alt="ayzekhdawy" style="border-radius:50%" /></a>
   <a href="https://github.com/fannnzhang" title="fannnzhang"><img src="https://github.com/fannnzhang.png?size=96" width="72" height="72" alt="fannnzhang" style="border-radius:50%" /></a>
   <a href="https://github.com/hermes87666" title="hermes87666"><img src="https://github.com/hermes87666.png?size=96" width="72" height="72" alt="hermes87666" style="border-radius:50%" /></a>
+  <a href="https://github.com/HZ-ZY" title="HZ-ZY"><img src="https://github.com/HZ-ZY.png?size=96" width="72" height="72" alt="HZ-ZY" style="border-radius:50%" /></a>
   <a href="https://github.com/jchacker5" title="jchacker5"><img src="https://github.com/jchacker5.png?size=96" width="72" height="72" alt="jchacker5" style="border-radius:50%" /></a>
   <a href="https://github.com/Johnny-dot" title="Johnny-dot"><img src="https://github.com/Johnny-dot.png?size=96" width="72" height="72" alt="Johnny-dot" style="border-radius:50%" /></a>
   <a href="https://github.com/KronixDev" title="KronixDev"><img src="https://github.com/KronixDev.png?size=96" width="72" height="72" alt="KronixDev" style="border-radius:50%" /></a>
@@ -362,6 +366,7 @@ Thanks to everyone who has contributed to Grok App. All human GitHub contributor
   <a href="https://github.com/RocStone" title="RocStone"><img src="https://github.com/RocStone.png?size=96" width="72" height="72" alt="RocStone" style="border-radius:50%" /></a>
   <a href="https://github.com/Sixmin" title="Sixmin"><img src="https://github.com/Sixmin.png?size=96" width="72" height="72" alt="Sixmin" style="border-radius:50%" /></a>
   <a href="https://github.com/sk1935" title="sk1935"><img src="https://github.com/sk1935.png?size=96" width="72" height="72" alt="sk1935" style="border-radius:50%" /></a>
+  <a href="https://github.com/tangwan" title="tangwan"><img src="https://github.com/tangwan.png?size=96" width="72" height="72" alt="tangwan" style="border-radius:50%" /></a>
   <a href="https://github.com/tisrop" title="tisrop"><img src="https://github.com/tisrop.png?size=96" width="72" height="72" alt="tisrop" style="border-radius:50%" /></a>
   <a href="https://github.com/XancelZC" title="XancelZC"><img src="https://github.com/XancelZC.png?size=96" width="72" height="72" alt="XancelZC" style="border-radius:50%" /></a>
   <a href="https://github.com/Yux-c" title="Yux-c"><img src="https://github.com/Yux-c.png?size=96" width="72" height="72" alt="Yux-c" style="border-radius:50%" /></a>
