@@ -16,6 +16,7 @@ export interface Automation {
   projectId: string | null;
   modelId: string | null;
   effort: string | null;
+  /** Persisted rows may carry legacy strings; callers normalize before use. */
   sessionMode?: AutomationSessionMode | string;
   sessionId?: string | null;
   frequency: AutomationFrequency | string;
@@ -66,6 +67,37 @@ export function automationReuseSessionId(
   return normalizeAutomationSessionMode(auto.sessionMode, id) === "reuse"
     ? id
     : null;
+}
+
+/** Non-archived chats offered as reuse targets. */
+export function automationSessionOptions(
+  sessions: readonly {
+    id: string;
+    title: string;
+    projectId: string | null;
+    archived?: boolean;
+  }[],
+): { id: string; title: string; projectId: string | null }[] {
+  return sessions
+    .filter((s) => !s.archived)
+    .map((s) => ({ id: s.id, title: s.title, projectId: s.projectId }));
+}
+
+/**
+ * Find the chat a reuse schedule points at. A stale sidebar snapshot falls
+ * back to the host list; a host query failure propagates so the run aborts
+ * instead of creating and rebinding a duplicate chat.
+ */
+export async function resolveAutomationReuseRow<T extends { id: string }>(
+  reuseId: string | null,
+  sessions: readonly T[],
+  loadFromHost?: () => Promise<readonly T[]>,
+): Promise<T | null> {
+  if (!reuseId) return null;
+  const local = sessions.find((s) => s.id === reuseId) ?? null;
+  if (local || !loadFromHost) return local;
+  const hostRows = await loadFromHost();
+  return hostRows.find((s) => s.id === reuseId) ?? null;
 }
 
 /** Browser / fallback store when Tauri is unavailable. */

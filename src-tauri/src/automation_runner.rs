@@ -374,9 +374,11 @@ async fn run_one(
 ) -> Result<String, String> {
     let reuse_id = automation_reuse_session_id(auto);
     let reuse_requested = reuse_id.is_some();
-    let existing = reuse_id
-        .as_deref()
-        .and_then(|sid| store::load_sessions_index().into_iter().find(|s| s.id == sid));
+    let existing = reuse_id.as_deref().and_then(|sid| {
+        store::load_sessions_index()
+            .into_iter()
+            .find(|s| s.id == sid)
+    });
 
     let title = if auto.title.trim().is_empty() {
         "Scheduled".into()
@@ -423,9 +425,7 @@ async fn run_one(
 
     // A reused chat keeps its own model and reasoning. A fresh chat (including
     // the fallback for a deleted reuse target) gets the automation's prefs.
-    if (!reuse_requested || created_new)
-        && (auto.model_id.is_some() || auto.effort.is_some())
-    {
+    if (!reuse_requested || created_new) && (auto.model_id.is_some() || auto.effort.is_some()) {
         if let Some(ref mid) = auto.model_id {
             meta.model_id = Some(mid.clone());
         }
@@ -470,20 +470,17 @@ async fn run_one(
         return Err(format!("connect not ready: {detail}"));
     }
 
-    // The configured chat was deleted: remember the replacement so the next
-    // run reuses it instead of creating another one.
-    if reuse_requested && created_new {
-        let _ = store::set_automation_session_id_if_reuse(
-            &auto.id,
-            reuse_id.as_deref(),
-            &session_id,
-        );
-    }
-
     let prompt = format!("[Scheduled: {}]\n\n{}", auto.title, auto.prompt);
     mgr.send_message(app.clone(), prompt, None, None, Some(session_id.clone()))
         .await
         .map_err(|e| format!("send failed: {e}"))?;
+
+    // The configured chat was deleted: remember the replacement only after the
+    // prompt landed, so a failed send leaves the schedule on the old target.
+    if reuse_requested && created_new {
+        let _ =
+            store::set_automation_session_id_if_reuse(&auto.id, reuse_id.as_deref(), &session_id);
+    }
 
     let last_run = Utc::now();
     let next = if auto.frequency.eq_ignore_ascii_case("once") {
@@ -683,10 +680,7 @@ mod tests {
         assert_eq!(automation_reuse_session_id(&a), None);
         a.session_mode = "reuse".into();
         a.session_id = Some(" chat-1 ".into());
-        assert_eq!(
-            automation_reuse_session_id(&a),
-            Some("chat-1".to_string())
-        );
+        assert_eq!(automation_reuse_session_id(&a), Some("chat-1".to_string()));
         a.session_id = Some("   ".into());
         assert_eq!(automation_reuse_session_id(&a), None);
     }

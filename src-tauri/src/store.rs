@@ -3113,10 +3113,7 @@ pub fn update_automation(id: &str, input: AutomationInput) -> Result<Automation,
             .session_mode
             .as_deref()
             .unwrap_or(auto.session_mode.as_str());
-        let sid = input
-            .session_id
-            .as_deref()
-            .or(auto.session_id.as_deref());
+        let sid = input.session_id.as_deref().or(auto.session_id.as_deref());
         let (next_mode, next_sid) = normalize_automation_session_target(Some(mode), sid);
         auto.session_mode = next_mode;
         auto.session_id = next_sid;
@@ -3150,20 +3147,27 @@ pub fn set_automation_session_id_if_reuse(
     expected_session_id: Option<&str>,
     session_id: &str,
 ) -> Result<Option<Automation>, String> {
-    let mut list = load_automations();
-    let Some(auto) = list.iter_mut().find(|a| a.id == id) else {
-        return Err("automation not found".to_string());
-    };
-    let current = auto.session_id.as_deref().map(str::trim).unwrap_or("");
-    let expected = expected_session_id.map(str::trim).unwrap_or("");
-    if !auto.session_mode.eq_ignore_ascii_case("reuse") || current != expected {
-        return Ok(None);
-    }
-    auto.session_id = Some(session_id.trim().to_string());
-    auto.updated_at = Utc::now();
-    let clone = auto.clone();
-    save_automations(&list)?;
-    Ok(Some(clone))
+    let _ = ensure_app_dirs();
+    let path = automations_file();
+    // The lock covers the whole read-compare-write transaction so a
+    // concurrent `automation_update` cannot be overwritten by this writeback.
+    crate::store_lock::with_exclusive_lock(&path, || {
+        let mut list: Vec<Automation> = read_json(&path);
+        let Some(auto) = list.iter_mut().find(|a| a.id == id) else {
+            return Err("automation not found".to_string());
+        };
+        let current = auto.session_id.as_deref().map(str::trim).unwrap_or("");
+        let expected = expected_session_id.map(str::trim).unwrap_or("");
+        if !auto.session_mode.eq_ignore_ascii_case("reuse") || current != expected {
+            return Ok(None);
+        }
+        auto.session_id = Some(session_id.trim().to_string());
+        auto.updated_at = Utc::now();
+        let clone = auto.clone();
+        let serialized = serde_json::to_string_pretty(&list).map_err(|e| e.to_string())?;
+        crate::store_lock::write_bytes_replace(&path, serialized.as_bytes())?;
+        Ok(Some(clone))
+    })
 }
 
 pub fn set_automation_enabled(id: &str, enabled: bool) -> Result<Automation, String> {
@@ -3758,17 +3762,17 @@ mod tests {
 
             let updated = set_automation_session_id_if_reuse(&auto.id, Some("old"), "new")
                 .expect("writeback");
-            assert_eq!(
-                updated.and_then(|a| a.session_id).as_deref(),
-                Some("new")
-            );
+            assert_eq!(updated.and_then(|a| a.session_id).as_deref(), Some("new"));
 
             // User switches to "new chat each run" after the fallback fires.
             update_automation(&auto.id, input("new", "new")).expect("update");
             let unchanged = set_automation_session_id_if_reuse(&auto.id, Some("new"), "other")
                 .expect("writeback");
             assert!(unchanged.is_none());
-            let row = load_automations().into_iter().find(|a| a.id == auto.id).unwrap();
+            let row = load_automations()
+                .into_iter()
+                .find(|a| a.id == auto.id)
+                .unwrap();
             assert_eq!(row.session_mode, "new");
             assert!(row.session_id.is_none());
         });

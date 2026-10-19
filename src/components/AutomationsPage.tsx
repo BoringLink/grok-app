@@ -1845,7 +1845,9 @@ export function AutomationsPage({
                         setForm((f) => ({
                           ...f,
                           sessionId: v,
-                          projectId: picked?.projectId ?? f.projectId,
+                          projectId: picked
+                            ? (picked.projectId ?? "")
+                            : f.projectId,
                         }));
                       }}
                       aria-label={t("automations.field.session")}
