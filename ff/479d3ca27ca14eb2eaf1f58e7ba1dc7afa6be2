@@ -1,0 +1,97 @@
+src-tauri/src/automation_runner.rs
+  s_4e4d693d576d2d::t_64882986e40354 347-348,352-361,373-374,376-377
+  s_4e4d693d576d2d::t_19a94c09368490 404
+  s_4e4d693d576d2d::t_0b827608e4c44c 408-411,420-423,425,428,418,433
+  s_4e4d693d576d2d::t_1c7cd3cbe43fdb 587
+  s_4e4d693d576d2d::t_162c99d10e19ee 659-676,678-680,364,419
+  s_dc6e98a83bee89::t_4b356192e465ff 349-351,362-363,365-372,375
+  s_4e4d693d576d2d::t_6e83c1bc0fd6f7 412-417,430-432
+  s_dc6e98a83bee89::t_f93472ef98c652 677
+docs/llm-wiki/automations.md
+  s_4e4d693d576d2d::t_0ab5aa07ab72bf 45
+  s_4e4d693d576d2d::t_240bc1b0fd24c1 128
+  s_dc6e98a83bee89::t_1c16afaa658bdb 46
+src/lib/automationModelRoute.ts
+  s_4e4d693d576d2d::t_8dc96a3b818c3c 1-31,55,59-62,64-67,71-74,78-82,86-89,91,93,33-34,36,42,47,53-54
+  s_dc6e98a83bee89::t_7de28b199750cb 32,35,37-41,43-46,48-52,56-58,63,68-70,75-77,83-84,90,92
+  s_4e4d693d576d2d::t_a9e4d22573143b 85
+CHANGELOG.md
+  s_dc6e98a83bee89::t_4756a74a123a3a 17
+src/app/AppWorkbench.tsx
+  s_4e4d693d576d2d::t_9abbac6431a88e 543
+  s_4e4d693d576d2d::t_520bb017ace4f6 4010-4012,4020,4047
+  s_4e4d693d576d2d::t_2a55b974ebb84b 4036-4040,4021,4025
+  s_4e4d693d576d2d::t_815c17bae6ae86 4186
+  s_4e4d693d576d2d::t_3b81b2dcaf8ef4 12686
+  s_4e4d693d576d2d::t_7bc5a1e88cd2c3 2940-2943
+  s_dc6e98a83bee89::t_a0fe98740abb34 3901-3913
+  s_dc6e98a83bee89::t_01c349b261b79a 3920
+  s_dc6e98a83bee89::t_d3b4607ceeae9e 3939-3940,3942,3945-3946,3948,4096-4099
+  s_dc6e98a83bee89::t_720e34397c0082 3941,3947
+  s_dc6e98a83bee89::t_a5d1e8da296ebe 4013-4018
+  s_dc6e98a83bee89::t_46deabe08b69e7 4019
+  s_4e4d693d576d2d::t_3715057d59cd75 4022-4024,4026-4033,4035,4049-4055,4057
+  s_dc6e98a83bee89::t_2bbd6a88300e5a 4034
+  s_4e4d693d576d2d::t_9b30db424adc70 4056,12673-12677,12680-12684
+  s_dc6e98a83bee89::t_c063956bb46d95 4058
+  s_dc6e98a83bee89::t_e90b76c9b81e89 4157
+  s_dc6e98a83bee89::t_abe057c4097cbf 4181
+src/components/AutomationsPage.tsx
+  s_4e4d693d576d2d::t_a9f1974bf69a3c 61,68-75
+  s_4e4d693d576d2d::t_ac3355e585bf5a 88-92,95-97,101-102
+  s_4e4d693d576d2d::t_cc1f160f2cebb2 94
+  s_4e4d693d576d2d::t_f625979006ede3 138-139
+  s_4e4d693d576d2d::t_965b08bff50a39 167
+  s_4e4d693d576d2d::t_43c06d2836fb32 190-191
+  s_4e4d693d576d2d::t_1f50e50f8e25a8 708
+  s_4e4d693d576d2d::t_e3168cd9f2c353 776-777,779-786,801,811-812,823,825-829
+  s_4e4d693d576d2d::t_a56144fe9d6a61 831,832-844
+  s_4e4d693d576d2d::t_a74d5e651ab5bf 1846,1848-1854,1871-1881
+  s_dc6e98a83bee89::t_9341928da5e5e8 60,62,65
+  s_4e4d693d576d2d::t_a9e98f523f0a5e 76
+  s_4e4d693d576d2d::t_e22f131b497f40 84-85,93
+  s_4e4d693d576d2d::t_e825e36acbe6a1 103-104
+  s_4e4d693d576d2d::t_85c5da82cc1e58 147-151,156
+  s_4e4d693d576d2d::t_33aa40bed94127 168
+  s_dc6e98a83bee89::t_c0e27be12aed8d 192-197
+  s_4e4d693d576d2d::t_d7268ceabfbe62 198,205,813-819
+  s_4e4d693d576d2d::t_2e8e19aff7474c 199-202
+  s_dc6e98a83bee89::t_43bf9a68983031 203-204
+  s_4e4d693d576d2d::t_c69a06a914b7a5 618,623-630,632-637
+  s_dc6e98a83bee89::t_e4e670bf2fbfe8 631
+  s_dc6e98a83bee89::t_c8a3995aa4260f 674
+  s_4e4d693d576d2d::t_d0eb92c43c68cd 774-775,778
+  s_dc6e98a83bee89::t_3355044e30764b 787-800,802-810,820-822
+  s_4e4d693d576d2d::t_afce06a5519489 1825-1839
+  s_dc6e98a83bee89::t_eee8fe5067f544 1855-1857
+  s_4e4d693d576d2d::t_3a83080b4dd11d 1858-1870
+src/lib/automationModelRoute.test.ts
+  s_4e4d693d576d2d::t_5adde7a1b063f5 1-48,50-52,58-59,65-67,69-82,105,56,63,104
+  s_dc6e98a83bee89::t_fa8cf72cd91b58 53-55,57,60-62,64,68,84-103
+src-tauri/src/providers.rs
+  s_dc6e98a83bee89::t_01ae580c559170 1666-1678,1680-1686
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "ff479d3ca27ca14eb2eaf1f58e7ba1dc7afa6be2",
+  "prompts": {},
+  "sessions": {
+    "s_4e4d693d576d2d": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15474-20b0-71f2-b55b-017c1113440b",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
