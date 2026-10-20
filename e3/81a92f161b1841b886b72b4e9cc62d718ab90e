@@ -1,0 +1,23 @@
+docs/adr/0007-output-motion-scope-live-tail.md
+  s_9ef181d225fa4e::t_2277f3ebd1b858 22
+docs/plans/2026-10-20-session-output-motion-design.md
+  s_9ef181d225fa4e::t_748a1d26adaccb 77-86
+docs/adr/0006-stream-reveal-at-render-layer.md
+  s_9ef181d225fa4e::t_2277f3ebd1b858 27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "e381a92f161b1841b886b72b4e9cc62d718ab90e",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
