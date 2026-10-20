@@ -1,0 +1,61 @@
+src/components/lobe-chat/lobe-chat.motion.css
+  s_e7d41f3b7da2d5::t_18e2f30a9af00c 5-6
+  s_e7d41f3b7da2d5::t_16312ad8123e76 28,36,43
+  s_e7d41f3b7da2d5::t_103c63902f8486 2-4,7-8,14,22-27,29,35,37,42,44
+src/components/lobe-chat/StructuredJsonPanel.test.tsx
+  s_e7d41f3b7da2d5::t_a8fa62f80c8c0b 42-43,49,60-61
+src/components/lobe-chat/StructuredJsonPanel.tsx
+  s_e7d41f3b7da2d5::t_a0664a8c917c0c 158
+src/components/lobe-chat/MarkdownChat.test.tsx
+  s_e7d41f3b7da2d5::t_a6fd19146a0ab4 438,440-446,448-459,465-468
+  s_e7d41f3b7da2d5::t_12a139bb7220a4 439
+  s_e7d41f3b7da2d5::t_8dc51af19562ed 447,460-464
+src/components/lobe-chat/lobe-chat.part1.css
+  s_e7d41f3b7da2d5::t_a1d191185c6382 814,818
+  s_e7d41f3b7da2d5::t_748275a18e289d 815,819
+src/components/lobe-chat/MermaidBlock.tsx
+  s_e7d41f3b7da2d5::t_a5cfaf54fa6ddf 133
+src/styles/tokens.css
+  s_e7d41f3b7da2d5::t_f81bb7c33227f7 84
+src/components/lobe-chat/CodeBlock.tsx
+  s_e7d41f3b7da2d5::t_2d49ea55b73da9 91
+src/components/lobe-chat/CodeBlock.test.tsx
+  s_e7d41f3b7da2d5::t_a8fa62f80c8c0b 32,39-40,43,48
+src/components/lobe-chat/TimelinePhaseBlock.test.tsx
+  s_e7d41f3b7da2d5::t_a5daa0b66a7b47 206-211,213-216
+  s_e7d41f3b7da2d5::t_a18d020303a7d1 182-205,212,217-259
+src/lib/blockEntrance.guard.test.ts
+  s_e7d41f3b7da2d5::t_8dc51af19562ed 76,85
+  s_e7d41f3b7da2d5::t_85984416b39734 9-22,25,27,31-44,47,55-63,66-69,71-75,77-79,83-84,86-102,104-105,108-121
+  s_e7d41f3b7da2d5::t_565b5a08754ae7 23-24,26,28-30
+src/components/lobe-chat/MermaidBlock.test.tsx
+  s_e7d41f3b7da2d5::t_a8fa62f80c8c0b 55-56,59
+  s_e7d41f3b7da2d5::t_5df345df05847d 64-105
+src/components/lobe-chat/TimelineToolRow.test.tsx
+  s_e7d41f3b7da2d5::t_3b6150afe76299 40-64
+src/lib/streamReveal.guard.test.ts
+  s_e7d41f3b7da2d5::t_bff660c52fe0db 76-84,86,94-95,97-98
+src/components/lobe-chat/TimelinePhaseBlock.tsx
+  s_e7d41f3b7da2d5::t_2390c5f69cc5ba 336-337,446
+  s_e7d41f3b7da2d5::t_3bbc29cba954ee 260-271,277,291-292
+  s_e7d41f3b7da2d5::t_676ca1d30a8867 508,642,657,697
+src/components/lobe-chat/MarkdownChat.tsx
+  s_e7d41f3b7da2d5::t_45510b943c18a1 843-851,864-865,883,886
+  s_e7d41f3b7da2d5::t_1acd0494f1b49e 852-863
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "46ee97aa3bbb45f1b51e4aa66c9ecd9993353524",
+  "prompts": {},
+  "sessions": {
+    "s_e7d41f3b7da2d5": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a157e0-562f-7661-80d3-b846af9a0855",
+        "model": "ada-openai"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
