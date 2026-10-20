@@ -1,0 +1,29 @@
+src/components/lobe-chat/MarkdownChat.test.tsx
+  s_441b39fe66b9b0::t_118fa1980fafa4 238,249,272
+  s_441b39fe66b9b0::t_8316ef6614d336 186-229
+src/lib/rehypeStreamReveal.ts
+  s_441b39fe66b9b0::t_a13222c43863c5 135-144
+src/lib/streamReveal.ts
+  s_441b39fe66b9b0::t_6b4fb34be6b666 107-108,111-116
+src/lib/streamReveal.test.ts
+  s_441b39fe66b9b0::t_ac228e0669183c 152-159
+  s_441b39fe66b9b0::t_146aaf2dac19a9 195,197-199,202-203,214-215,226-227,229,232
+src/lib/rehypeStreamReveal.test.ts
+  s_441b39fe66b9b0::t_130f2096d68194 160-239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "88ae7ef38897a613f2239126bccc93877dd6a156",
+  "prompts": {},
+  "sessions": {
+    "s_441b39fe66b9b0": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a157b4-1afa-7ec0-b30f-ff7c61abd3e1",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
