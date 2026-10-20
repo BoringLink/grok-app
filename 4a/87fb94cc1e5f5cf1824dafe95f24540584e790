@@ -1,0 +1,24 @@
+src/components/lobe-chat/TimelinePhaseBlock.tsx
+  s_9ef181d225fa4e::t_676b7b684d2d3f 278,293-294,464-466,652,708
+src/components/lobe-chat/lobe-chat.part2.css
+  s_9ef181d225fa4e::t_d600d3be2ca926 119-120,136-137,209-211,214-219
+src/components/lobe-chat/TimelinePhaseBlock.test.tsx
+  s_9ef181d225fa4e::t_41a73ef9ff763c 477-482,488-511
+  s_9ef181d225fa4e::t_f35c5644c12cd7 483-487
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "4a87fb94cc1e5f5cf1824dafe95f24540584e790",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
