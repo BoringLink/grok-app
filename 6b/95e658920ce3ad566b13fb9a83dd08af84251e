@@ -1,0 +1,25 @@
+docs/agents/issue-tracker.md
+  s_9ef181d225fa4e::t_39d14c26292d5b 1-25
+AGENTS.md
+  s_9ef181d225fa4e::t_91db546cb49197 61-74
+docs/agents/triage-labels.md
+  s_9ef181d225fa4e::t_9040a6753f61b4 1-13
+docs/agents/domain.md
+  s_9ef181d225fa4e::t_bf42693605c7f6 1-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "6b95e658920ce3ad566b13fb9a83dd08af84251e",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
