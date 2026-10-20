@@ -1,0 +1,80 @@
+src/i18n/messages/fil/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/i18n/messages/uk/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/hooks/useAppearanceEditorModel.ts
+  s_210b506f5d07c8::t_76deebc0ea3957 130-134,316-318,348-355,607-609
+src/i18n/messages/fr/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/i18n/messages/es/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/lib/outputMotionPref.test.ts
+  s_210b506f5d07c8::t_20f6c0b5c7af09 1-79
+src/i18n/messages/pt-BR/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/app/workbenchSettingsStageProps.ts
+  s_210b506f5d07c8::t_1023247340f587 139-140
+src/app/AppWorkbench.tsx
+  s_210b506f5d07c8::t_36740f3c2af599 784-785,12301-12302
+src/lib/settingsCatalog.test.ts
+  s_210b506f5d07c8::t_ce19afbb02c1e0 111-132
+src/components/settings/types.ts
+  s_210b506f5d07c8::t_0215aec63643a7 94-95
+src/i18n/messages/ja/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/i18n/messages/tr/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 304-305
+src/lib/appearanceLiveSync.ts
+  s_210b506f5d07c8::t_0384ad1a32b325 47-50,140-142
+src/i18n/messages/it/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/lib/outputMotionPref.ts
+  s_210b506f5d07c8::t_846f6eb423acc4 1-61
+src/hooks/useWorkbenchDisplayPrefs.ts
+  s_210b506f5d07c8::t_3e11af8dd08db9 78-81,141-143,207-211,293-296,306-307
+src/i18n/messages/ru/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/main.tsx
+  s_210b506f5d07c8::t_1857ccfa6bc856 124-125
+  s_210b506f5d07c8::t_b5c8b3b9f3c7a5 83-85
+src/lib/settingsCatalog/entries/appearanceInterface.ts
+  s_210b506f5d07c8::t_d14fba72aa21a3 98-115
+src/i18n/messages/id/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/i18n/messages/ta/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/components/SettingsPage.tsx
+  s_210b506f5d07c8::t_020b712f79306e 275-276,1493-1494
+src/i18n/messages/zh-TW/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 305-306
+src/i18n/messages/zh/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 304-305
+src/app/WorkbenchSettingsStage.tsx
+  s_210b506f5d07c8::t_9c447b09428b50 12,87,153-156
+src/i18n/messages/ko/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/components/settings/AppearanceSection.tsx
+  s_210b506f5d07c8::t_93085f54f1386c 125-126,865-884
+src/components/settings/AppearanceSection.outputMotion.test.tsx
+  s_210b506f5d07c8::t_e95a3caa6924b7 1-139
+src/i18n/messages/de/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 281-282
+src/i18n/messages/en/settings.ts
+  s_210b506f5d07c8::t_45696ec0d1fcd3 304-305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "c863216151c50b0f5073479afa39e37692248478",
+  "prompts": {},
+  "sessions": {
+    "s_210b506f5d07c8": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a157bc-0783-7bb2-8719-d06ca3963f17",
+        "model": "ada-openai"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
