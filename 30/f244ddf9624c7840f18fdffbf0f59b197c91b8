@@ -1,0 +1,31 @@
+src/lib/entranceLedger.test.ts
+  s_9ef181d225fa4e::t_4d7c093427e979 1-28
+src/components/lobe-chat/TimelinePhaseBlock.test.tsx
+  s_9ef181d225fa4e::t_fec03329ac9d44 12,16-20
+src/components/lobe-chat/TimelinePhaseBlock.tsx
+  s_9ef181d225fa4e::t_7e2e4546f5e7b8 32,338-341,450,794-797,923
+src/lib/entranceLedger.ts
+  s_9ef181d225fa4e::t_04a338847ad11e 1-33
+src/components/lobe-chat/TimelineToolRow.test.tsx
+  s_9ef181d225fa4e::t_fec03329ac9d44 5,10,14-16
+  s_9ef181d225fa4e::t_e5add175f3825c 45-58
+src/components/lobe-chat/TimelineToolRow.tsx
+  s_9ef181d225fa4e::t_a8622325b97e94 90-92
+  s_9ef181d225fa4e::t_7e2e4546f5e7b8 25,161-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "30f244ddf9624c7840f18fdffbf0f59b197c91b8",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
