@@ -1,0 +1,21 @@
+src/components/lobe-chat/lobe-chat.part2.css
+  s_9ef181d225fa4e::t_2fa61f145dc892 299,318
+  s_9ef181d225fa4e::t_7b35b64ee325de 183-185
+  s_9ef181d225fa4e::t_79eb33e70f7bc1 319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "f5851d078586ded718abf24fc15de9488cee3551",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
