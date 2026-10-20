@@ -1,0 +1,32 @@
+src/lib/streamRenderPolicy.ts
+  s_b5d2913a3211dc::t_bc7051e6aca9de 159-162
+  s_b5d2913a3211dc::t_06eadadc754808 127-158,163-174
+src/lib/streamRenderPolicy.test.ts
+  s_b5d2913a3211dc::t_012a45b8bafac0 109-153
+  s_b5d2913a3211dc::t_910f5cbc8f6f84 9,18-19,22
+src/components/lobe-chat/MarkdownChat.test.tsx
+  s_b5d2913a3211dc::t_4cf050436af429 516,518
+  s_b5d2913a3211dc::t_0580b9d1bd7560 19-22
+  s_b5d2913a3211dc::t_b7b98400510299 515,517,519-610
+src/components/lobe-chat/MarkdownChat.tsx
+  s_b5d2913a3211dc::t_a49f98db7efc69 63-64
+  s_b5d2913a3211dc::t_e641f37a370025 786-796,798-807,811,814
+  s_b5d2913a3211dc::t_86021f4ac27a4f 797
+  s_b5d2913a3211dc::t_ec8a272ba20ec8 839-840
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "03a4a13855b5fce48b6a80d0f51630993b979ebf",
+  "prompts": {},
+  "sessions": {
+    "s_b5d2913a3211dc": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a157ef-2cc2-74d2-afec-500492bcbde5",
+        "model": "ada-openai"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
