@@ -1,0 +1,119 @@
+src-tauri/src/session_manager/stream.rs
+  s_ef41fb527727b8::t_3efb003c4eab71 19-22
+  s_ef41fb527727b8::t_005def9669247c 31-44
+  s_ef41fb527727b8::t_faa758f68221b1 64,66-68
+  s_ef41fb527727b8::t_1da1d6cd8d7c48 65
+  s_ef41fb527727b8::t_a7c66804fcacfa 1015
+  s_ef41fb527727b8::t_a74f519d4ced2e 1035
+  s_ef41fb527727b8::t_8f27199f243566 1089
+  s_ef41fb527727b8::t_8d7b1b69c36c9c 1115-1119,1127,1135
+  s_ef41fb527727b8::t_0ada68dca8f4aa 1680,1702,1724
+  s_ef41fb527727b8::t_a89d12a4358a6e 1762-1835
+src-tauri/src/session_manager/mod.rs
+  s_ef41fb527727b8::t_82a1dc9d5d672e 37
+src/lib/markdownMath.ts
+  s_ef41fb527727b8::t_6189f8f9181f83 57-114,117-119
+src-tauri/src/session_manager/turn.rs
+  s_ef41fb527727b8::t_a9037c4efb4e3f 434-436,438,446-447
+  s_ef41fb527727b8::t_bf9263b69562ac 437
+src/lib/streamCoalesce.test.ts
+  s_ef41fb527727b8::t_98dc8accc64923 40-57,59-84
+  s_ef41fb527727b8::t_5bf130a38ea698 58
+src/lib/streamReveal.test.ts
+  s_ef41fb527727b8::t_52fa6f84026177 3-8,10-13,16,18-22,24-26,29-32,35-40,43-46,49-50,54,57-59,61,65-67,69-74,78-80,82-84,88-96,98,102,106-107,112-119,121,124-126
+src/lib/session/chunkEnds.test.ts
+  s_ef41fb527727b8::t_39818d61c28ffa 1-39,42-43,45-50,52-74
+  s_ef41fb527727b8::t_a8b4ce9345a1fb 40-41
+src/components/lobe-chat/ConversationThread.tsx
+  s_ef41fb527727b8::t_31c8cfdd152c86 272
+  s_ef41fb527727b8::t_fecf5d0a0d922f 294-295
+  s_ef41fb527727b8::t_2fb96a529871a9 355-358
+  s_ef41fb527727b8::t_aaafdd3b1c57e0 374
+  s_ef41fb527727b8::t_eb65a980dde403 1483
+src/components/lobe-chat/lobe-chat.part1b.css
+  s_ef41fb527727b8::t_be156557e06134 382-383,385-388,390-392,394-396,403-411,413-416,418-421
+src/lib/session/stream.ts
+  s_ef41fb527727b8::t_5c41b42ee4c3e8 492
+  s_ef41fb527727b8::t_5dccc4a2ff10a4 509-513
+src/lib/session/types.ts
+  s_ef41fb527727b8::t_75e18355498f92 75-83
+  s_ef41fb527727b8::t_53a0b7cd6ecf70 205-206
+src/lib/rehypeStreamReveal.ts
+  s_ef41fb527727b8::t_7cfc7755ef6646 1-7,9-12,15-16,18-66,82-83,87-101,104-105,116-148,150-152,159-160
+  s_ef41fb527727b8::t_6e2adcb5130478 8
+src-tauri/src/session_manager/types.rs
+  s_ef41fb527727b8::t_87d2d266f9bbf0 173-174
+src/components/lobe-chat/MarkdownChat.tsx
+  s_ef41fb527727b8::t_4189fa8e4b23ff 7,14
+  s_ef41fb527727b8::t_ac0b643354de76 66
+  s_ef41fb527727b8::t_8e5da2b23992e1 129-134
+  s_ef41fb527727b8::t_9bea562c4502de 291
+  s_ef41fb527727b8::t_b66062b2c38185 316-320
+  s_ef41fb527727b8::t_c911bbcfd47bc6 369-370
+  s_ef41fb527727b8::t_4f06142189f9dc 777-779,781-782,784,792-795,797-802,804-808,810,830,839
+src/lib/streamReveal.ts
+  s_ef41fb527727b8::t_81b4da67ab6499 4,6-9,12-22,24-26,28-36,38-68,72-79,84-85,87-88,90-92,94-96,98,106,108-114,116-117,119-122,124,126-127,129
+src/lib/timelinePhases.test.ts
+  s_ef41fb527727b8::t_a8cc486f0cbe9f 644-660
+src/lib/timelinePhases.ts
+  s_ef41fb527727b8::t_2b00e8a7f77ced 72-73
+  s_ef41fb527727b8::t_1118b1c039c71c 278
+src/hooks/useSessionHostEvents.ts
+  s_ef41fb527727b8::t_ea8b21f4280ea4 1117
+src/styles/tokens.css
+  s_ef41fb527727b8::t_80d636a84692ac 74-81
+  s_ef41fb527727b8::t_8203c51ddf8b54 351-357
+src/lib/session/segments.ts
+  s_ef41fb527727b8::t_d715b8c80c9f0e 194-199,201-205
+  s_ef41fb527727b8::t_6842dbe82996cb 209-213
+  s_ef41fb527727b8::t_26995358299cbe 321-328,330-333,337,341,343,348,350,352-356
+src/lib/streamReveal.guard.test.ts
+  s_ef41fb527727b8::t_73effa7e297193 1-18,20-27,33,40,42-48,50-51,53-55
+  s_b91eaafe4ee4f9::t_9a3f037dbab15a 34-35
+src/components/lobe-chat/MarkdownChat.test.tsx
+  s_ef41fb527727b8::t_c0ad8406479278 4,6
+  s_ef41fb527727b8::t_b8daf732b5f194 150-155,158-164,166-175,177,183-203,205-246,248-262
+  s_441b39fe66b9b0::t_8316ef6614d336 156
+  s_b91eaafe4ee4f9::t_4ed84d87f8a3eb 178-182
+  s_ef41fb527727b8::t_27c00cc6f13ff4 247
+src/lib/rehypeStreamReveal.test.ts
+  s_ef41fb527727b8::t_d87d9d092112f8 1-55,57-58,60-61,63-70,72-73,75-78,112-120,122-128,130-133,135-139,141-144,146-148,150-152
+  s_b91eaafe4ee4f9::t_c7fb87a9169f7b 79-81,140
+  s_ef41fb527727b8::t_28fb8e78e6618f 82-85
+  s_441b39fe66b9b0::t_130f2096d68194 86-87,89-94,96,101-103,109-111
+src/lib/streamCoalesce.ts
+  s_ef41fb527727b8::t_dc0fb8904d086f 17-18
+  s_ef41fb527727b8::t_9eef2191309309 76,84,86-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "aa3931509aec128a2054f1603c819201b281073e",
+  "prompts": {},
+  "sessions": {
+    "s_441b39fe66b9b0": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a157b4-1afa-7ec0-b30f-ff7c61abd3e1",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_b91eaafe4ee4f9": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a157a7-8ad5-7ad2-b2ca-e9c08f0b749f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_ef41fb527727b8": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1578a-24a0-7090-91b5-ab464ae2ea11",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
