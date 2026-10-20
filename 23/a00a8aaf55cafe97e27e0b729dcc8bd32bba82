@@ -1,0 +1,44 @@
+src/lib/streamRenderPolicy.ts
+  s_86ef557fb1e4b7::t_f4760dbc5eba8d 135-136,138
+src/components/lobe-chat/lobe-chat.part1b.css
+  s_86ef557fb1e4b7::t_9baa631950bc0d 383-385,390,394,400
+src/components/lobe-chat/ToolExpandBody.tsx
+  s_86ef557fb1e4b7::t_1091d7c0150862 40-41
+src/styles/tokens.css
+  s_86ef557fb1e4b7::t_c22b98a7e96417 78-80,83-88,365
+src/components/lobe-chat/Thinking.test.tsx
+  s_86ef557fb1e4b7::t_9bfc5d082cb022 101-123
+src/components/lobe-chat/ToolExpandBody.test.tsx
+  s_86ef557fb1e4b7::t_11cffa3b703dee 34-37
+src/lib/blockEntrance.guard.test.ts
+  s_86ef557fb1e4b7::t_d62de033d4f521 151,158-163,165-166,169-172,179-186,189,191-196,198-199,202-205,212-219
+  s_86ef557fb1e4b7::t_fa6df4d76b5360 94-99
+  s_86ef557fb1e4b7::t_34e62bd2a6d89f 144,148
+  s_86ef557fb1e4b7::t_7a8e15eb4706d2 36-38,48-53,55,64-93,100-117
+src/lib/streamRenderPolicy.test.ts
+  s_86ef557fb1e4b7::t_9be730c4ece41a 143-146
+src/lib/streamReveal.guard.test.ts
+  s_86ef557fb1e4b7::t_1f257ead876ea1 17-19,23,32-34,39-45
+docs/plans/2026-10-20-session-output-motion-design.md
+  s_86ef557fb1e4b7::t_119dfc45747469 51,54,77-86,94,113
+src/components/lobe-chat/lobe-chat.motion.css
+  s_86ef557fb1e4b7::t_be032c283850e9 3,7-10,16-28,44-59,65-66,70-75,79-80,83-87
+src/components/lobe-chat/Thinking.tsx
+  s_86ef557fb1e4b7::t_8cf7ea75d72779 278-281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "23a00a8aaf55cafe97e27e0b729dcc8bd32bba82",
+  "prompts": {},
+  "sessions": {
+    "s_86ef557fb1e4b7": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1581d-dcf7-75d1-89d7-06aa979fcd0b",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
