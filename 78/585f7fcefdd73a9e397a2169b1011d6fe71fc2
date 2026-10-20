@@ -1,0 +1,35 @@
+src/lib/outputMotionPref.ts
+  s_d63d17cc37d21b::t_dd2436b0a00a8c 2-5,8-9,11-12,17,23,30,37,42,62-65
+  s_d63d17cc37d21b::t_d3d131581a548a 50,58
+src/lib/streamReveal.test.ts
+  s_d63d17cc37d21b::t_48ab930fee132d 206-233
+src/lib/streamReveal.guard.test.ts
+  s_d63d17cc37d21b::t_2f8676123dffc1 10-13,74-93
+src/components/lobe-chat/MarkdownChat.test.tsx
+  s_d63d17cc37d21b::t_bd16d6ef512b7d 18,22,421-461
+src/app/WorkbenchSettingsStage.tsx
+  s_d63d17cc37d21b::t_c9d94ce9a55e0d 13,158
+src/lib/streamReveal.ts
+  s_d63d17cc37d21b::t_c807cc09cea1ed 128-130,138,148-156,162-166
+src/components/lobe-chat/MarkdownChat.tsx
+  s_d63d17cc37d21b::t_4508da19168fa5 72,328,810
+  s_d63d17cc37d21b::t_d7832b67224e3e 814,827,838
+src/hooks/useOutputMotionEnabled.ts
+  s_d63d17cc37d21b::t_118964e5267c25 1-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "78585f7fcefdd73a9e397a2169b1011d6fe71fc2",
+  "prompts": {},
+  "sessions": {
+    "s_d63d17cc37d21b": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a157d1-c72f-7471-8911-84ac29cf6b4d",
+        "model": "ada-openai"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
