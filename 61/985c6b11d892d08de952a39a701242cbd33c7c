@@ -1,0 +1,58 @@
+src/lib/session/stream.ts
+  s_f7f974c8c751a0::t_d6f21da8de69fe 454-459
+  s_f7f974c8c751a0::t_70dc661fbae30e 435
+src/components/lobe-chat/Thinking.tsx
+  s_f7f974c8c751a0::t_e5f33a817ac688 239-243
+  s_f7f974c8c751a0::t_1aceeef5d457c7 284-286
+  s_f7f974c8c751a0::t_dfd25174470a1b 49,53-57
+src/lib/session/segments.ts
+  s_f7f974c8c751a0::t_4350e5c8e72a06 212,218-241
+  s_f7f974c8c751a0::t_e5b17a2581fafa 192
+  s_f7f974c8c751a0::t_5da23d2e0ad0fc 328-332,337,341,346-361
+src/lib/session/chunkEnds.test.ts
+  s_f7f974c8c751a0::t_41667691f2b1e0 89-93
+  s_f7f974c8c751a0::t_f11d56a0d53af9 141-142
+  s_f7f974c8c751a0::t_c5d433671ce70a 63,70
+  s_f7f974c8c751a0::t_e026508f51da23 84-88,94-109,111,113-126,128-140,143-153
+  s_f7f974c8c751a0::t_803aadf3ca2127 110,112,127
+src/components/lobe-chat/Thinking.test.tsx
+  s_f7f974c8c751a0::t_56c58dee403cbd 1-55
+src/lib/session/types.ts
+  s_f7f974c8c751a0::t_efa3a2ef0567db 74-82
+src/lib/timelinePhases.ts
+  s_f7f974c8c751a0::t_96d6c42d02b81a 229
+  s_f7f974c8c751a0::t_003ea23921a38c 54-55
+  s_f7f974c8c751a0::t_6c28b1dbe80ed2 290-293
+  s_f7f974c8c751a0::t_c29a14e322c854 25,27
+src/components/lobe-chat/ConversationThread.tsx
+  s_f7f974c8c751a0::t_c5028da13566cc 1420-1425
+  s_f7f974c8c751a0::t_a0b11d0feb7942 1438
+src/lib/grokActivitySteps.ts
+  s_f7f974c8c751a0::t_b9532f005762c3 35-38,46-47
+  s_f7f974c8c751a0::t_61a44f7b9d48ec 315-316
+  s_f7f974c8c751a0::t_5384e3a4a592f3 123-124
+  s_f7f974c8c751a0::t_321f6e8e1bc589 329-333,342,357
+src/components/lobe-chat/TimelinePhaseBlock.tsx
+  s_f7f974c8c751a0::t_660eb80e7b94d1 407-409
+  s_f7f974c8c751a0::t_30c3db6b1dc93e 890-892
+  s_f7f974c8c751a0::t_aec8cf3af70ec8 498-505
+src/components/lobe-chat/TimelinePhaseBlock.test.tsx
+  s_f7f974c8c751a0::t_6591182f50a7c7 101-163
+  s_f7f974c8c751a0::t_c9713191c7a3fc 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "61985c6b11d892d08de952a39a701242cbd33c7c",
+  "prompts": {},
+  "sessions": {
+    "s_f7f974c8c751a0": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a157bc-0783-7bb2-8719-d07c29d7ba6d",
+        "model": "ada-openai"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
