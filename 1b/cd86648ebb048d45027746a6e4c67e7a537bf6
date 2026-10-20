@@ -1,0 +1,22 @@
+docs/plans/2026-10-20-session-output-motion-design.md
+  s_9ef181d225fa4e::t_2a15b2c517dd82 50-51
+  s_9ef181d225fa4e::t_275a962950e46c 66
+docs/adr/0006-stream-reveal-at-render-layer.md
+  s_9ef181d225fa4e::t_52498740bff730 26-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "1bcd86648ebb048d45027746a6e4c67e7a537bf6",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
