@@ -1,0 +1,185 @@
+src/components/lobe-chat/lobe-chat.motion.css
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-105
+src/components/lobe-chat/CodeBlock.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 32-58
+src/components/lobe-chat/MarkdownChat.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 4,6,18-22,26,156-609
+src/lib/markdownMath.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 57-114,117-119
+src/components/lobe-chat/CodeBlock.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 89-94
+src/lib/rehypeStreamReveal.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-150
+src/components/lobe-chat/MermaidBlock.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 54-103
+src/lib/session/chunkLens.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-31
+src/lib/session/types.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 74-91,213-214
+src/lib/outputMotionPref.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-79
+src/components/lobe-chat/TimelineToolRow.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 25,90-94,162
+src/hooks/useSessionHostEvents.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 55,1118,1133-1137
+AGENTS.md
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 35
+src/components/lobe-chat/lobe-chat.css
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 8
+src/hooks/useOutputMotionEnabled.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 2-3,5-13,15-19,21-29
+src/i18n/messages/ko/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/app/WorkbenchSettingsStage.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 12-13,88,154-158
+src/components/lobe-chat/ConversationThread.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 272,294-295,355-358,374,1420-1425,1438,1490
+src/components/lobe-chat/Thinking.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 49,53-57,239-243,278-281,287-289
+src/i18n/messages/es/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/i18n/messages/ja/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/i18n/messages/fil/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/i18n/messages/tr/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 304-305
+src/i18n/messages/ta/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/lib/session/stream.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 435,454-459,497,514-518
+src/components/SettingsPage.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 275-276,1493-1494
+src/lib/streamReveal.guard.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-112
+src/lib/streamReveal.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-261
+src/components/lobe-chat/MarkdownChat.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 7,14,63-64,67-74,137-142,299,324-328,330,378-379,786-890,908,911
+src/components/lobe-chat/lobe-chat.part1b.css
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 382-417
+src/components/lobe-chat/StructuredJsonPanel.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-63
+src/components/settings/AppearanceSection.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 125-126,865-884
+src/lib/appearanceLiveSync.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 47-50,140-142
+src/lib/settingsCatalog/entries/appearanceInterface.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 98-115
+src/lib/streamRenderPolicy.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 9,18-19,22,109-155
+src/hooks/useWorkbenchDisplayPrefs.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 78-81,141-143,207-211,293-296,306-307
+src-tauri/src/session_manager/mod.rs
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 37
+src/lib/rehypeStreamReveal.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-296
+src/i18n/messages/id/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/components/lobe-chat/lobe-chat.part1.css
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 814-815,818-819
+src/lib/blockEntrance.guard.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-233
+src/lib/grokActivitySteps.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 35-38,46-47,123-124,315-316,329-334,343,358
+src/i18n/messages/pt-BR/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/lib/grokActivitySteps.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 275-298
+src/lib/settingsCatalog.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 111-132
+src/components/settings/AppearanceSection.outputMotion.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-139
+src/lib/timelinePhases.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 25,27,54-55,63-64,76-77,231,283,292-295,371-372,379-383,389,404
+src/i18n/messages/ru/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/main.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 83-85,124-125
+src/i18n/messages/zh-TW/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 305-306
+src/lib/timelinePhases.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 6,12,32-50,665-680
+src/app/workbenchSettingsStageProps.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 139-140
+src/components/lobe-chat/TimelinePhaseBlock.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 4-12,16-20,112-365,391-510
+src/styles/tokens.css
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 74-90,360-369
+src/app/AppWorkbench.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 784-785,12301-12302
+src/components/lobe-chat/TimelinePhaseBlock.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 32-33,35,263-274,278,281,293-294,297-298,342-346,433-435,455,464-466,520,529-536,652,655,670,708,711,803-840,964-966,988-999
+src/components/lobe-chat/StructuredJsonPanel.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 158
+src/i18n/messages/zh/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 304-305
+src/lib/entranceLedger.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-28
+src/components/lobe-chat/TimelineToolRow.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-103
+src/i18n/messages/uk/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/lib/entranceLedger.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 2,4-8,11,13-14,17-20,22-32
+src/lib/outputMotionPref.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-74
+src/lib/session/segments.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 192,194-205,209-213,218-246,331-335,340,344,349-367,372-385,389,393,395-399,401-405,407-411
+src/lib/streamCoalesce.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 40-161
+src/lib/session/chunkLens.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 2,4-8,11-16,19-21,24-29,32-36
+src/i18n/messages/it/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/components/lobe-chat/ToolExpandBody.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 19,40-42
+src/i18n/messages/de/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/components/lobe-chat/MermaidBlock.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 133
+src/lib/session/chunkEnds.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-179
+src-tauri/src/session_manager/types.rs
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 173-174
+src/components/settings/types.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 94-95
+src/components/lobe-chat/ToolExpandBody.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 26-28,31-37
+src/components/lobe-chat/lobe-chat.part2.css
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 38-40,43-49,108-110,119,123-124,140-142,148-149,172-186,196,202-203,225-228,230,233-271,357,376-377
+src/lib/streamRenderPolicy.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 127-170
+src/lib/streamCoalesce.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 17-18,60-76,86-88,95,102-110
+src/hooks/useAppearanceEditorModel.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 130-134,316-318,348-355,607-609
+src/i18n/messages/en/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 304-305
+src/lib/streamReveal.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-230
+src-tauri/src/session_manager/turn.rs
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 434-438,446-447
+src/i18n/messages/fr/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src-tauri/src/session_manager/stream.rs
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 19-22,31-44,64-68,1015,1035,1089,1115-1119,1127,1135,1680,1702,1724,1762-1834
+src/components/lobe-chat/Thinking.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "e8930a2115146492561b5a34aec127c35ba8ee33",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
