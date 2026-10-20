@@ -1,0 +1,89 @@
+src/lib/markdownMath.ts
+  s_aa19a392c29e5e::t_8ff025ba583e1b 58-60,62-64,87-89,95-96
+src/lib/streamReveal.test.ts
+  s_aa19a392c29e5e::t_7b0b47ce55b2ca 153-154,156,242-243
+src/components/lobe-chat/TimelinePhaseBlock.test.tsx
+  s_aa19a392c29e5e::t_c0cc31552358f5 141,204,232-233,284,435-436
+  s_aa19a392c29e5e::t_0c39fe39552a4c 507,509,511
+src/components/lobe-chat/ToolExpandBody.test.tsx
+  s_aa19a392c29e5e::t_f890f3b65b9fde 34-35
+src/components/lobe-chat/ToolExpandBody.tsx
+  s_aa19a392c29e5e::t_859a4a4fdea954 40-42
+src/lib/streamReveal.ts
+  s_42f938d366a3cc::t_207294b460650a 132-133,140,142-149,196-197,200,202,204,206-207,209-210,215-218
+  s_aa19a392c29e5e::t_a38cd5d9ea5ca2 2-3,5-10,20-22,26,29,31-32,36-37,57-59,77,79-82,85-86,88-89,91-92,94-95,100-101,103-108,118-122,125-126
+src/components/lobe-chat/MarkdownChat.tsx
+  s_aa19a392c29e5e::t_0b3c6e017dc5c1 786-791,799-800,842-843,881-885
+src/components/lobe-chat/MarkdownChat.test.tsx
+  s_aa19a392c29e5e::t_6d9136b3c329b7 455,481,516,553
+src/lib/blockEntrance.guard.test.ts
+  s_aa19a392c29e5e::t_2b398d78a6ec11 23
+src/lib/rehypeStreamReveal.ts
+  s_aa19a392c29e5e::t_5e572a8dca2bf7 2-3,5-9,15-16,18,20,23-25,43-44,47-48,90-91,134-136,143-145
+src/lib/timelinePhases.ts
+  s_aa19a392c29e5e::t_5d3d72329c1987 54-55,64-65,78-79,374-375
+src/lib/streamRenderPolicy.ts
+  s_aa19a392c29e5e::t_8e21970b231c04 127-130,135-139,143,147-148,150-155,157-159,161-166
+src/components/lobe-chat/lobe-chat.motion.css
+  s_aa19a392c29e5e::t_4b0cd3d4f53387 2-17,38,55-56,66-69,84-85
+src/components/lobe-chat/Thinking.test.tsx
+  s_aa19a392c29e5e::t_d407ff23dd9c4c 29-30
+src/lib/entranceLedger.ts
+  s_aa19a392c29e5e::t_c0aa180f49d198 2,4-8,10-11,16-17,21,23-24,34
+src/components/lobe-chat/ConversationThread.tsx
+  s_aa19a392c29e5e::t_f39e38c724daba 1420-1421
+src/lib/timelinePhases.test.ts
+  s_aa19a392c29e5e::t_82c89a69368192 42-43
+src/lib/outputMotionPref.ts
+  s_aa19a392c29e5e::t_03086198f7e6ba 2,4-6,10,13,18-19,25,32,39,44,52,60,65-67
+src/lib/grokActivitySteps.ts
+  s_aa19a392c29e5e::t_656e654a819fd5 35,37-38,47,330-332
+src/lib/session/chunkLens.ts
+  s_aa19a392c29e5e::t_b2b53820f3712e 2,4-7,11,13-16
+src/styles/tokens.css
+  s_aa19a392c29e5e::t_3b367a25af595c 75-76,82-83,86,88-89,91-92,364-365
+src/components/lobe-chat/lobe-chat.part1b.css
+  s_aa19a392c29e5e::t_7c308fbf479002 383-387,409-410
+src/components/lobe-chat/MermaidBlock.test.tsx
+  s_aa19a392c29e5e::t_1072569ef7de02 99-100
+src/hooks/useOutputMotionEnabled.ts
+  s_aa19a392c29e5e::t_00817e8e998953 2-4,12-13
+src/components/lobe-chat/Thinking.tsx
+  s_aa19a392c29e5e::t_211be02cc3060b 54-56,242-243,289-290
+src/components/lobe-chat/lobe-chat.part2.css
+  s_aa19a392c29e5e::t_98cad7a35a41a8 47-48,109,125,141-142,150-152,175-177,188,206-207,239-243,263-268
+src/lib/session/types.ts
+  s_aa19a392c29e5e::t_b1b6060fa5f3f6 78-79
+src/lib/session/chunkEnds.test.ts
+  s_aa19a392c29e5e::t_ccbf2d1efb4b84 126-127
+src/components/lobe-chat/TimelinePhaseBlock.tsx
+  s_aa19a392c29e5e::t_796ca33967ceb8 263,293-294,298-299,344-346,436-437,537-538,808-810,817,827-828,843-845,973-974
+src/lib/session/segments.ts
+  s_aa19a392c29e5e::t_cf2d3cdd572bab 200-201,220-223,236-237,246-248,338-339,341-342,365-366,375-376,382,391,406-408
+src/components/lobe-chat/TimelineToolRow.tsx
+  s_aa19a392c29e5e::t_bec263f77d2925 90-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "627db74b05af2704cc9c00d506da5379e78f094b",
+  "prompts": {},
+  "sessions": {
+    "s_42f938d366a3cc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a15a8f-e303-7152-a340-f55fc617ee47",
+        "model": "unknown"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_aa19a392c29e5e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15a8f-e303-7152-a340-f55fc617ee47",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
