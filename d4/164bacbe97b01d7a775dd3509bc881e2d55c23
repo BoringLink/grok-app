@@ -1,0 +1,61 @@
+src/lib/streamReveal.test.ts
+  s_b91eaafe4ee4f9::t_404953793c9ae3 152,161,167
+  s_b91eaafe4ee4f9::t_0ef31cc795016f 4,7,11-15,20-21,61-66,70,74,78,87,91,97,103,108,112,114-116,119-121,129-130,134,143-145,147-148,150-151,154,156-157,159-160,162-163,165-166,168-171,175,177,179-181,184-186,188,190-194,198,200-204,208-210
+  s_b91eaafe4ee4f9::t_5371bb5cc442ab 146,149,153,155,158,164,172-173,176,178,187,189,195-197,199,205-207,211-220
+  s_b91eaafe4ee4f9::t_26f5f7871ac397 174,182-183
+src/lib/session/chunkEnds.test.ts
+  s_b91eaafe4ee4f9::t_71d7e8af03d82f 44,51-60
+src/lib/session/chunkLens.test.ts
+  s_b91eaafe4ee4f9::t_fedd0eda3b2950 1-38
+src/components/lobe-chat/MarkdownChat.tsx
+  s_b91eaafe4ee4f9::t_c12b763e908cef 67
+  s_b91eaafe4ee4f9::t_b1bcb436fb1c6b 785,788,790-796,798,800-805,807-811,816,823-824,830-836
+  s_b91eaafe4ee4f9::t_7d93db6d00e5bf 799
+  s_b91eaafe4ee4f9::t_694a984699496a 65-66,68-70
+  s_b91eaafe4ee4f9::t_64c65a08c5f5b9 797,806
+src/lib/session/chunkLens.ts
+  s_b91eaafe4ee4f9::t_c2cf8178b286e0 21,27,30
+  s_b91eaafe4ee4f9::t_72b763639926c5 1-20,22-26,28-29,31
+src/hooks/useSessionHostEvents.ts
+  s_b91eaafe4ee4f9::t_e44e869c741329 55
+  s_b91eaafe4ee4f9::t_3672e4c0d2a7b8 1133-1137
+src/lib/rehypeStreamReveal.test.ts
+  s_b91eaafe4ee4f9::t_c7fb87a9169f7b 56,59-66,69,76-79,82,85-89,97-113,120-127,133-138,141-154,156-157,169-173,181,186-187,194-196,201-205,209-213
+src/lib/rehypeStreamReveal.ts
+  s_b91eaafe4ee4f9::t_766e127352cd52 6-7,15-18,21,73-74,84-85,92-93,96-99,133-135,139
+src/lib/streamReveal.guard.test.ts
+  s_b91eaafe4ee4f9::t_9a3f037dbab15a 19,28-30,33-36,38-47,49,63,66
+  s_b91eaafe4ee4f9::t_23d32e4a9d76ce 53-58
+src/components/lobe-chat/lobe-chat.part1b.css
+  s_b91eaafe4ee4f9::t_d87c5c3ffd64f4 384-385,396,406,411
+src/lib/session/segments.ts
+  s_b91eaafe4ee4f9::t_24ff67058ff843 344-347,350-352
+  s_b91eaafe4ee4f9::t_0706865862c9df 320,329
+  s_b91eaafe4ee4f9::t_739d1c4c530f66 200
+src/components/lobe-chat/MarkdownChat.test.tsx
+  s_b91eaafe4ee4f9::t_4ed84d87f8a3eb 156-184,186,212-280,303-316
+src/lib/streamReveal.ts
+  s_b91eaafe4ee4f9::t_8f8ed0c2194f72 88-95,100,102,106-112
+  s_b91eaafe4ee4f9::t_c80cb623fdf9b2 80,82,84-85,97-98,114-116,123,129-130,133-134,136-137,139-142,144-145,148
+  s_b91eaafe4ee4f9::t_055d9c238b5fd2 2,5,27,71-79,81,83,86-87,96,99,101,103-105,113,117-122,124-128,131-132,135,138,143,146-147,149-157,166-169,179,182-184,186,188,201,205
+src/lib/streamCoalesce.ts
+  s_b91eaafe4ee4f9::t_9104433add0b32 61-76,86-88,102-103,105-108
+src/lib/streamCoalesce.test.ts
+  s_b91eaafe4ee4f9::t_2182f4c0596116 65-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "d4164bacbe97b01d7a775dd3509bc881e2d55c23",
+  "prompts": {},
+  "sessions": {
+    "s_b91eaafe4ee4f9": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a157a7-8ad5-7ad2-b2ca-e9c08f0b749f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
