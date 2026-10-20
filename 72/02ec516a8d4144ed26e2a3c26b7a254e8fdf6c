@@ -1,0 +1,59 @@
+src/lib/timelinePhases.test.ts
+  s_5537f7f0b72788::t_caf707142823c3 6,12
+  s_5537f7f0b72788::t_2e81cac1ef1570 32-50
+src/lib/session/chunkEnds.test.ts
+  s_5537f7f0b72788::t_0d4d82caa98dee 160-162,164-170
+  s_5537f7f0b72788::t_bff9f2d38adeb4 115-129
+  s_5537f7f0b72788::t_a8db1d4234e509 163
+src/lib/grokActivitySteps.test.ts
+  s_5537f7f0b72788::t_d8cb4bb088794c 275-298
+src/lib/grokActivitySteps.ts
+  s_5537f7f0b72788::t_625b8dd3ab1072 329-330,332
+src/lib/timelinePhases.ts
+  s_5537f7f0b72788::t_d9edb84adbfa09 371-372,379-383,389
+  s_5537f7f0b72788::t_f672e7f01273e9 404
+  s_5537f7f0b72788::t_e0d4612b0b946a 63-64
+src/components/lobe-chat/Thinking.test.tsx
+  s_5537f7f0b72788::t_266ed7df8e5fa7 5-6,15-18,21-25,27-52,82-98
+src/components/lobe-chat/Thinking.tsx
+  s_5537f7f0b72788::t_0c1de22120b0b0 54-55
+src/components/lobe-chat/TimelinePhaseBlock.tsx
+  s_5537f7f0b72788::t_3ef3b6c77f8b01 767-768
+  s_5537f7f0b72788::t_8058a1982b2f8c 894
+src/lib/session/types.ts
+  s_5537f7f0b72788::t_cbc579cb9db417 78-79
+src/components/lobe-chat/MarkdownChat.test.tsx
+  s_5537f7f0b72788::t_2211a3fdb0abb8 186,193-210
+  s_5537f7f0b72788::t_31348819cc8585 254,265
+  s_5537f7f0b72788::t_bb33dd6ff9b4cb 288
+src/lib/session/segments.ts
+  s_5537f7f0b72788::t_16b6f80a8f8938 241-244
+  s_5537f7f0b72788::t_96334114aa3fdc 365-367
+src/components/lobe-chat/TimelinePhaseBlock.test.tsx
+  s_5537f7f0b72788::t_bcc5ec0f342515 183-198,200-205,207-222,224-232
+  s_5537f7f0b72788::t_a599bca3c3252f 5-12
+  s_5537f7f0b72788::t_ff9ea547121f56 107,110,136,141,144-145,147-149,151,153-168,176-182,199,206,223,252,257
+  s_5537f7f0b72788::t_b719cab65121bb 236-251,253-256,258-280
+src/lib/streamReveal.ts
+  s_5537f7f0b72788::t_62647cd9eda127 75-76
+  s_5537f7f0b72788::t_8aad76074dd1ac 106-107,114
+src/lib/streamReveal.test.ts
+  s_5537f7f0b72788::t_17a9f855d5a187 152-155
+  s_5537f7f0b72788::t_d9db3fde53615c 213-214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "7202ec516a8d4144ed26e2a3c26b7a254e8fdf6c",
+  "prompts": {},
+  "sessions": {
+    "s_5537f7f0b72788": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a157d1-c72f-7471-8911-84ba2caffbea",
+        "model": "ada-openai"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
