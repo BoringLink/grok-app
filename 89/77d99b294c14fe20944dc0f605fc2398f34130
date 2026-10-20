@@ -1,0 +1,27 @@
+src/components/lobe-chat/lobe-chat.part2.css
+  s_9ef181d225fa4e::t_ea5d1fc95e0f0a 38-40,43-49
+src/components/lobe-chat/TimelinePhaseBlock.test.tsx
+  s_9ef181d225fa4e::t_56f5abc23ac9e5 391-430,432-473
+  s_9ef181d225fa4e::t_6e22e060cbd6a1 431
+src/components/lobe-chat/lobe-chat.motion.css
+  s_9ef181d225fa4e::t_ea5d1fc95e0f0a 58-71,76-77,91-92
+src/components/lobe-chat/TimelinePhaseBlock.tsx
+  s_9ef181d225fa4e::t_f680ceb4405d61 795-827
+  s_9ef181d225fa4e::t_6fffd16ea482fe 33,35,980-992
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "8977d99b294c14fe20944dc0f605fc2398f34130",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
