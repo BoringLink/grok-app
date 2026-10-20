@@ -1,0 +1,234 @@
+src/lib/streamCoalesce.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 17-18,60-76,86-88,95,102-110
+src/components/lobe-chat/lobe-chat.part1b.css
+  s_aa19a392c29e5e::t_7c308fbf479002 383-387,409-410
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 382,388-408,411-420
+src/lib/session/types.ts
+  s_aa19a392c29e5e::t_b1b6060fa5f3f6 78-79
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 74-77,80-91,213-214
+src/i18n/messages/es/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/components/settings/AppearanceSection.outputMotion.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-139
+src-tauri/src/session_manager/mod.rs
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 37
+src/lib/rehypeStreamReveal.ts
+  s_aa19a392c29e5e::t_5e572a8dca2bf7 2-3,5-9,15-16,18,20,23-25,43-44,47-48,90-91,134-136,143-145
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1,4,10-14,17,19,21-22,26-42,45-46,49-89,92-133,137-142,146-159
+src/components/lobe-chat/MermaidBlock.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 133
+src/hooks/useOutputMotionEnabled.ts
+  s_aa19a392c29e5e::t_00817e8e998953 2-4,12-13
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 6-11,14-31
+src/components/settings/types.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 94-95
+src/components/lobe-chat/Thinking.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 49,53,57-58,240-241,244-245,280-283,291-292
+  s_aa19a392c29e5e::t_211be02cc3060b 54-56,242-243,289-290
+src/main.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 83-85,124-125
+src/lib/entranceLedger.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 9,14,18,22,26-33,35-36
+  s_aa19a392c29e5e::t_c0aa180f49d198 2-8,10-11,16-17,21,23-24,34
+src/i18n/messages/en/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 304-305
+src/lib/blockEntrance.guard.test.ts
+  s_aa19a392c29e5e::t_2b398d78a6ec11 23
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-22,24-233
+src/components/lobe-chat/lobe-chat.part2.css
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 38-40,43-46,49-50,110-111,120,124,143-144,178-187,189-190,200,208,230-233,235,238,244-262,269-280,366,385-386
+  s_aa19a392c29e5e::t_98cad7a35a41a8 47-48,109,125,141-142,150-152,175-177,188,206-207,239-243,263-268
+src/lib/streamRenderPolicy.ts
+  s_aa19a392c29e5e::t_8e21970b231c04 127-130,135-139,143,147-148,150-155,157-159,161-166
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 131-134,140-142,144-146,149,156,160,167-178
+src/components/lobe-chat/MarkdownChat.test.tsx
+  s_aa19a392c29e5e::t_6d9136b3c329b7 455,481,516,553
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 4,6,18-22,26,156-454,456-480,482-515,517-552,554-609
+src-tauri/src/session_manager/types.rs
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 173-174
+src-tauri/src/session_manager/stream.rs
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 19-22,31-44,64-68,1015,1035,1089,1115-1119,1127,1135,1680,1702,1724,1762-1834
+src/lib/entranceLedger.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-28
+src/components/lobe-chat/Thinking.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-28,31-124
+  s_aa19a392c29e5e::t_d407ff23dd9c4c 29-30
+src/hooks/useAppearanceEditorModel.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 130-134,316-318,348-355,607-609
+src/lib/session/chunkLens.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1,3,8-10,12,17-33
+  s_aa19a392c29e5e::t_b2b53820f3712e 2,4-7,11,13-16
+src/i18n/messages/ja/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/components/SettingsPage.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 275-276,1493-1494
+src/components/lobe-chat/lobe-chat.motion.css
+  s_aa19a392c29e5e::t_4b0cd3d4f53387 2-17,38,55-56,66-69,84-85
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1,18-37,39-54,57-65,70-83,86-114
+src/styles/tokens.css
+  s_aa19a392c29e5e::t_3b367a25af595c 75-76,82-83,86,88-89,91-92,364-365
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 74,77-81,84-85,87,90,93,363,366-373
+src/components/lobe-chat/ToolExpandBody.tsx
+  s_aa19a392c29e5e::t_859a4a4fdea954 40-42
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 19,43
+src/i18n/messages/it/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/lib/outputMotionPref.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1,3,7-9,11-12,14-17,20-24,26-31,33-38,40-43,45-51,53-59,61-64,68-77
+  s_aa19a392c29e5e::t_03086198f7e6ba 2,4-6,10,13,18-19,25,32,39,44,52,60,65-67
+src/i18n/messages/ko/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/i18n/messages/id/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/components/lobe-chat/TimelinePhaseBlock.test.tsx
+  s_aa19a392c29e5e::t_0c39fe39552a4c 507,509,511
+  s_aa19a392c29e5e::t_c0cc31552358f5 141,204,232-233,284,435-436
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 4-12,16-20,112-140,142-203,205-231,234-283,285-366,392-434,437-506,508,510,512
+src/lib/timelinePhases.ts
+  s_aa19a392c29e5e::t_5d3d72329c1987 54-55,64-65,78-79,374-375
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 25,27,56,66,80,234,286,295-298,376,383-387,393,408
+src/i18n/messages/uk/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/i18n/messages/fr/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/components/lobe-chat/MarkdownChat.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 7,14,63-64,67-74,137-142,299,324-328,330,378-379,792-798,801-841,844-880,886-896,914,917
+  s_aa19a392c29e5e::t_0b3c6e017dc5c1 786-791,799-800,842-843,881-885
+src/components/lobe-chat/TimelinePhaseBlock.tsx
+  s_aa19a392c29e5e::t_796ca33967ceb8 263,293-294,298-299,344-346,436-437,537-538,808-810,817,827-828,843-845,973-974
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 32-33,35,264-274,278,281,295,300,347-349,438-439,459,468-470,524,533-536,539-541,657,660,675,713,716,811-816,818-826,829-842,846-848,972,975,997-1008
+src/lib/streamRenderPolicy.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 9,18-19,22,109-155
+src/i18n/messages/pt-BR/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/hooks/useSessionHostEvents.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 55,1118,1133-1137
+src/components/lobe-chat/ToolExpandBody.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 26-28,31-33,36-38
+  s_aa19a392c29e5e::t_f890f3b65b9fde 34-35
+src/i18n/messages/tr/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 304-305
+src/lib/settingsCatalog/entries/appearanceInterface.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 98-115
+AGENTS.md
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 35
+src/components/lobe-chat/MermaidBlock.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 54-98,101-104
+  s_aa19a392c29e5e::t_1072569ef7de02 99-100
+src/lib/settingsCatalog.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 111-132
+src/components/settings/AppearanceSection.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 125-126,865-884
+src/components/lobe-chat/lobe-chat.part1.css
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 814-815,818-819
+src/i18n/messages/zh/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 304-305
+src/lib/streamReveal.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1,4,11-19,23-25,27-28,30,33-35,38-56,60-76,78,83-84,87,90,93,96-99,102,109-117,123-124,127-131,134-139,141,150-195,198-199,201,203,205,208,211-214,219-255
+  s_aa19a392c29e5e::t_a38cd5d9ea5ca2 2-3,5-10,20-22,26,29,31-32,36-37,57-59,77,79-82,85-86,88-89,91-92,94-95,100-101,103-108,118-122,125-126
+  s_42f938d366a3cc::t_207294b460650a 132-133,140,142-149,196-197,200,202,204,206-207,209-210,215-218
+src-tauri/src/session_manager/turn.rs
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 434-438,446-447
+src/lib/streamReveal.test.ts
+  s_aa19a392c29e5e::t_7b0b47ce55b2ca 153-154,156,242-243
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-152,155,157-241,244-263
+src/lib/grokActivitySteps.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 275-298
+src/components/lobe-chat/StructuredJsonPanel.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 158
+src/app/AppWorkbench.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 784-785,12301-12302
+src/app/workbenchSettingsStageProps.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 139-140
+src/lib/appearanceLiveSync.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 47-50,140-142
+src/lib/session/segments.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 192,194-199,202-206,210-214,219,224-235,238-245,249-252,337,340,343,348,352,357-364,367-374,377,383-390,392-395,399,403,405,409-410,412-416,418-422
+  s_aa19a392c29e5e::t_cf2d3cdd572bab 200-201,220-223,236-237,246-248,338-339,341-342,365-366,375-376,382,391,406-408
+src/i18n/messages/de/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/lib/session/stream.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 435,454-459,497,514-518
+src/lib/timelinePhases.test.ts
+  s_aa19a392c29e5e::t_82c89a69368192 42-43
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 6,12,32-41,44-51,666-681
+src/i18n/messages/ta/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/components/lobe-chat/StructuredJsonPanel.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-63
+src/components/lobe-chat/TimelineToolRow.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 25,92-95,163
+  s_aa19a392c29e5e::t_bec263f77d2925 90-91
+src/lib/grokActivitySteps.ts
+  s_aa19a392c29e5e::t_656e654a819fd5 35,37-38,47,330-332
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 36,39,48,124-125,316-317,333-336,345,360
+src/components/lobe-chat/CodeBlock.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 89-94
+src/i18n/messages/fil/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/lib/session/chunkEnds.test.ts
+  s_aa19a392c29e5e::t_ccbf2d1efb4b84 126-127
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-125,128-180
+src/lib/markdownMath.ts
+  s_aa19a392c29e5e::t_8ff025ba583e1b 58-60,62-64,87-89,95-96
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 57,61,65-86,90-94,97-118,121-123
+src/lib/streamCoalesce.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 40-161
+src/i18n/messages/zh-TW/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 305-306
+src/hooks/useWorkbenchDisplayPrefs.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 78-81,141-143,207-211,293-296,306-307
+src/components/lobe-chat/lobe-chat.css
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 8
+src/app/WorkbenchSettingsStage.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 12-13,88,154-158
+src/lib/streamReveal.guard.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-112
+src/lib/rehypeStreamReveal.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-296
+src/components/lobe-chat/CodeBlock.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 32-58
+src/lib/outputMotionPref.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-79
+src/i18n/messages/ru/settings.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 281-282
+src/lib/session/chunkLens.test.ts
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 2-36
+src/components/lobe-chat/ConversationThread.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 272,294-295,355-358,374,1422-1426,1439,1491
+  s_aa19a392c29e5e::t_f39e38c724daba 1420-1421
+src/components/lobe-chat/TimelineToolRow.test.tsx
+  s_9ef181d225fa4e::t_80346f0d1c2a9e 1-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "8e6c6369f4b7633e5c10f7fa5da44641d30421e5",
+  "prompts": {},
+  "sessions": {
+    "s_42f938d366a3cc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01a15a8f-e303-7152-a340-f55fc617ee47",
+        "model": "unknown"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    },
+    "s_aa19a392c29e5e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15a8f-e303-7152-a340-f55fc617ee47",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
