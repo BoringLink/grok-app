@@ -1,0 +1,40 @@
+src/components/lobe-chat/CodeBlock.test.tsx
+  s_4957960ad29cb8::t_39dfbcde980424 54-56
+  s_4957960ad29cb8::t_d97727c582d90a 32-53,57-58
+src/components/lobe-chat/ToolExpandBody.tsx
+  s_4957960ad29cb8::t_859eca2a0f1bac 19,40
+src/lib/blockEntrance.guard.test.ts
+  s_4957960ad29cb8::t_1797f8db72b9d9 1-40
+src/components/lobe-chat/StructuredJsonPanel.test.tsx
+  s_4957960ad29cb8::t_c55e4e1b47fc44 1-63
+src/components/lobe-chat/TimelineToolRow.tsx
+  s_4957960ad29cb8::t_6570ba2f8753ab 155
+src/components/lobe-chat/TimelineToolRow.test.tsx
+  s_4957960ad29cb8::t_ee91a0e16a2148 1-59
+src/components/lobe-chat/MermaidBlock.test.tsx
+  s_4957960ad29cb8::t_3bafe9a2d70e04 54-61
+src/components/lobe-chat/CodeBlock.tsx
+  s_4957960ad29cb8::t_0565ff237049bf 89-94
+src/components/lobe-chat/ToolExpandBody.test.tsx
+  s_4957960ad29cb8::t_51556c0ee2df7c 26-28,31-33
+src/components/lobe-chat/MermaidBlock.tsx
+  s_4957960ad29cb8::t_74e453fc3f9afe 133
+src/components/lobe-chat/StructuredJsonPanel.tsx
+  s_4957960ad29cb8::t_92cfe8a699aa17 158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "bae5d239ea180d850727fb8bf825ac51727f2147",
+  "prompts": {},
+  "sessions": {
+    "s_4957960ad29cb8": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a157bc-0783-7bb2-8719-d0830a6ed9eb",
+        "model": "ada-openai"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
