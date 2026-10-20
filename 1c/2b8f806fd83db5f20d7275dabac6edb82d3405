@@ -1,0 +1,21 @@
+docs/plans/2026-10-20-session-output-motion-design.md
+  s_9ef181d225fa4e::t_2012682ac306e0 88-98
+docs/adr/0007-output-motion-scope-live-tail.md
+  s_9ef181d225fa4e::t_2012682ac306e0 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.50-trip",
+  "base_commit_sha": "1c2b8f806fd83db5f20d7275dabac6edb82d3405",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
