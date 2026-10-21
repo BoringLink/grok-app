@@ -1,0 +1,19 @@
+src/lib/streamPerfStats.ts
+  s_9ef181d225fa4e::t_a92361f2b0503b 1-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "940bb338cbd17b576e496ff8d3480f49c6f9d378",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
