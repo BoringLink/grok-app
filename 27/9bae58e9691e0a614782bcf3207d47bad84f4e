@@ -1,0 +1,33 @@
+src/lib/rafRevealDriver.ts
+  s_9ef181d225fa4e::t_bb9ea19b8b6960 139-155
+  s_9ef181d225fa4e::t_aecc5e653653c0 1-138
+src/components/lobe-chat/MarkdownChat.tsx
+  s_9ef181d225fa4e::t_913bcf0c8faaa9 879-880,882,884-887
+  s_9ef181d225fa4e::t_86e55cda26c2d8 26,28-30,348,904
+  s_9ef181d225fa4e::t_bc4ae40386ee4f 9,883
+  s_9ef181d225fa4e::t_bb9ea19b8b6960 27,881
+src/components/lobe-chat/lobe-chat.motion.css
+  s_9ef181d225fa4e::t_cb2998bada176f 115-126
+src/lib/rehypeStreamReveal.ts
+  s_9ef181d225fa4e::t_86e55cda26c2d8 71
+src/lib/rafRevealDriver.test.ts
+  s_9ef181d225fa4e::t_6ad2d2ab50f198 1-2
+  s_9ef181d225fa4e::t_cb2998bada176f 3-6,8-16,18-19,21-48,50-53,55-82
+  s_9ef181d225fa4e::t_26e65aef1a4cf9 7,17,20,49,54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "279bae58e9691e0a614782bcf3207d47bad84f4e",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
