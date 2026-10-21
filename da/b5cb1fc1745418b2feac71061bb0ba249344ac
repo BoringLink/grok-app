@@ -1,0 +1,19 @@
+src/lib/adaptiveStreamParse.ts
+  s_9ef181d225fa4e::t_2f65e921327d5b 1-71,74,76-78,84,87,91-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "dab5cb1fc1745418b2feac71061bb0ba249344ac",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "unknown"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
