@@ -1,0 +1,21 @@
+package.json
+  s_9ef181d225fa4e::t_a5ed7a447f035f 120
+pnpm-lock.yaml
+  s_9ef181d225fa4e::t_a51d1e6dc1c618 8,2569-2570,5844,6458,6824
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "c8e024578b256f377549824557e8ae1d9e175c45",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
