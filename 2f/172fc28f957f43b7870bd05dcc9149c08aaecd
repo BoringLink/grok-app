@@ -1,0 +1,23 @@
+src-tauri/src/session_manager/mod.rs
+  s_9ef181d225fa4e::t_fb32b74292adb0 37
+src/components/lobe-chat/StepMainText.tsx
+  s_9ef181d225fa4e::t_1ffd6f68e0bfc3 1-100
+src/components/lobe-chat/TimelinePhaseBlock.tsx
+  s_9ef181d225fa4e::t_1ffd6f68e0bfc3 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "2f172fc28f957f43b7870bd05dcc9149c08aaecd",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
