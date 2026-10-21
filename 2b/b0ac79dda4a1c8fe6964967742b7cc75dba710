@@ -1,0 +1,19 @@
+docs/adr/0006-stream-reveal-at-render-layer.md
+  s_9ef181d225fa4e::t_c9369217cafc6e 56-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "2bb0ac79dda4a1c8fe6964967742b7cc75dba710",
+  "prompts": {},
+  "sessions": {
+    "s_9ef181d225fa4e": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a15753-7f2a-79b2-bade-5bdbcee1f0b2",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
