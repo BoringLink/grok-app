@@ -36,6 +36,7 @@ See `docs/llm-wiki/release.md`.
 - Math written inside a code span stays as code.
 - A fullwidth @ or / from an IME opens the same composer panel.
 - A PR the agent starts watching shows up in the chat's watch chip and menu.
+- A subagent that is still running stays in the Tasks list when the list is full.
 
 **中文 · 修复**
 - macOS 系统设置里的小图标不再出现彩色横纹。
@@ -54,6 +55,7 @@ See `docs/llm-wiki/release.md`.
 - 代码里的公式分隔符保持原样，不会被改成公式。
 - 输入法打出的全角＠或／，也会打开文件面板或斜杠面板。
 - Agent 主动开始监视的 PR，会出现在对话的监视标记和菜单里。
+- 任务列表满了以后，仍在运行的子任务会继续留在列表里。
 
 ## [0.2.42] - 2026-10-19
 
