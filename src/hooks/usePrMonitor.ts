@@ -4,10 +4,15 @@
  * The host owns the watches: it polls each one, reads a change, delivers the
  * follow-up turn into this chat and pushes the rows (`pr-monitor://state`) plus
  * each wake's outcome (`pr-monitor://wake`). So this hook reads the repo's open
- * PRs once per menu open, reads this chat's watches once on subscribe, and then
- * only renders what the host pushes — it never polls for watch state. A project
- * change while a read is in flight starts that project's read when the old one
- * finishes.
+ * PRs once per menu open, reads this chat's watches on subscribe, and then
+ * renders what the host pushes. A project change while a read is in flight
+ * starts that project's read when the old one finishes.
+ *
+ * The watch read is also a reconcile, not only a subscribe: the host's push is
+ * the primary path, but an agent can mount a watch while this webview has no
+ * listener (window hidden or recreated), and the push is not replayed. So the
+ * rows are read again whenever the window regains focus and whenever the branch
+ * menu opens — the two moments the state becomes visible to a person.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,6 +27,9 @@ import {
   watchErrorOf,
   type PrMonitorWatchInfo,
 } from "@/lib/prMonitor";
+
+/** Minimum gap between focus-driven watch reads (an in-process read). */
+const WATCH_RECONCILE_MS = 1000;
 
 export type UsePrMonitorOptions = {
   /** Desktop host with a bound project — the host side needs both. */
@@ -61,6 +69,8 @@ export type UsePrMonitorResult = {
   toggleWatch: (prNumber: number) => void;
   /** Re-read the repository's open PRs (once per menu open, and after a project change). */
   refresh: () => void;
+  /** Re-read this chat's watches from the host (menu open, window focus). */
+  refreshWatches: () => void;
 };
 
 export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
@@ -90,6 +100,10 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
   busyRef.current = busy;
   const readingRef = useRef(false);
   const refreshRef = useRef<() => void>(() => {});
+  /** Only the newest watch read may land; an older answer must not roll back. */
+  const watchReadSeq = useRef(0);
+  /** Last focus-driven reconcile, so alt-tabbing does not hammer the host. */
+  const lastReconcileAt = useRef(0);
 
   /** The repository's open PRs, for the list the menu shows. */
   const refresh = useCallback(() => {
@@ -152,55 +166,86 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
     refresh();
   }, [enabled, projectPath, refresh]);
 
-  // ── This chat's watches: one read on subscribe, then the host's pushes ─────
-  useEffect(() => {
-    let cancelled = false;
-    if (!sessionId) {
+  // ── This chat's watches: reads that reconcile, then the host's pushes ──────
+  const refreshWatches = useCallback(() => {
+    const sid = sessionRef.current;
+    if (!sid) {
       setWatches([]);
-      return () => {
-        cancelled = true;
-      };
+      return;
     }
+    // A mirror client has no host to ask; its rows only arrive as pushes, and
+    // an empty local answer would wipe them.
+    if (!api.isDesktopHost()) return;
+    const seq = watchReadSeq.current + 1;
+    watchReadSeq.current = seq;
     void (async () => {
       try {
-        const state = await api.prMonitorState(sessionId);
-        if (cancelled) return;
+        const state = await api.prMonitorState(sid);
+        if (seq !== watchReadSeq.current || sessionRef.current !== sid) return;
         setWatches(Array.isArray(state?.watches) ? state.watches : []);
       } catch {
         // Soft read: the host keeps pushing, so the rows stay live either way.
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId]);
+  }, []);
 
   useEffect(() => {
-    if (!sessionId) return;
+    watchReadSeq.current += 1; // a read of the previous chat must not land
+    if (!sessionId) {
+      setWatches([]);
+      return;
+    }
     let cancelled = false;
     const unlisten: Array<() => void> = [];
+    // Subscribe first, then read: a push that lands between the read and the
+    // listener would otherwise be lost, and the read answer would be older.
     void (async () => {
-      const offState = await api.onPrMonitorState((payload) => {
-        if (!payload || payload.sessionId !== sessionRef.current) return;
-        setWatches(Array.isArray(payload.watches) ? payload.watches : []);
-      });
-      const offWake = await api.onPrMonitorWake((payload) => {
-        if (!payload || payload.sessionId !== sessionRef.current) return;
-        const notice = describeWake(payload, trRef.current);
-        if (notice) optsRef.current.notify?.(notice.text, notice.tone);
-      });
-      if (cancelled) {
-        offState();
-        offWake();
-        return;
+      const offs: Array<() => void> = [];
+      try {
+        offs.push(
+          await api.onPrMonitorState((payload) => {
+            if (!payload || payload.sessionId !== sessionRef.current) return;
+            // The push is fresher than any read still in flight: drop that read.
+            watchReadSeq.current += 1;
+            setWatches(Array.isArray(payload.watches) ? payload.watches : []);
+          }),
+        );
+        offs.push(
+          await api.onPrMonitorWake((payload) => {
+            if (!payload || payload.sessionId !== sessionRef.current) return;
+            const notice = describeWake(payload, trRef.current);
+            if (notice) optsRef.current.notify?.(notice.text, notice.tone);
+          }),
+        );
+      } catch (e) {
+        console.warn("[pr-monitor] listener registration failed", e);
+      } finally {
+        if (cancelled) {
+          for (const off of offs) off();
+        } else {
+          unlisten.push(...offs);
+          if (offs.length > 0) refreshWatches();
+        }
       }
-      unlisten.push(offState, offWake);
     })();
+    // The push is not replayed. A watch the agent mounted while this webview
+    // could not hear it is picked up here, the moment a person looks again.
+    const reconcile = () => {
+      if (document.visibilityState === "hidden") return;
+      const now = performance.now();
+      if (now - lastReconcileAt.current < WATCH_RECONCILE_MS) return;
+      lastReconcileAt.current = now;
+      refreshWatches();
+    };
+    document.addEventListener("visibilitychange", reconcile);
+    window.addEventListener("focus", reconcile);
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", reconcile);
+      window.removeEventListener("focus", reconcile);
       for (const off of unlisten) off();
     };
-  }, [sessionId]);
+  }, [sessionId, refreshWatches]);
 
   const toggleWatch = useCallback((prNumber: number) => {
     const sid = sessionRef.current;
@@ -232,9 +277,12 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
         );
       } finally {
         setBusy((prev) => prev.filter((n) => n !== number));
+        // The host pushes the new rows; read them once too, so a dropped push
+        // cannot leave a bell that looks like the click did nothing.
+        refreshWatches();
       }
     })();
-  }, []);
+  }, [refreshWatches]);
 
   return {
     ready,
@@ -251,5 +299,6 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
     busy,
     toggleWatch,
     refresh,
+    refreshWatches,
   };
 }

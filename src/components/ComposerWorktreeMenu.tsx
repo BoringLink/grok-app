@@ -180,7 +180,7 @@ type Props = {
   prWatchError?: string | null;
   onTogglePrWatch?: (prNumber: number) => void;
   onOpenPrHub?: (prNumber: number) => void;
-  /** The branch menu opened (each open reads the repo's PRs once). */
+  /** The branch menu opened (each open re-reads the repo's PRs and watches). */
   onPrListVisible?: () => void;
 };
 
@@ -348,7 +348,8 @@ export function ComposerWorktreeMenu({
     if (!open) return;
     onOpenRef.current?.();
     // The section stays unmounted after a failed read, so the open itself is
-    // what retries the list. One call per open, whether or not the section shows.
+    // what retries the list. One call per open, whether or not the section
+    // shows; the caller also re-reads this chat's watch rows.
     onPrListVisibleRef.current?.();
   }, [open]);
 

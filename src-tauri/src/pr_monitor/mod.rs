@@ -636,6 +636,11 @@ pub fn start(app: AppHandle) {
 
 /// Mount a watch for one PR of this session's project. The seed poll runs here,
 /// so mounting cannot look like a change and no client nudge is needed.
+///
+/// The row is published as soon as the mount exists, and again after the seed
+/// poll (`poll_watch` may also publish on its own). The seed poll waits on `gh`
+/// — it can hang on TLS for seconds — and the watch already exists, so the UI
+/// must not look unwatched for that long.
 #[tauri::command]
 pub async fn pr_monitor_watch(
     app: AppHandle,
@@ -651,6 +656,7 @@ pub async fn pr_monitor_watch(
         };
     }
     let session = session_id.trim().to_string();
+    emit_state(&app, &session).await;
     poll_watch(&app, &session, pr_number).await;
     emit_state(&app, &session).await;
     PrMonitorWatchResult {

@@ -3,7 +3,7 @@
  * pushed.
  *
  * The host owns the watches, the poll, the reading of a change and the
- * follow-up turn (`src-tauri/src/pr_monitor.rs`). It pushes the rows
+ * follow-up turn (`src-tauri/src/pr_monitor/mod.rs`). It pushes the rows
  * (`pr-monitor://state`) and each wake's outcome (`pr-monitor://wake`), so
  * everything here is pure rendering logic that can be tested on its own.
  */
