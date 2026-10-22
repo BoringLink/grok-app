@@ -1,0 +1,19 @@
+src/hooks/usePrMonitor.ts
+  s_19a27edf447823::t_b93fcd7e6765d6 14-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "39d1ba5f2d5823c29810928fc160919d8f08cae7",
+  "prompts": {},
+  "sessions": {
+    "s_19a27edf447823": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1622d-adf9-7250-adf1-78287af367ab",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
