@@ -11,8 +11,9 @@
  * The watch read is also a reconcile, not only a subscribe: the host's push is
  * the primary path, but an agent can mount a watch while this webview has no
  * listener (window hidden or recreated), and the push is not replayed. So the
- * rows are read again whenever the window regains focus and whenever the branch
- * menu opens — the two moments the state becomes visible to a person.
+ * rows are read again when the branch menu opens — the moment the state becomes
+ * visible to a person — and once after a bell click. Nothing reads them on a
+ * timer or on a window event, so a background window stays quiet.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -27,9 +28,6 @@ import {
   watchErrorOf,
   type PrMonitorWatchInfo,
 } from "@/lib/prMonitor";
-
-/** Minimum gap between focus-driven watch reads (an in-process read). */
-const WATCH_RECONCILE_MS = 1000;
 
 export type UsePrMonitorOptions = {
   /** Desktop host with a bound project — the host side needs both. */
@@ -69,7 +67,7 @@ export type UsePrMonitorResult = {
   toggleWatch: (prNumber: number) => void;
   /** Re-read the repository's open PRs (once per menu open, and after a project change). */
   refresh: () => void;
-  /** Re-read this chat's watches from the host (menu open, window focus). */
+  /** Re-read this chat's watches from the host (menu open, bell click). */
   refreshWatches: () => void;
 };
 
@@ -102,8 +100,6 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
   const refreshRef = useRef<() => void>(() => {});
   /** Only the newest watch read may land; an older answer must not roll back. */
   const watchReadSeq = useRef(0);
-  /** Last focus-driven reconcile, so alt-tabbing does not hammer the host. */
-  const lastReconcileAt = useRef(0);
 
   /** The repository's open PRs, for the list the menu shows. */
   const refresh = useCallback(() => {
@@ -228,21 +224,12 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
         }
       }
     })();
-    // The push is not replayed. A watch the agent mounted while this webview
-    // could not hear it is picked up here, the moment a person looks again.
-    const reconcile = () => {
-      if (document.visibilityState === "hidden") return;
-      const now = performance.now();
-      if (now - lastReconcileAt.current < WATCH_RECONCILE_MS) return;
-      lastReconcileAt.current = now;
-      refreshWatches();
-    };
-    document.addEventListener("visibilitychange", reconcile);
-    window.addEventListener("focus", reconcile);
+    // The push is not replayed: a watch the agent mounted while this webview
+    // could not hear it is picked up when the menu opens or a bell is clicked
+    // (`refreshWatches`). No timer and no window event reads it in the
+    // background.
     return () => {
       cancelled = true;
-      document.removeEventListener("visibilitychange", reconcile);
-      window.removeEventListener("focus", reconcile);
       for (const off of unlisten) off();
     };
   }, [sessionId, refreshWatches]);

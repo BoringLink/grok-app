@@ -4,8 +4,8 @@
  * usePrMonitor tests.
  *
  * The host owns the watches, so this hook reads the repository's open PRs once
- * per menu open and this chat's watch rows on subscribe and on reconcile
- * (focus, menu open); everything else is what the host pushes. The tests drive
+ * per menu open and this chat's watch rows on subscribe, on menu open and after
+ * a bell click; everything else is what the host pushes. The tests drive
  * it through real pushes from a stubbed transport — the transport is the only
  * thing replaced, never the logic under test.
  */
@@ -177,25 +177,11 @@ describe("usePrMonitor", () => {
     expect(hook.result.current.watching).toBe(1);
   });
 
-  it("picks up a watch mounted while the window could not hear the push", async () => {
+  it("picks up a watch whose push this webview never heard when the menu opens", async () => {
     const { hook } = setup();
     await waitFor(() => expect(hook.result.current.watching).toBe(0));
 
     // The agent mounted it meanwhile; the push never reached this webview.
-    prMonitorState.mockResolvedValue({
-      sessionId: SESSION,
-      watches: [watchInfo()],
-    });
-    window.dispatchEvent(new Event("focus"));
-
-    await waitFor(() => expect(hook.result.current.watching).toBe(1));
-    expect(prMonitorState).toHaveBeenCalledTimes(2);
-  });
-
-  it("reads the watch rows again whenever the menu opens", async () => {
-    const { hook } = setup();
-    await waitFor(() => expect(prMonitorState).toHaveBeenCalledTimes(1));
-
     prMonitorState.mockResolvedValue({
       sessionId: SESSION,
       watches: [watchInfo()],
@@ -231,32 +217,17 @@ describe("usePrMonitor", () => {
     expect(hook.result.current.watching).toBe(0);
   });
 
-  it("reads at most once a second when the window keeps regaining focus", async () => {
+  it("stays quiet on window focus and visibility changes", async () => {
     const { hook } = setup();
     await waitFor(() => expect(prMonitorState).toHaveBeenCalledTimes(1));
 
-    window.dispatchEvent(new Event("focus"));
-    window.dispatchEvent(new Event("focus"));
-    await waitFor(() => expect(prMonitorState).toHaveBeenCalledTimes(2));
-
-    window.dispatchEvent(new Event("focus"));
-    await Promise.resolve();
-    expect(prMonitorState).toHaveBeenCalledTimes(2);
-    expect(hook.result.current.watching).toBe(0);
-  });
-
-  it("does not read while the window is hidden", async () => {
-    const { hook } = setup();
-    await waitFor(() => expect(prMonitorState).toHaveBeenCalledTimes(1));
-
-    const hidden = vi.spyOn(document, "visibilityState", "get");
-    hidden.mockReturnValue("hidden");
     window.dispatchEvent(new Event("focus"));
     document.dispatchEvent(new Event("visibilitychange"));
     await Promise.resolve();
-    expect(prMonitorState).toHaveBeenCalledTimes(1);
 
-    hidden.mockRestore();
+    // No background reconcile: only the push, the menu open, and a bell click
+    // read the rows.
+    expect(prMonitorState).toHaveBeenCalledTimes(1);
     expect(hook.result.current.watching).toBe(0);
   });
 
@@ -298,7 +269,6 @@ describe("usePrMonitor", () => {
     pushState!({ sessionId: SESSION, watches: [watchInfo()] });
     await waitFor(() => expect(hook.result.current.watching).toBe(1));
 
-    window.dispatchEvent(new Event("focus"));
     hook.result.current.refreshWatches();
     await Promise.resolve();
     expect(hook.result.current.watching).toBe(1);

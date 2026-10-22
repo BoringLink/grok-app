@@ -61,9 +61,9 @@ export async function prMonitorUnwatch(
  * The watches one session holds, as the host sees them.
  *
  * The host pushes every change, so this is a reconcile read, not a poll: the
- * client asks once when it subscribes, when the window regains focus, and when
- * the branch menu opens — a push the webview did not hear would otherwise leave
- * the chip and the bells stale.
+ * client asks once when it subscribes, when the branch menu opens, and after a
+ * bell click — a push the webview did not hear would otherwise leave the chip
+ * and the bells stale.
  */
 export async function prMonitorState(
   sessionId: string,
