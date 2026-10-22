@@ -133,7 +133,7 @@ beforeEach(() => {
 
 afterEach(() => {
   // No globals config, so Testing Library cannot register its own cleanup:
-  // a mounted hook would keep its window listeners and read on later tests.
+  // a mounted hook would keep its host listeners and read on later tests.
   cleanup();
   vi.clearAllMocks();
 });
@@ -259,6 +259,49 @@ describe("usePrMonitor", () => {
     await Promise.resolve();
     // The old chat's answer must not land in the new chat.
     expect(hook.result.current.watching).toBe(0);
+  });
+
+  it("clears the previous chat's rows when the chat changes", async () => {
+    isDesktopHost.mockReturnValue(false); // a mirror never reads, so only the clear can fix it
+    const hook = renderHook(
+      ({ sessionId }: { sessionId: string }) =>
+        usePrMonitor({
+          enabled: true,
+          projectPath: PROJECT,
+          sessionId,
+          locale: "en",
+        }),
+      { initialProps: { sessionId: SESSION } },
+    );
+    await waitFor(() => expect(pushState).toBeTypeOf("function"));
+    pushState!({ sessionId: SESSION, watches: [watchInfo()] });
+    await waitFor(() => expect(hook.result.current.watching).toBe(1));
+
+    hook.rerender({ sessionId: "session-2" });
+    await waitFor(() => expect(hook.result.current.watching).toBe(0));
+  });
+
+  it("ignores a push that is older than a read already applied", async () => {
+    prMonitorState.mockResolvedValue({
+      sessionId: SESSION,
+      watches: [watchInfo()],
+      revision: 5,
+    });
+    const { hook } = setup();
+    await waitFor(() => expect(hook.result.current.watching).toBe(1));
+
+    pushState!({ sessionId: SESSION, watches: [], revision: 4 });
+    await Promise.resolve();
+    expect(hook.result.current.watching).toBe(1);
+  });
+
+  it("reads the rows once more after a bell click", async () => {
+    const { hook } = setup();
+    await waitFor(() => expect(prMonitorState).toHaveBeenCalledTimes(1));
+
+    hook.result.current.toggleWatch(1316);
+    await waitFor(() => expect(prMonitorWatch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(prMonitorState).toHaveBeenCalledTimes(2));
   });
 
   it("keeps push-only rows on a mirror client instead of clearing them", async () => {

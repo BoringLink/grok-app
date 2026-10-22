@@ -60,6 +60,8 @@ export type PrMonitorWatchInfo = {
 export type PrMonitorStateEvent = {
   sessionId: string;
   watches: PrMonitorWatchInfo[];
+  /** Host-wide counter, so an older push cannot overwrite a newer read. */
+  revision?: number;
 };
 
 /** queued = waiting for an idle chat, delivered = the chat took the turn,

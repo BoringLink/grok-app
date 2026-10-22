@@ -40,7 +40,7 @@ use prompt::*;
 use types::*;
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
@@ -195,7 +195,13 @@ fn app_lang() -> String {
     crate::tray_i18n::app_locale().as_tag().to_string()
 }
 
-/// Watch rows for one session, newest mount first.
+/// Host-wide revision of the pushed watch rows: every push takes the next
+/// value, and a read answers with the value as of that answer.
+static STATE_REVISION: AtomicU64 = AtomicU64::new(0);
+
+/// Watch rows for one session, newest mount first, with the revision they
+/// reflect. A read is answered from the current rows, so its revision is the
+/// newest push the caller already has.
 pub fn session_state(session_id: &str) -> PrMonitorState {
     let guard = lock_monitors();
     let mut watches: Vec<PrWatchInfo> = guard
@@ -210,6 +216,7 @@ pub fn session_state(session_id: &str) -> PrMonitorState {
     PrMonitorState {
         session_id: session_id.to_string(),
         watches,
+        revision: STATE_REVISION.load(Ordering::Relaxed),
     }
 }
 
@@ -319,7 +326,8 @@ fn sessions_with_pending() -> Vec<String> {
 // ── Poll loop ───────────────────────────────────────────────────────────────
 
 async fn emit_state(app: &AppHandle, session_id: &str) {
-    let state = session_state(session_id);
+    let mut state = session_state(session_id);
+    state.revision = STATE_REVISION.fetch_add(1, Ordering::Relaxed) + 1;
     if let Err(e) = app.emit(STATE_EVENT, &state) {
         warn!(target: "pr_monitor", error = %e, "failed to emit pr watch state");
     }

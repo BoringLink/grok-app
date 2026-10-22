@@ -100,6 +100,8 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
   const refreshRef = useRef<() => void>(() => {});
   /** Only the newest watch read may land; an older answer must not roll back. */
   const watchReadSeq = useRef(0);
+  /** Host revision of the rows on screen: an older push must not overwrite them. */
+  const lastRevision = useRef(0);
 
   /** The repository's open PRs, for the list the menu shows. */
   const refresh = useCallback(() => {
@@ -178,6 +180,9 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
       try {
         const state = await api.prMonitorState(sid);
         if (seq !== watchReadSeq.current || sessionRef.current !== sid) return;
+        const revision = Number(state?.revision ?? 0);
+        if (revision < lastRevision.current) return;
+        lastRevision.current = revision;
         setWatches(Array.isArray(state?.watches) ? state.watches : []);
       } catch {
         // Soft read: the host keeps pushing, so the rows stay live either way.
@@ -187,10 +192,10 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
 
   useEffect(() => {
     watchReadSeq.current += 1; // a read of the previous chat must not land
-    if (!sessionId) {
-      setWatches([]);
-      return;
-    }
+    lastRevision.current = 0;
+    // Rows belong to one chat: never let the previous chat's rows render here.
+    setWatches([]);
+    if (!sessionId) return;
     let cancelled = false;
     const unlisten: Array<() => void> = [];
     // Subscribe first, then read: a push that lands between the read and the
@@ -201,6 +206,11 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
         offs.push(
           await api.onPrMonitorState((payload) => {
             if (!payload || payload.sessionId !== sessionRef.current) return;
+            const revision = Number(payload.revision ?? 0);
+            // A push emitted before a read we already applied must not roll
+            // the rows back; a push at the same revision carries the same rows.
+            if (revision < lastRevision.current) return;
+            lastRevision.current = revision;
             // The push is fresher than any read still in flight: drop that read.
             watchReadSeq.current += 1;
             setWatches(Array.isArray(payload.watches) ? payload.watches : []);
@@ -220,7 +230,9 @@ export function usePrMonitor(opts: UsePrMonitorOptions): UsePrMonitorResult {
           for (const off of offs) off();
         } else {
           unlisten.push(...offs);
-          if (offs.length > 0) refreshWatches();
+          // The read needs no listener: run it even if registration failed,
+          // which is exactly when the push path is unavailable.
+          refreshWatches();
         }
       }
     })();

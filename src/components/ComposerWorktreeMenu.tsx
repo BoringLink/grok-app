@@ -181,7 +181,7 @@ type Props = {
   onTogglePrWatch?: (prNumber: number) => void;
   onOpenPrHub?: (prNumber: number) => void;
   /** The branch menu opened (each open re-reads the repo's PRs and watches). */
-  onPrListVisible?: () => void;
+  onPrMenuOpen?: () => void;
 };
 
 const LIST_MAX_H = 200;
@@ -227,7 +227,7 @@ export function ComposerWorktreeMenu({
   prWatchError = null,
   onTogglePrWatch,
   onOpenPrHub,
-  onPrListVisible,
+  onPrMenuOpen,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [branchQuery, setBranchQuery] = useState("");
@@ -236,8 +236,8 @@ export function ComposerWorktreeMenu({
   const popRef = useRef<HTMLDivElement>(null);
   const onOpenRef = useRef(onOpen);
   onOpenRef.current = onOpen;
-  const onPrListVisibleRef = useRef(onPrListVisible);
-  onPrListVisibleRef.current = onPrListVisible;
+  const onPrMenuOpenRef = useRef(onPrMenuOpen);
+  onPrMenuOpenRef.current = onPrMenuOpen;
 
   const current =
     worktrees.find((wt) => pathsEqual(wt.path, activePath)) ?? null;
@@ -350,7 +350,7 @@ export function ComposerWorktreeMenu({
     // The section stays unmounted after a failed read, so the open itself is
     // what retries the list. One call per open, whether or not the section
     // shows; the caller also re-reads this chat's watch rows.
-    onPrListVisibleRef.current?.();
+    onPrMenuOpenRef.current?.();
   }, [open]);
 
   useEffect(() => {
