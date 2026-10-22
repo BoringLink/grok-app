@@ -1,0 +1,49 @@
+src/hooks/usePrMonitor.ts
+  s_19a27edf447823::t_a9566c7099b814 227
+  s_19a27edf447823::t_93fd9033d3fc58 280-282,285
+  s_19a27edf447823::t_d395bd9cd76129 302
+  s_19a27edf447823::t_3915cea7c89df5 31-33
+  s_19a27edf447823::t_dbd9c316ec3545 172,176-178,200-201,203-226,228,235,248
+  s_19a27edf447823::t_55fd0da64ec0e3 169-171,174,179-180,183-184,190,193-197,231-234,236-241,244-245
+  s_19a27edf447823::t_5003bf001f5c13 7-15
+  s_19a27edf447823::t_f06b58573c7f32 72-73
+  s_19a27edf447823::t_eb75b2f5f5b41d 103-106
+docs/llm-wiki/pr-monitor.md
+  s_19a27edf447823::t_073d4b9830d0ae 31-32,34-39
+CHANGELOG.md
+  s_19a27edf447823::t_54c66e7aa15de0 24
+  s_19a27edf447823::t_447211d422a461 34
+src-tauri/src/pr_monitor/mod.rs
+  s_19a27edf447823::t_69bb0dea2180c4 639,659
+  s_19a27edf447823::t_57995e69841295 640-643
+src/hooks/usePrMonitor.test.tsx
+  s_19a27edf447823::t_6387479f28e26d 23,32
+  s_19a27edf447823::t_fea951a1f74ba0 209-233,308-309
+  s_19a27edf447823::t_87951c147c2cf1 293-307
+  s_19a27edf447823::t_80a9dd35d383ad 264,280,283-285,287,289
+  s_19a27edf447823::t_8c7abaa01fec85 135-137
+  s_19a27edf447823::t_594062214f84a3 13
+  s_19a27edf447823::t_98310589c9f4e3 234-263,265-279,281-282,286,288,290-292
+  s_19a27edf447823::t_764fd19604d46e 109
+  s_19a27edf447823::t_e8cd545c2b85ea 180-208,310-322
+src/lib/api/prMonitor.ts
+  s_19a27edf447823::t_bf3f1afd1b8105 63-66
+src/app/WorkbenchComposerColumn.tsx
+  s_19a27edf447823::t_eb02a3d1b900d5 846-851
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "1569b9c00b98d6135490ecdbfea9b304ea493833",
+  "prompts": {},
+  "sessions": {
+    "s_19a27edf447823": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1622d-adf9-7250-adf1-78287af367ab",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
