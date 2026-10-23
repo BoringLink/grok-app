@@ -15,6 +15,8 @@ export interface Automation {
   enabled: boolean;
   projectId: string | null;
   modelId: string | null;
+  /** `official` or a custom provider id; null on legacy rows. */
+  providerId?: string | null;
   effort: string | null;
   /** Persisted rows may carry legacy strings; callers normalize before use. */
   sessionMode?: AutomationSessionMode | string;
@@ -37,6 +39,7 @@ export interface AutomationInput {
   enabled?: boolean;
   projectId?: string | null;
   modelId?: string | null;
+  providerId?: string | null;
   effort?: string | null;
   sessionMode?: string;
   sessionId?: string | null;
@@ -69,7 +72,6 @@ export function automationReuseSessionId(
     : null;
 }
 
-/** Non-archived chats offered as reuse targets. */
 /** Non-archived chats offered as reuse targets, newest first. */
 export function automationSessionOptions(
   sessions: readonly {
