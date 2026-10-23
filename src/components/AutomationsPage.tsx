@@ -879,6 +879,10 @@ export function AutomationsPage({
           ]
             .filter(Boolean)
             .join(" · "),
+          // Built once per list change; the menu filters without re-casing.
+          keywords: [s.title, s.id, projectName ?? ""]
+            .join(" ")
+            .toLowerCase(),
         };
       });
     // The current pick must stay visible (and selectable) under any filter.

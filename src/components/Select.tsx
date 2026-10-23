@@ -9,6 +9,8 @@ export interface SelectOption {
   value: string;
   label: string;
   disabled?: boolean;
+  /** Pre-lowercased search text; defaults to the lowercased label. */
+  keywords?: string;
 }
 
 interface SelectProps {
@@ -82,7 +84,7 @@ export function Select({
   const filteredOptions =
     searchable && normalizedQuery
       ? options.filter((o) =>
-          o.label.toLowerCase().includes(normalizedQuery),
+          (o.keywords ?? o.label.toLowerCase()).includes(normalizedQuery),
         )
       : options;
   const selectable = filteredOptions.filter((o) => !o.disabled);
@@ -133,7 +135,10 @@ export function Select({
       ? createPortal(
           <ul
             ref={panelRef}
-            className="menu-panel c-select__menu c-select__menu--portal"
+            className={
+              "menu-panel c-select__menu c-select__menu--portal" +
+              (searchable ? " is-searchable" : "")
+            }
             role="listbox"
             id={listId}
             style={style}

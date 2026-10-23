@@ -495,6 +495,30 @@
   z-index: 13000;
 }
 
+/* Searchable picker only: a compositor-friendly reveal. Plain menus stay
+   instant so keyboard/pointer selection is never delayed. */
+.c-select__menu.is-searchable {
+  animation: c-select-menu-in 120ms ease-out;
+  transform-origin: top center;
+}
+
+@keyframes c-select-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .c-select__menu.is-searchable {
+    animation: none;
+  }
+}
+
 /* In settings forms — full width trigger */
 .field .c-select {
   width: 100%;
