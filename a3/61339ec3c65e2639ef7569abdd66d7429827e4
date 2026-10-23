@@ -1,0 +1,20 @@
+src/components/AutomationsPage.test.tsx
+  s_dc6e98a83bee89::t_c3453f50c5aafd 70-72
+  s_dc6e98a83bee89::t_9caa4f257f0b30 1-69,73-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "a361339ec3c65e2639ef7569abdd66d7429827e4",
+  "prompts": {},
+  "sessions": {
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
