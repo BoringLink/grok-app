@@ -1,0 +1,38 @@
+src/lib/automations.ts
+  s_dc6e98a83bee89::t_db246a880863f2 75,81,84-89,92-104
+src/hooks/useAutomationRunNow.ts
+  s_dc6e98a83bee89::t_ba42a05aa04a1c 190-194
+  s_dc6e98a83bee89::t_2a5a513913dbed 1-59,61-88,90-110,112-124,126-174,183-189,195-347,349-421
+  s_dc6e98a83bee89::t_b295e1d1263cd9 60,89,111,125,175-182,348
+src/lib/automationModelRoute.ts
+  s_dc6e98a83bee89::t_322896d0fa7302 104-137
+src/components/AutomationsPage.tsx
+  s_dc6e98a83bee89::t_595a59badc4988 106,659-666,675-692,697-698
+  s_dc6e98a83bee89::t_6bc54611b0cd65 15,76
+  s_dc6e98a83bee89::t_88c0fb01f4dc79 871-879,881-898,903
+  s_dc6e98a83bee89::t_aa546f38726df4 2003,2006,2008-2009,2011-2034,2037-2043,2054,2060-2091
+  s_dc6e98a83bee89::t_0eee0126911a07 745-751,757-758
+src/lib/automationModelRoute.test.ts
+  s_dc6e98a83bee89::t_7113cc44261ca9 6,106-150
+src/lib/automationsSession.test.ts
+  s_dc6e98a83bee89::t_915b5b3a0cb706 4,6,31-59
+src/app/AppWorkbench.tsx
+  s_dc6e98a83bee89::t_565d4a507e11a3 16
+  s_dc6e98a83bee89::t_8ea769edba7614 1295-1298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "5199f2a77f99e4474920e75ac3ff1dbc1f61067d",
+  "prompts": {},
+  "sessions": {
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
