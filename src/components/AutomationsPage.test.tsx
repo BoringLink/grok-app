@@ -89,7 +89,18 @@ describe("AutomationsPage route controls", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "automations.field.session" }),
     );
+    const search = screen.getByPlaceholderText(
+      "automations.field.sessionSearchPh",
+    );
     expect(screen.getByText(/Same title · .*#111111/)).toBeInTheDocument();
     expect(screen.getByText(/Same title · .*#222222/)).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "111111" } });
+    expect(screen.queryByText(/Same title · .*#222222/)).toBeNull();
+    const picked = screen.getByText(/Same title · .*#111111/);
+    fireEvent.click(picked);
+    expect(
+      screen.getByRole("button", { name: "automations.field.session" }),
+    ).toHaveTextContent(/Same title · .*#111111/);
   });
 });
