@@ -86,8 +86,11 @@ export function Select({
         )
       : options;
   const selectable = filteredOptions.filter((o) => !o.disabled);
-  const active =
-    selectable.find((o) => o.value === activeValue) ?? selectable[0] ?? null;
+  // Keyboard highlight is a searchable-menu affordance; plain menus keep
+  // their original look until the pointer hovers an option.
+  const active = searchable
+    ? (selectable.find((o) => o.value === activeValue) ?? selectable[0] ?? null)
+    : null;
 
   const toggleMenu = () => {
     if (disabled) return;
@@ -154,7 +157,7 @@ export function Select({
               </li>
             )}
             {filteredOptions.map((o) => {
-              const isActive = o.value === active?.value;
+              const isActive = searchable && o.value === active?.value;
               return (
                 <li
                   key={o.value}
