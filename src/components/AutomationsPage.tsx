@@ -59,10 +59,24 @@ import { Tip } from "@/components/ui/tooltip";
 import {
   DEFAULT_EFFORT,
   DEFAULT_MODEL_ID,
+  effortCatalogForRoute,
+  effortOptionsFromProvider,
+  findModel,
   GROK_BUILD_EFFORTS,
   GROK_BUILD_MODELS,
+  pickDefaultEffort,
   type ModelOption,
 } from "@/lib/grokCatalog";
+import {
+  buildComposerModelGroups,
+} from "@/lib/composerModelGroups";
+import {
+  automationModelValue,
+  inferAutomationProviderId,
+  normalizeAutomationRoute,
+  parseAutomationModelValue,
+} from "@/lib/automationModelRoute";
+import { resolveProviderEfforts } from "@/lib/providerModelConfig";
 import { automationsBackgroundStatus } from "@/lib/automationsBackgroundStatus";
 
 export type AutomationsFilter = "all" | "enabled" | "paused";
@@ -70,6 +84,18 @@ export type AutomationsFilter = "all" | "enabled" | "paused";
 export interface AutomationsProjectOption {
   id: string;
   name: string;
+  /** SSH projects are pinned to the official route. */
+  isSshRemote?: boolean;
+}
+
+/** Custom provider channel available for scheduled runs. */
+export interface AutomationsProviderOption {
+  id: string;
+  name: string;
+  model: string;
+  baseUrl: string;
+  models?: { id: string; name: string }[];
+  efforts?: { id: string; name?: string; label?: string; isDefault?: boolean }[];
 }
 
 /** Chat the user can reuse for a scheduled task. */
@@ -85,6 +111,10 @@ export interface AutomationsPageProps {
   projects: AutomationsProjectOption[];
   /** Recent chats available for "run in an existing chat". */
   sessionOptions?: AutomationsSessionOption[];
+  /** Custom provider channels; official models stay in `models`. */
+  providers?: AutomationsProviderOption[];
+  /** Provider of the composer's current route (custom id or `official`). */
+  defaultProviderId?: string;
   defaultModelId?: string;
   defaultEffort?: string;
   /** Live selectable models; falls back to catalog. */
@@ -118,6 +148,8 @@ type FormState = {
   prompt: string;
   projectId: string; // "" = none
   modelId: string;
+  /** `official` or a custom provider id. */
+  providerId: string;
   effort: string;
   sessionMode: "new" | "reuse";
   sessionId: string;
@@ -127,11 +159,16 @@ type FormState = {
   enabled: boolean;
 };
 
-const emptyForm = (modelId: string, effort: string): FormState => ({
+const emptyForm = (
+  modelId: string,
+  effort: string,
+  providerId: string,
+): FormState => ({
   title: "",
   prompt: "",
   projectId: "",
   modelId,
+  providerId,
   effort,
   sessionMode: "new",
   sessionId: "",
@@ -145,6 +182,8 @@ export function AutomationsPage({
   t,
   projects,
   sessionOptions = [],
+  providers = [],
+  defaultProviderId = "official",
   defaultModelId = DEFAULT_MODEL_ID,
   defaultEffort = DEFAULT_EFFORT,
   models,
@@ -166,9 +205,25 @@ export function AutomationsPage({
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  /** Official catalog (live when Host returned one). */
+  const modelCatalog = models?.length ? models : GROK_BUILD_MODELS;
+  /** Live cache may hide legacy ids; keep the static official set too. */
+  const officialModelIds = Array.from(
+    new Set([
+      ...modelCatalog.map((m) => m.id),
+      ...GROK_BUILD_MODELS.map((m) => m.id),
+    ]),
+  );
+  const officialDefaultModelId =
+    modelCatalog.find((m) => m.isDefault)?.id ??
+    modelCatalog[0]?.id ??
+    DEFAULT_MODEL_ID;
+  const officialDefaultEffort = pickDefaultEffort(
+    findModel(officialDefaultModelId, modelCatalog),
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(() =>
-    emptyForm(defaultModelId, defaultEffort),
+    emptyForm(defaultModelId, defaultEffort, defaultProviderId),
   );
   /** Filter for the existing-chat picker (long session lists). */
   const [sessionQuery, setSessionQuery] = useState("");
@@ -601,7 +656,14 @@ export function AutomationsPage({
     setCreateMenu(false);
     setEditingId(null);
     setSessionQuery("");
-    setForm(emptyForm(defaultModelId, defaultEffort));
+    const route = normalizeAutomationRoute({
+      providerId: defaultProviderId,
+      modelId: defaultModelId,
+      officialModelIds,
+      officialDefaultModelId,
+      providers,
+    });
+    setForm(emptyForm(route.modelId, defaultEffort, route.providerId));
     setPanelOpen(true);
   };
 
@@ -609,12 +671,34 @@ export function AutomationsPage({
     setRowMenuId(null);
     setEditingId(auto.id);
     setSessionQuery("");
+    const project = projects.find((p) => p.id === auto.projectId);
+    const inferredProvider = project?.isSshRemote
+      ? "official"
+      : inferAutomationProviderId({
+          providerId: auto.providerId,
+          modelId: auto.modelId,
+          officialModelIds,
+          providers,
+          fallbackProviderId: defaultProviderId,
+        });
+    const route = normalizeAutomationRoute({
+      providerId: inferredProvider,
+      modelId: project?.isSshRemote
+        ? officialDefaultModelId
+        : auto.modelId || defaultModelId,
+      officialModelIds,
+      officialDefaultModelId,
+      providers,
+    });
     setForm({
       title: auto.title,
       prompt: auto.prompt,
       projectId: auto.projectId ?? "",
-      modelId: auto.modelId || defaultModelId,
-      effort: auto.effort || defaultEffort,
+      modelId: route.modelId,
+      providerId: route.providerId,
+      effort: project?.isSshRemote
+        ? officialDefaultEffort
+        : auto.effort || defaultEffort,
       sessionMode: normalizeAutomationSessionMode(
         auto.sessionMode,
         auto.sessionId,
@@ -658,12 +742,20 @@ export function AutomationsPage({
       weekdays: [],
       enabled: form.enabled,
     });
+    const route = normalizeAutomationRoute({
+      providerId: form.providerId,
+      modelId: form.modelId,
+      officialModelIds,
+      officialDefaultModelId,
+      providers,
+    });
     const input: api.AutomationInputDto = {
       title,
       prompt,
       enabled: form.enabled,
       projectId: form.projectId || null,
-      modelId: form.modelId || null,
+      modelId: route.modelId || null,
+      providerId: route.providerId || null,
       effort: form.effort || null,
       sessionMode: form.sessionMode,
       sessionId: form.sessionMode === "reuse" ? form.sessionId : null,
@@ -699,6 +791,7 @@ export function AutomationsPage({
             enabled: true,
             projectId: next.projectId,
             modelId: next.modelId,
+            providerId: next.providerId,
             effort: next.effort,
             sessionMode: next.sessionMode,
             sessionId: next.sessionId,
@@ -820,15 +913,76 @@ export function AutomationsPage({
     return rows;
   }, [form.sessionId, projects, sessionOptions, sessionQuery, t]);
 
-  const modelOptions = (models?.length ? models : GROK_BUILD_MODELS).map((m) => ({
-    value: m.id,
-    label: m.label,
+  const selectedProject = projects.find((p) => p.id === form.projectId);
+  const effectiveProviders = selectedProject?.isSshRemote ? [] : providers;
+  const modelGroups = buildComposerModelGroups({
+    officialModels: modelCatalog,
+    providers: effectiveProviders,
+    officialGroupTitle: t("composer.modelGroupOfficial"),
+  });
+  const modelOptions = modelGroups.flatMap((group) =>
+    group.entries.map((entry) => ({
+      value: automationModelValue(entry.pick),
+      label: `${group.title} · ${entry.title}`,
+    })),
+  );
+  // `""` is a legacy row with no route: keep whatever route is active.
+  const activeRouteValue = `active:${form.modelId}`;
+  const currentModelValue =
+    form.providerId === ""
+      ? activeRouteValue
+      : automationModelValue(
+          form.providerId !== "official"
+            ? {
+                kind: "custom",
+                providerId: form.providerId,
+                modelId: form.modelId,
+              }
+            : { kind: "official", modelId: form.modelId },
+        );
+  if (!modelOptions.some((o) => o.value === currentModelValue)) {
+    modelOptions.unshift({
+      value: currentModelValue,
+      label:
+        form.providerId === ""
+          ? t("automations.modelActiveRoute", {
+              model: form.modelId || "—",
+            })
+          : form.modelId,
+    });
+  }
+
+  const selectedProvider = effectiveProviders.find(
+    (p) => p.id === form.providerId,
+  );
+  const selectedEfforts = selectedProvider
+    ? effortOptionsFromProvider(
+        resolveProviderEfforts(selectedProvider, form.modelId),
+      ) ?? GROK_BUILD_EFFORTS
+    : effortCatalogForRoute({
+        model: findModel(form.modelId, modelCatalog),
+      });
+  const effortOptions = selectedEfforts.map((e) => ({
+    value: e.id,
+    label:
+      e.label ||
+      (["low", "medium", "high", "xhigh"].includes(e.id)
+        ? t(`effort.${e.id}` as "effort.high")
+        : e.id),
   }));
 
-  const effortOptions = GROK_BUILD_EFFORTS.map((e) => ({
-    value: e.id,
-    label: t(`effort.${e.id}` as "effort.high"),
-  }));
+  // A legacy effort may not exist on the selected model's ladder. Clamp it
+  // before save so the stored value is one the CLI actually accepts.
+  useEffect(() => {
+    if (!panelOpen || effortOptions.some((o) => o.value === form.effort)) {
+      return;
+    }
+    const fallback =
+      selectedEfforts.find((e) => e.isDefault)?.id ?? effortOptions[0]?.value;
+    if (fallback) {
+      setForm((f) => ({ ...f, effort: fallback }));
+    }
+  }, [form.effort, effortOptions, panelOpen, selectedEfforts]);
 
   const freqOptions = [
     { value: "daily", label: t("automations.freq.daily") },
@@ -1813,7 +1967,21 @@ export function AutomationsPage({
                   value={form.projectId}
                   options={projectOptions}
                   disabled={form.sessionMode === "reuse"}
-                  onChange={(v) => setForm((f) => ({ ...f, projectId: v }))}
+                  onChange={(v) =>
+                    setForm((f) => {
+                      // SSH runs are pinned to the official route.
+                      if (projects.find((p) => p.id === v)?.isSshRemote) {
+                        return {
+                          ...f,
+                          projectId: v,
+                          providerId: "official",
+                          modelId: officialDefaultModelId,
+                          effort: officialDefaultEffort,
+                        };
+                      }
+                      return { ...f, projectId: v };
+                    })
+                  }
                   aria-label={t("automations.field.project")}
                 />
               </div>
@@ -1832,7 +2000,63 @@ export function AutomationsPage({
                   aria-label={t("automations.field.runIn")}
                 />
               </div>
-              {form.sessionMode === "reuse" && (
+              {form.sessionMode === "new" ? (
+                <>
+                  <div className="auto-field auto-field--row">
+                    <span>{t("automations.field.model")}</span>
+                    <Select
+                      value={currentModelValue}
+                      options={modelOptions}
+                      onChange={(v) => {
+                        const pick = parseAutomationModelValue(v);
+                        if (!pick) return;
+                        const nextProvider =
+                          pick.kind === "official"
+                            ? "official"
+                            : pick.providerId;
+                        const nextEfforts =
+                          pick.kind === "official"
+                            ? effortCatalogForRoute({
+                                model: findModel(pick.modelId, modelCatalog),
+                              })
+                            : (() => {
+                                const provider = effectiveProviders.find(
+                                  (p) => p.id === pick.providerId,
+                                );
+                                return provider
+                                  ? effortOptionsFromProvider(
+                                      resolveProviderEfforts(
+                                        provider,
+                                        pick.modelId,
+                                      ),
+                                    ) ?? GROK_BUILD_EFFORTS
+                                  : GROK_BUILD_EFFORTS;
+                              })();
+                        setForm((f) => ({
+                          ...f,
+                          providerId: nextProvider,
+                          modelId: pick.modelId,
+                          effort: nextEfforts.some((e) => e.id === f.effort)
+                            ? f.effort
+                            : (nextEfforts.find((e) => e.isDefault)?.id ??
+                              nextEfforts[0]?.id ??
+                              f.effort),
+                        }));
+                      }}
+                      aria-label={t("automations.field.model")}
+                    />
+                  </div>
+                  <div className="auto-field auto-field--row">
+                    <span>{t("automations.field.effort")}</span>
+                    <Select
+                      value={form.effort}
+                      options={effortOptions}
+                      onChange={(v) => setForm((f) => ({ ...f, effort: v }))}
+                      aria-label={t("automations.field.effort")}
+                    />
+                  </div>
+                </>
+              ) : (
                 <>
                   <div className="auto-field auto-field--row">
                     <span>{t("automations.field.session")}</span>
@@ -1861,37 +2085,10 @@ export function AutomationsPage({
                       placeholder={t("automations.field.sessionSearchPh")}
                     />
                   </label>
+                  <p className="auto-field__hint">
+                    {t("automations.sessionModelHint")}
+                  </p>
                 </>
-              )}
-              {form.sessionMode === "new" ? (
-                <>
-                  <div className="auto-field auto-field--row">
-                    <span>{t("automations.field.model")}</span>
-                    <Select
-                      value={form.modelId}
-                      options={modelOptions}
-                      onChange={(v) =>
-                        setForm((f) => ({ ...f, modelId: v }))
-                      }
-                      aria-label={t("automations.field.model")}
-                    />
-                  </div>
-                  <div className="auto-field auto-field--row">
-                    <span>{t("automations.field.effort")}</span>
-                    <Select
-                      value={form.effort}
-                      options={effortOptions}
-                      onChange={(v) =>
-                        setForm((f) => ({ ...f, effort: v }))
-                      }
-                      aria-label={t("automations.field.effort")}
-                    />
-                  </div>
-                </>
-              ) : (
-                <p className="auto-field__hint">
-                  {t("automations.sessionModelHint")}
-                </p>
               )}
             </div>
 
