@@ -170,8 +170,6 @@ export function AutomationsPage({
   const [form, setForm] = useState<FormState>(() =>
     emptyForm(defaultModelId, defaultEffort),
   );
-  /** Filter for the existing-chat picker (long session lists). */
-  const [sessionQuery, setSessionQuery] = useState("");
   const [createMenu, setCreateMenu] = useState(false);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
   /** Pending delete — never use window.confirm in Tauri WebView. */
@@ -600,7 +598,6 @@ export function AutomationsPage({
   const openCreateManual = () => {
     setCreateMenu(false);
     setEditingId(null);
-    setSessionQuery("");
     setForm(emptyForm(defaultModelId, defaultEffort));
     setPanelOpen(true);
   };
@@ -608,7 +605,6 @@ export function AutomationsPage({
   const openEdit = (auto: Automation) => {
     setRowMenuId(null);
     setEditingId(auto.id);
-    setSessionQuery("");
     setForm({
       title: auto.title,
       prompt: auto.prompt,
@@ -772,37 +768,26 @@ export function AutomationsPage({
   ];
 
   const sessionPickerOptions = useMemo(() => {
-    const query = sessionQuery.trim().toLowerCase();
     const rows: Array<{ value: string; label: string; disabled?: boolean }> =
-      sessionOptions
-        .filter((s) => {
-          if (!query) return true;
-          const projectName = s.projectId
-            ? (projects.find((p) => p.id === s.projectId)?.name ?? "")
-            : "";
-          return [s.title, s.id, projectName].some((v) =>
-            v.toLowerCase().includes(query),
-          );
-        })
-        .map((s) => {
-          const projectName = s.projectId
-            ? projects.find((p) => p.id === s.projectId)?.name
-            : null;
-          const stamp = s.updatedAt
-            ? s.updatedAt.slice(5, 16).replace("T", " ")
-            : "";
-          return {
-            value: s.id,
-            label: [
-              s.title || t("session.untitled"),
-              projectName || t("automations.projectNone"),
-              `#${shortSessionId(s.id)}`,
-              stamp,
-            ]
-              .filter(Boolean)
-              .join(" · "),
-          };
-        });
+      sessionOptions.map((s) => {
+        const projectName = s.projectId
+          ? projects.find((p) => p.id === s.projectId)?.name
+          : null;
+        const stamp = s.updatedAt
+          ? s.updatedAt.slice(5, 16).replace("T", " ")
+          : "";
+        return {
+          value: s.id,
+          label: [
+            s.title || t("session.untitled"),
+            projectName || t("automations.projectNone"),
+            `#${shortSessionId(s.id)}`,
+            stamp,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        };
+      });
     // The current pick must stay visible (and selectable) under any filter.
     if (form.sessionId && !rows.some((r) => r.value === form.sessionId)) {
       rows.unshift({
@@ -818,7 +803,7 @@ export function AutomationsPage({
       });
     }
     return rows;
-  }, [form.sessionId, projects, sessionOptions, sessionQuery, t]);
+  }, [form.sessionId, projects, sessionOptions, t]);
 
   const modelOptions = (models?.length ? models : GROK_BUILD_MODELS).map((m) => ({
     value: m.id,
@@ -1839,6 +1824,11 @@ export function AutomationsPage({
                     <Select
                       value={form.sessionId}
                       options={sessionPickerOptions}
+                      searchable
+                      searchPlaceholder={t(
+                        "automations.field.sessionSearchPh",
+                      )}
+                      emptyLabel={t("automations.sessionSearchNoResults")}
                       onChange={(v) => {
                         const picked = sessionOptions.find((s) => s.id === v);
                         setForm((f) => ({
@@ -1852,15 +1842,6 @@ export function AutomationsPage({
                       aria-label={t("automations.field.session")}
                     />
                   </div>
-                  <label className="auto-field">
-                    <span>{t("automations.field.sessionSearch")}</span>
-                    <input
-                      type="search"
-                      value={sessionQuery}
-                      onChange={(e) => setSessionQuery(e.target.value)}
-                      placeholder={t("automations.field.sessionSearchPh")}
-                    />
-                  </label>
                 </>
               )}
               {form.sessionMode === "new" ? (
