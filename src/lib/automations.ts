@@ -70,17 +70,36 @@ export function automationReuseSessionId(
 }
 
 /** Non-archived chats offered as reuse targets. */
+/** Non-archived chats offered as reuse targets, newest first. */
 export function automationSessionOptions(
   sessions: readonly {
     id: string;
     title: string;
     projectId: string | null;
+    updatedAt?: string;
     archived?: boolean;
   }[],
-): { id: string; title: string; projectId: string | null }[] {
+): {
+  id: string;
+  title: string;
+  projectId: string | null;
+  updatedAt: string;
+}[] {
   return sessions
     .filter((s) => !s.archived)
-    .map((s) => ({ id: s.id, title: s.title, projectId: s.projectId }));
+    .map((s) => ({
+      id: s.id,
+      title: s.title,
+      projectId: s.projectId,
+      updatedAt: s.updatedAt ?? "",
+    }))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** Stable short suffix that tells duplicate chat titles apart. */
+export function shortSessionId(id: string): string {
+  const trimmed = id.trim();
+  return trimmed.length <= 8 ? trimmed : trimmed.slice(-6);
 }
 
 /**

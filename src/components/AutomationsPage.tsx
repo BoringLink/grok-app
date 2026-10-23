@@ -12,6 +12,7 @@ import {
   formatNextRunRelative,
   formatScheduleSummary,
   normalizeAutomationSessionMode,
+  shortSessionId,
   type Automation,
 } from "@/lib/automations";
 import { automationsRunnerBanner } from "@/lib/automationsRunnerPolicy";
@@ -76,6 +77,7 @@ export interface AutomationsSessionOption {
   id: string;
   title: string;
   projectId?: string | null;
+  updatedAt?: string;
 }
 
 export interface AutomationsPageProps {
@@ -773,23 +775,39 @@ export function AutomationsPage({
     const query = sessionQuery.trim().toLowerCase();
     const rows: Array<{ value: string; label: string; disabled?: boolean }> =
       sessionOptions
-        .filter((s) => !query || s.title.toLowerCase().includes(query))
+        .filter((s) => {
+          if (!query) return true;
+          const projectName = s.projectId
+            ? (projects.find((p) => p.id === s.projectId)?.name ?? "")
+            : "";
+          return [s.title, s.id, projectName].some((v) =>
+            v.toLowerCase().includes(query),
+          );
+        })
         .map((s) => {
-        const projectName = s.projectId
-          ? projects.find((p) => p.id === s.projectId)?.name
-          : null;
-        return {
-          value: s.id,
-          label: projectName
-            ? `${s.title || t("session.untitled")} · ${projectName}`
-            : s.title || t("session.untitled"),
-        };
-      });
+          const projectName = s.projectId
+            ? projects.find((p) => p.id === s.projectId)?.name
+            : null;
+          const stamp = s.updatedAt
+            ? s.updatedAt.slice(5, 16).replace("T", " ")
+            : "";
+          return {
+            value: s.id,
+            label: [
+              s.title || t("session.untitled"),
+              projectName || t("automations.projectNone"),
+              `#${shortSessionId(s.id)}`,
+              stamp,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          };
+        });
     // The current pick must stay visible (and selectable) under any filter.
     if (form.sessionId && !rows.some((r) => r.value === form.sessionId)) {
       rows.unshift({
         value: form.sessionId,
-        label: t("automations.sessionMissing"),
+        label: `${t("automations.sessionMissing")} · #${shortSessionId(form.sessionId)}`,
       });
     }
     if (!form.sessionId) {
@@ -1816,30 +1834,11 @@ export function AutomationsPage({
               </div>
               {form.sessionMode === "reuse" && (
                 <>
-                  <label className="auto-field">
-                    <span>{t("automations.field.sessionSearch")}</span>
-                    <input
-                      type="search"
-                      value={sessionQuery}
-                      onChange={(e) => setSessionQuery(e.target.value)}
-                      placeholder={t("automations.field.sessionSearchPh")}
-                    />
-                  </label>
                   <div className="auto-field auto-field--row">
                     <span>{t("automations.field.session")}</span>
                     <Select
                       value={form.sessionId}
-                      options={
-                        sessionPickerOptions.length
-                          ? sessionPickerOptions
-                          : [
-                              {
-                                value: "",
-                                label: t("automations.sessionNone"),
-                                disabled: true,
-                              },
-                            ]
-                      }
+                      options={sessionPickerOptions}
                       onChange={(v) => {
                         const picked = sessionOptions.find((s) => s.id === v);
                         setForm((f) => ({
@@ -1853,6 +1852,15 @@ export function AutomationsPage({
                       aria-label={t("automations.field.session")}
                     />
                   </div>
+                  <label className="auto-field">
+                    <span>{t("automations.field.sessionSearch")}</span>
+                    <input
+                      type="search"
+                      value={sessionQuery}
+                      onChange={(e) => setSessionQuery(e.target.value)}
+                      placeholder={t("automations.field.sessionSearchPh")}
+                    />
+                  </label>
                 </>
               )}
               {form.sessionMode === "new" ? (
