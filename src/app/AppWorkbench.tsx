@@ -550,7 +550,10 @@ import {
   shouldAutoApplyAutomationFence,
 } from "@/lib/automationSetup";
 
-import type { ComposerModelPick } from "@/lib/composerModelGroups";
+import {
+  composerMenuProviders,
+  type ComposerModelPick,
+} from "@/lib/composerModelGroups";
 import {
   resolveProviderBrandId,
 } from "@/lib/providerPresets";
@@ -8954,18 +8957,7 @@ export function AppWorkbench() {
   const modelPickBusyRef = useRef(false);
   const customRouteActive = activeCustomProvider != null;
   const composerProviderInputs = useMemo(
-    () =>
-      customProviders.map((p) => ({
-        id: p.id,
-        name: p.name,
-        model: p.model,
-        models: (p.models?.length
-          ? p.models
-          : p.model
-            ? [{ id: p.model, name: p.model }]
-            : []
-        ).map((m) => ({ id: m.id, name: m.name || m.id })),
-      })),
+    () => composerMenuProviders(customProviders),
     [customProviders],
   );
   sessionProviderChip.bind({

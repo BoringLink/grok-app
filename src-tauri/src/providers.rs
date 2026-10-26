@@ -1878,6 +1878,10 @@ pub fn session_set_model_id_for(provider_id: &str, composer_model: &str) -> Stri
 /// `allow_catalog_id` is only for a Grok Build-compatible relay, whose spawn
 /// already selected a real catalog id. Generic relays must keep the section id
 /// even when `composer_model` is listed in `app_models`.
+///
+/// CLI 1.0.70 `session/set_model` of an `app_models` id returns
+/// `unknown model id`. `_meta.model` does not change the request body; that
+/// stays `[model.<id>].model`. The composer lists one generic row (#1337).
 pub fn resolve_session_set_model_id(
     custom_provider_id: Option<&str>,
     composer_model: &str,
@@ -3787,6 +3791,29 @@ base_url = \"http://127.0.0.1:8080/v1\"
             resolve_session_set_model_id(None, "grok-4.7", &[], false),
             "grok-4.7"
         );
+        // #1337: two generic chats can store different app_models ids. Both
+        // set_model calls stay on their own section. A proxy chat sends the
+        // catalog id. Official is unchanged.
+        assert_eq!(
+            resolve_session_set_model_id(
+                Some("kiro"),
+                "gpt-5.6-luna",
+                &["auto".into(), "gpt-5.6-luna".into(), "gpt-5.6-sol".into()],
+                false,
+            ),
+            "kiro"
+        );
+        assert_eq!(
+            resolve_session_set_model_id(
+                Some("other"),
+                "gpt-5.6-sol",
+                &["sol".into(), "gpt-5.6-sol".into()],
+                false,
+            ),
+            "other"
+        );
+        assert_eq!(spawn_model_for_provider("kiro", "gpt-5.6-luna"), "kiro");
+        assert_eq!(spawn_model_for_provider("other", "gpt-5.6-sol"), "other");
         assert!(provider_mutation_needs_agent_reload(true, "other", &active));
         assert!(provider_mutation_needs_agent_reload(
             false, "relay", &active

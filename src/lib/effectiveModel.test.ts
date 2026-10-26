@@ -37,8 +37,20 @@ describe("resolveCustomRouteDisplay", () => {
     ],
   };
 
-  it("shows the model this chat picked", () => {
+  it("shows the channel model when a generic chat stored a sibling id", () => {
     const shown = resolveCustomRouteDisplay(provider, "deepseek-v4-flash");
+    expect(shown?.chip).toEqual({
+      name: "DeepSeek Chat",
+      model: "deepseek-chat",
+    });
+    expect(shown?.requestModel).toBe("deepseek-chat");
+  });
+
+  it("shows the catalog id a Grok Build-compatible relay picked", () => {
+    const shown = resolveCustomRouteDisplay(
+      { ...provider, providerMode: "grok_build_proxy" },
+      "deepseek-v4-flash",
+    );
     expect(shown?.chip).toEqual({
       name: "DeepSeek V4 Flash",
       model: "deepseek-v4-flash",
