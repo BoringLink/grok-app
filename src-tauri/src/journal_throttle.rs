@@ -1,8 +1,13 @@
 //! Streaming journal write throttle (I04).
 //!
 //! Mid-stream assistant persistence must not rewrite `messages.json` on every
-//! token. Flush at most every [`DEFAULT_JOURNAL_FLUSH_MS`], on paragraph
-//! boundaries, or when forced (turn end / stop / disconnect).
+//! token. Flush at most every [`journal_flush_interval_ms`] (500ms while the
+//! buffered answer is small, longer once it is large), or immediately when
+//! forced (turn end / stop / disconnect).
+//!
+//! Paragraph breaks do **not** bypass that interval. Agent markdown is full of
+//! blank lines; treating each one as a force flush re-read and re-serialized
+//! the whole journal many times a second and froze the host on long turns.
 
 use std::time::{Duration, Instant};
 
@@ -23,7 +28,27 @@ pub fn is_paragraph_break(chunk: &str) -> bool {
     chunk.contains("\n\n")
 }
 
+/// Mid-stream rewrite cadence from the buffered assistant+thought size.
+///
+/// Small turns stay on [`DEFAULT_JOURNAL_FLUSH_MS`]. Once the buffer is
+/// hundreds of kilobytes, each flush rewrites the entire `messages.json`, so
+/// the interval grows. Turn-end `force` still flushes immediately.
+pub fn journal_flush_interval_ms(content_bytes: usize) -> u64 {
+    if content_bytes >= 4_000_000 {
+        15_000
+    } else if content_bytes >= 1_000_000 {
+        5_000
+    } else if content_bytes >= 256_000 {
+        2_000
+    } else {
+        DEFAULT_JOURNAL_FLUSH_MS
+    }
+}
+
 /// Pure decision: whether a journal flush is allowed at `now`.
+///
+/// `paragraph_break` is accepted so existing callers keep compiling. It does
+/// not bypass `min_interval` — see the module note. Only `force` does.
 pub fn should_flush_journal(
     last_flush: Option<Instant>,
     min_interval: Duration,
@@ -31,7 +56,8 @@ pub fn should_flush_journal(
     force: bool,
     paragraph_break: bool,
 ) -> bool {
-    if force || paragraph_break {
+    let _ = paragraph_break;
+    if force {
         return true;
     }
     match last_flush {
@@ -70,7 +96,6 @@ impl JournalWriteThrottle {
         self.min_interval
     }
 
-    #[allow(dead_code)]
     pub fn last_flush(&self) -> Option<Instant> {
         self.last_flush
     }
@@ -154,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn force_and_paragraph_bypass_interval() {
+    fn force_bypasses_interval_paragraph_does_not() {
         let t0 = Instant::now();
         let t1 = t0 + Duration::from_millis(10);
         assert!(should_flush_journal(
@@ -164,13 +189,30 @@ mod tests {
             true,
             false
         ));
-        assert!(should_flush_journal(
+        assert!(!should_flush_journal(
             Some(t0),
             Duration::from_millis(500),
             t1,
             false,
             true
         ));
+        let t2 = t0 + Duration::from_millis(500);
+        assert!(should_flush_journal(
+            Some(t0),
+            Duration::from_millis(500),
+            t2,
+            false,
+            true
+        ));
+    }
+
+    #[test]
+    fn interval_grows_with_buffered_bytes() {
+        assert_eq!(journal_flush_interval_ms(0), DEFAULT_JOURNAL_FLUSH_MS);
+        assert_eq!(journal_flush_interval_ms(255_999), DEFAULT_JOURNAL_FLUSH_MS);
+        assert_eq!(journal_flush_interval_ms(256_000), 2_000);
+        assert_eq!(journal_flush_interval_ms(1_000_000), 5_000);
+        assert_eq!(journal_flush_interval_ms(4_000_000), 15_000);
     }
 
     #[test]

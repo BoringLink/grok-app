@@ -20,8 +20,9 @@ import {
   compactMessageSegments,
   deriveFieldsFromSegments,
   ensureSegments,
+  hostToolFamilyKey,
 } from "./segments";
-import { syncTurnToolsIntoAssistant } from "./tools";
+import { isToolStepMessage, syncTurnToolsIntoAssistant } from "./tools";
 
 export interface GeneratedImagePayload {
   sessionId?: string;
@@ -404,6 +405,65 @@ export function assistantHasVisibleBody(m: ChatMessage): boolean {
   return false;
 }
 
+/**
+ * True when appending `text` onto the last content segment keeps `content`
+ * equal to the join of content segments. Avoids re-compacting and re-joining
+ * the whole turn on every token.
+ */
+function canFastAppendContent(prev: ChatMessage, text: string): boolean {
+  if (!text) return false;
+  const segs = prev.segments;
+  if (!segs?.length) return false;
+  const last = segs[segs.length - 1];
+  if (!last || last.kind !== "content") return false;
+  if (typeof prev.content !== "string") return false;
+  return prev.content.endsWith(last.text);
+}
+
+/**
+ * A current-turn tool_step row that is not yet on the assistant timeline.
+ * The fast append path skips {@link syncTurnToolsIntoAssistant}; this scan
+ * sends those chunks down the slow path so the weave still happens.
+ */
+function turnToolMissingFromAssistant(
+  messages: ChatMessage[],
+  aIdx: number,
+): boolean {
+  const asst = messages[aIdx];
+  const segs = asst?.segments;
+  if (!asst || !segs?.length) return true;
+  const have = new Set<string>();
+  const families = new Set<string>();
+  for (const s of segs) {
+    if (s.kind !== "tool") continue;
+    if (s.toolCallId) have.add(s.toolCallId);
+    const fam = hostToolFamilyKey(s.toolCallId, s.toolKind, s.title);
+    if (fam) families.add(fam);
+  }
+  let lastUser = -1;
+  for (let i = aIdx - 1; i >= 0; i--) {
+    if (messages[i]!.role === "user") {
+      lastUser = i;
+      break;
+    }
+  }
+  for (let i = lastUser + 1; i < messages.length; i++) {
+    if (i === aIdx) continue;
+    const m = messages[i]!;
+    if (m.role === "user") break;
+    if (m.role === "assistant" && i > aIdx) break;
+    if (!isToolStepMessage(m)) continue;
+    const tcid =
+      (m.toolCallId || "").trim() ||
+      (m.id.startsWith("tool-") ? m.id.slice(5) : m.id);
+    if (!tcid || have.has(tcid)) continue;
+    const fam = hostToolFamilyKey(tcid, m.toolKind, m.content || tcid);
+    if (fam && families.has(fam)) continue;
+    return true;
+  }
+  return false;
+}
+
 export function applyStreamChunk(
   messages: ChatMessage[],
   chunk: StreamPayload,
@@ -505,8 +565,31 @@ export function applyStreamChunk(
 
   const next = messages.slice();
   const prev = next[idx]!;
+  const appendText = chunk.text || "";
+  if (
+    canFastAppendContent(prev, appendText) &&
+    !turnToolMissingFromAssistant(messages, idx)
+  ) {
+    const segs = prev.segments!;
+    const last = segs[segs.length - 1];
+    if (last && last.kind === "content") {
+      const nextSegs = segs.slice();
+      nextSegs[nextSegs.length - 1] = {
+        kind: "content",
+        text: last.text + appendText,
+      };
+      next[idx] = {
+        ...prev,
+        id: adoptHostStreamMessageId(messages, prev, chunk.messageId),
+        content: prev.content + appendText,
+        segments: nextSegs,
+        streaming: !chunk.done,
+      };
+      return next;
+    }
+  }
   const segs = compactMessageSegments(
-    appendContentToSegments(ensureSegments(prev), chunk.text || ""),
+    appendContentToSegments(ensureSegments(prev), appendText),
   );
   const derived = deriveFieldsFromSegments(segs);
   next[idx] = {

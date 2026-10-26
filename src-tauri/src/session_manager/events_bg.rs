@@ -112,11 +112,27 @@ impl SessionManager {
                     // every other session command (same rule as the live path).
                     let pending_journal = Self::prepare_stream_journal_flush(s, done, para);
                     let mid = s.streaming_message_id.clone().unwrap_or_default();
-                    let (need, pending_emits) =
-                        Self::queue_stream_emit(s, kind, mid, text, thought_phase, done);
+                    let (need, pending_emits) = Self::queue_stream_emit(
+                        s,
+                        kind,
+                        mid,
+                        text,
+                        thought_phase,
+                        done,
+                        true,
+                    );
                     let need_schedule = if need {
+                        let delay_ms = s
+                            .pending_stream_emit
+                            .as_ref()
+                            .map(|p| p.interval.as_millis() as u64)
+                            .unwrap_or(crate::stream_emit::BACKGROUND_STREAM_EMIT_MS);
                         s.stream_emit_flush_gen = s.stream_emit_flush_gen.wrapping_add(1);
-                        Some((s.app_session_id.clone(), s.stream_emit_flush_gen))
+                        Some((
+                            s.app_session_id.clone(),
+                            s.stream_emit_flush_gen,
+                            delay_ms,
+                        ))
                     } else {
                         None
                     };
@@ -126,8 +142,8 @@ impl SessionManager {
                 if let Some(pending) = pending_journal {
                     Self::commit_stream_journal_flush(pending);
                 }
-                if let Some((sid, gen)) = need_schedule {
-                    self.schedule_stream_emit_flush(app.clone(), sid, gen);
+                if let Some((sid, gen, delay_ms)) = need_schedule {
+                    self.schedule_stream_emit_flush(app.clone(), sid, gen, delay_ms);
                 }
             }
             AcpEvent::PromptComplete {
