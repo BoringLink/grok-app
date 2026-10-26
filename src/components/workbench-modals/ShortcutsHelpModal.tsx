@@ -3,6 +3,10 @@ import { createT, type Locale, type MessageKey } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
 import { IconSearch } from "@/components/icons";
 import type { AppPlatform } from "@/lib/appPlatform";
+import {
+  COMPOSER_ENTER_INSERTS_LIVE_CHANGED_EVENT,
+  loadComposerEnterInsertsLive,
+} from "@/lib/composerEnterInsertsLive";
 import type { ComposerSendKeyPref } from "@/lib/composerSendKey";
 import type { ShortcutRemapMap } from "@/lib/shortcutRemap";
 import {
@@ -27,8 +31,22 @@ export function ShortcutsHelpModal(props: {
 }) {
   const tr = useMemo(() => createT(props.locale), [props.locale]);
   const [query, setQuery] = useState("");
+  const [enterInsertsLive, setEnterInsertsLive] = useState(() =>
+    loadComposerEnterInsertsLive(),
+  );
   const filterRef = useRef<HTMLInputElement>(null);
   const plat = props.platform === "mac" ? "mac" : "win";
+
+  useEffect(() => {
+    const reload = () => setEnterInsertsLive(loadComposerEnterInsertsLive());
+    window.addEventListener(COMPOSER_ENTER_INSERTS_LIVE_CHANGED_EVENT, reload);
+    return () => {
+      window.removeEventListener(
+        COMPOSER_ENTER_INSERTS_LIVE_CHANGED_EVENT,
+        reload,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (!props.open) setQuery("");
@@ -40,11 +58,13 @@ export function ShortcutsHelpModal(props: {
         props.composerSendKeyPref,
         props.shortcutRemaps,
         props.voiceHotkeyEnabled,
+        enterInsertsLive,
       ),
     [
       props.composerSendKeyPref,
       props.shortcutRemaps,
       props.voiceHotkeyEnabled,
+      enterInsertsLive,
     ],
   );
   const filtered = useMemo(

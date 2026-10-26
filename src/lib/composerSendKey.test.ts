@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { loadComposerEnterInsertsLive } from "./composerEnterInsertsLive";
 import {
   composerSteerLive,
+  decideComposerEnterAction,
   loadComposerSendKeyPref,
   resolveComposerSubmitAction,
   saveComposerSendKeyPref,
@@ -41,6 +43,7 @@ function key(
     code: partial.code,
     keyCode: partial.keyCode,
     which: partial.which,
+    isComposing: partial.isComposing,
     getModifierState: partial.getModifierState,
     nativeEvent: partial.nativeEvent,
   };
@@ -321,5 +324,110 @@ describe("resolveComposerSubmitAction", () => {
         enterInsertsLive: true,
       }),
     ).toBe(false);
+  });
+});
+
+describe("decideComposerEnterAction", () => {
+  it("setting defaults off, so Enter queues a live reply", () => {
+    expect(loadComposerEnterInsertsLive(memoryStorage())).toBe(false);
+    expect(
+      decideComposerEnterAction({
+        event: key(),
+        sendPref: "enter",
+        canSteer: true,
+        enterInsertsLive: false,
+        wouldEnqueue: true,
+      }),
+    ).toBe("queue");
+  });
+
+  it("idle: Enter sends", () => {
+    expect(
+      decideComposerEnterAction({
+        event: key(),
+        sendPref: "enter",
+        canSteer: false,
+        enterInsertsLive: true,
+        wouldEnqueue: false,
+      }),
+    ).toBe("send");
+  });
+
+  it("replying and Steer available: Enter inserts into the live turn", () => {
+    expect(
+      decideComposerEnterAction({
+        event: key(),
+        sendPref: "enter",
+        canSteer: true,
+        enterInsertsLive: true,
+        wouldEnqueue: true,
+      }),
+    ).toBe("steer");
+  });
+
+  it("replying and Steer unavailable: Enter falls back to the queue", () => {
+    expect(
+      decideComposerEnterAction({
+        event: key(),
+        sendPref: "enter",
+        canSteer: false,
+        enterInsertsLive: true,
+        wouldEnqueue: true,
+      }),
+    ).toBe("queue");
+  });
+
+  it("Shift+Enter stays a newline during a live reply", () => {
+    expect(
+      decideComposerEnterAction({
+        event: key({ shiftKey: true }),
+        sendPref: "enter",
+        canSteer: true,
+        enterInsertsLive: true,
+        wouldEnqueue: true,
+      }),
+    ).toBe("none");
+  });
+
+  it("IME composition Enter does not send or insert", () => {
+    const live = {
+      sendPref: "enter" as const,
+      canSteer: true,
+      enterInsertsLive: true,
+      wouldEnqueue: true,
+    };
+    expect(
+      decideComposerEnterAction({
+        ...live,
+        event: key({ isComposing: true }),
+      }),
+    ).toBe("none");
+    expect(
+      decideComposerEnterAction({
+        ...live,
+        event: key({ keyCode: 229 }),
+      }),
+    ).toBe("none");
+    expect(
+      decideComposerEnterAction({
+        ...live,
+        event: key({
+          key: "Enter",
+          nativeEvent: { keyCode: 229, isComposing: true },
+        }),
+      }),
+    ).toBe("none");
+  });
+
+  it("Ctrl+Enter still steers during IME when Steer is available", () => {
+    expect(
+      decideComposerEnterAction({
+        event: key({ ctrlKey: true, isComposing: true }),
+        sendPref: "enter",
+        canSteer: true,
+        enterInsertsLive: true,
+        wouldEnqueue: true,
+      }),
+    ).toBe("steer");
   });
 });

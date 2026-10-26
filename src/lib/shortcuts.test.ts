@@ -8,6 +8,7 @@ import {
   matchGlobalShortcut,
   newlineShortcutDisplay,
   sendShortcutDisplay,
+  steerShortcutDisplay,
   SHORTCUT_IDS,
   SHORTCUTS,
   shortcutScope,
@@ -223,6 +224,22 @@ describe("shortcuts catalog", () => {
     expect(sendShortcutDisplay("enter").win.toLowerCase()).toBe("enter");
     expect(sendShortcutDisplay("mod-enter").win.toLowerCase()).toMatch(/ctrl/);
     expect(sendShortcutDisplay("mod-enter").mac).toMatch(/⌘/);
+  });
+
+  it("steer hint stays Ctrl+Enter until Enter inserts into the live turn", () => {
+    expect(
+      steerShortcutDisplay({ enterInsertsLive: false, sendPref: "enter" }).win,
+    ).toBe("Ctrl Enter");
+    expect(
+      steerShortcutDisplay({ enterInsertsLive: true, sendPref: "enter" }).win,
+    ).toBe("Enter / Ctrl Enter");
+    expect(
+      steerShortcutDisplay({ enterInsertsLive: true, sendPref: "enter" }).mac,
+    ).toBe("↵ / ⌃ ↵");
+    const win = shortcutsForPlatform("win", "enter", {}, true, true);
+    expect(win.find((s) => s.id === "steer")?.keys).toBe("Enter / Ctrl Enter");
+    const off = shortcutsForPlatform("win", "enter", {}, true, false);
+    expect(off.find((s) => s.id === "steer")?.keys).toBe("Ctrl Enter");
   });
 
   it("newlineShortcutDisplay is the inverse of send", () => {

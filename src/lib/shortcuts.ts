@@ -1,5 +1,6 @@
 /** Keyboard shortcut catalog + global chord matchers (help, Settings, App keydown). */
 
+import { loadComposerEnterInsertsLive } from "@/lib/composerEnterInsertsLive";
 import {
   loadComposerSendKeyPref,
   type ComposerSendKeyPref,
@@ -512,6 +513,26 @@ export function newlineShortcutDisplay(pref: ComposerSendKeyPref): {
   return { mac: "⇧ ↵", win: "Shift Enter" };
 }
 
+const STEER_CHORD = { mac: "⌃ ↵", win: "Ctrl Enter" } as const;
+
+/**
+ * Steer row in the shortcut list.
+ * Off: Ctrl+Enter only (Grok Build CLI chord).
+ * On: the send key also inserts into a live turn, so the hint lists both.
+ */
+export function steerShortcutDisplay(opts: {
+  enterInsertsLive: boolean;
+  sendPref: ComposerSendKeyPref;
+}): { mac: string; win: string } {
+  if (!opts.enterInsertsLive) return { ...STEER_CHORD };
+  const send = sendShortcutDisplay(opts.sendPref);
+  const mac =
+    send.mac === STEER_CHORD.mac ? STEER_CHORD.mac : `${send.mac} / ${STEER_CHORD.mac}`;
+  const win =
+    send.win === STEER_CHORD.win ? STEER_CHORD.win : `${send.win} / ${STEER_CHORD.win}`;
+  return { mac, win };
+}
+
 function resolveSendPref(pref?: ComposerSendKeyPref): ComposerSendKeyPref {
   if (pref !== undefined) return pref;
   if (typeof localStorage !== "undefined") {
@@ -524,9 +545,22 @@ function resolveSendPref(pref?: ComposerSendKeyPref): ComposerSendKeyPref {
   return "enter";
 }
 
+function resolveEnterInsertsLive(flag?: boolean): boolean {
+  if (flag !== undefined) return flag;
+  if (typeof localStorage !== "undefined") {
+    try {
+      return loadComposerEnterInsertsLive();
+    } catch {
+      /* private mode / non-browser */
+    }
+  }
+  return false;
+}
+
 function withSendPref(
   row: ShortcutRow,
   pref: ComposerSendKeyPref,
+  enterInsertsLive: boolean,
 ): ShortcutRow {
   if (row.id === "send") {
     const keys = sendShortcutDisplay(pref);
@@ -534,6 +568,10 @@ function withSendPref(
   }
   if (row.id === "newline") {
     const keys = newlineShortcutDisplay(pref);
+    return { ...row, mac: keys.mac, win: keys.win };
+  }
+  if (row.id === "steer") {
+    const keys = steerShortcutDisplay({ enterInsertsLive, sendPref: pref });
     return { ...row, mac: keys.mac, win: keys.win };
   }
   return row;
@@ -546,10 +584,12 @@ export function withEffectiveBindings(
     sendPref?: ComposerSendKeyPref;
     remaps?: ShortcutRemapMap | null;
     voiceHotkeyEnabled?: boolean;
+    /** Settings → Composer. When on, the Steer hint includes the send key. */
+    enterInsertsLive?: boolean;
   },
 ): ShortcutRow {
   const pref = resolveSendPref(opts?.sendPref);
-  let next = withSendPref(row, pref);
+  let next = withSendPref(row, pref, resolveEnterInsertsLive(opts?.enterInsertsLive));
   // Live Voice hotkey disabled → show Off (composer / menus still work).
   if (
     row.id === "liveVoice" &&
@@ -582,6 +622,7 @@ export function shortcutsForPlatform(
   sendPref?: ComposerSendKeyPref,
   remaps?: ShortcutRemapMap | null,
   voiceHotkeyEnabled?: boolean,
+  enterInsertsLive?: boolean,
 ): Array<{
   id: ShortcutId;
   labelKey: string;
@@ -599,6 +640,7 @@ export function shortcutsForPlatform(
       sendPref,
       remaps: map,
       voiceHotkeyEnabled,
+      enterInsertsLive,
     });
     return {
       id: row.id,
@@ -641,6 +683,7 @@ export function shortcutsByGroup(
   sendPref?: ComposerSendKeyPref,
   remaps?: ShortcutRemapMap | null,
   voiceHotkeyEnabled?: boolean,
+  enterInsertsLive?: boolean,
 ): Array<{ group: ShortcutGroup; rows: ShortcutRow[] }> {
   const map =
     remaps !== undefined
@@ -651,7 +694,12 @@ export function shortcutsByGroup(
   return SHORTCUT_GROUP_ORDER.map((group) => ({
     group,
     rows: SHORTCUTS.filter((s) => s.group === group).map((s) =>
-      withEffectiveBindings(s, { sendPref, remaps: map, voiceHotkeyEnabled }),
+      withEffectiveBindings(s, {
+        sendPref,
+        remaps: map,
+        voiceHotkeyEnabled,
+        enterInsertsLive,
+      }),
     ),
   }));
 }
