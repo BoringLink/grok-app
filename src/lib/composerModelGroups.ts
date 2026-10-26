@@ -27,26 +27,89 @@ export type ComposerProviderModelInput = {
 export type ComposerProviderInput = {
   id: string;
   name: string;
-  /** Active request model for this channel. */
+  /** Active request model for this channel (`[model.<id>].model`). */
   model: string;
+  /**
+   * `grok_build_proxy` lists every catalog id. Any other mode, including a
+   * missing one, is a generic relay: the composer offers only `model`.
+   */
+  providerMode?: string | null;
   /** Catalog of selectable models; falls back to single `model` when empty. */
   models?: ComposerProviderModelInput[];
 };
 
+/** Grok Build-compatible relays can switch catalog ids. Generic relays cannot. */
+export function customChannelListsSubmodels(
+  providerMode: string | null | undefined,
+): boolean {
+  return (providerMode ?? "").trim() === "grok_build_proxy";
+}
+
+function cleanModels(
+  models: ReadonlyArray<ComposerProviderModelInput> | null | undefined,
+): ComposerProviderModelInput[] {
+  return (models ?? [])
+    .map((m) => ({
+      id: m.id?.trim() ?? "",
+      name: (m.name?.trim() || m.id?.trim()) ?? "",
+    }))
+    .filter((m) => m.id);
+}
+
+/**
+ * Models the composer may offer for one channel.
+ *
+ * A generic relay's `session/set_model` only accepts the TOML section name.
+ * CLI 1.0.70 rejects an `app_models` id with `unknown model id`, and the
+ * request body stays `[model.<id>].model`. Listing the other rows made the
+ * chip disagree with the upstream model (#1337). One row, that field.
+ * A Grok Build-compatible relay already sends the catalog id, so it keeps
+ * the full list.
+ */
 function modelsForProvider(
   p: ComposerProviderInput,
 ): ComposerProviderModelInput[] {
-  if (p.models && p.models.length > 0) {
-    return p.models
-      .map((m) => ({
-        id: m.id?.trim() ?? "",
-        name: (m.name?.trim() || m.id?.trim()) ?? "",
-      }))
-      .filter((m) => m.id);
+  const catalog = cleanModels(p.models);
+  const configured = p.model?.trim() ?? "";
+  if (!customChannelListsSubmodels(p.providerMode) && configured) {
+    const hit = catalog.find((m) => m.id === configured);
+    return [{ id: configured, name: hit?.name || configured }];
   }
-  const id = p.model?.trim() ?? "";
-  if (!id) return [];
-  return [{ id, name: id }];
+  if (catalog.length > 0) return catalog;
+  if (!configured) return [];
+  return [{ id: configured, name: configured }];
+}
+
+/** Slim provider rows for the composer menu, including relay mode. */
+export function composerMenuProviders(
+  providers: ReadonlyArray<{
+    id: string;
+    name: string;
+    model: string;
+    providerMode?: string | null;
+    models?: ReadonlyArray<{ id: string; name?: string | null }> | null;
+  }>,
+): Array<
+  ComposerProviderInput & {
+    providerMode: string;
+    models: ComposerProviderModelInput[];
+  }
+> {
+  return providers.map((p) => ({
+    id: p.id,
+    name: p.name,
+    model: p.model,
+    providerMode: p.providerMode ?? "generic",
+    models: (p.models?.length
+      ? p.models
+      : p.model
+        ? [{ id: p.model, name: p.model }]
+        : []
+    ).map((m) => ({
+      id: m.id,
+      name: (m.name || m.id).trim() || m.id,
+    })),
+  }));
 }
 
 export function buildComposerModelGroups(opts: {

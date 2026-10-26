@@ -1,16 +1,20 @@
 /**
  * Effective inference model shown in composer model chips.
  *
- * A custom provider is a channel. The chip shows the model this chat picked
- * when that id is in the provider catalog. Otherwise it shows the provider's
- * configured `model`, never a leftover official catalog id such as Grok 4.5.
+ * A Grok Build-compatible relay shows the model this chat picked when that
+ * id is in the catalog. A generic relay shows the channel `model` field —
+ * sibling `app_models` ids are not what the CLI sends upstream (#1337).
+ * Neither path shows a leftover official catalog id such as Grok 4.5.
  */
+
+import { customChannelListsSubmodels } from "@/lib/composerModelGroups";
 
 export function resolveCustomRouteDisplay(
   provider:
     | {
         name?: string | null;
         model?: string | null;
+        providerMode?: string | null;
         models?: ReadonlyArray<{ id: string; name?: string | null }> | null;
       }
     | null
@@ -23,10 +27,13 @@ export function resolveCustomRouteDisplay(
   if (!provider) return null;
   const models = provider.models ?? [];
   const sessionId = sessionModelId.trim();
-  const sessionEntry = sessionId
-    ? models.find((m) => m.id === sessionId)
-    : undefined;
   const configured = provider.model?.trim() ?? "";
+  const allowSibling =
+    customChannelListsSubmodels(provider.providerMode) || !configured;
+  const sessionEntry =
+    sessionId && (allowSibling || sessionId === configured)
+      ? models.find((m) => m.id === sessionId)
+      : undefined;
   const configuredEntry = configured
     ? models.find((m) => m.id === configured)
     : undefined;
