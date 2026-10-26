@@ -43,7 +43,7 @@ use tauri::{AppHandle, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBui
 
 use crate::wallpaper_source::WallpaperSearchCancellation;
 
-const WINDOW_LABEL: &str = "grok-imagine-saved";
+pub(crate) const WINDOW_LABEL: &str = "grok-imagine-saved";
 const SAVED_URL: &str = "https://grok.com/imagine/saved";
 const MAX_BRIDGE_ITEMS: usize = 320;
 const MAX_MEDIA_URL_LENGTH: usize = 4_096;
@@ -571,6 +571,20 @@ fn snapshot_from_window(window: &WebviewWindow) -> Result<GrokAlbumSnapshot, Str
         prefetch_skipped: false,
         page_changed,
     })
+}
+
+/// Rebuild the saved-album window after the WebView2 browser process dies.
+/// The caller has already destroyed the old HWND. Profile, proxy, and
+/// navigation guards stay inside [`open_album_window`].
+#[cfg(windows)]
+pub(crate) fn reopen_after_webview_crash(app: &AppHandle, title: &str) -> Result<(), String> {
+    let title = title.trim();
+    let title = if title.is_empty() {
+        "Grok".to_string()
+    } else {
+        title.to_string()
+    };
+    open_album_window(app, title)
 }
 
 fn open_album_window(app: &AppHandle, title: String) -> Result<(), String> {
