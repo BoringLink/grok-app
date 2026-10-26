@@ -7364,21 +7364,6 @@ export function AppWorkbench() {
       .catch((e) => showToast(String(e), 4000));
   }, [activeProject?.id, session.sessionId, showToast]);
 
-  const sendQueueLabels = useMemo(
-    () => ({
-      sendFailed: tr("composer.queueSendFailed"),
-      droppedOldest: (n: number, max: number) =>
-        tr("composer.queueDroppedOldest", {
-          n: String(n),
-          max: String(max),
-        }),
-      externalAdded: (preview: string) =>
-        tr("composer.queueExternalAdded", { preview }),
-      externalAddedOther: (preview: string) =>
-        tr("composer.queueExternalAddedOther", { preview }),
-    }),
-    [tr],
-  );
   const sendQueue = useSendQueue({
     sessionId: session.sessionId,
     sessionState: session.state,
@@ -7391,7 +7376,7 @@ export function AppWorkbench() {
     executeSendRef: executeSendFromQueueRef,
     showToast,
     acceptExternal: !isSecondaryWindow,
-    labels: sendQueueLabels,
+    tr,
   });
 
   sendQueueRef.current = sendQueue;

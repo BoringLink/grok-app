@@ -7,8 +7,10 @@ import {
   type MutableRefObject,
   type RefObject,
 } from "react";
-import type { Attachment } from "@/lib/attachments";
+import { useBackgroundQueueDrain } from "@/hooks/useBackgroundQueueDrain";
+import type { createT } from "@/i18n";
 import * as api from "@/lib/api";
+import type { Attachment } from "@/lib/attachments";
 import type { SessionSnapshot, SessionState } from "@/lib/session";
 import {
   applyClearSendQueuePlan,
@@ -49,6 +51,8 @@ export type ExecuteSendFromQueue = (opts: {
   targetSessionId: string | null;
 }) => Promise<boolean>;
 
+type Translate = ReturnType<typeof createT>;
+
 export type UseSendQueueOptions = {
   sessionId: string | null;
   sessionState: SessionState;
@@ -64,17 +68,13 @@ export type UseSendQueueOptions = {
   showToast: (msg: string, ms?: number) => void;
   /** Primary window only — secondary has its own queue map and must not double-send. */
   acceptExternal?: boolean;
-  labels: {
-    sendFailed: string;
-    droppedOldest: (n: number, max: number) => string;
-    externalAdded?: (preview: string) => string;
-    externalAddedOther?: (preview: string) => string;
-  };
+  tr: Translate;
 };
 
 /**
- * Per-session follow-up send queue: enqueue while busy, auto-flush when idle,
- * claim/requeue on flush failure, hold after fail to avoid spin.
+ * Per-session follow-up send queue: enqueue while busy, auto-flush every
+ * ready session (not only the chat on screen), claim/requeue on flush
+ * failure, hold that session after fail so it cannot spin or block others.
  */
 export function useSendQueue({
   sessionId,
@@ -88,8 +88,23 @@ export function useSendQueue({
   executeSendRef,
   showToast,
   acceptExternal = false,
-  labels,
+  tr,
 }: UseSendQueueOptions) {
+  const labels = useMemo(
+    () => ({
+      sendFailed: tr("composer.queueSendFailed"),
+      droppedOldest: (n: number, max: number) =>
+        tr("composer.queueDroppedOldest", {
+          n: String(n),
+          max: String(max),
+        }),
+      externalAdded: (preview: string) =>
+        tr("composer.queueExternalAdded", { preview }),
+      externalAddedOther: (preview: string) =>
+        tr("composer.queueExternalAddedOther", { preview }),
+    }),
+    [tr],
+  );
   const [sendQueueByKey, setSendQueueByKey] = useState<
     Record<string, QueuedSend[]>
   >({});
@@ -97,9 +112,11 @@ export function useSendQueue({
   sendQueueByKeyRef.current = sendQueueByKey;
 
   const queueFlushHoldByKeyRef = useRef<Set<string>>(new Set());
+  /** Sync claim window so a second tick cannot send the same head twice. */
+  const drainingKeysRef = useRef<Set<string>>(new Set());
+  const scheduleDrainRef = useRef<() => void>(() => {});
   /** UI-visible hold (ref alone does not re-render). */
   const [flushHold, setFlushHold] = useState(false);
-  const flushQueueTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeQueue = useMemo(
     () => getQueueForKey(sendQueueByKey, queueSessionKey(sessionId)),
@@ -148,12 +165,19 @@ export function useSendQueue({
     setHold(false);
   }, [setHold]);
 
-  const cancelFlushTimer = useCallback(() => {
-    if (flushQueueTimerRef.current) {
-      clearTimeout(flushQueueTimerRef.current);
-      flushQueueTimerRef.current = null;
-    }
-  }, []);
+  const releaseHolds = useCallback(
+    (keys: readonly string[]) => {
+      if (!keys.length) return;
+      let changed = false;
+      for (const key of keys) {
+        if (queueFlushHoldByKeyRef.current.delete(key)) changed = true;
+      }
+      if (changed) {
+        setFlushHold(queueFlushHoldByKeyRef.current.has(viewedQueueKey()));
+      }
+    },
+    [viewedQueueKey],
+  );
 
   const writeMap = useCallback((next: Record<string, QueuedSend[]>) => {
     sendQueueByKeyRef.current = next;
@@ -286,9 +310,8 @@ export function useSendQueue({
         removeQueuedSend(getQueueForKey(sendQueueByKeyRef.current, key), id),
       );
       writeMap(next);
-      if (!getQueueForKey(next, key).length) cancelFlushTimer();
     },
-    [sessionId, writeMap, cancelFlushTimer],
+    [sessionId, writeMap],
   );
 
   const updateItem = useCallback(
@@ -338,11 +361,10 @@ export function useSendQueue({
     const key = queueSessionKey(sessionId);
     const prev = getQueueForKey(sendQueueByKeyRef.current, key);
     const plan = planClearSendQueue(prev);
-    cancelFlushTimer();
     writeMap(applyClearSendQueuePlan(sendQueueByKeyRef.current, key, plan));
     setHoldForKey(key, false);
     return plan;
-  }, [sessionId, writeMap, cancelFlushTimer, setHoldForKey]);
+  }, [sessionId, writeMap, setHoldForKey]);
 
   /** Pure clear plan for the viewed queue (does not mutate). */
   const planClearQueue = useCallback((): ClearSendQueuePlan => {
@@ -357,10 +379,20 @@ export function useSendQueue({
 
   const dropSessions = useCallback(
     (sessionIds: Iterable<string>) => {
-      const next = dropQueuesForSessions(sendQueueByKeyRef.current, sessionIds);
+      const ids = [...sessionIds];
+      const next = dropQueuesForSessions(sendQueueByKeyRef.current, ids);
+      let holdsChanged = false;
+      for (const id of ids) {
+        const key = queueSessionKey(id);
+        if (queueFlushHoldByKeyRef.current.delete(key)) holdsChanged = true;
+        drainingKeysRef.current.delete(key);
+      }
       if (next !== sendQueueByKeyRef.current) writeMap(next);
+      if (holdsChanged) {
+        setFlushHold(queueFlushHoldByKeyRef.current.has(viewedQueueKey()));
+      }
     },
-    [writeMap],
+    [viewedQueueKey, writeMap],
   );
 
   const migrateDraft = useCallback(
@@ -371,86 +403,126 @@ export function useSendQueue({
     [writeMap],
   );
 
-  const flush = useCallback(() => {
-    const live = liveHostRef.current;
-    const viewId = viewingSessionIdRef.current;
-    // Strict isolation: only ever claim the *viewed* session's queue.
-    // Never fall back to live.sessionId (that mixed draft UI with foreign queues).
-    const claimKey = queueSessionKey(viewId);
-    if (isSendInFlightForKey(claimKey)) return;
-    if (isConnectingForKey(claimKey)) return;
-    if (queueFlushHoldByKeyRef.current.has(claimKey)) return;
-    if (!getQueueForKey(sendQueueByKeyRef.current, claimKey).length) return;
+  /**
+   * Claim and send the head of one session queue.
+   * The key is that session's own id — never the live host id.
+   */
+  const flushKey = useCallback(
+    (claimKey: string) => {
+      if (drainingKeysRef.current.has(claimKey)) return;
+      if (isSendInFlightForKey(claimKey)) return;
+      if (isConnectingForKey(claimKey)) return;
+      if (queueFlushHoldByKeyRef.current.has(claimKey)) return;
+      const queued = getQueueForKey(sendQueueByKeyRef.current, claimKey);
+      if (!queued.length || queued[0]?.source === "external") return;
 
-    // Same-session busy only: wait for this chat's turn to finish.
-    // Foreign busy must NOT block — executeSend demotes and spawns concurrent work.
-    if (shouldHoldFlushForLive(live.sessionId, live.state, viewId)) {
-      return;
-    }
-
-    const claimed = claimQueueHead(sendQueueByKeyRef.current, claimKey);
-    if (!claimed) return;
-    const { head } = claimed;
-    const targetSessionId = claimKey === "__draft__" ? null : claimKey;
-    writeMap(claimed.byKey);
-
-    void (async () => {
-      try {
-        const ok = await executeSendRef.current({
-          storedDisplay: head.storedDisplay,
-          att: head.attachments,
-          quotes: head.quotes,
-          goalMode: head.goalMode,
-          fromQueue: true,
-          targetSessionId,
-        });
-        if (ok) return;
-        const r = requeueAfterFlushFail(
-          sendQueueByKeyRef.current,
-          claimKey,
-          head,
-        );
-        writeMap(r.byKey);
-        // Hold only while the session is still live/busy. Terminal failures
-        // (error/cancel/disconnect) must release the key so it can recover.
-        const liveAfter = liveHostRef.current;
-        const terminal =
-          liveAfter.state === "ready" ||
-          liveAfter.state === "disconnected" ||
-          !!liveAfter.lastError;
-        setHoldForKey(claimKey, !terminal);
-        if (r.dropped > 0) {
-          showToast(labels.droppedOldest(r.dropped, SEND_QUEUE_MAX), 3500);
-        } else {
-          showToast(labels.sendFailed, 3500);
-        }
-      } catch (e) {
-        // Keep a rejected executeSend from leaving the queue claimed or the
-        // hold permanently wedged. Requeue is idempotent by item id.
-        const r = requeueAfterFlushFail(
-          sendQueueByKeyRef.current,
-          claimKey,
-          head,
-        );
-        writeMap(r.byKey);
-        setHoldForKey(claimKey, false);
-        console.warn("[send-queue] flush failed", e);
+      const live = liveHostRef.current;
+      const claimSessionId = claimKey === "__draft__" ? null : claimKey;
+      // Same-session busy only. A foreign live turn must not block this key.
+      if (shouldHoldFlushForLive(live.sessionId, live.state, claimSessionId)) {
+        return;
       }
-    })();
-  }, [
-    liveHostRef,
+
+      drainingKeysRef.current.add(claimKey);
+      const claimed = claimQueueHead(sendQueueByKeyRef.current, claimKey);
+      if (!claimed) {
+        drainingKeysRef.current.delete(claimKey);
+        return;
+      }
+      const { head } = claimed;
+      const targetSessionId = claimSessionId;
+      writeMap(claimed.byKey);
+
+      void (async () => {
+        try {
+          const ok = await executeSendRef.current({
+            storedDisplay: head.storedDisplay,
+            att: head.attachments,
+            quotes: head.quotes,
+            goalMode: head.goalMode,
+            fromQueue: true,
+            targetSessionId,
+          });
+          if (ok) return;
+          const r = requeueAfterFlushFail(
+            sendQueueByKeyRef.current,
+            claimKey,
+            head,
+          );
+          writeMap(r.byKey);
+          const viewedNow = queueSessionKey(viewingSessionIdRef.current);
+          if (claimKey !== viewedNow) {
+            // Background failure holds only this key so it cannot spin,
+            // and so the chat on screen is not painted as held.
+            setHoldForKey(claimKey, true);
+          } else {
+            // Hold only while the session is still live/busy. Terminal
+            // failures must release the key so the viewed chat can recover.
+            const liveAfter = liveHostRef.current;
+            const terminal =
+              liveAfter.state === "ready" ||
+              liveAfter.state === "disconnected" ||
+              !!liveAfter.lastError;
+            setHoldForKey(claimKey, !terminal);
+          }
+          if (r.dropped > 0) {
+            showToast(labels.droppedOldest(r.dropped, SEND_QUEUE_MAX), 3500);
+          } else if (claimKey === viewedNow) {
+            showToast(labels.sendFailed, 3500);
+          }
+        } catch (e) {
+          // Keep a rejected executeSend from leaving the queue claimed.
+          // Requeue is idempotent by item id.
+          const r = requeueAfterFlushFail(
+            sendQueueByKeyRef.current,
+            claimKey,
+            head,
+          );
+          writeMap(r.byKey);
+          const viewedNow = queueSessionKey(viewingSessionIdRef.current);
+          setHoldForKey(claimKey, claimKey !== viewedNow);
+          console.warn("[send-queue] flush failed", e);
+        } finally {
+          drainingKeysRef.current.delete(claimKey);
+          scheduleDrainRef.current();
+        }
+      })();
+    },
+    [
+      liveHostRef,
+      viewingSessionIdRef,
+      executeSendRef,
+      showToast,
+      labels,
+      writeMap,
+      setHoldForKey,
+      isSendInFlightForKey,
+      isConnectingForKey,
+    ],
+  );
+
+  const flush = useCallback(() => {
+    flushKey(viewedQueueKey());
+  }, [flushKey, viewedQueueKey]);
+
+  useBackgroundQueueDrain({
+    sessionId,
+    sessionState,
+    connecting,
     viewingSessionIdRef,
+    liveHostRef,
+    sendQueueByKey,
+    sendQueueByKeyRef,
+    inFlightKeysRef: sendInFlightBySessionRef,
     sendInFlightRef,
-    sendInFlightBySessionRef,
-    connectingBySessionRef,
-    executeSendRef,
-    showToast,
-    labels,
-    writeMap,
-    setHoldForKey,
-    isSendInFlightForKey,
-    isConnectingForKey,
-  ]);
+    connectingKeysRef: connectingBySessionRef,
+    holdKeysRef: queueFlushHoldByKeyRef,
+    drainingKeysRef,
+    scheduleDrainRef,
+    flushKey,
+    onReleaseHolds: releaseHolds,
+    onDropSessions: dropSessions,
+  });
 
   // Clear the viewed key's hold once a real turn is in progress again, and on
   // terminal/disconnected transitions. Holds for other sessions remain local.
@@ -473,50 +545,6 @@ export function useSendQueue({
   useEffect(() => {
     setFlushHold(queueFlushHoldByKeyRef.current.has(viewedQueueKey()));
   }, [sessionId, viewedQueueKey]);
-
-  // Auto-send next queued follow-up when *this viewed session* can take a turn.
-  useEffect(() => {
-    if (sessionState !== "ready" && sessionState !== "idle") return;
-    const viewId = viewingSessionIdRef.current ?? sessionId;
-    const key = queueSessionKey(viewId);
-    if (
-      isConnectingForKey(key) ||
-      isSendInFlightForKey(key) ||
-      queueFlushHoldByKeyRef.current.has(key)
-    ) {
-      return;
-    }
-    // Viewed key only — never the live host's key when they differ.
-    const viewed = getQueueForKey(sendQueueByKeyRef.current, key);
-    if (!viewed.length) return;
-    // Host owns `source: external` drain; GUI only displays those rows.
-    if (viewed[0]?.source === "external") return;
-    const live = liveHostRef.current;
-    // Hold only when this same session is mid-turn on Host.
-    if (shouldHoldFlushForLive(live.sessionId, live.state, viewId)) {
-      return;
-    }
-    cancelFlushTimer();
-    flushQueueTimerRef.current = setTimeout(() => {
-      flushQueueTimerRef.current = null;
-      flush();
-    }, 40);
-    return () => cancelFlushTimer();
-  }, [
-    sessionState,
-    sessionId,
-    sendQueueByKey,
-    flush,
-    cancelFlushTimer,
-    sendInFlightRef,
-    sendInFlightBySessionRef,
-    connectingBySessionRef,
-    isConnectingForKey,
-    isSendInFlightForKey,
-    viewedQueueKey,
-    viewingSessionIdRef,
-    liveHostRef,
-  ]);
 
   /** Clear hold and try flush immediately (user retry). */
   const resumeFlush = useCallback(() => {

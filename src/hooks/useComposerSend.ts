@@ -65,6 +65,7 @@ import {
 } from "@/lib/jsonSchema";
 import { canLiveParticipate } from "@/lib/multiWindow";
 import { recordRecentPrompt } from "@/lib/recentPromptHistory";
+import { isBackgroundQueuedSend } from "@/lib/backgroundQueueDrain";
 import { queueSessionKey, shouldEnqueueSend } from "@/lib/sendQueue";
 import {
   clearPriorTurnStreaming,
@@ -488,6 +489,14 @@ const executeSend = async (opts: {
   try {
     let sessionId: string | null = null;
     const live = liveHostRef.current;
+    // A follow-up queued on a chat the user is not looking at. Host
+    // `session_send` prompts a warm background/parked agent in place.
+    // `ensureConnected` would adopt the workbench and yank this view.
+    const backgroundQueueSend = isBackgroundQueuedSend({
+      fromQueue: !!fromQueue,
+      targetSessionId: sendTargetId,
+      viewingSessionId: viewingSessionIdRef.current,
+    });
     if (
       sendTargetId &&
       live.sessionId === sendTargetId &&
@@ -495,13 +504,8 @@ const executeSend = async (opts: {
       !live.lastError
     ) {
       sessionId = sendTargetId;
-    } else if (
-      fromQueue &&
-      sendTargetId &&
-      viewingSessionIdRef.current !== sendTargetId
-    ) {
-      failStrip();
-      return false;
+    } else if (backgroundQueueSend) {
+      sessionId = sendTargetId;
     } else {
       sessionId = await ensureConnected({ sessionId: sendTargetId });
     }
@@ -537,13 +541,18 @@ const executeSend = async (opts: {
       liveHostRef.current = next;
       return next;
     });
-    setLiveMap((prev) =>
-      projectHostIntoLiveMap(prev, {
-        sessionId,
-        state: "streaming",
-        streamingMessageId: null,
-      }),
-    );
+    // Background drains paint streaming only after `session_send` accepts.
+    // Painting it first sticks the chat on "working" when the send fails,
+    // and the next queued line waits forever.
+    if (!backgroundQueueSend) {
+      setLiveMap((prev) =>
+        projectHostIntoLiveMap(prev, {
+          sessionId,
+          state: "streaming",
+          streamingMessageId: null,
+        }),
+      );
+    }
     // Draft sends materialize a real id during ensureConnected. Atomically
     // migrate the claim so a second call targeting the new id cannot slip
     // through, while a newly opened draft remains independent.
@@ -595,6 +604,7 @@ const executeSend = async (opts: {
     if (
       fromQueue &&
       sendTargetId &&
+      !backgroundQueueSend &&
       liveHostRef.current.sessionId &&
       liveHostRef.current.sessionId !== sendTargetId
     ) {
@@ -639,6 +649,9 @@ const executeSend = async (opts: {
       // (idle recycle / crash while `liveHost` still looked ready).
       // Cold-connect that chat once, then retry the same turn.
       if (!isSessionNotLiveError(sendErr)) throw sendErr;
+      // Cold-connect would focus this chat and steal the workbench.
+      // Leave the follow-up queued; opening the chat retries it.
+      if (backgroundQueueSend) throw sendErr;
       if (!sendEpochCurrent()) return false;
       const reconnected = await ensureConnected({
         sessionId,
