@@ -728,7 +728,15 @@ fn model_header(id: &str) -> String {
 }
 
 fn parse_model_header_id(trimmed: &str) -> Option<String> {
-    let rest = trimmed.strip_prefix("[model.")?.strip_suffix(']')?;
+    // Same header rules as the config writer (`[model.id] # note`, quoted ids
+    // that contain `]`). `strip_suffix(']')` misses a trailing comment, so
+    // remove + append would leave the old section (and its `app_append_prompt`)
+    // in place and the save would look like it did not stick.
+    let (is_array, name) = crate::agent_home_config::parse_table_header(trimmed)?;
+    if is_array {
+        return None;
+    }
+    let rest = name.strip_prefix("model.")?;
     Some(unquote(rest).trim().to_string()).filter(|s| !s.is_empty())
 }
 
@@ -2240,6 +2248,9 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
 
     // Appended system-prompt rules: `Some("")` clears; `None` keeps the value
     // already on disk so an edit that omits the field is not a silent wipe.
+    // `Some` is explicit even when sanitize turns "" into None — the old key
+    // must not be copied back from the previous section.
+    let append_prompt_explicit = input.append_prompt.is_some();
     let resolved_append_prompt: Option<String> = match input.append_prompt {
         Some(ref raw) => crate::store::sanitize_extra_rules(Some(raw.clone())),
         None => crate::store::sanitize_extra_rules(
@@ -2328,6 +2339,11 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
             fields.iter().map(|(k, _)| k.clone()).collect();
         // Always treated as managed — empty list must not copy the old table back.
         known.insert(EXTRA_HEADERS_KEY.into());
+        // Explicit clear (`Some("")` → None) must drop the previous prompt.
+        // Omitted (`None`) stays out of `known` so the kept value is copied.
+        if append_prompt_explicit {
+            known.insert(APP_APPEND_PROMPT_KEY.into());
+        }
         for (k, v) in &ex.fields {
             if !known.contains(k) {
                 fields.push((k.clone(), v.clone()));
@@ -3989,6 +4005,189 @@ base_url = \"http://127.0.0.1:8080/v1\"
             ],
         );
         assert!(!text.contains(APP_APPEND_PROMPT_KEY), "{text}");
+    }
+
+    #[test]
+    fn append_prompt_explicit_clear_drops_key_and_update_replaces_it() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home =
+            std::env::temp_dir().join(format!("grok-app-append-prompt-{}", uuid::Uuid::new_v4()));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<(), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let before = "\
+# keep-me
+[models]
+default = \"grok\"
+
+[memory] # memory switch
+enabled = false
+
+[ui]
+yolo = false
+
+[model.demo] # my relay
+model = \"demo-model\"
+base_url = \"https://relay.example/v1\"
+api_key = \"sk-channel-secret\"
+api_backend = \"chat_completions\"
+name = \"Demo\"
+app_append_prompt = \"1. 结构化输出确保可读性\"
+";
+            write_text(&path, before)?;
+
+            let updated = upsert_custom_provider(UpsertProviderInput {
+                id: "demo".into(),
+                model: "demo-model".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Demo".into()),
+                api_key: Some("sk-channel-secret".into()),
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models: Some(vec![ProviderModelEntry::named("demo-model", "Demo")]),
+                efforts: None,
+                context_window: Some(128_000),
+                base_url_full_path: Some(true),
+                append_prompt: Some("2. 先给结论\n第二行".into()),
+                supports_vision: Some(false),
+                extra_headers: None,
+            })?;
+            let saved = updated
+                .providers
+                .iter()
+                .find(|p| p.id == "demo")
+                .ok_or_else(|| "demo provider missing after update".to_string())?;
+            assert_eq!(saved.append_prompt.as_deref(), Some("2. 先给结论\n第二行"));
+            let after_update = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            assert!(
+                !after_update.contains("结构化输出确保可读性"),
+                "old prompt must be replaced:\n{after_update}"
+            );
+            assert_eq!(
+                after_update.matches("[model.demo]").count(),
+                1,
+                "commented header must be replaced, not duplicated:\n{after_update}"
+            );
+            assert!(after_update.starts_with("# keep-me\n"), "{after_update}");
+            assert!(
+                after_update.contains("[memory] # memory switch"),
+                "{after_update}"
+            );
+            assert!(after_update.contains("yolo = false"), "{after_update}");
+            assert!(
+                after_update.contains("api_key = \"sk-channel-secret\""),
+                "{after_update}"
+            );
+            let i_keep = after_update.find("# keep-me").unwrap();
+            let i_models = after_update.find("[models]").unwrap();
+            let i_mem = after_update.find("[memory]").unwrap();
+            let i_ui = after_update.find("[ui]").unwrap();
+            assert!(
+                i_keep < i_models && i_models < i_mem && i_mem < i_ui,
+                "{after_update}"
+            );
+
+            let kept = upsert_custom_provider(UpsertProviderInput {
+                id: "demo".into(),
+                model: "demo-model".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Demo".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models: None,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            })?;
+            let kept_prompt = kept
+                .providers
+                .iter()
+                .find(|p| p.id == "demo")
+                .and_then(|p| p.append_prompt.clone());
+            assert_eq!(kept_prompt.as_deref(), Some("2. 先给结论\n第二行"));
+
+            let cleared = upsert_custom_provider(UpsertProviderInput {
+                id: "demo".into(),
+                model: "demo-model".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Demo".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models: None,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: Some(true),
+                append_prompt: Some(String::new()),
+                supports_vision: None,
+                extra_headers: Some(vec![]),
+            })?;
+            assert!(
+                cleared
+                    .providers
+                    .iter()
+                    .find(|p| p.id == "demo")
+                    .and_then(|p| p.append_prompt.clone())
+                    .is_none(),
+                "empty append prompt must clear"
+            );
+            let after_clear = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            assert!(
+                !after_clear.contains("app_append_prompt"),
+                "cleared key must be gone:\n{after_clear}"
+            );
+            assert!(
+                !after_clear.contains("先给结论"),
+                "cleared text must be gone:\n{after_clear}"
+            );
+            assert!(
+                after_clear.contains("api_key = \"sk-channel-secret\""),
+                "{after_clear}"
+            );
+            assert!(after_clear.contains("# keep-me"), "{after_clear}");
+            assert!(
+                after_clear.contains("[memory] # memory switch"),
+                "{after_clear}"
+            );
+            assert!(after_clear.contains("yolo = false"), "{after_clear}");
+            assert!(
+                after_clear.contains("context_window = 128000"),
+                "{after_clear}"
+            );
+
+            fn mask(raw: &str) -> String {
+                raw.replace("sk-channel-secret", "sk-****")
+            }
+            eprintln!("--- append prompt BEFORE ---\n{}", mask(before));
+            eprintln!(
+                "--- append prompt AFTER UPDATE ---\n{}",
+                mask(&after_update)
+            );
+            eprintln!("--- append prompt AFTER CLEAR ---\n{}", mask(&after_clear));
+            Ok(())
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        outcome.expect("append prompt clear/update");
     }
 
     #[test]

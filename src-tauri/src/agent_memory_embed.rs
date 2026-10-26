@@ -2,7 +2,7 @@
 //! `[memory.*]` keys in the active `GROK_HOME` `config.toml`.
 //!
 //! ## Allowlist (soft-fail when missing)
-//! - `[memory.embedding]` model / dimensions / provider
+//! - `[memory.embedding]` model / dimensions / provider / base_url / api_key
 //! - `[memory.search]` max_results / min_score / vector_weight / text_weight
 //! - `[memory.search.mmr]` enabled / lambda
 //! - `[memory.search.temporal_decay]` enabled / half_life_days
@@ -28,6 +28,7 @@ use crate::agent_config_edit::{
     set_table_key,
 };
 use crate::agent_config_view::{config_toml_path, normalize_mode};
+use crate::agent_home_config::{parse_table_header, with_config_write_lock};
 use crate::paths::{agent_config_toml, agent_home_dir, ensure_app_dirs, resolve_agent_grok_home};
 use crate::store;
 
@@ -215,11 +216,16 @@ pub fn parse_memory_embed_flags(text: &str) -> MemoryEmbedFlags {
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            table = trimmed
-                .trim_start_matches('[')
-                .trim_end_matches(']')
-                .to_string();
+        // Same header rules as the writer (`[memory.embedding] # note`, quoted
+        // names that contain `]`). A naive `ends_with(']')` miss attributes
+        // later keys to the previous table, so a saved base_url/api_key does
+        // not echo and a clear can delete the wrong line.
+        if let Some((is_array, name)) = parse_table_header(trimmed) {
+            table = if is_array {
+                format!("[[{name}]]")
+            } else {
+                name.to_string()
+            };
             continue;
         }
         let Some(eq) = trimmed.find('=') else {
@@ -341,25 +347,25 @@ pub fn parse_memory_embed_flags(text: &str) -> MemoryEmbedFlags {
 
 /// Remove `key` under `[table]` if present (pure). Leaves other sections intact.
 pub fn remove_table_key(text: &str, table: &str, key: &str) -> String {
-    let header = format!("[{table}]");
     let mut lines: Vec<String> = text.lines().map(|s| s.to_string()).collect();
     let mut in_table = false;
-    let mut remove_idx: Option<usize> = None;
+    let mut remove_idxs: Vec<usize> = Vec::new();
     for (i, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
         if trimmed.starts_with('[') {
-            in_table = trimmed == header;
+            in_table = parse_table_header(trimmed)
+                .map(|(is_array, name)| !is_array && name == table)
+                .unwrap_or(false);
             continue;
         }
         if in_table {
             let key_part = trimmed.split('=').next().map(str::trim).unwrap_or("");
             if key_part == key {
-                remove_idx = Some(i);
-                break;
+                remove_idxs.push(i);
             }
         }
     }
-    if let Some(i) = remove_idx {
+    for i in remove_idxs.into_iter().rev() {
         lines.remove(i);
     }
     let mut joined = lines.join("\n");
@@ -527,8 +533,7 @@ pub fn extract_memory_embed_sections(text: &str) -> String {
     let mut any = false;
     for line in text.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            let name = trimmed.trim_start_matches('[').trim_end_matches(']');
+        if let Some((_, name)) = parse_table_header(trimmed) {
             keep = name == "memory" || name.starts_with("memory.");
             if keep {
                 if any {
@@ -713,9 +718,13 @@ pub fn save_memory_embed_config(
         fs::create_dir_all(parent).map_err(|e| format!("create agent-home: {e}"))?;
     }
 
-    let existing = fs::read_to_string(&path).unwrap_or_default();
-    let next = apply_memory_embed_patch(&existing, patch);
-    fs::write(&path, &next).map_err(|e| format!("write config: {e}"))?;
+    // Hold the same lock as heal / provider writes so a concurrent rewrite
+    // cannot drop the keys this save just added.
+    with_config_write_lock(|| {
+        let existing = fs::read_to_string(&path).unwrap_or_default();
+        let next = apply_memory_embed_patch(&existing, patch);
+        fs::write(&path, &next).map_err(|e| format!("write config: {e}"))
+    })?;
 
     tracing::info!(
         path = %path.display(),
@@ -944,6 +953,145 @@ api_key = "sk-abcdefghijklmnopqrstuvwxyz0123"
             None => std::env::remove_var("GROK_APP_HOME"),
         }
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn save_embedding_url_and_key_round_trip_keeps_other_sections() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = temp_app_home("embed-url");
+        let prev = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &tmp);
+
+        let outcome = (|| -> Result<(), String> {
+            let _ = ensure_app_dirs();
+            let mut s = store::load_settings();
+            s.session_data_mode = "independent".into();
+            store::save_settings(&s)?;
+            let path = agent_config_toml();
+            let before = "\
+# keep-me
+[models]
+default = \"grok\"
+
+[memory]
+enabled = false
+
+[memory.embedding] # embed
+provider = \"api\"
+model = \"old-model\"
+dimensions = 1024
+
+[model.demo]
+# channel note
+model = \"demo-model\"
+base_url = \"https://relay.example/v1\"
+api_key = \"sk-channel-secret\"
+
+[model.\"claude-glm-5.3[1M]\"]
+model = \"claude-glm-5.3[1M]\"
+base_url = \"http://relay/anthropic/v1\"
+api_key = \"sk-alias-secret\"
+";
+            fs::write(&path, before).map_err(|e| e.to_string())?;
+            let saved = save_memory_embed_config(&MemoryEmbedConfigPatch {
+                embedding_model: Some("qwen3-embedding".into()),
+                embedding_base_url: Some("https://api.example.test/v1".into()),
+                embedding_api_key: Some("sk-embed-probe-secret".into()),
+                ..Default::default()
+            })?;
+            assert_eq!(saved.embedding_model.as_deref(), Some("qwen3-embedding"));
+            assert_eq!(
+                saved.embedding_base_url.as_deref(),
+                Some("https://api.example.test/v1")
+            );
+            assert!(saved.has_embedding_api_key);
+            assert!(
+                !saved.redacted_preview.contains("sk-embed-probe-secret"),
+                "preview must not echo the embedding key"
+            );
+
+            let text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            assert!(text.contains("model = \"qwen3-embedding\""), "{text}");
+            assert!(
+                text.contains("base_url = \"https://api.example.test/v1\""),
+                "{text}"
+            );
+            assert!(
+                text.contains("api_key = \"sk-embed-probe-secret\""),
+                "{text}"
+            );
+            assert!(text.contains("provider = \"api\""), "{text}");
+            assert!(text.contains("dimensions = 1024"), "{text}");
+            assert!(text.starts_with("# keep-me\n"), "{text}");
+            assert!(text.contains("[memory]\nenabled = false"), "{text}");
+            assert!(text.contains("# channel note"), "{text}");
+            assert!(text.contains("api_key = \"sk-channel-secret\""), "{text}");
+            assert!(text.contains("api_key = \"sk-alias-secret\""), "{text}");
+            assert!(
+                text.contains("base_url = \"https://relay.example/v1\""),
+                "{text}"
+            );
+            assert!(text.contains("[model.\"claude-glm-5.3[1M]\"]"), "{text}");
+            let i_keep = text.find("# keep-me").unwrap();
+            let i_models = text.find("[models]").unwrap();
+            let i_mem = text.find("[memory]\n").unwrap();
+            let i_embed = text.find("[memory.embedding]").unwrap();
+            let i_demo = text.find("[model.demo]").unwrap();
+            let i_alias = text.find("[model.\"claude-glm-5.3[1M]\"]").unwrap();
+            assert!(
+                i_keep < i_models
+                    && i_models < i_mem
+                    && i_mem < i_embed
+                    && i_embed < i_demo
+                    && i_demo < i_alias,
+                "{text}"
+            );
+
+            let reloaded = load_memory_embed_config()?;
+            assert_eq!(
+                reloaded.embedding_base_url.as_deref(),
+                Some("https://api.example.test/v1")
+            );
+            assert!(reloaded.has_embedding_api_key);
+            assert_eq!(reloaded.embedding_model.as_deref(), Some("qwen3-embedding"));
+
+            let cleared = save_memory_embed_config(&MemoryEmbedConfigPatch {
+                clear_embedding_base_url: Some(true),
+                embedding_api_key: Some(String::new()),
+                ..Default::default()
+            })?;
+            assert_eq!(cleared.embedding_base_url, None);
+            assert!(!cleared.has_embedding_api_key);
+            assert_eq!(cleared.embedding_model.as_deref(), Some("qwen3-embedding"));
+            let after = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            assert!(!after.contains("sk-embed-probe-secret"), "{after}");
+            assert!(!after.contains("api.example.test"), "{after}");
+            assert!(after.contains("model = \"qwen3-embedding\""), "{after}");
+            assert!(after.contains("sk-channel-secret"), "{after}");
+            assert!(after.contains("sk-alias-secret"), "{after}");
+            assert!(after.contains("# keep-me"), "{after}");
+            assert!(after.contains("# channel note"), "{after}");
+            assert!(after.contains("[model.\"claude-glm-5.3[1M]\"]"), "{after}");
+
+            fn mask(raw: &str) -> String {
+                raw.replace("sk-embed-probe-secret", "sk-****")
+                    .replace("sk-channel-secret", "sk-****")
+                    .replace("sk-alias-secret", "sk-****")
+            }
+            eprintln!("--- memory embed BEFORE ---\n{}", mask(before));
+            eprintln!("--- memory embed AFTER SAVE ---\n{}", mask(&text));
+            eprintln!("--- memory embed AFTER CLEAR ---\n{}", mask(&after));
+            Ok(())
+        })();
+
+        match prev {
+            Some(v) => std::env::set_var("GROK_APP_HOME", v),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = fs::remove_dir_all(&tmp);
+        outcome.expect("embedding url/key round trip");
     }
 
     #[test]
