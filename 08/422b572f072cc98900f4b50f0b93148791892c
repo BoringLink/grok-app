@@ -1,0 +1,19 @@
+src-tauri/src/wallpaper_source.rs
+  s_dc6e98a83bee89::t_ea719dfb9b822a 2971-2990,3020,3030,3075,3085
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "08422b572f072cc98900f4b50f0b93148791892c",
+  "prompts": {},
+  "sessions": {
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
