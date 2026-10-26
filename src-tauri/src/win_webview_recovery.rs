@@ -31,8 +31,7 @@ use windows::core::Interface;
 
 use crate::webview_recovery::{
     action_for, blocks_exit_for_rebuild, classify_kind, logical_px, logical_signed_px,
-    recovery_log_line, restored_url, BudgetDecision, ProcessFailedKind, RecoveryAction,
-    RecoveryBudget, RestoredUrl,
+    recovery_log_line, restored_url, BudgetDecision, RecoveryAction, RecoveryBudget, RestoredUrl,
 };
 
 static HOLD: AtomicUsize = AtomicUsize::new(0);
@@ -69,7 +68,7 @@ pub fn should_block_exit(code: Option<i32>) -> bool {
 
 /// Hook `ProcessFailed` once per live `ICoreWebView2`. Page loads call this
 /// again; the COM pointer keeps the second call from stacking handlers.
-pub fn install<R: tauri::Runtime>(webview: &tauri::Webview<R>) {
+pub fn install(webview: &tauri::Webview) {
     let window_label = webview.window().label().to_string();
     let webview_label = webview.label().to_string();
     let app = webview.app_handle().clone();
@@ -655,7 +654,6 @@ fn finish(label: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use webview2_com::Microsoft::Web::WebView2::Win32::{
         COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
         COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
