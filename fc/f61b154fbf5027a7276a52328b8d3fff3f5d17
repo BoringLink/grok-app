@@ -1,0 +1,19 @@
+src/app/AppWorkbench.tsx
+  s_dc6e98a83bee89::t_388aa0ec102c02 12414-12418
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "fcf61b154fbf5027a7276a52328b8d3fff3f5d17",
+  "prompts": {},
+  "sessions": {
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
