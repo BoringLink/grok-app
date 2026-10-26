@@ -285,6 +285,8 @@ jobs:
       - name: Build Tauri app & attach to GitHub Release
         uses: tauri-apps/tauri-action@v0
         env:
+          # The UI bundle outgrew Node's default ~2 GB heap on small runners.
+          NODE_OPTIONS: --max-old-space-size=4096
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GROK_UPDATER_PUBLIC_KEY: ${{ secrets.GROK_UPDATER_PUBLIC_KEY }}
           GROK_UPDATER_ENDPOINT: https://github.com/${{ github.repository }}/releases/download/grok-desktop-latest/latest.json

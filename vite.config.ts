@@ -105,6 +105,8 @@ export default defineConfig(() => ({
     },
   },
   build: {
+    // Skip the gzip size report; it holds every chunk in memory again.
+    reportCompressedSize: false,
     rollupOptions: {
       output: {
         manualChunks: vendorManualChunk,
