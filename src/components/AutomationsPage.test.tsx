@@ -1,6 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
+import type { ComponentProps } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -52,24 +53,43 @@ const sessions = [
   },
 ];
 
-function renderPage() {
+function renderPage(
+  overrides: Partial<ComponentProps<typeof AutomationsPage>> = {},
+) {
   return render(
     <AutomationsPage
       t={t}
       projects={[]}
       sessionOptions={sessions}
       onAiCreate={() => {}}
+      {...overrides}
     />,
+  );
+}
+
+const relay = {
+  id: "relay-a",
+  name: "Relay A",
+  model: "qwen3.8-max",
+  baseUrl: "https://relay.example/v1",
+  models: [{ id: "qwen3.8-max", name: "Qwen 3.8 Max" }],
+  efforts: [
+    { id: "low", name: "Low" },
+    { id: "high", name: "High", isDefault: true },
+  ],
+};
+
+async function openCreate() {
+  fireEvent.click(await screen.findByText("automations.create"));
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: /automations.createManual/ }),
   );
 }
 
 describe("AutomationsPage route controls", () => {
   it("renders one model/effort pair and a session-keyed picker", async () => {
     renderPage();
-    fireEvent.click(await screen.findByText("automations.create"));
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: /automations.createManual/ }),
-    );
+    await openCreate();
 
     await waitFor(() =>
       expect(screen.getAllByText("automations.field.model")).toHaveLength(1),
@@ -102,5 +122,46 @@ describe("AutomationsPage route controls", () => {
     expect(
       screen.getByRole("button", { name: "automations.field.session" }),
     ).toHaveTextContent(/Same title · .*#111111/);
+  });
+
+  it("starts a new task on the active custom provider", async () => {
+    renderPage({
+      providers: [relay],
+      defaultProviderId: relay.id,
+      defaultModelId: "qwen3.8-max",
+    });
+    await openCreate();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "automations.field.model" }),
+      ).toHaveTextContent(/Relay A · Qwen 3.8 Max/),
+    );
+  });
+
+  it("switches an SSH project to the official route", async () => {
+    renderPage({
+      providers: [relay],
+      defaultProviderId: relay.id,
+      defaultModelId: "qwen3.8-max",
+      projects: [{ id: "ssh-1", name: "Remote", isSshRemote: true }],
+    });
+    await openCreate();
+    expect(
+      screen.getByRole("button", { name: "automations.field.model" }),
+    ).toHaveTextContent(/Relay A/);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "automations.field.project" }),
+    );
+    fireEvent.click(screen.getByText("Remote"));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "automations.field.model" }),
+      ).toHaveTextContent(/composer.modelGroupOfficial/),
+    );
+    expect(
+      screen.getByRole("button", { name: "automations.field.model" }),
+    ).not.toHaveTextContent(/Relay A/);
   });
 });

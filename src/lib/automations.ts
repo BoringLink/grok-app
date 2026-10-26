@@ -104,6 +104,21 @@ export function shortSessionId(id: string): string {
   return trimmed.length <= 8 ? trimmed : trimmed.slice(-6);
 }
 
+/** Sidebar projects → automation picker options (SSH pins official). */
+export function automationProjectOptions(
+  projects: readonly {
+    id: string;
+    name: string;
+    sshAlias?: string | null;
+  }[],
+): { id: string; name: string; isSshRemote: boolean }[] {
+  return projects.map((p) => ({
+    id: p.id,
+    name: p.name,
+    isSshRemote: Boolean(p.sshAlias),
+  }));
+}
+
 /**
  * Find the chat a reuse schedule points at. A stale sidebar snapshot falls
  * back to the host list; a host query failure propagates so the run aborts

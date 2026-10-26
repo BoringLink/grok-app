@@ -538,6 +538,7 @@ import { PhoneComposerToolsSheet } from "@/components/PhoneComposerToolsSheet";
 import { type ContextMenuItem } from "@/components/ContextMenu";
 import {
   aiCreateSeedPrompt,
+  automationProjectOptions,
   automationSessionOptions,
 } from "@/lib/automations";
 import { automationsBackgroundStatus } from "@/lib/automationsBackgroundStatus";
@@ -12396,8 +12397,10 @@ export function AppWorkbench() {
               t={(k, vars) =>
               tr(k as Parameters<typeof tr>[0], vars as Record<string, string | number>)
               }
-              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+              projects={automationProjectOptions(projects)}
               sessionOptions={automationSessionOptions(sessions)}
+              providers={customProviders}
+              defaultProviderId={providerActiveId ?? "official"}
               defaultModelId={modelId}
               defaultEffort={effort}
               models={availableModels}
