@@ -294,6 +294,48 @@ impl SessionManager {
             .unwrap_or(false)
     }
 
+    /// Copy turn-phase signals for `GET /v1/sessions/{id}`.
+    /// `None` when this id has no live, background, or parked agent.
+    pub(crate) fn external_session_signals(
+        &self,
+        app_session_id: &str,
+    ) -> Option<crate::session_manager::ExternalSessionSignals> {
+        {
+            let guard = self.inner.lock();
+            if let Some(s) = guard.as_ref() {
+                if s.app_session_id == app_session_id {
+                    return Some(Self::signals_from_live(s));
+                }
+            }
+        }
+        {
+            let bg = self.background.lock();
+            if let Some(s) = bg.get(app_session_id) {
+                return Some(Self::signals_from_live(s));
+            }
+        }
+        let parked = self.parked.lock();
+        if parked.contains_key(app_session_id) {
+            Some(crate::session_manager::ExternalSessionSignals::parked_idle())
+        } else {
+            None
+        }
+    }
+
+    fn signals_from_live(s: &LiveSession) -> crate::session_manager::ExternalSessionSignals {
+        crate::session_manager::ExternalSessionSignals {
+            state: s.fsm.state(),
+            has_last_error: s.fsm.last_error().is_some(),
+            prompt_in_flight: s.prompt_in_flight,
+            open_tools: !s.open_tool_ids.is_empty(),
+            deferred_prompt_complete: s.deferred_prompt_complete.is_some(),
+            has_streaming_message: s.streaming_message_id.is_some(),
+            pending_plan: s.pending_plan_rpc_id.is_some(),
+            pending_ask_user: s.pending_ask_user_rpc_id.is_some(),
+            pending_permission: s.pending_permission_rpc_id.is_some(),
+        }
+    }
+
     /// True when any live or background mid-turn session is bound to `project_id`
     /// or has a worktree path under `project_path` (git switch safety).
     pub fn any_busy_turn_for_project(

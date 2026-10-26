@@ -107,6 +107,37 @@ pub struct SessionSnapshot {
     pub title: String,
 }
 
+/// Live/background/parked signals the local session API maps to
+/// `running | idle | needs_input | error`. Copied out under the session lock.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExternalSessionSignals {
+    pub state: SessionState,
+    pub has_last_error: bool,
+    pub prompt_in_flight: bool,
+    pub open_tools: bool,
+    pub deferred_prompt_complete: bool,
+    pub has_streaming_message: bool,
+    pub pending_plan: bool,
+    pub pending_ask_user: bool,
+    pub pending_permission: bool,
+}
+
+impl ExternalSessionSignals {
+    pub fn parked_idle() -> Self {
+        Self {
+            state: SessionState::Ready,
+            has_last_error: false,
+            prompt_in_flight: false,
+            open_tools: false,
+            deferred_prompt_complete: false,
+            has_streaming_message: false,
+            pending_plan: false,
+            pending_ask_user: false,
+            pending_permission: false,
+        }
+    }
+}
+
 /// `session_stop_report`: the usual snapshot, plus whether `session/cancel`
 /// reached the agent. Ready is already published when this returns. A cancel
 /// error keeps `Ok` and sets `cancel_delivered` false — the host does not recycle.
