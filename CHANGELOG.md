@@ -48,7 +48,7 @@ See `docs/llm-wiki/release.md`.
 - A PR the agent starts watching shows up in the chat's watch chip and menu.
 - A subagent that is still running stays in the Tasks list when the list is full.
 - Queued messages in background chats now send on their own when the turn ends.
-- Memory embedding URL, key and model save correctly, and a cleared extra prompt stays cleared.
+- Memory embedding URL, key and model save, and a cleared extra prompt stays cleared.
 - The window rebuilds itself after a Windows WebView2 crash instead of staying blank.
 
 **中文 · 修复**
