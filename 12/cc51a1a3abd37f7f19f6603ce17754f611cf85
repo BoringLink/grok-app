@@ -1,0 +1,23 @@
+src/app/AppWorkbench.tsx
+  s_dc6e98a83bee89::t_aa363ef5087fd4 16,1296-1299
+  s_dc6e98a83bee89::t_2d08759db78433 542
+  s_dc6e98a83bee89::t_ae811893a0e2f1 12401
+  s_dc6e98a83bee89::t_4ec5be03d8c73d 541,12400,12402-12403,12407
+  s_dc6e98a83bee89::t_388aa0ec102c02 12404-12406
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "12cc51a1a3abd37f7f19f6603ce17754f611cf85",
+  "prompts": {},
+  "sessions": {
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
