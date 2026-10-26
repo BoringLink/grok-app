@@ -91,7 +91,11 @@ import {
   applyWindowAlwaysOnTop,
   loadWindowAlwaysOnTopPref,
 } from "./lib/windowAlwaysOnTop";
-import { installZoomHotkeys } from "./lib/zoomHotkeys";
+import {
+  installZoomHotkeys,
+  readCurrentWebviewLabel,
+  shouldRestoreUiZoom,
+} from "./lib/zoomHotkeys";
 
 // Apply persisted theme preference (default: system) before first React paint.
 // Optional clock schedule (under System) wins over OS scheme when enabled.
@@ -177,11 +181,14 @@ if (petQuickShell) {
 
   // The app has document-level capture handlers. Install the zoom handler on
   // window capture so Command +/- is handled before those shortcuts.
+  // Persisted scale is restored only for the main window and session windows.
   if (
     typeof window !== "undefined" &&
     ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)
   ) {
-    installZoomHotkeys(window);
+    installZoomHotkeys(window, undefined, {
+      restore: shouldRestoreUiZoom(readCurrentWebviewLabel()),
+    });
   }
 }
 

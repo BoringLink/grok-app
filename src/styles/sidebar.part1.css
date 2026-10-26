@@ -644,6 +644,20 @@ html.platform-mac[data-theme="light"] .sidebar:not(.sidebar--overlay):not(.sideb
   box-shadow: var(--sidebar-edge-shadow);
 }
 
+/*
+ * Default light rail ink (#1369). Resting session titles, project names, and
+ * nav labels use --text-secondary; meta uses --text-tertiary. Global light
+ * 0.55 / 0.36 composites to 4.57:1 and 2.47:1 on the solid plate #ececef
+ * (screenshot plate 4.67:1 / 2.50:1). 0.72 / 0.50 land at 8.50:1 and 3.85:1
+ * there; the time row's extra 0.9 opacity stays at 3.26:1. Skins, wallpaper,
+ * and custom chrome ink keep their own variables. Dark theme is untouched.
+ */
+html[data-theme="light"]:not([data-skin]):not([data-wallpaper="1"]):not([data-text-color="custom"])
+  .sidebar {
+  --text-secondary: rgba(0, 0, 0, 0.72);
+  --text-tertiary: rgba(0, 0, 0, 0.5);
+}
+
 /* Solid elevated content columns — pure white, sit above glass rail */
 html.platform-mac[data-theme="light"] .main {
   background: #ffffff;
