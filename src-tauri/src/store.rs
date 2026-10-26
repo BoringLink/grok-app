@@ -327,6 +327,10 @@ pub struct SessionMeta {
     /// Missing on older rows → follow the global route until the user picks one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_id: Option<String>,
+    /// Origin tag from `POST /v1/sessions` (`source`). At most 32 chars of
+    /// `[a-z0-9_-]`. Metadata only — no sidebar badge in this slice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2074,6 +2078,7 @@ pub fn create_session(
         workspace_root_snapshot: None,
         workspace_capability: None,
         provider_id: None,
+        source: None,
     };
     update_sessions_index({
         let meta = meta.clone();
@@ -4603,6 +4608,7 @@ mod tests {
             workspace_root_snapshot: None,
             workspace_capability: None,
             provider_id: None,
+            source: None,
         }
     }
 
@@ -5122,6 +5128,7 @@ mod tests {
                 workspace_root_snapshot: None,
                 workspace_capability: None,
                 provider_id: None,
+                source: None,
             },
         );
         write_json(&sessions_index_file(), &sessions).expect("seed sessions");

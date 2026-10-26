@@ -1,12 +1,18 @@
-//! Local session API for external integrations (#626 first slice).
+//! Local session API for external integrations.
 //!
 //! Loopback HTTP (127.0.0.1, token file) + CLI that talks to the same Host
-//! helpers. Lists Grok App sessions and continues one by id + prompt.
-//! Does not create a new chat. Does not interrupt a running turn.
+//! helpers.
+//! - List Grok App sessions and continue one by id + prompt (#626).
+//!   A running turn is queued, not interrupted.
+//! - Create a new App session in an already-trusted project and start its
+//!   first turn (#1356). Does not add projects and does not bypass the trust gate.
+//! - Read one session's turn phase (#1356).
 
+use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::future::Future;
+use std::path::{Path as StdPath, PathBuf};
+use std::sync::{Arc, LazyLock};
 
 use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
@@ -19,15 +25,28 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
 use crate::paths::{app_data_root, ensure_app_dirs};
-use crate::session_manager::SessionManager;
-use crate::store::{self, SessionMeta};
+use crate::session_fsm::SessionState;
+use crate::session_manager::{ExternalSessionSignals, SessionManager};
+use crate::store::{self, ChatMessageStored, SessionMeta};
 
 pub const SESSIONS_FLAG: &str = "--sessions";
 pub const SESSION_SEND_FLAG: &str = "--session-send";
+pub const SESSION_NEW_FLAG: &str = "--session-new";
 pub const PROMPT_FLAG: &str = "--prompt";
 pub const PROMPT_FILE_FLAG: &str = "--prompt-file";
 pub const IDEMPOTENCY_FLAG: &str = "--idempotency-key";
 pub const INCLUDE_ARCHIVED_FLAG: &str = "--include-archived";
+pub const PROJECT_FLAG: &str = "--project";
+pub const TITLE_FLAG: &str = "--title";
+pub const SOURCE_FLAG: &str = "--source";
+
+/// `source` on `POST /v1/sessions`: length cap, charset `[a-z0-9_-]`.
+const SOURCE_MAX_LEN: usize = 32;
+/// Last assistant preview on `GET /v1/sessions/{id}`.
+pub const LAST_ASSISTANT_MAX_CHARS: usize = 2000;
+/// Namespace create keys inside the shared idempotency file so they do not
+/// replay a continue-turn result (or the other way around).
+const CREATE_IDEMPOTENCY_PREFIX: &str = "session-new:";
 
 const ENDPOINT_FILE: &str = "session-api.json";
 const IDEMPOTENCY_FILE: &str = "session-api-idempotency.json";
@@ -44,6 +63,8 @@ pub const CLI_HTTP_TIMEOUT_SECS: u64 = DISPATCH_TURN_TIMEOUT_SECS + 5;
 const HOST_BUSY_RETRY_MESSAGE: &str = "host busy: connect in progress, retry later";
 
 static QUEUE_FILE_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+static CREATE_IN_FLIGHT: LazyLock<std::sync::Mutex<HashSet<String>>> =
+    LazyLock::new(|| std::sync::Mutex::new(HashSet::new()));
 
 fn drain_lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -83,6 +104,54 @@ pub struct TurnRequest {
     pub prompt: String,
     #[serde(default)]
     pub idempotency_key: Option<String>,
+}
+
+/// Turn phase for `GET /v1/sessions/{id}` (#1356).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ApiSessionPhase {
+    Running,
+    Idle,
+    NeedsInput,
+    Error,
+}
+
+/// `POST /v1/sessions` body. `worktreePath` is accepted so a client that sends
+/// it gets a clear 400 instead of a silent ignore. This slice does not create
+/// a worktree session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSessionBody {
+    #[serde(default)]
+    pub project_path: Option<String>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    pub prompt: String,
+    #[serde(default)]
+    pub idempotency_key: Option<String>,
+    #[serde(default)]
+    pub source: Option<String>,
+    #[serde(default)]
+    pub worktree_path: Option<String>,
+}
+
+/// `GET /v1/sessions/{id}`. Token and cost are omitted: the host has no
+/// persisted per-session aggregate (live spend lives in the UI only).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionDetail {
+    pub id: String,
+    pub title: String,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub status: ApiSessionPhase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_assistant_message: Option<String>,
+    pub updated_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -592,13 +661,47 @@ pub enum CliCommand {
         prompt: String,
         idempotency_key: Option<String>,
     },
+    New {
+        project: String,
+        title: Option<String>,
+        prompt: String,
+        idempotency_key: Option<String>,
+        source: Option<String>,
+    },
 }
 
 pub fn parse_cli(argv: &[String]) -> Result<CliCommand, String> {
     let args: Vec<&str> = argv.iter().skip(1).map(String::as_str).collect();
-    if args.contains(&SESSIONS_FLAG) {
+    let has_list = args.contains(&SESSIONS_FLAG);
+    let has_send = args.contains(&SESSION_SEND_FLAG);
+    let has_new = args.contains(&SESSION_NEW_FLAG);
+    let kinds = usize::from(has_list) + usize::from(has_send) + usize::from(has_new);
+    if kinds > 1 {
+        return Err("pass only one of --sessions, --session-send, --session-new".into());
+    }
+    if has_list {
         return Ok(CliCommand::List {
             include_archived: args.contains(&INCLUDE_ARCHIVED_FLAG),
+        });
+    }
+    if has_new {
+        let project = flag_value(&args, PROJECT_FLAG).ok_or_else(|| {
+            "usage: --session-new --project <path> --prompt <text> | --prompt-file <path>"
+                .to_string()
+        })?;
+        if project.trim().is_empty() {
+            return Err("empty --project".into());
+        }
+        let prompt = parse_prompt(&args)?;
+        if prompt.trim().is_empty() {
+            return Err("empty prompt".into());
+        }
+        return Ok(CliCommand::New {
+            project,
+            title: flag_value(&args, TITLE_FLAG),
+            prompt,
+            idempotency_key: flag_value(&args, IDEMPOTENCY_FLAG),
+            source: flag_value(&args, SOURCE_FLAG),
         });
     }
     if let Some(i) = args.iter().position(|a| *a == SESSION_SEND_FLAG) {
@@ -1039,6 +1142,377 @@ fn status_for(s: &TurnStatus) -> StatusCode {
     }
 }
 
+struct ParsedCreate {
+    project: store::Project,
+    title: Option<String>,
+    prompt: String,
+    idempotency_key: Option<String>,
+    source: Option<String>,
+}
+
+struct CreateInFlight {
+    key: String,
+}
+
+fn in_flight_lock() -> std::sync::MutexGuard<'static, HashSet<String>> {
+    CREATE_IN_FLIGHT
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+}
+
+impl Drop for CreateInFlight {
+    fn drop(&mut self) {
+        in_flight_lock().remove(&self.key);
+    }
+}
+
+async fn claim_create_idempotency(key: &str) -> CreateInFlight {
+    loop {
+        {
+            let mut guard = in_flight_lock();
+            if guard.insert(key.to_string()) {
+                return CreateInFlight {
+                    key: key.to_string(),
+                };
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+}
+
+fn fail_create(message: impl Into<String>) -> TurnResult {
+    TurnResult::fail(TurnStatus::Error, "", message)
+}
+
+fn non_empty(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|s| !s.is_empty())
+}
+
+fn normalize_source(raw: Option<&str>) -> Result<Option<String>, String> {
+    let Some(s) = non_empty(raw) else {
+        return Ok(None);
+    };
+    let ok = s.len() <= SOURCE_MAX_LEN
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-');
+    if !ok {
+        return Err(format!(
+            "source must be 1–{SOURCE_MAX_LEN} characters of [a-z0-9_-]"
+        ));
+    }
+    Ok(Some(s.to_string()))
+}
+
+fn normalize_path_key(path: &str) -> String {
+    path.trim().trim_end_matches(['/', '\\']).replace('\\', "/")
+}
+
+fn project_paths_match(stored: &str, given: &str) -> bool {
+    if normalize_path_key(stored) == normalize_path_key(given) {
+        return true;
+    }
+    match (
+        StdPath::new(stored).canonicalize(),
+        StdPath::new(given).canonicalize(),
+    ) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// Existing index row only. Never calls `add_project`.
+fn resolve_trusted_project(
+    project_id: Option<&str>,
+    project_path: Option<&str>,
+) -> Result<store::Project, String> {
+    if project_id.is_none() && project_path.is_none() {
+        return Err("projectPath or projectId is required".into());
+    }
+    let projects = store::load_projects();
+    let project = if let Some(id) = project_id {
+        let Some(found) = projects.iter().find(|p| p.id == id) else {
+            return Err(format!("project not found: {id}"));
+        };
+        if let Some(path) = project_path {
+            if !project_paths_match(&found.path, path) {
+                return Err("projectPath does not match projectId".into());
+            }
+        }
+        found.clone()
+    } else {
+        let path = project_path.unwrap_or("");
+        let mut hits: Vec<&store::Project> = projects
+            .iter()
+            .filter(|p| project_paths_match(&p.path, path))
+            .collect();
+        if hits.is_empty() {
+            return Err(format!("project not found: {path}"));
+        }
+        if hits.len() > 1 {
+            let exact: Vec<&store::Project> = hits
+                .iter()
+                .copied()
+                .filter(|p| normalize_path_key(&p.path) == normalize_path_key(path))
+                .collect();
+            if exact.len() == 1 {
+                hits = exact;
+            } else {
+                return Err(format!("project path is ambiguous: {path}"));
+            }
+        }
+        hits[0].clone()
+    };
+    if project.is_legacy_general() {
+        return Err(format!("project not found: {}", project.id));
+    }
+    if !project.trusted {
+        return Err(format!("project not trusted: {}", project.name));
+    }
+    if !project.path_ok && !project.is_ssh_remote() {
+        return Err(format!("project path missing: {}", project.name));
+    }
+    Ok(project)
+}
+
+fn parse_create_body(body: &CreateSessionBody) -> Result<ParsedCreate, Box<TurnResult>> {
+    if body
+        .worktree_path
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|s| !s.is_empty())
+    {
+        return Err(Box::new(fail_create("worktreePath is not supported")));
+    }
+    let prompt = body.prompt.trim();
+    if prompt.is_empty() {
+        return Err(Box::new(fail_create("empty prompt")));
+    }
+    let source = match normalize_source(body.source.as_deref()) {
+        Ok(source) => source,
+        Err(err) => return Err(Box::new(fail_create(err))),
+    };
+    let project = match resolve_trusted_project(
+        non_empty(body.project_id.as_deref()),
+        non_empty(body.project_path.as_deref()),
+    ) {
+        Ok(project) => project,
+        Err(err) => return Err(Box::new(fail_create(err))),
+    };
+    Ok(ParsedCreate {
+        project,
+        title: non_empty(body.title.as_deref()).map(str::to_string),
+        prompt: prompt.to_string(),
+        idempotency_key: non_empty(body.idempotency_key.as_deref()).map(str::to_string),
+        source,
+    })
+}
+
+/// Same row the sidebar's first send writes: `session_create` →
+/// `store::create_session` + `bind_default_workspace_if_unbound`.
+fn materialize_session(parsed: &ParsedCreate) -> Result<SessionMeta, (Option<String>, String)> {
+    let meta = store::create_session(Some(parsed.project.id.clone()), parsed.title.clone(), false)
+        .map_err(|err| (None, err))?;
+    let mut meta =
+        crate::workspace_store::bind_default_workspace_if_unbound(&meta.id).unwrap_or(meta);
+    if let Some(source) = parsed.source.clone() {
+        meta.source = Some(source);
+        if let Err(err) = store::update_session_meta(&meta) {
+            return Err((Some(meta.id), err));
+        }
+    }
+    Ok(meta)
+}
+
+fn remember_create(key: Option<&str>, result: &TurnResult) {
+    if result.session_id.is_empty() {
+        return;
+    }
+    if let Some(key) = key {
+        remember_idempotency(key, result);
+    }
+}
+
+/// Create an App session and start its first turn.
+///
+/// Idempotency reuses the continue-turn store (`session-new:` prefix). A key is
+/// recorded only after the session row exists, including `retry_later` / connect
+/// errors, so a retry cannot open a second chat. Validation failures are not
+/// recorded: the caller can fix the body or trust the project and reuse the key.
+pub async fn execute_create<D, Fut, N>(
+    body: CreateSessionBody,
+    dispatch: D,
+    on_created: N,
+) -> (StatusCode, TurnResult)
+where
+    D: FnOnce(String, String) -> Fut,
+    Fut: Future<Output = TurnResult>,
+    N: FnOnce(&str),
+{
+    let parsed = match parse_create_body(&body) {
+        Ok(parsed) => parsed,
+        Err(result) => return (status_for(&result.status), *result),
+    };
+    let storage_key = parsed
+        .idempotency_key
+        .as_ref()
+        .map(|key| format!("{CREATE_IDEMPOTENCY_PREFIX}{key}"));
+    if let Some(key) = storage_key.as_deref() {
+        if let Some(prev) = recall_idempotency(key) {
+            return (status_for(&prev.status), prev);
+        }
+    }
+    let _guard = match storage_key.as_deref() {
+        Some(key) => Some(claim_create_idempotency(key).await),
+        None => None,
+    };
+    if let Some(key) = storage_key.as_deref() {
+        if let Some(prev) = recall_idempotency(key) {
+            return (status_for(&prev.status), prev);
+        }
+    }
+
+    let meta = match materialize_session(&parsed) {
+        Ok(meta) => meta,
+        Err((maybe_id, message)) => {
+            let sid = maybe_id.unwrap_or_default();
+            if !sid.is_empty() {
+                on_created(&sid);
+            }
+            let mut result = TurnResult::fail(TurnStatus::Error, sid, message);
+            result.idempotency_key = parsed.idempotency_key.clone();
+            remember_create(storage_key.as_deref(), &result);
+            return (status_for(&result.status), result);
+        }
+    };
+    on_created(&meta.id);
+    let sid = meta.id.clone();
+    let mut result = dispatch(sid.clone(), parsed.prompt.clone()).await;
+    if result.session_id.is_empty() {
+        result.session_id = sid;
+    }
+    result.idempotency_key = parsed.idempotency_key.clone();
+    remember_create(storage_key.as_deref(), &result);
+    (status_for(&result.status), result)
+}
+
+pub fn truncate_chars(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let keep = max_chars.saturating_sub(1);
+    let mut out: String = text.chars().take(keep).collect();
+    out.push('…');
+    out
+}
+
+fn last_assistant_preview(messages: &[ChatMessageStored]) -> (Option<String>, bool) {
+    for message in messages.iter().rev() {
+        if message.role != "assistant" || message.marker.is_some() {
+            continue;
+        }
+        let text = message.content.trim();
+        if text.is_empty() && !message.is_error {
+            continue;
+        }
+        let preview = if text.is_empty() {
+            None
+        } else {
+            Some(truncate_chars(text, LAST_ASSISTANT_MAX_CHARS))
+        };
+        return (preview, message.is_error);
+    }
+    (None, false)
+}
+
+/// Map host signals + the journal's last assistant row.
+/// `needs_input` wins over `running`. A sticky ghost `Streaming` flag with no
+/// prompt, tools, or gate is idle (same rule as `live_session_is_busy`).
+pub fn map_api_session_phase(
+    signals: Option<&ExternalSessionSignals>,
+    last_assistant_is_error: bool,
+) -> ApiSessionPhase {
+    let Some(signals) = signals else {
+        return if last_assistant_is_error {
+            ApiSessionPhase::Error
+        } else {
+            ApiSessionPhase::Idle
+        };
+    };
+    let needs_input = signals.pending_plan
+        || signals.pending_ask_user
+        || signals.pending_permission
+        || signals.state == SessionState::AwaitingPermission;
+    if needs_input {
+        return ApiSessionPhase::NeedsInput;
+    }
+    let ghost_stream = signals.state == SessionState::Streaming
+        && !signals.prompt_in_flight
+        && !signals.open_tools
+        && !signals.deferred_prompt_complete
+        && !signals.pending_plan
+        && !signals.pending_ask_user
+        && !signals.pending_permission;
+    let running = !ghost_stream
+        && (signals.prompt_in_flight
+            || signals.open_tools
+            || signals.deferred_prompt_complete
+            || signals.has_streaming_message
+            || matches!(
+                signals.state,
+                SessionState::Streaming | SessionState::Connecting
+            ));
+    if running {
+        return ApiSessionPhase::Running;
+    }
+    if signals.has_last_error || last_assistant_is_error {
+        ApiSessionPhase::Error
+    } else {
+        ApiSessionPhase::Idle
+    }
+}
+
+pub fn session_detail(mgr: &SessionManager, id: &str) -> Result<SessionDetail, Box<TurnResult>> {
+    let id = id.trim();
+    if id.is_empty() {
+        return Err(Box::new(TurnResult::fail(
+            TurnStatus::Error,
+            "",
+            "session id is required",
+        )));
+    }
+    let Some(meta) = store::load_sessions_index()
+        .into_iter()
+        .find(|session| session.id == id)
+    else {
+        return Err(Box::new(TurnResult::fail(
+            TurnStatus::NotFound,
+            id,
+            "session not found",
+        )));
+    };
+    let projects = store::load_projects();
+    let project_name = meta.project_id.as_ref().and_then(|pid| {
+        projects
+            .iter()
+            .find(|project| &project.id == pid)
+            .map(|project| project.name.clone())
+    });
+    let (last_assistant_message, last_is_error) =
+        last_assistant_preview(&store::load_messages(&meta.id));
+    let signals = mgr.external_session_signals(&meta.id);
+    let status = map_api_session_phase(signals.as_ref(), last_is_error);
+    Ok(SessionDetail {
+        id: meta.id,
+        title: meta.title,
+        project_id: meta.project_id,
+        project_name,
+        status,
+        last_assistant_message,
+        updated_at: meta.updated_at.to_rfc3339(),
+        source: meta.source,
+    })
+}
+
 fn unauthorized() -> impl IntoResponse {
     (
         StatusCode::UNAUTHORIZED,
@@ -1059,6 +1533,51 @@ async fn get_sessions(
         return unauthorized().into_response();
     }
     Json(list_sessions(q.include_archived)).into_response()
+}
+
+async fn post_create(
+    State(state): State<HttpState>,
+    headers: HeaderMap,
+    Json(body): Json<CreateSessionBody>,
+) -> impl IntoResponse {
+    if !token_ok(&headers, &state.token) {
+        return unauthorized().into_response();
+    }
+    let app = state.app.clone();
+    let mgr = Arc::clone(&state.mgr);
+    let notify_app = state.app.clone();
+    let (code, result) = execute_create(
+        body,
+        move |sid, prompt| {
+            let app = app.clone();
+            let mgr = Arc::clone(&mgr);
+            async move {
+                match prepare_send(&sid, &prompt, "external") {
+                    Ok(prepared) => dispatch_turn_or_timeout(&app, &mgr, prepared).await,
+                    Err(result) => *result,
+                }
+            }
+        },
+        move |id| {
+            crate::mirror::notify_sessions_changed(Some(&notify_app), "create", id);
+        },
+    )
+    .await;
+    (code, Json(result)).into_response()
+}
+
+async fn get_session(
+    State(state): State<HttpState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    if !token_ok(&headers, &state.token) {
+        return unauthorized().into_response();
+    }
+    match session_detail(&state.mgr, &id) {
+        Ok(detail) => Json(detail).into_response(),
+        Err(result) => (status_for(&result.status), Json(*result)).into_response(),
+    }
 }
 
 async fn post_turn(
@@ -1194,7 +1713,8 @@ pub async fn start(app: AppHandle, mgr: Arc<SessionManager>) -> Result<SessionAp
     };
     let router = Router::new()
         .route("/v1/health", get(get_health))
-        .route("/v1/sessions", get(get_sessions))
+        .route("/v1/sessions", get(get_sessions).post(post_create))
+        .route("/v1/sessions/{id}", get(get_session))
         .route("/v1/sessions/{id}/turns", post(post_turn))
         .route("/v1/pr-monitor/watches", get(get_pr_watches))
         .route("/v1/pr-monitor/watches", post(post_pr_watch))
@@ -1366,6 +1886,52 @@ pub fn run_cli() -> i32 {
                 }
             }
         }
+        Ok(CliCommand::New {
+            project,
+            title,
+            prompt,
+            idempotency_key,
+            source,
+        }) => {
+            let Some(ep) = read_endpoint_file() else {
+                let mut out = TurnResult::fail(
+                    TurnStatus::AppNotRunning,
+                    "",
+                    "Grok App is not running. Start the app (or leave it in the tray), then retry.",
+                );
+                out.idempotency_key = idempotency_key;
+                print_turn(&out);
+                return 2;
+            };
+            match http_create(
+                &ep,
+                &project,
+                title.as_deref(),
+                &prompt,
+                idempotency_key.as_deref(),
+                source.as_deref(),
+            ) {
+                Ok(r) => {
+                    print_turn(&r);
+                    if r.ok {
+                        0
+                    } else if r.status == TurnStatus::Busy {
+                        3
+                    } else if r.status == TurnStatus::AppNotRunning {
+                        2
+                    } else {
+                        1
+                    }
+                }
+                Err(e) => {
+                    let (status, code, message) = classify_cli_transport_error(&e, "");
+                    let mut out = TurnResult::fail(status, "", message);
+                    out.idempotency_key = idempotency_key;
+                    print_turn(&out);
+                    code
+                }
+            }
+        }
         Err(e) => {
             if e.contains("not a session-api command") {
                 return -1;
@@ -1404,6 +1970,33 @@ fn http_list(ep: &EndpointFile, include_archived: bool) -> Result<Vec<SessionLis
     if !res.status().is_success() {
         return Err(format!("HTTP {}", res.status()));
     }
+    res.json().map_err(|e| e.to_string())
+}
+
+fn http_create(
+    ep: &EndpointFile,
+    project: &str,
+    title: Option<&str>,
+    prompt: &str,
+    idempotency_key: Option<&str>,
+    source: Option<&str>,
+) -> Result<TurnResult, String> {
+    let url = format!("{}/v1/sessions", ep.url.trim_end_matches('/'));
+    let body = CreateSessionBody {
+        project_path: Some(project.to_string()),
+        project_id: None,
+        title: title.map(str::to_string),
+        prompt: prompt.to_string(),
+        idempotency_key: idempotency_key.map(str::to_string),
+        source: source.map(str::to_string),
+        worktree_path: None,
+    };
+    let res = http_client()?
+        .post(url)
+        .header(header::AUTHORIZATION, format!("Bearer {}", ep.token))
+        .json(&body)
+        .send()
+        .map_err(|e| e.to_string())?;
     res.json().map_err(|e| e.to_string())
 }
 
@@ -1702,5 +2295,566 @@ mod tests {
         let v = health_payload(&mgr);
         assert_eq!(v["ok"], true);
         assert_eq!(v["connectLockBusy"], false);
+    }
+
+    #[test]
+    fn parse_session_new_cli() {
+        let cmd = parse_cli(&[
+            "grok-app".into(),
+            "--session-new".into(),
+            "--project".into(),
+            "/tmp/repo".into(),
+            "--title".into(),
+            "job".into(),
+            "--prompt".into(),
+            "do the thing".into(),
+            "--idempotency-key".into(),
+            "k1".into(),
+            "--source".into(),
+            "grok-bot".into(),
+        ])
+        .unwrap();
+        assert_eq!(
+            cmd,
+            CliCommand::New {
+                project: "/tmp/repo".into(),
+                title: Some("job".into()),
+                prompt: "do the thing".into(),
+                idempotency_key: Some("k1".into()),
+                source: Some("grok-bot".into()),
+            }
+        );
+        let err = parse_cli(&["grok-app".into(), "--session-new".into()]).unwrap_err();
+        assert!(err.contains("--project"), "{err}");
+        let err = parse_cli(&[
+            "grok-app".into(),
+            "--session-new".into(),
+            "--project".into(),
+            "/tmp/repo".into(),
+        ])
+        .unwrap_err();
+        assert!(err.contains("prompt"), "{err}");
+        let err = parse_cli(&[
+            "grok-app".into(),
+            "--sessions".into(),
+            "--session-new".into(),
+            "--project".into(),
+            "/tmp/repo".into(),
+            "--prompt".into(),
+            "x".into(),
+        ])
+        .unwrap_err();
+        assert!(err.contains("only one"), "{err}");
+    }
+
+    #[test]
+    fn source_charset_and_length() {
+        assert_eq!(
+            normalize_source(Some(" grok-bot_1 ")).unwrap().as_deref(),
+            Some("grok-bot_1")
+        );
+        assert_eq!(normalize_source(Some("  ")).unwrap(), None);
+        assert_eq!(normalize_source(None).unwrap(), None);
+        assert!(normalize_source(Some("Grok")).is_err());
+        assert!(normalize_source(Some("has space")).is_err());
+        assert!(normalize_source(Some(&"a".repeat(SOURCE_MAX_LEN + 1))).is_err());
+        assert!(normalize_source(Some(&"a".repeat(SOURCE_MAX_LEN))).is_ok());
+    }
+
+    #[test]
+    fn project_paths_match_ignores_trailing_slash() {
+        assert!(project_paths_match("/tmp/foo", "/tmp/foo/"));
+        assert!(project_paths_match(r"C:\work\app\", r"C:\work\app"));
+        assert!(!project_paths_match("/tmp/foo", "/tmp/bar"));
+    }
+
+    #[test]
+    fn session_phase_mapping() {
+        assert_eq!(map_api_session_phase(None, false), ApiSessionPhase::Idle);
+        assert_eq!(map_api_session_phase(None, true), ApiSessionPhase::Error);
+        let idle = ExternalSessionSignals::parked_idle();
+        assert_eq!(
+            map_api_session_phase(Some(&idle), false),
+            ApiSessionPhase::Idle
+        );
+        let mut running = idle;
+        running.prompt_in_flight = true;
+        assert_eq!(
+            map_api_session_phase(Some(&running), true),
+            ApiSessionPhase::Running
+        );
+        let mut connecting = idle;
+        connecting.state = SessionState::Connecting;
+        assert_eq!(
+            map_api_session_phase(Some(&connecting), false),
+            ApiSessionPhase::Running
+        );
+        let mut tools = idle;
+        tools.open_tools = true;
+        assert_eq!(
+            map_api_session_phase(Some(&tools), false),
+            ApiSessionPhase::Running
+        );
+        let mut perm = idle;
+        perm.state = SessionState::AwaitingPermission;
+        perm.pending_permission = true;
+        assert_eq!(
+            map_api_session_phase(Some(&perm), false),
+            ApiSessionPhase::NeedsInput
+        );
+        let mut ask = idle;
+        ask.pending_ask_user = true;
+        assert_eq!(
+            map_api_session_phase(Some(&ask), false),
+            ApiSessionPhase::NeedsInput
+        );
+        let mut plan = idle;
+        plan.pending_plan = true;
+        plan.prompt_in_flight = true;
+        assert_eq!(
+            map_api_session_phase(Some(&plan), false),
+            ApiSessionPhase::NeedsInput
+        );
+        let mut ghost = idle;
+        ghost.state = SessionState::Streaming;
+        ghost.has_streaming_message = true;
+        assert_eq!(
+            map_api_session_phase(Some(&ghost), false),
+            ApiSessionPhase::Idle
+        );
+        assert_eq!(
+            map_api_session_phase(Some(&ghost), true),
+            ApiSessionPhase::Error
+        );
+        let mut failed = idle;
+        failed.has_last_error = true;
+        failed.state = SessionState::Disconnected;
+        assert_eq!(
+            map_api_session_phase(Some(&failed), false),
+            ApiSessionPhase::Error
+        );
+        assert_eq!(
+            serde_json::to_value(ApiSessionPhase::NeedsInput).unwrap(),
+            serde_json::json!("needs_input")
+        );
+    }
+
+    #[test]
+    fn truncate_chars_keeps_unicode_boundary() {
+        assert_eq!(truncate_chars("hello", 10), "hello");
+        assert_eq!(truncate_chars("abcdef", 4), "abc…");
+        assert_eq!(truncate_chars("你好世界", 3), "你好…");
+    }
+
+    struct Home {
+        dir: std::path::PathBuf,
+        prev: Option<String>,
+    }
+
+    impl Home {
+        fn enter() -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "grok-f5-{}-{}",
+                std::process::id(),
+                uuid::Uuid::new_v4()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            let prev = std::env::var("GROK_APP_HOME").ok();
+            std::env::set_var("GROK_APP_HOME", &dir);
+            Self { dir, prev }
+        }
+    }
+
+    impl Drop for Home {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(value) => std::env::set_var("GROK_APP_HOME", value),
+                None => std::env::remove_var("GROK_APP_HOME"),
+            }
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn trusted_project(trust: bool) -> store::Project {
+        let dir = crate::paths::app_data_root().join(if trust { "proj-ok" } else { "proj-no" });
+        std::fs::create_dir_all(&dir).unwrap();
+        store::add_project(dir.to_string_lossy().to_string(), trust).unwrap()
+    }
+
+    fn create_body(project: &store::Project, key: &str) -> CreateSessionBody {
+        CreateSessionBody {
+            project_path: Some(project.path.clone()),
+            project_id: None,
+            title: Some("job one".into()),
+            prompt: "hello from f5".into(),
+            idempotency_key: Some(key.into()),
+            source: Some("grok-bot".into()),
+            worktree_path: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn create_rejects_bad_input_without_a_session() {
+        let (code, result) = execute_create(
+            CreateSessionBody {
+                project_path: Some("/tmp/does-not-matter".into()),
+                project_id: None,
+                title: None,
+                prompt: "  ".into(),
+                idempotency_key: None,
+                source: None,
+                worktree_path: None,
+            },
+            |_sid, _prompt| async { unreachable!("dispatch") },
+            |_| {},
+        )
+        .await;
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        assert!(result.message.unwrap().contains("empty prompt"));
+
+        let (code, result) = execute_create(
+            CreateSessionBody {
+                project_path: None,
+                project_id: None,
+                title: None,
+                prompt: "hi".into(),
+                idempotency_key: None,
+                source: Some("Nope".into()),
+                worktree_path: None,
+            },
+            |_sid, _prompt| async { unreachable!("dispatch") },
+            |_| {},
+        )
+        .await;
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        assert!(result.message.unwrap().contains("[a-z0-9_-]"));
+
+        let (code, result) = execute_create(
+            CreateSessionBody {
+                project_path: Some("/tmp/proj".into()),
+                project_id: None,
+                title: None,
+                prompt: "hi".into(),
+                idempotency_key: None,
+                source: None,
+                worktree_path: Some("/tmp/wt".into()),
+            },
+            |_sid, _prompt| async { unreachable!("dispatch") },
+            |_| {},
+        )
+        .await;
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        assert!(result.message.unwrap().contains("worktreePath"));
+    }
+
+    // The env lock is process-global and must cover every store call inside
+    // the awaits. These tests never lock it again on this task.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn create_refuses_missing_untrusted_and_broken_projects() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let _home = Home::enter();
+
+        let (code, missing) = execute_create(
+            CreateSessionBody {
+                project_path: Some("/tmp/not-a-registered-project".into()),
+                project_id: None,
+                title: None,
+                prompt: "hi".into(),
+                idempotency_key: Some("missing".into()),
+                source: None,
+                worktree_path: None,
+            },
+            |_sid, _prompt| async { unreachable!("dispatch") },
+            |_| {},
+        )
+        .await;
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        assert!(
+            missing
+                .message
+                .as_deref()
+                .unwrap()
+                .contains("project not found"),
+            "{:?}",
+            missing.message
+        );
+        assert!(store::load_projects().is_empty());
+        assert!(store::load_sessions_index().is_empty());
+
+        let untrusted = trusted_project(false);
+        let before = store::load_projects().len();
+        let (code, denied) = execute_create(
+            create_body(&untrusted, "untrusted"),
+            |_sid, _prompt| async { unreachable!("dispatch") },
+            |_| {},
+        )
+        .await;
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        assert!(
+            denied.message.as_deref().unwrap().contains("not trusted"),
+            "{:?}",
+            denied.message
+        );
+        assert_eq!(store::load_projects().len(), before);
+        assert!(store::load_sessions_index().is_empty());
+
+        // `load_projects` recomputes `path_ok` from the directory. A saved
+        // `path_ok: false` does not stick while the folder still exists.
+        std::fs::remove_dir_all(&untrusted.path).unwrap();
+        let mut projects = store::load_projects();
+        assert!(!projects[0].path_ok, "a missing folder must clear path_ok");
+        projects[0].trusted = true;
+        store::save_projects(&projects).unwrap();
+        let (code, broken) = execute_create(
+            create_body(&untrusted, "broken-path"),
+            |_sid, _prompt| async { unreachable!("dispatch") },
+            |_| {},
+        )
+        .await;
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        assert!(
+            broken.message.as_deref().unwrap().contains("path missing"),
+            "{:?}",
+            broken.message
+        );
+        assert!(store::load_sessions_index().is_empty());
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn create_is_idempotent_and_detail_maps_journal_error() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let _home = Home::enter();
+        let project = trusted_project(true);
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let body = create_body(&project, "job-1");
+
+        let c1 = std::sync::Arc::clone(&calls);
+        let (code, first) = execute_create(
+            body.clone(),
+            move |sid, prompt| {
+                c1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async move {
+                    assert_eq!(prompt, "hello from f5");
+                    TurnResult::started(sid)
+                }
+            },
+            |_| {},
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(first.status, TurnStatus::TurnStarted);
+        assert!(!first.session_id.is_empty());
+
+        let c2 = std::sync::Arc::clone(&calls);
+        let (code, second) = execute_create(
+            body,
+            move |sid, _prompt| {
+                c2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async move { TurnResult::started(sid) }
+            },
+            |_| {},
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(second.session_id, first.session_id);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        let rows = store::load_sessions_index();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].source.as_deref(), Some("grok-bot"));
+        assert_eq!(rows[0].project_id.as_deref(), Some(project.id.as_str()));
+        assert_eq!(rows[0].title, "job one");
+
+        let mgr = SessionManager::new();
+        let detail = session_detail(&mgr, &first.session_id).unwrap();
+        assert_eq!(detail.status, ApiSessionPhase::Idle);
+        assert!(detail.last_assistant_message.is_none());
+        assert_eq!(detail.project_name.as_deref(), Some(project.name.as_str()));
+        assert_eq!(detail.source.as_deref(), Some("grok-bot"));
+
+        let missing = session_detail(&mgr, "missing-session").unwrap_err();
+        assert_eq!(missing.status, TurnStatus::NotFound);
+
+        store::append_message(
+            &first.session_id,
+            store::ChatMessageStored {
+                id: "m-err".into(),
+                role: "assistant".into(),
+                content: "x".repeat(LAST_ASSISTANT_MAX_CHARS + 20),
+                thought: None,
+                created_at: chrono::Utc::now(),
+                is_error: true,
+                attachments: None,
+                marker: None,
+            },
+        )
+        .unwrap();
+        let detail = session_detail(&mgr, &first.session_id).unwrap();
+        assert_eq!(detail.status, ApiSessionPhase::Error);
+        let preview = detail.last_assistant_message.unwrap();
+        assert_eq!(preview.chars().count(), LAST_ASSISTANT_MAX_CHARS);
+        assert!(preview.ends_with('…'));
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn http_create_and_get_roundtrip_with_curl() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let _home = Home::enter();
+        let project = trusted_project(true);
+        let token = "f5-test-token".to_string();
+        let state = TestHttp {
+            token: token.clone(),
+            mgr: std::sync::Arc::new(SessionManager::new()),
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let app = axum::Router::new()
+            .route("/v1/sessions", post(test_post_create))
+            .route("/v1/sessions/{id}", get(test_get_session))
+            .with_state(state);
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let url = format!("http://127.0.0.1:{port}/v1/sessions");
+        let payload = serde_json::json!({
+            "projectPath": project.path,
+            "title": "curl job",
+            "prompt": "hello curl",
+            "idempotencyKey": "curl-1",
+            "source": "grok-bot",
+        });
+        let created = curl_json("POST", &url, Some(&token), Some(&payload.to_string())).await;
+        let again = curl_json("POST", &url, Some(&token), Some(&payload.to_string())).await;
+        let unauth = curl_json("POST", &url, None, Some(&payload.to_string())).await;
+        let id = created["json"]["sessionId"].as_str().unwrap().to_string();
+        let got = curl_json(
+            "GET",
+            &format!("http://127.0.0.1:{port}/v1/sessions/{id}"),
+            Some(&token),
+            None,
+        )
+        .await;
+        let unknown = curl_json(
+            "POST",
+            &url,
+            Some(&token),
+            Some(
+                &serde_json::json!({
+                    "projectPath": "/tmp/not-registered-f5",
+                    "prompt": "nope",
+                })
+                .to_string(),
+            ),
+        )
+        .await;
+
+        let log = format!(
+            "create:\n{created:#}\nreplay:\n{again:#}\nget:\n{got:#}\nunauth:\n{unauth:#}\nunknown:\n{unknown:#}\n"
+        );
+        std::fs::write("/tmp/f5-curl.txt", &log).unwrap();
+        eprintln!("{log}");
+
+        assert_eq!(created["http"].as_u64().unwrap(), 200);
+        assert_eq!(created["json"]["status"], "turn_started");
+        assert_eq!(again["http"].as_u64().unwrap(), 200);
+        assert_eq!(again["json"]["sessionId"], created["json"]["sessionId"]);
+        assert_eq!(store::load_sessions_index().len(), 1);
+        assert_eq!(unauth["http"].as_u64().unwrap(), 401);
+        assert_eq!(got["http"].as_u64().unwrap(), 200);
+        assert_eq!(got["json"]["status"], "idle");
+        assert_eq!(got["json"]["source"], "grok-bot");
+        assert_eq!(got["json"]["title"], "curl job");
+        assert_eq!(got["json"]["projectId"], project.id);
+        assert!(got["json"].get("totalTokens").is_none());
+        assert!(got["json"].get("costUsd").is_none());
+        assert_eq!(unknown["http"].as_u64().unwrap(), 400);
+        assert!(unknown["json"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("project not found"));
+        assert_eq!(store::load_projects().len(), 1);
+
+        server.abort();
+    }
+
+    #[derive(Clone)]
+    struct TestHttp {
+        token: String,
+        mgr: std::sync::Arc<SessionManager>,
+    }
+
+    async fn test_post_create(
+        axum::extract::State(state): axum::extract::State<TestHttp>,
+        headers: HeaderMap,
+        axum::Json(body): axum::Json<CreateSessionBody>,
+    ) -> impl axum::response::IntoResponse {
+        if !token_ok(&headers, &state.token) {
+            return unauthorized().into_response();
+        }
+        let (code, result) = execute_create(
+            body,
+            |sid, _prompt| async move { TurnResult::started(sid) },
+            |_| {},
+        )
+        .await;
+        (code, axum::Json(result)).into_response()
+    }
+
+    async fn test_get_session(
+        axum::extract::State(state): axum::extract::State<TestHttp>,
+        headers: HeaderMap,
+        axum::extract::Path(id): axum::extract::Path<String>,
+    ) -> impl axum::response::IntoResponse {
+        if !token_ok(&headers, &state.token) {
+            return unauthorized().into_response();
+        }
+        match session_detail(&state.mgr, &id) {
+            Ok(detail) => axum::Json(detail).into_response(),
+            Err(result) => (status_for(&result.status), axum::Json(*result)).into_response(),
+        }
+    }
+
+    async fn curl_json(
+        method: &str,
+        url: &str,
+        token: Option<&str>,
+        body: Option<&str>,
+    ) -> serde_json::Value {
+        let mut cmd = tokio::process::Command::new("curl");
+        cmd.arg("-sS")
+            .arg("-w")
+            .arg("\n%{http_code}")
+            .arg("-X")
+            .arg(method)
+            .arg(url);
+        if let Some(token) = token {
+            cmd.arg("-H").arg(format!("Authorization: Bearer {token}"));
+        }
+        if let Some(body) = body {
+            cmd.arg("-H")
+                .arg("Content-Type: application/json")
+                .arg("--data")
+                .arg(body);
+        }
+        let out = cmd.output().await.expect("curl");
+        let text = String::from_utf8_lossy(&out.stdout);
+        let (body, code) = text.rsplit_once('\n').unwrap_or((text.as_ref(), "0"));
+        let json: serde_json::Value = serde_json::from_str(body).unwrap_or(serde_json::json!({
+            "raw": body,
+            "stderr": String::from_utf8_lossy(&out.stderr),
+        }));
+        serde_json::json!({
+            "http": code.trim().parse::<u64>().unwrap_or(0),
+            "json": json,
+        })
     }
 }
