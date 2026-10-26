@@ -842,6 +842,8 @@ mod tests {
         assert_eq!(sealed_share_spawn_profile("app_ws_ab12"), "app_ws_ab12");
     }
 
+    // Seatbelt grant; Windows has no sandbox and escapes backslashes in the TOML.
+    #[cfg(unix)]
     #[test]
     fn sealed_share_grant_keeps_one_sessions_directory() {
         with_app_home(|root| {
