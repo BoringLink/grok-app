@@ -14,7 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, Url, WebviewUrl, WebviewWindowBuilder};
 
 use crate::side_browser_host::{emit_page_load, get_side_webview};
 
-const AUTH_WINDOW_LABEL: &str = "side-browser-google-auth";
+pub(crate) const AUTH_WINDOW_LABEL: &str = "side-browser-google-auth";
 const EXTERNAL_OPEN_EVENT: &str = "side-browser://external-open";
 
 /// Stable WKWebView data-store id (macOS 14+). Windows/Linux use `data_directory`.

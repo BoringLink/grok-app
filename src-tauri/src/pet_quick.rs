@@ -229,7 +229,7 @@ fn attach_pet_follow(app: &AppHandle) {
     });
 }
 
-fn ensure_quick(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
+pub(crate) fn ensure_quick(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
     if let Some(w) = app.get_webview_window(QUICK_WINDOW_LABEL) {
         return Ok(w);
     }
