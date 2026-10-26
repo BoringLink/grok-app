@@ -1,0 +1,35 @@
+src/lib/composerGhostChars.ts
+  s_e5f40484180069::t_3a4212cf0d29ba 8-9,12-13,15,17,23,26-28
+  s_e5f40484180069::t_3813a0fedaf455 1-7,10-11,14,16,18-22,24-25,29
+src/lib/composerMarkdown.test.ts
+  s_e5f40484180069::t_dec96ab27259b7 207-214
+src/lib/composerMarkdown.ts
+  s_e5f40484180069::t_36cc89ebc6df8a 16
+  s_e5f40484180069::t_db72788b654dc2 255-256
+src/components/composer/tiptap/composerExtensions.ts
+  s_e5f40484180069::t_b2e1ccd6034d40 20,304
+src/lib/composerGhostChars.test.ts
+  s_e5f40484180069::t_9809fe25ce7a90 1-18,20,22-43
+  s_e5f40484180069::t_cacebb252bb0ee 19,21
+src/components/composer/tiptap/composerGhostGuard.ts
+  s_e5f40484180069::t_19572ad55165ca 1-92
+src/components/composer/tiptap/composerGhostGuard.test.ts
+  s_e5f40484180069::t_a11f093d40c42a 31-35
+  s_e5f40484180069::t_8ba3d32f45b8a6 1-30,36-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "396f1a2b38d67b65e0a82eedb511b161a2858238",
+  "prompts": {},
+  "sessions": {
+    "s_e5f40484180069": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1773d-8c1c-73e2-98a7-bca6ae6ef3c5",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
