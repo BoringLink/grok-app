@@ -615,6 +615,7 @@ impl SessionManager {
                 }
             }
             AcpEvent::ProcessExited { code } => {
+                crate::workflow_followup::disarm(app_session_id);
                 self.pending_soft_respawn.lock().remove(app_session_id);
                 let mut gate_invalidations: Vec<serde_json::Value> = Vec::new();
                 let mut pending_emits = Vec::new();
@@ -952,6 +953,9 @@ impl SessionManager {
                     self.promote_background_ready_to_parked(app_session_id);
                     Self::emit_state(app, &self.snapshot());
                 }
+            }
+            AcpEvent::WorkflowFollowup(wire) => {
+                self.handle_workflow_followup(app, app_session_id, wire);
             }
             _ => {
                 // stderr / other variants — log only

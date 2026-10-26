@@ -172,6 +172,9 @@ pub enum AcpEvent {
     ProcessExited {
         code: Option<i32>,
     },
+    /// CLI-started turn after a background workflow finishes
+    /// (`promptId` prefix `workflow-completed-`). Not a Host `session/prompt`.
+    WorkflowFollowup(crate::workflow_followup::Wire),
     /// Subagent lifecycle from `_x.ai/session_notification`.
     ///
     /// CLI 1.0.x emits `subagent_spawned` / `subagent_progress` /
@@ -1774,6 +1777,13 @@ impl AcpClient {
         }
     }
 
+    fn session_load_pending(&self) -> bool {
+        self.pending
+            .lock()
+            .values()
+            .any(|p| p.method == "session/load")
+    }
+
     fn touch_last_update(&self, session_id: Option<&str>, at: Instant) {
         if let Some(sid) = session_id.filter(|s| !s.is_empty()) {
             self.last_update_by_session
@@ -1866,7 +1876,24 @@ impl AcpClient {
         // decoded events so the SessionManager can route them to the right
         // App session when one process hosts several. Missing sid → None
         // (process-scoped fallback).
-        let events = decode_session_update(params);
+        let mut events = decode_session_update(params);
+        // A finished background workflow starts its own turn. Prepend the
+        // open so the stream/tool events in this same notification are not
+        // dropped as load replay. Append the end so usage on `turn_completed`
+        // still sees the turn open. Suppress while `session/load` is pending:
+        // those copies are history, and the id stays suppressed after the
+        // RPC result removes the pending entry.
+        if let Some(wire) = crate::workflow_followup::decode_followup(params) {
+            if let Some(place) =
+                crate::workflow_followup::admission(self.session_load_pending(), &wire)
+            {
+                let ev = AcpEvent::WorkflowFollowup(wire);
+                match place {
+                    crate::workflow_followup::Admission::Before => events.insert(0, ev),
+                    crate::workflow_followup::Admission::After => events.push(ev),
+                }
+            }
+        }
         if events.is_empty() {
             let update = params.get("update").unwrap_or(params);
             let kind = update

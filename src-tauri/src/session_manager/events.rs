@@ -32,8 +32,19 @@ impl SessionManager {
         if let AcpEvent::ProcessExited { code } = &ev {
             let exit_code = *code;
             {
-                let mut parked = self.parked.lock();
-                parked.retain(|_, p| p.process_id != process_id);
+                let doomed: Vec<String> = {
+                    let mut parked = self.parked.lock();
+                    let doomed: Vec<String> = parked
+                        .iter()
+                        .filter(|(_, p)| p.process_id == process_id)
+                        .map(|(id, _)| id.clone())
+                        .collect();
+                    parked.retain(|_, p| p.process_id != process_id);
+                    doomed
+                };
+                for id in doomed {
+                    crate::workflow_followup::disarm(&id);
+                }
             }
             // Background mid-turn shells need their own cancel path.
             let bg_ids: Vec<String> = self
@@ -99,6 +110,21 @@ impl SessionManager {
                     prompt_in_flight: false,
                 })
                 .collect();
+            // A parked director chat still owns the ACP process. A workflow
+            // result is the one event allowed to move that chat to background
+            // so the answer is not dropped. Other events stay dropped.
+            let parked_followup = match &ev {
+                AcpEvent::WorkflowFollowup(_) => session_id.and_then(|agent| {
+                    parked_hints
+                        .iter()
+                        .find(|p| {
+                            p.process_id == process_id
+                                && p.agent_session_id.as_deref() == Some(agent)
+                        })
+                        .map(|p| p.app_session_id.clone())
+                }),
+                _ => None,
+            };
             match resolve_turn_event_route(
                 process_id,
                 session_id,
@@ -112,6 +138,16 @@ impl SessionManager {
                     return;
                 }
                 TurnEventRoute::Drop => {
+                    if let Some(sid) = parked_followup {
+                        let delivered =
+                            self.requeue_parked_as_background(&sid) || self.is_live_session(&sid);
+                        if delivered {
+                            if let AcpEvent::WorkflowFollowup(wire) = ev {
+                                self.handle_workflow_followup(app, &sid, wire);
+                            }
+                            return;
+                        }
+                    }
                     if Self::event_carries_turn_output(&ev) {
                         tracing::debug!(
                             "acp event dropped: no apply target process={process_id} agent_sid={session_id:?} ev={}",
@@ -1020,6 +1056,7 @@ impl SessionManager {
                         s.active_turn_id = None;
                         s.stream_message_id_locked = false;
                         s.prompt_in_flight = false;
+                        crate::workflow_followup::disarm(&s.app_session_id);
                     }
                 }
                 Self::emit_stream_payloads(app, pending_emits);
@@ -1126,6 +1163,18 @@ impl SessionManager {
                 };
                 if !app_sid.is_empty() {
                     let _ = app.emit("session://subagent", sub.to_payload(&app_sid));
+                }
+            }
+            AcpEvent::WorkflowFollowup(wire) => {
+                let app_sid = {
+                    let guard = self.inner.lock();
+                    guard
+                        .as_ref()
+                        .map(|s| s.app_session_id.clone())
+                        .unwrap_or_default()
+                };
+                if !app_sid.is_empty() {
+                    self.handle_workflow_followup(app, &app_sid, wire);
                 }
             }
             AcpEvent::RetryState {

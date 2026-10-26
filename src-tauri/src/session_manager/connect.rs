@@ -2126,6 +2126,7 @@ impl SessionManager {
             AcpEvent::HookActivity { .. } => "hook_activity",
             AcpEvent::GoalUpdated { .. } => "goal_updated",
             AcpEvent::Subagent(_) => "subagent",
+            AcpEvent::WorkflowFollowup(_) => "workflow_followup",
         }
     }
 
@@ -2142,6 +2143,7 @@ impl SessionManager {
                 | AcpEvent::AskUserQuestion { .. }
                 | AcpEvent::Error { .. }
                 | AcpEvent::ProcessExited { .. }
+                | AcpEvent::WorkflowFollowup(_)
         )
     }
 
