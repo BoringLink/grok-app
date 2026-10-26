@@ -1371,10 +1371,28 @@ fn canonicalize_worktree_arg(raw: Option<&str>) -> Result<Option<PathBuf>, Strin
     Ok(Some(canon))
 }
 
+/// Test stand-in for `git worktree list --porcelain`. Keyed by the project
+/// path string `list_project_worktrees` receives, so other tests still call git.
+#[cfg(test)]
+static WORKTREE_PORCELAIN_OVERRIDE: std::sync::Mutex<Option<(String, String)>> =
+    std::sync::Mutex::new(None);
+
 /// Read-only. Never `git worktree add` — this slice does not create checkouts.
 fn list_project_worktrees(
     project_path: &str,
 ) -> Result<Vec<crate::commands::GitWorktreeEntry>, String> {
+    #[cfg(test)]
+    if let Some(raw) = {
+        let guard = WORKTREE_PORCELAIN_OVERRIDE
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        guard
+            .as_ref()
+            .filter(|(key, _)| key == project_path)
+            .map(|(_, raw)| raw.clone())
+    } {
+        return Ok(crate::commands::parse_worktree_porcelain(&raw));
+    }
     let out = crate::process_util::command("git")
         .env("GIT_TERMINAL_PROMPT", "0")
         .args(["-C", project_path, "worktree", "list", "--porcelain"])
@@ -2891,37 +2909,22 @@ mod tests {
         assert!(preview.ends_with('…'));
     }
 
-    struct GitTrees {
+    struct TempTrees {
         root: std::path::PathBuf,
         main: std::path::PathBuf,
         linked: std::path::PathBuf,
     }
 
-    impl Drop for GitTrees {
+    impl Drop for TempTrees {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.root);
         }
     }
 
-    fn git_at(dir: &std::path::Path, args: &[&str]) {
-        let out = std::process::Command::new("git")
-            .args(args)
-            .current_dir(dir)
-            .env("GIT_AUTHOR_NAME", "f11")
-            .env("GIT_AUTHOR_EMAIL", "f11@example.com")
-            .env("GIT_COMMITTER_NAME", "f11")
-            .env("GIT_COMMITTER_EMAIL", "f11@example.com")
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .output()
-            .unwrap_or_else(|err| panic!("git {args:?}: {err}"));
-        assert!(
-            out.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
-
-    fn git_trees() -> GitTrees {
+    /// Directories only. The test injects porcelain instead of spawning git,
+    /// and creates the escape symlink only on Unix (`symlink_dir` needs a
+    /// privilege Windows CI does not have).
+    fn temp_trees() -> TempTrees {
         let root = std::env::temp_dir().join(format!(
             "grok-f11-wt-{}-{}",
             std::process::id(),
@@ -2930,28 +2933,35 @@ mod tests {
         let main = root.join("repo");
         let linked = root.join("repo-feat");
         std::fs::create_dir_all(&main).unwrap();
-        git_at(&main, &["init", "-b", "main"]);
-        git_at(&main, &["config", "user.email", "f11@example.com"]);
-        git_at(&main, &["config", "user.name", "f11"]);
-        git_at(&main, &["commit", "--allow-empty", "-m", "init"]);
-        git_at(
-            &main,
-            &[
-                "worktree",
-                "add",
-                "-b",
-                "feat",
-                linked.to_str().expect("utf8 worktree path"),
-            ],
-        );
-        GitTrees { root, main, linked }
+        std::fs::create_dir_all(&linked).unwrap();
+        TempTrees { root, main, linked }
     }
 
-    fn link_dir(target: &std::path::Path, link: &std::path::Path) {
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(target, link).unwrap();
-        #[cfg(windows)]
-        std::os::windows::fs::symlink_dir(target, link).unwrap();
+    fn porcelain_for(main: &std::path::Path, linked: &std::path::Path) -> String {
+        format!(
+            "worktree {main}\nHEAD abcdef\nbranch refs/heads/main\n\nworktree {linked}\nHEAD fedcba\nbranch refs/heads/feat\n",
+            main = main.display(),
+            linked = linked.display()
+        )
+    }
+
+    struct PorcelainOverride;
+
+    impl PorcelainOverride {
+        fn arm(project_path: &str, raw: String) -> Self {
+            *super::WORKTREE_PORCELAIN_OVERRIDE
+                .lock()
+                .unwrap_or_else(|err| err.into_inner()) = Some((project_path.to_string(), raw));
+            Self
+        }
+    }
+
+    impl Drop for PorcelainOverride {
+        fn drop(&mut self) {
+            *super::WORKTREE_PORCELAIN_OVERRIDE
+                .lock()
+                .unwrap_or_else(|err| err.into_inner()) = None;
+        }
     }
 
     fn canon_path(path: &std::path::Path) -> String {
@@ -2968,16 +2978,22 @@ mod tests {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
         let _home = Home::enter();
-        let trees = git_trees();
+        let trees = temp_trees();
         let project = store::add_project(trees.main.to_string_lossy().to_string(), true).unwrap();
+        let _porcelain =
+            PorcelainOverride::arm(&project.path, porcelain_for(&trees.main, &trees.linked));
         let projects_before = store::load_projects().len();
         let canon_main = canon_path(&trees.main);
         let canon_linked = canon_path(&trees.linked);
 
         let outside = trees.root.join("outside");
         std::fs::create_dir_all(&outside).unwrap();
-        let escape = trees.root.join("escape-link");
-        link_dir(&outside, &escape);
+        #[cfg(unix)]
+        let escape = {
+            let escape = trees.root.join("escape-link");
+            std::os::unix::fs::symlink(&outside, &escape).unwrap();
+            escape
+        };
 
         async fn reject(body: CreateSessionBody, needle: &str) {
             let (code, result) = execute_create(
@@ -3021,6 +3037,7 @@ mod tests {
             "not a worktree of this project",
         )
         .await;
+        #[cfg(unix)]
         reject(
             base(escape.to_string_lossy().into(), Some("escape")),
             "not a worktree of this project",
