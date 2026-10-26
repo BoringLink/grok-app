@@ -13,6 +13,38 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.45] - 2026-10-27
+
+> **Highlight:** Scheduled tasks can pick their own model, and macOS sandboxed chats start again.
+>
+> **中文 · 亮点：** 定时任务可以指定模型，macOS 沙箱对话也能重新正常启动。
+
+### Added
+- Scheduled tasks can run on a chosen model from the official catalog or a custom provider. They no longer fall back to your current default model.
+- The interface zoom you set with Ctrl/Cmd and +/- is remembered the next time you open the app.
+- The local session API can put a new chat in an existing git worktree of a trusted project.
+
+**中文 · 新增**
+- 定时任务可以使用指定的官方或自定义提供商模型，不再回退到当前默认模型。
+- 用 Ctrl/Cmd 加减号调好的界面缩放，下次打开应用时会保留。
+- 本地会话接口可以把新对话放进受信项目已有的 git worktree。
+
+### Changed
+- Sidebar text in the default light theme is darker and easier to read.
+- A custom relay channel shows only its own model in the model menu.
+
+**中文 · 变更**
+- 默认浅色主题下，侧栏文字更深、更清晰。
+- 自定义中转通道在模型菜单里只显示它自己的模型。
+
+### Fixed
+- Chats started with the macOS workspace sandbox can create sessions again.
+- The Markdown composer no longer leaves a box character when you press the right arrow at the end.
+
+**中文 · 修复**
+- macOS 工作区沙箱下的对话可以重新正常新建会话。
+- Markdown 输入框在行尾按右方向键时，不再留下方框字符。
+
 ## [0.2.44] - 2026-10-26
 
 > **Highlight:** Scheduled tasks can reuse a chat, and replies fade in as they stream.
@@ -36,7 +68,6 @@ See `docs/llm-wiki/release.md`.
 - 长时间运行的对话更不容易卡：后台对话降低了刷新频率。
 
 ### Fixed
-- Scheduled tasks can run on a chosen model from the official catalog or a custom provider. They no longer fall back to your current default model.
 - Small icons in macOS System Settings no longer show colored stripes.
 - Follow System stays Simplified Chinese when that is the preferred language.
 - A trusted workspace no longer blocks sandboxed chats from starting.
@@ -59,7 +90,6 @@ See `docs/llm-wiki/release.md`.
 - The window rebuilds itself after a Windows WebView2 crash instead of staying blank.
 
 **中文 · 修复**
-- 定时任务可以使用指定的官方或自定义提供商模型，不再回退到当前默认模型。
 - macOS 系统设置里的小图标不再出现彩色横纹。
 - 跟随系统时，首选简体中文就会显示简体。
 - 信任过工作区之后，沙箱对话可以正常启动。
