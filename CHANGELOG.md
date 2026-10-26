@@ -25,6 +25,7 @@ See `docs/llm-wiki/release.md`.
 - A long subagent no longer shows its time as 1m 60s.
 - A slow new chat keeps its text instead of opening an empty second chat.
 - A file on a Windows network share opens from the chat.
+- Review keeps a Windows network path pointed at that share.
 
 **中文 · 修复**
 - macOS 系统设置里的小图标不再出现彩色横纹。
@@ -38,6 +39,7 @@ See `docs/llm-wiki/release.md`.
 - 长时间运行的子任务不再把时长显示成 1 分 60 秒。
 - 新建对话连得很慢时，已输入的内容仍留在这一条会话里。
 - 对话里的 Windows 网络共享路径可以打开对应的文件。
+- 审查列表里的 Windows 网络路径仍指向原来的共享文件。
 
 ## [0.2.42] - 2026-10-19
 
