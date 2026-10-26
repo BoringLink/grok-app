@@ -13,7 +13,7 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
-## [0.2.43] - 2026-10-26
+## [0.2.44] - 2026-10-26
 
 > **Highlight:** Scheduled tasks can reuse a chat, and replies fade in as they stream.
 >
