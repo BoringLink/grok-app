@@ -10,6 +10,11 @@ use std::time::{Duration, Instant};
 pub const DEFAULT_STREAM_EMIT_MS: u64 = 40;
 /// Flush once pending text reaches this many UTF-8 bytes (approx chars).
 pub const DEFAULT_STREAM_EMIT_MAX_CHARS: usize = 600;
+/// Background (not the focused live slot) sessions coalesce longer so a
+/// multi-hour run does not push a `session://stream` into the webview ~25×/s.
+pub const BACKGROUND_STREAM_EMIT_MS: u64 = 400;
+/// Larger byte budget for that same background coalesce.
+pub const BACKGROUND_STREAM_EMIT_MAX_CHARS: usize = 2_400;
 #[allow(dead_code)]
 pub const MIN_STREAM_EMIT_MS: u64 = 8;
 #[allow(dead_code)]
@@ -108,6 +113,16 @@ mod tests {
             600,
             Duration::from_millis(40)
         ));
+    }
+
+    #[test]
+    fn background_coalesce_is_coarser_than_the_focused_slot() {
+        const {
+            assert!(BACKGROUND_STREAM_EMIT_MS > DEFAULT_STREAM_EMIT_MS);
+        }
+        const {
+            assert!(BACKGROUND_STREAM_EMIT_MAX_CHARS > DEFAULT_STREAM_EMIT_MAX_CHARS);
+        }
     }
 
     #[test]

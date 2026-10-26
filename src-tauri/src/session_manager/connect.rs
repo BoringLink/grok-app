@@ -539,6 +539,7 @@ impl SessionManager {
             // takes `inner` (the old inline if-let held both — ABBA deadlock
             // against try_park_live's inner→background order).
             if self.promote_background_to_live(&meta.id) {
+                self.emit_live_pending_stream(&app);
                 let snap = self.snapshot();
                 Self::emit_state(&app, &snap);
                 tracing::info!("acp promoted background session to live sid={}", meta.id);

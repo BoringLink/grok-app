@@ -1068,6 +1068,68 @@ describe("session projection", () => {
     expect(out[0]!.id).toBe("host-cr");
   });
 
+  it("applyStreamChunk appends onto the last content segment without copying earlier tools", () => {
+    const tool = {
+      kind: "tool" as const,
+      toolCallId: "t1",
+      title: "Read",
+      status: "completed",
+    };
+    const messages: ChatMessage[] = [
+      {
+        id: "a1",
+        role: "assistant",
+        content: "hi",
+        segments: [tool, { kind: "content", text: "hi" }],
+        streaming: true,
+      },
+    ];
+    const next = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "!",
+      done: true,
+      kind: "assistant",
+    });
+    expect(next[0]!.content).toBe("hi!");
+    expect(next[0]!.streaming).toBe(false);
+    expect(next[0]!.segments![0]).toBe(tool);
+    expect(next[0]!.segments![1]).toEqual({ kind: "content", text: "hi!" });
+  });
+
+  it("applyStreamChunk still weaves an unwoven tool row on the slow path", () => {
+    const messages: ChatMessage[] = [
+      { id: "u1", role: "user", content: "go" },
+      {
+        id: "tool-x",
+        role: "tool",
+        content: "Read file",
+        toolCallId: "x",
+        marker: "tool_step",
+        toolStatus: "completed",
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        content: "hi",
+        segments: [{ kind: "content", text: "hi" }],
+        streaming: true,
+      },
+    ];
+    const next = applyStreamChunk(messages, {
+      sessionId: "s",
+      messageId: "a1",
+      text: "!",
+      done: false,
+      kind: "assistant",
+    });
+    const asst = next.find((m) => m.id === "a1")!;
+    expect(asst.content).toBe("hi!");
+    expect(asst.segments?.some((s) => s.kind === "tool" && s.toolCallId === "x")).toBe(
+      true,
+    );
+  });
+
   it("applyStreamChunk grows assistant text once per chunk", () => {
     let messages: ChatMessage[] = [];
     const chunks: StreamPayload[] = [
@@ -1184,6 +1246,75 @@ describe("session projection", () => {
       { kind: "content", text: "hi" },
       { kind: "thought", text: "c" },
     ]);
+  });
+
+  it("compactMessageSegments keeps the first host-family row when a later id merge grows a family", () => {
+    const segs = compactMessageSegments([
+      {
+        kind: "tool",
+        toolCallId: "host-vision-1",
+        title: "识别图片内容",
+        status: "completed",
+        detail: "first",
+      },
+      {
+        kind: "tool",
+        toolCallId: "other",
+        title: "Read",
+        status: "running",
+      },
+      {
+        kind: "tool",
+        toolCallId: "other",
+        title: "识别图片内容",
+        status: "completed",
+        detail: "second",
+      },
+      {
+        kind: "tool",
+        toolCallId: "host-vision-2",
+        title: "识别图片内容",
+        status: "completed",
+        detail: "third-longer",
+      },
+    ]);
+    expect(segs).toHaveLength(2);
+    expect(segs[0]).toMatchObject({ detail: "third-longer" });
+    expect(segs[1]).toMatchObject({
+      toolCallId: "other",
+      title: "识别图片内容",
+      detail: "second",
+    });
+  });
+
+  it("compactMessageSegments keeps tool order across many unique ids", () => {
+    const segs = compactMessageSegments(
+      Array.from({ length: 400 }, (_, i) => ({
+        kind: "tool" as const,
+        toolCallId: `t${i}`,
+        title: `Tool ${i}`,
+        status: i % 2 === 0 ? "running" : "completed",
+      })),
+    );
+    expect(segs).toHaveLength(400);
+    expect(segs[0]).toMatchObject({ toolCallId: "t0", status: "running" });
+    expect(segs[399]).toMatchObject({ toolCallId: "t399", status: "completed" });
+    const again = compactMessageSegments([
+      ...segs,
+      {
+        kind: "tool" as const,
+        toolCallId: "t10",
+        title: "Tool 10",
+        status: "completed",
+        output: "done",
+      },
+    ]);
+    expect(again).toHaveLength(400);
+    expect(again[10]).toMatchObject({
+      toolCallId: "t10",
+      status: "completed",
+      output: "done",
+    });
   });
 
   it("compactMessageSegments keeps tools and coalesces same toolCallId", () => {

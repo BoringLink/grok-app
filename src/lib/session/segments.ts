@@ -122,6 +122,53 @@ function toolSegmentLooksRunning(t: MessageToolSegment): boolean {
 }
 
 /**
+ * Keep id / host-family indexes aligned after an in-place tool merge.
+ * Indexes stay valid because compaction never removes a tool row, only
+ * replaces it. A linear map replaces the old per-tool `findIndex` scan,
+ * which was quadratic on multi-hour turns (thousands of tool segments,
+ * once per stream token and again on every paint).
+ */
+function rememberToolSlot(
+  byId: Map<string, number>,
+  byFamily: Map<string, number>,
+  index: number,
+  before: MessageToolSegment | null,
+  after: MessageToolSegment,
+): void {
+  if (before && before.toolCallId !== after.toolCallId) {
+    if (byId.get(before.toolCallId) === index) byId.delete(before.toolCallId);
+  }
+  if (before) {
+    const prevFam = hostToolFamilyKey(
+      before.toolCallId,
+      before.toolKind,
+      before.title,
+    );
+    const nextFam = hostToolFamilyKey(
+      after.toolCallId,
+      after.toolKind,
+      after.title,
+    );
+    if (prevFam && prevFam !== nextFam && byFamily.get(prevFam) === index) {
+      byFamily.delete(prevFam);
+    }
+  }
+  // First matching row wins, same as the old left-to-right findIndex.
+  // An in-place id merge must not retarget the index onto a later duplicate.
+  const idOwner = byId.get(after.toolCallId);
+  if (idOwner === undefined || idOwner === index) {
+    byId.set(after.toolCallId, index);
+  }
+  const fam = hostToolFamilyKey(after.toolCallId, after.toolKind, after.title);
+  if (fam) {
+    const famOwner = byFamily.get(fam);
+    if (famOwner === undefined || famOwner === index) {
+      byFamily.set(fam, index);
+    }
+  }
+}
+
+/**
  * Compact a segment timeline for display / persistence hygiene:
  * - drop empty thought/content pieces
  * - merge adjacent same-kind text segments (spurious "new" thought phases after
@@ -133,12 +180,12 @@ export function compactMessageSegments(
   segments: MessageSegment[],
 ): MessageSegment[] {
   const out: MessageSegment[] = [];
+  const byId = new Map<string, number>();
+  const byFamily = new Map<string, number>();
   for (const raw of segments) {
     if (raw.kind === "tool") {
-      const existingById = out.findIndex(
-        (s) => s.kind === "tool" && s.toolCallId === raw.toolCallId,
-      );
-      if (existingById >= 0) {
+      const existingById = byId.get(raw.toolCallId);
+      if (existingById !== undefined) {
         const prev = out[existingById] as MessageToolSegment;
         const title =
           (raw.title && !isGenericToolLabel(raw.title) ? raw.title : "") ||
@@ -147,7 +194,7 @@ export function compactMessageSegments(
           (raw.detail || "").length >= (prev.detail || "").length
             ? raw.detail || prev.detail
             : prev.detail || raw.detail;
-        out[existingById] = {
+        const merged: MessageToolSegment = {
           ...prev,
           ...raw,
           title,
@@ -164,24 +211,27 @@ export function compactMessageSegments(
               : prev.output,
           toolKind: raw.toolKind || prev.toolKind,
         };
+        out[existingById] = merged;
+        rememberToolSlot(byId, byFamily, existingById, prev, merged);
         continue;
       }
       // Host side-channel: only one vision / one X row even if toolCallIds differ
       // (live + journal weave race used to paint "识别图片内容" twice).
       const family = hostToolFamilyKey(raw.toolCallId, raw.toolKind, raw.title);
       if (family) {
-        const existingFamily = out.findIndex(
-          (s) =>
-            s.kind === "tool" &&
-            hostToolFamilyKey(s.toolCallId, s.toolKind, s.title) === family,
-        );
-        if (existingFamily >= 0) {
+        const existingFamily = byFamily.get(family);
+        if (existingFamily !== undefined) {
           const prev = out[existingFamily] as MessageToolSegment;
-          out[existingFamily] = preferRicherTool(prev, raw);
+          const merged = preferRicherTool(prev, raw);
+          out[existingFamily] = merged;
+          rememberToolSlot(byId, byFamily, existingFamily, prev, merged);
           continue;
         }
       }
-      out.push({ ...raw });
+      const index = out.length;
+      const copy: MessageToolSegment = { ...raw };
+      out.push(copy);
+      rememberToolSlot(byId, byFamily, index, null, copy);
       continue;
     }
     if (!raw.text.trim()) continue;

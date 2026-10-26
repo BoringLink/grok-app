@@ -206,6 +206,10 @@ pub(super) struct PendingStreamEmit {
     pub(super) thought_phase: String,
     pub(super) done: bool,
     pub(super) first_at: Instant,
+    /// Coalesce window captured when this buffer was opened.
+    pub(super) interval: std::time::Duration,
+    /// Char/byte budget captured when this buffer was opened.
+    pub(super) max_chars: usize,
 }
 
 pub(crate) struct LiveSession {

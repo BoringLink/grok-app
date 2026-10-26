@@ -46,8 +46,8 @@ use crate::acp_client::{AcpClient, StreamKind};
 use crate::session_fsm::SessionState;
 use crate::store::{self, ChatMessageStored};
 use crate::stream_emit::{
-    should_flush_stream_emit, stream_emit_can_merge, DEFAULT_STREAM_EMIT_MAX_CHARS,
-    DEFAULT_STREAM_EMIT_MS,
+    should_flush_stream_emit, stream_emit_can_merge, BACKGROUND_STREAM_EMIT_MAX_CHARS,
+    BACKGROUND_STREAM_EMIT_MS, DEFAULT_STREAM_EMIT_MAX_CHARS, DEFAULT_STREAM_EMIT_MS,
 };
 use crate::stream_stall::{
     journal_tool_is_terminal, normalize_stream_stall_seconds, should_prune_open_tool_id,
@@ -881,7 +881,20 @@ impl SessionManager {
             return None;
         }
         let now = Instant::now();
-        if !s.journal_throttle.should_flush(now, force, paragraph_break) {
+        // Paragraph breaks must not bypass the interval: markdown answers emit
+        // `\n\n` constantly, and each bypass rewrote the whole messages.json.
+        let _ = paragraph_break;
+        let content_bytes = s.stream_buf.len().saturating_add(s.stream_thought.len());
+        let interval = Duration::from_millis(crate::journal_throttle::journal_flush_interval_ms(
+            content_bytes,
+        ));
+        if !crate::journal_throttle::should_flush_journal(
+            s.journal_throttle.last_flush(),
+            interval,
+            now,
+            force,
+            false,
+        ) {
             return None;
         }
         let mid = s
@@ -1061,6 +1074,7 @@ impl SessionManager {
         text: String,
         thought_phase: &str,
         done: bool,
+        background_slot: bool,
     ) -> (bool, Vec<StreamEmitPayload>) {
         let mut out = Vec::new();
         let kind_s = Self::stream_kind_str(kind);
@@ -1097,8 +1111,8 @@ impl SessionManager {
                 pending.text.len(),
                 now,
                 force,
-                DEFAULT_STREAM_EMIT_MAX_CHARS,
-                Duration::from_millis(DEFAULT_STREAM_EMIT_MS),
+                pending.max_chars,
+                pending.interval,
             );
             if flush {
                 if let Some(p) = Self::take_pending_stream_emit(s) {
@@ -1129,6 +1143,11 @@ impl SessionManager {
             return (false, out);
         }
 
+        let (interval_ms, max_chars) = if background_slot {
+            (BACKGROUND_STREAM_EMIT_MS, BACKGROUND_STREAM_EMIT_MAX_CHARS)
+        } else {
+            (DEFAULT_STREAM_EMIT_MS, DEFAULT_STREAM_EMIT_MAX_CHARS)
+        };
         s.pending_stream_emit = Some(PendingStreamEmit {
             kind,
             message_id,
@@ -1137,6 +1156,8 @@ impl SessionManager {
             thought_phase: thought_phase.to_string(),
             done,
             first_at: now,
+            interval: Duration::from_millis(interval_ms),
+            max_chars,
         });
         (true, out)
     }
@@ -1146,12 +1167,25 @@ impl SessionManager {
         app: AppHandle,
         session_id: String,
         gen: u64,
+        delay_ms: u64,
     ) {
         let mgr = Arc::clone(self);
         tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(DEFAULT_STREAM_EMIT_MS)).await;
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             mgr.flush_stream_emit_if_gen(&app, &session_id, gen);
         });
+    }
+
+    /// Flush a focused session's coalesced stream tail after it is promoted
+    /// into the live slot, so a background coalesce window is not still held.
+    pub(super) fn emit_live_pending_stream(&self, app: &AppHandle) {
+        let payload = {
+            let mut guard = self.inner.lock();
+            guard.as_mut().and_then(Self::take_pending_stream_emit)
+        };
+        if let Some(payload) = payload {
+            Self::emit_stream_payload(app, payload);
+        }
     }
 
     /// Take under lock, then emit after the guard is dropped.
@@ -1166,8 +1200,8 @@ impl SessionManager {
                             p.text.len(),
                             Instant::now(),
                             false,
-                            DEFAULT_STREAM_EMIT_MAX_CHARS,
-                            Duration::from_millis(DEFAULT_STREAM_EMIT_MS),
+                            p.max_chars,
+                            p.interval,
                         )
                     });
                     let payload = if should {
@@ -1193,8 +1227,8 @@ impl SessionManager {
                             p.text.len(),
                             Instant::now(),
                             false,
-                            DEFAULT_STREAM_EMIT_MAX_CHARS,
-                            Duration::from_millis(DEFAULT_STREAM_EMIT_MS),
+                            p.max_chars,
+                            p.interval,
                         )
                     });
                     if should {
@@ -1682,6 +1716,8 @@ mod stream_emit_lock_tests {
             thought_phase: "none".into(),
             done: false,
             first_at: Instant::now(),
+            interval: Duration::from_millis(DEFAULT_STREAM_EMIT_MS),
+            max_chars: DEFAULT_STREAM_EMIT_MAX_CHARS,
         });
         let p = SessionManager::take_pending_stream_emit(&mut s).expect("payload");
         assert_eq!(p.session_id, "stream-emit-lock");
@@ -1704,6 +1740,8 @@ mod stream_emit_lock_tests {
             thought_phase: "none".into(),
             done: false,
             first_at: Instant::now(),
+            interval: Duration::from_millis(DEFAULT_STREAM_EMIT_MS),
+            max_chars: DEFAULT_STREAM_EMIT_MAX_CHARS,
         });
         assert!(SessionManager::take_pending_stream_emit(&mut s).is_none());
         assert!(s.pending_stream_emit.is_none());
@@ -1726,6 +1764,8 @@ mod stream_emit_lock_tests {
             thought_phase: "none".into(),
             done: true,
             first_at: Instant::now(),
+            interval: Duration::from_millis(DEFAULT_STREAM_EMIT_MS),
+            max_chars: DEFAULT_STREAM_EMIT_MAX_CHARS,
         });
 
         let lock_for_hook = Arc::clone(&session_lock);
@@ -1771,6 +1811,7 @@ mod stream_emit_lock_tests {
             "Hello ".into(),
             "none",
             false,
+            false,
         );
         assert!(first.is_empty());
         let (_, second) = SessionManager::queue_stream_emit(
@@ -1779,6 +1820,7 @@ mod stream_emit_lock_tests {
             "m1".into(),
             "世界😀".into(),
             "none",
+            false,
             false,
         );
         assert!(second.is_empty());
@@ -1802,6 +1844,7 @@ mod stream_emit_lock_tests {
             "Hi".into(),
             "none",
             true,
+            false,
         );
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].chunk_lens, vec![2]);
@@ -1814,6 +1857,7 @@ mod stream_emit_lock_tests {
             String::new(),
             "none",
             true,
+            false,
         );
         assert_eq!(out.len(), 1);
         assert!(out[0].chunk_lens.is_empty());
@@ -1833,5 +1877,108 @@ mod stream_emit_lock_tests {
         let event = stream_payload_event(&payload);
         assert_eq!(event["sessionId"], "s1");
         assert_eq!(event["chunkLens"], serde_json::json!([1, 1]));
+    }
+
+    #[test]
+    fn background_slot_coalesces_past_the_live_char_budget() {
+        let mut live = minimal_streaming_session();
+        let chunk = "x".repeat(700);
+        let (need, out) = SessionManager::queue_stream_emit(
+            &mut live,
+            StreamKind::Assistant,
+            "m".into(),
+            chunk.clone(),
+            "none",
+            false,
+            false,
+        );
+        assert!(need);
+        assert!(out.is_empty());
+        let (need, out) = SessionManager::queue_stream_emit(
+            &mut live,
+            StreamKind::Assistant,
+            "m".into(),
+            chunk.clone(),
+            "none",
+            false,
+            false,
+        );
+        assert!(!need);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].text.len(), 1400);
+        assert_eq!(out[0].chunk_lens, vec![700, 700]);
+        assert_eq!(
+            out[0].chunk_lens.iter().sum::<usize>(),
+            out[0].text.encode_utf16().count()
+        );
+
+        let mut bg = minimal_streaming_session();
+        let (need, out) = SessionManager::queue_stream_emit(
+            &mut bg,
+            StreamKind::Assistant,
+            "m".into(),
+            chunk.clone(),
+            "none",
+            false,
+            true,
+        );
+        assert!(need);
+        assert!(out.is_empty());
+        let (need, out) = SessionManager::queue_stream_emit(
+            &mut bg,
+            StreamKind::Assistant,
+            "m".into(),
+            chunk,
+            "none",
+            false,
+            true,
+        );
+        assert!(need, "1400 bytes stays under the background budget");
+        assert!(out.is_empty());
+        let pending = bg.pending_stream_emit.expect("still buffered");
+        assert_eq!(pending.text.len(), 1400);
+        assert_eq!(pending.chunk_lens, vec![700, 700]);
+        assert_eq!(
+            pending.chunk_lens.iter().sum::<usize>(),
+            pending.text.encode_utf16().count()
+        );
+        assert_eq!(pending.max_chars, BACKGROUND_STREAM_EMIT_MAX_CHARS);
+        assert_eq!(
+            pending.interval,
+            Duration::from_millis(BACKGROUND_STREAM_EMIT_MS)
+        );
+
+        // Background coalesce must keep per-chunk UTF-16 lengths, including
+        // when a chunk's byte length and UTF-16 length differ.
+        let mut bg_uni = minimal_streaming_session();
+        let (need, out) = SessionManager::queue_stream_emit(
+            &mut bg_uni,
+            StreamKind::Assistant,
+            "m".into(),
+            "Hello ".into(),
+            "none",
+            false,
+            true,
+        );
+        assert!(need);
+        assert!(out.is_empty());
+        let (need, out) = SessionManager::queue_stream_emit(
+            &mut bg_uni,
+            StreamKind::Assistant,
+            "m".into(),
+            "世界😀".into(),
+            "none",
+            false,
+            true,
+        );
+        assert!(need);
+        assert!(out.is_empty());
+        let pending = bg_uni.pending_stream_emit.expect("unicode still buffered");
+        assert_eq!(pending.text, "Hello 世界😀");
+        assert_eq!(pending.chunk_lens, vec![6, 4]);
+        assert_eq!(
+            pending.chunk_lens.iter().sum::<usize>(),
+            pending.text.encode_utf16().count()
+        );
     }
 }

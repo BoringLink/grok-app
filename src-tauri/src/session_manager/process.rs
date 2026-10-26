@@ -920,6 +920,7 @@ impl SessionManager {
 
         if in_background && self.promote_background_to_live(target_sid) {
             tracing::info!("acp focus: background → live sid={target_sid}");
+            self.emit_live_pending_stream(app);
             Self::emit_state(app, &self.snapshot());
             return Ok(true);
         }

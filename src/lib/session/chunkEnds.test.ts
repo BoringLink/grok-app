@@ -41,6 +41,15 @@ describe("content chunk boundaries", () => {
     expect(contentEnds(messages)?.at(-1)).toBe(messages[0]!.content.length);
   });
 
+  it("keeps every boundary when a coalesced payload hits the fast append path", () => {
+    let messages = applyStreamChunk([], chunk("Hello ", [6]));
+    messages = applyStreamChunk(messages, chunk("世界😀!!", [4, 2]));
+
+    expect(messages[0]?.content).toBe("Hello 世界😀!!");
+    expect(contentEnds(messages)).toEqual([6, 10, 12]);
+    expect(contentEnds(messages)?.at(-1)).toBe(messages[0]!.content.length);
+  });
+
   it("marks text without host lengths as one chunk before new boundaries", () => {
     let messages = applyStreamChunk([], chunk("Hello "));
 
