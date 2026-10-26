@@ -14,6 +14,7 @@ permission option mapping). Exercised by `src/acp_golden_test.rs` via
 | `exit_plan_mode.json` | `_x.ai/exit_plan_mode` + plan sessionUpdate |
 | `goal_updated.json` | CLI 0.2.117+ `sessionUpdate: goal_updated` (goal orch phases) |
 | `subagent_lifecycle.json` | CLI 1.0.x `_x.ai/session_notification` subagent_spawned / _progress / _finished |
+| `session_new_rules.json` | `session/new` `_meta.rules` (omitted when empty) |
 | `mock_stream.json` | In-process mock token stream for prompt `hi` |
 
 ## When to update
@@ -50,3 +51,9 @@ cargo test --lib acp_golden
 
 Do **not** hand-edit fixtures to “make CI green” without updating production
 builders/parsers — the suite is the contract.
+
+## session/new rules
+
+`session/new` with `_meta.rules` was accepted on grok 1.0.46 (no prompt,
+result included `sessionId`). The builder lock is `session_new_rules.json`.
+Empty rules omit `_meta`.

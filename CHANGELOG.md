@@ -13,6 +13,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+
+- Director mode in Settings asks Grok to put large work in a background workflow.
+
+**中文 · 新增**
+
+- 设置中的导演模式会请 Grok 把大块工作放进后台工作流。
+
 ## [0.2.48] - 2026-10-28
 
 > **Highlight:** A finished background workflow reports back in the chat that started it.

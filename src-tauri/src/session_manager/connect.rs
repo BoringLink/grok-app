@@ -1318,6 +1318,9 @@ impl SessionManager {
             } else {
                 meta.plugin_dirs.clone()
             },
+            director_rules: crate::store::load_settings()
+                .director_enabled
+                .then(|| crate::director::DIRECTOR_RULE.to_string()),
             extra_rules: if ssh_alias.is_some() {
                 meta.extra_rules
                     .as_ref()
@@ -2576,6 +2579,7 @@ mod connect_preserve_tests {
                 workspace_capability: None,
                 provider_id: None,
                 source: None,
+                director_mode: false,
             },
             fsm,
             backend: "grok_agent_stdio".into(),
@@ -2678,6 +2682,7 @@ mod connect_preserve_tests {
                 workspace_capability: None,
                 provider_id: None,
                 source: None,
+                director_mode: false,
             },
             fsm,
             backend: "grok_agent_stdio".into(),

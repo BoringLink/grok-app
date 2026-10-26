@@ -14,7 +14,8 @@ use crate::acp_client::{
     parse_ask_user_question_params, rewind_execute_method_candidates, wire_ask_user_result,
     wire_exit_plan_mode_result, wire_initialize_params, wire_jsonrpc_result,
     wire_permission_result, wire_session_cancel_params, wire_session_interject_params,
-    wire_session_prompt_params, AcpEvent, AskUserOutcome, PermissionOutcome, StreamKind,
+    wire_session_new_params, wire_session_prompt_params, AcpEvent, AskUserOutcome,
+    PermissionOutcome, StreamKind,
 };
 use crate::mock_acp::{chunk_text, mock_reply_for, spawn_fake_stream_channel};
 use crate::permission::pick_option_id;
@@ -394,6 +395,29 @@ fn exit_plan_mode_and_plan_update_match_fixture() {
         }
         other => panic!("expected Plan, got {other:?}"),
     }
+}
+
+#[test]
+fn session_new_rules_match_fixture() {
+    let fx = load_fixture("session_new_rules.json");
+    let cwd = fx["cwd"].as_str().unwrap();
+    let servers = &fx["mcpServers"];
+    assert_eq!(
+        wire_session_new_params(cwd, servers, None),
+        fx["expectWithoutRules"]
+    );
+    assert_eq!(
+        wire_session_new_params(cwd, servers, Some("")),
+        fx["expectWithoutRules"]
+    );
+    assert_eq!(
+        wire_session_new_params(cwd, servers, Some("   ")),
+        fx["expectWithoutRules"]
+    );
+    assert_eq!(
+        wire_session_new_params(cwd, servers, Some(fx["rules"].as_str().unwrap())),
+        fx["expectWithRules"]
+    );
 }
 
 // ── mock_acp stream golden ──────────────────────────────────────────────────

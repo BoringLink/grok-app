@@ -468,6 +468,8 @@ pub struct AcpClient {
     /// Private `GROK_HOME` sealed for this process (#1293). `None` for
     /// `~/.grok`, official-aux, SSH, and TCP. Discarded in `kill`.
     proc_home: std::sync::Mutex<Option<PathBuf>>,
+    /// ACP `session/new` `_meta.rules` when the chat is in director mode.
+    director_rules: Option<String>,
 }
 
 /// Options applied at agent process start (CLI flags).
@@ -492,6 +494,9 @@ pub struct SpawnOptions {
     pub plugin_dirs: Vec<String>,
     /// Per-session extra rules → top-level `grok --rules <TEXT>` (before `agent`).
     pub extra_rules: Option<String>,
+    /// Director paragraph sent as ACP `_meta.rules` on `session/new`.
+    /// Not written to `~/.grok` and not passed as `grok --rules`.
+    pub director_rules: Option<String>,
     /// Per-session max turns override → top-level `grok --max-turns N`.
     /// When set (after normalize), wins over `AppSettings.max_agent_turns`.
     pub max_agent_turns: Option<u32>,
@@ -1280,6 +1285,11 @@ impl AcpClient {
             AgentError::new(AgentErrorCode::AgentCrashed, "no stderr on child")
         })?;
 
+        let director_rules = opts
+            .director_rules
+            .clone()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
         let client = Arc::new(Self {
             child: AsyncMutex::new(Some(child)),
             child_pid,
@@ -1306,6 +1316,7 @@ impl AcpClient {
             ssh_alias: ssh_alias.clone(),
             wsl_active: wsl_launch.is_some(),
             proc_home: std::sync::Mutex::new(proc_home),
+            director_rules,
         });
 
         client.start_read_loop(Box::new(stdout));
@@ -1409,6 +1420,7 @@ impl AcpClient {
             ssh_alias: None,
             wsl_active: false,
             proc_home: std::sync::Mutex::new(None),
+            director_rules: None,
         });
         client.start_read_loop(Box::new(read_half));
         Ok((client, event_rx))
@@ -2473,6 +2485,7 @@ impl AcpClient {
             ssh_alias: None,
             wsl_active: false,
             proc_home: std::sync::Mutex::new(None),
+            director_rules: None,
         })
     }
 
@@ -2798,10 +2811,7 @@ impl AcpClient {
         let result = self
             .request_timeout(
                 "session/new",
-                json!({
-                    "cwd": cwd,
-                    "mcpServers": mcp_servers
-                }),
+                wire_session_new_params(&cwd, &mcp_servers, self.director_rules.as_deref()),
                 HANDSHAKE_TIMEOUT_SECS,
             )
             .await
@@ -4025,6 +4035,23 @@ fn scope_workflow_output(events: Vec<AcpEvent>, prompt_id: Option<&str>) -> Vec<
             other => other,
         })
         .collect()
+}
+
+/// `session/new` params. `rules` is ACP `_meta.rules` (per session, not a
+/// `~/.grok` write). Empty rules omit `_meta` so the body stays
+/// `{ cwd, mcpServers }`.
+///
+/// Live check, grok 1.0.46: `session/new` with `_meta.rules` returned a
+/// `sessionId` (no prompt sent).
+pub fn wire_session_new_params(cwd: &str, mcp_servers: &Value, rules: Option<&str>) -> Value {
+    let mut params = json!({
+        "cwd": cwd,
+        "mcpServers": mcp_servers,
+    });
+    if let Some(text) = rules.map(str::trim).filter(|s| !s.is_empty()) {
+        params["_meta"] = json!({ "rules": text });
+    }
+    params
 }
 
 /// Pure decode of `session/update` params → host events (no I/O).

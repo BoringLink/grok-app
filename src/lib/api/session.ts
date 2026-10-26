@@ -413,6 +413,27 @@ export async function sessionsList() {
   >("sessions_list");
 }
 
+/**
+ * Per-session director rule. Writes the session index only.
+ * The next `session/new` sends ACP `_meta.rules`. Does not respawn and does
+ * not write `~/.grok`.
+ */
+export async function sessionSetDirectorMode(id: string, directorMode: boolean) {
+  return invoke<{ id: string; directorMode?: boolean }>("session_set_director_mode", {
+    id,
+    directorMode,
+  });
+}
+
+/**
+ * Read-only. True when `[features] subagent_model_inheritance` (or the
+ * `_enabled` alias) or `GROK_SUBAGENT_MODEL_INHERITANCE` is on. Missing means off.
+ */
+export async function subagentModelInheritanceOn(): Promise<boolean> {
+  if (!isTauri()) return false;
+  return invoke<boolean>("subagent_model_inheritance_on");
+}
+
 /** Set or clear per-session extra rules (`grok --rules`). Empty clears. */
 export async function sessionSetExtraRules(
   id: string,
