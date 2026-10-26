@@ -3,7 +3,7 @@
  * Independent agent-home: allowlisted read/write. Shared mode: read-only probe.
  * Never invents embeddings client-side — App browser search stays keyword-only.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "@/lib/api";
 import type { MemoryEmbedConfigSnapshot } from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
@@ -188,6 +188,12 @@ export function MemoryEmbedPanel({
     setDraft(vals);
   }, []);
 
+  // Parent passes a fresh inline onError every render. Depending on that
+  // identity reloads the snapshot and wipes an in-progress model / base URL /
+  // API key edit before Save can write it.
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+
   const load = useCallback(async () => {
     if (!api.isTauri()) {
       setSnap(null);
@@ -204,11 +210,11 @@ export function MemoryEmbedPanel({
       setSnap(null);
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
-      onError?.(msg);
+      onErrorRef.current?.(msg);
     } finally {
       setLoading(false);
     }
-  }, [applySnap, onError, t]);
+  }, [applySnap, t]);
 
   useEffect(() => {
     void load();

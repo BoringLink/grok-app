@@ -3,7 +3,7 @@
  * Host enforces path-scope + write gate; this validates UI drafts + patches.
  *
  * Allowlist (nested under `[memory.*]`):
- * - embedding.model / dimensions / provider
+ * - embedding.model / dimensions / provider / base_url / api_key
  * - search.max_results / min_score / vector_weight / text_weight
  * - search.mmr.enabled / lambda
  * - search.temporal_decay.enabled / half_life_days

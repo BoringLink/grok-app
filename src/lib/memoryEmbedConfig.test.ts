@@ -122,6 +122,53 @@ describe("buildMemoryEmbedPatch", () => {
       embeddingModel: "text-embedding-3-small",
     });
   });
+
+  it("writes embedding base URL and clears it when emptied", () => {
+    const baseline: MemoryEmbedValues = { ...base, embeddingBaseUrl: null };
+    const draft: MemoryEmbedValues = {
+      ...baseline,
+      embeddingBaseUrl: " https://api.example.test/v1 ",
+    };
+    expect(buildMemoryEmbedPatch(draft, baseline)).toEqual({
+      embeddingBaseUrl: "https://api.example.test/v1",
+    });
+    const set: MemoryEmbedValues = {
+      ...baseline,
+      embeddingBaseUrl: "https://api.example.test/v1",
+    };
+    expect(
+      buildMemoryEmbedPatch({ ...set, embeddingBaseUrl: "  " }, set),
+    ).toEqual({ clearEmbeddingBaseUrl: true });
+  });
+
+  it("sends a new embedding API key and clears only with the flag", () => {
+    const baseline: MemoryEmbedValues = {
+      ...base,
+      hasEmbeddingApiKey: true,
+      embeddingApiKey: null,
+      clearEmbeddingApiKey: false,
+    };
+    expect(
+      buildMemoryEmbedPatch(
+        { ...baseline, embeddingApiKey: " sk-new-secret " },
+        baseline,
+      ),
+    ).toEqual({ embeddingApiKey: "sk-new-secret" });
+    expect(
+      buildMemoryEmbedPatch({ ...baseline, embeddingApiKey: "" }, baseline),
+    ).toEqual({});
+    expect(
+      hasMemoryEmbedChanges(
+        buildMemoryEmbedPatch({ ...baseline, embeddingApiKey: "" }, baseline),
+      ),
+    ).toBe(false);
+    expect(
+      buildMemoryEmbedPatch(
+        { ...baseline, embeddingApiKey: "", clearEmbeddingApiKey: true },
+        baseline,
+      ),
+    ).toEqual({ clearEmbeddingApiKey: true });
+  });
 });
 
 describe("toggle / presence", () => {
