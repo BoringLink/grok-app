@@ -13,6 +13,7 @@
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { skillTokenStoredText } from "@/components/composer/tiptap/composerSkillNode";
 import { refTokenStoredText } from "@/components/composer/tiptap/composerRefNode";
+import { stripComposerGhostChars } from "@/lib/composerGhostChars";
 
 /**
  * 内联原子节点的 token 文本（存储空间 = 编辑器文本空间）。
@@ -251,7 +252,8 @@ export function normalizeSerializedMarkdown(md: string): string {
     i += 1;
   }
   flush();
-  return out.replace(/\n+$/, "");
+  // WebKit 的方向键垫片可能先进入 ProseMirror 文档再被序列化；草稿边界统一剔除。
+  return stripComposerGhostChars(out).replace(/\n+$/, "");
 }
 
 /** 行首的围栏记号。序列化器只产出顶格 ``` / ~~~。 */

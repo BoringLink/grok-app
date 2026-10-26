@@ -204,6 +204,14 @@ describe("normalizeSerializedMarkdown", () => {
     const continued = "```\na\\\nb\n```";
     expect(normalizeSerializedMarkdown(continued)).toBe(continued);
   });
+
+  it("strips WebKit caret ghosts from the serialized draft", () => {
+    // Arrange —— WebKit 可能在末尾写入 ZWSP / 对象替换符
+    const raw = "hello\uFFFC\u200B";
+
+    // Act / Assert
+    expect(normalizeSerializedMarkdown(raw)).toBe("hello");
+  });
 });
 
 describe("locateSlashRangeInMarkdown", () => {
