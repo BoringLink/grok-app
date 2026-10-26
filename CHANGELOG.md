@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.43] - 2026-10-26
+
+> **Highlight:** Scheduled tasks can reuse a chat, and replies fade in as they stream.
+>
+> **中文 · 亮点：** 定时任务可以复用指定会话，回复也会边流式输出边淡入。
+
 ### Added
 - Scheduled tasks can run in a chat you choose instead of opening a new one every time. The chosen chat keeps its own model and reasoning.
 - Streamed replies fade in smoothly. Turn it off in Appearance; it follows the system Reduce Motion setting.
