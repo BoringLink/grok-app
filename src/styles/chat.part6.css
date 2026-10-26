@@ -548,7 +548,7 @@
   top: 0;
   z-index: 1;
   padding: 6px;
-  background: inherit;
+  background: var(--menu-surface-solid);
 }
 
 .c-select__search input {

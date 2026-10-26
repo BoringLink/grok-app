@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  automationProjectOptions,
   automationReuseSessionId,
   automationSessionOptions,
   normalizeAutomationSessionMode,
@@ -57,5 +58,19 @@ describe("automation session target", () => {
     ]);
     expect(shortSessionId("chat-b-222222")).toBe("222222");
     expect(shortSessionId("short")).toBe("short");
+  });
+
+  it("marks SSH projects as official-only", () => {
+    expect(
+      automationProjectOptions([
+        { id: "local", name: "Local" },
+        { id: "ssh", name: "Remote", sshAlias: "devbox" },
+        { id: "blank", name: "Blank", sshAlias: "   " },
+      ]),
+    ).toEqual([
+      { id: "local", name: "Local", isSshRemote: false },
+      { id: "ssh", name: "Remote", isSshRemote: true },
+      { id: "blank", name: "Blank", isSshRemote: false },
+    ]);
   });
 });

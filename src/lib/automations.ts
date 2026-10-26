@@ -15,6 +15,8 @@ export interface Automation {
   enabled: boolean;
   projectId: string | null;
   modelId: string | null;
+  /** `official` or a custom provider id; null on legacy rows. */
+  providerId?: string | null;
   effort: string | null;
   /** Persisted rows may carry legacy strings; callers normalize before use. */
   sessionMode?: AutomationSessionMode | string;
@@ -37,6 +39,7 @@ export interface AutomationInput {
   enabled?: boolean;
   projectId?: string | null;
   modelId?: string | null;
+  providerId?: string | null;
   effort?: string | null;
   sessionMode?: string;
   sessionId?: string | null;
@@ -69,7 +72,6 @@ export function automationReuseSessionId(
     : null;
 }
 
-/** Non-archived chats offered as reuse targets. */
 /** Non-archived chats offered as reuse targets, newest first. */
 export function automationSessionOptions(
   sessions: readonly {
@@ -100,6 +102,21 @@ export function automationSessionOptions(
 export function shortSessionId(id: string): string {
   const trimmed = id.trim();
   return trimmed.length <= 8 ? trimmed : trimmed.slice(-6);
+}
+
+/** Sidebar projects → automation picker options (SSH pins official). */
+export function automationProjectOptions(
+  projects: readonly {
+    id: string;
+    name: string;
+    sshAlias?: string | null;
+  }[],
+): { id: string; name: string; isSshRemote: boolean }[] {
+  return projects.map((p) => ({
+    id: p.id,
+    name: p.name,
+    isSshRemote: Boolean(p.sshAlias?.trim()),
+  }));
 }
 
 /**

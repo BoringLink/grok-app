@@ -42,8 +42,9 @@
 
 - 文件：`paths::automations_file()`（macOS 常见：`~/Library/Application Support/com.grokapp.grok-app/automations.json`）
 - 浏览器兜底：`localStorage["grok-app.automations"]`
-- 字段：`title` `prompt` `enabled` `projectId` `modelId` `effort` `sessionMode` `sessionId` `frequency` `time` `weekdays` `notify` `lastRunAt` `nextRunAt`
+- 字段：`title` `prompt` `enabled` `projectId` `modelId` `providerId` `effort` `sessionMode` `sessionId` `frequency` `time` `weekdays` `notify` `lastRunAt` `nextRunAt`
 - **执行会话**：`sessionMode` = `new`（每次新建，默认）| `reuse`（发送到 `sessionId` 指定的已有会话）。`reuse` 会话被删除时，Host 回退为新建一次并写回新的 `sessionId`，后续继续复用。
+- **模型路由**：`providerId` = `official` 或自定义 provider id；表单把官方模型与自定义渠道模型放在同一个分组选择里。执行时 Host 将 `providerId` / `modelId` 写入会话行后再 connect，因此不再退回用户的全局默认模型。旧数据无 `providerId` 时，官方目录模型固定走 `official`；仅被一个自定义渠道列出的模型路由到该渠道；其余沿用当前激活路由（编辑页显示「当前路由」，保存时不会把猜测写死）。
 
 ## 执行
 
@@ -126,6 +127,7 @@
 - [x] 已安排列表 / 筛选 / 搜索 / 启停 / 删除
 - [x] 手动表单创建与编辑
 - [x] **执行会话可选**：每次新建 / 复用指定会话；被复用会话删除后自动回退并写回新会话
+- [x] **模型/提供商可选**：官方模型与自定义 provider 渠道同表；Host 在 connect 前写入会话路由，Run now 同步使用所选路由
 - [x] AI 创建入口：自然语言 seed，不暴露 JSON schema
 - [x] 助手 fence 自动 `automation_create`，气泡不展示配置块
 - [x] 应用打开时到期可触发（不阻塞主对话架构）
