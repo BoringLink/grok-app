@@ -37,7 +37,7 @@ export const ukAutomations = {
   "automations.sessionMode.new": "Новий чат щоразу",
   "automations.sessionMode.reuse": "Наявний чат",
   "automations.field.session": "Чат",
-  "automations.field.sessionSearchPh": "Пошук за назвою",
+  "automations.field.sessionSearchPh": "Пошук за назвою, id або проєктом",
   "automations.sessionNone": "Виберіть чат",
   "automations.sessionMissing": "Збережений чат (немає в недавніх)",
   "automations.sessionSearchNoResults": "Немає відповідних чатів",

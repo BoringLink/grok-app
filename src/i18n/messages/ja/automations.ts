@@ -37,7 +37,7 @@ export const jaAutomations = {
   "automations.sessionMode.new": "毎回新しいチャット",
   "automations.sessionMode.reuse": "既存のチャット",
   "automations.field.session": "チャット",
-  "automations.field.sessionSearchPh": "タイトルで検索",
+  "automations.field.sessionSearchPh": "タイトル、ID、プロジェクトで検索",
   "automations.sessionNone": "チャットを選択",
   "automations.sessionMissing": "保存されたチャット（最近の一覧にありません）",
   "automations.sessionSearchNoResults": "一致するチャットがありません",

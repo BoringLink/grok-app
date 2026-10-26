@@ -37,7 +37,7 @@ export const taAutomations = {
   "automations.sessionMode.new": "ஒவ்வொரு முறையும் புதிய அரட்டை",
   "automations.sessionMode.reuse": "இருக்கும் அரட்டை",
   "automations.field.session": "அரட்டை",
-  "automations.field.sessionSearchPh": "தலைப்பால் தேடு",
+  "automations.field.sessionSearchPh": "தலைப்பு, ஐடி அல்லது திட்டத்தால் தேடு",
   "automations.sessionNone": "அரட்டையைத் தேர்ந்தெடு",
   "automations.sessionMissing": "சேமித்த அரட்டை (சமீபத்திய பட்டியலில் இல்லை)",
   "automations.sessionSearchNoResults": "பொருந்தும் அரட்டை இல்லை",

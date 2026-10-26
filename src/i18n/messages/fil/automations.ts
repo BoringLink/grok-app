@@ -37,7 +37,7 @@ export const filAutomations = {
   "automations.sessionMode.new": "Bagong chat bawat run",
   "automations.sessionMode.reuse": "Umiiral na chat",
   "automations.field.session": "Chat",
-  "automations.field.sessionSearchPh": "Maghanap ayon sa pamagat",
+  "automations.field.sessionSearchPh": "Maghanap ayon sa pamagat, id, o proyekto",
   "automations.sessionNone": "Pumili ng chat",
   "automations.sessionMissing": "Naka-save na chat (wala sa kamakailang listahan)",
   "automations.sessionSearchNoResults": "Walang tugmang chat",

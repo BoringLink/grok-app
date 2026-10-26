@@ -37,7 +37,7 @@ export const frAutomations = {
   "automations.sessionMode.new": "Nouveau chat à chaque exécution",
   "automations.sessionMode.reuse": "Chat existant",
   "automations.field.session": "Chat",
-  "automations.field.sessionSearchPh": "Rechercher par titre",
+  "automations.field.sessionSearchPh": "Rechercher par titre, id ou projet",
   "automations.sessionNone": "Choisir un chat",
   "automations.sessionMissing": "Chat enregistré (absent de la liste récente)",
   "automations.sessionSearchNoResults": "Aucune conversation correspondante",

@@ -37,7 +37,7 @@ export const enAutomations = {
   "automations.sessionMode.new": "New chat each run",
   "automations.sessionMode.reuse": "Existing chat",
   "automations.field.session": "Chat",
-  "automations.field.sessionSearchPh": "Search by title",
+  "automations.field.sessionSearchPh": "Search by title, id, or project",
   "automations.sessionNone": "Choose a chat",
   "automations.sessionMissing": "Saved chat (not in recent list)",
   "automations.sessionSearchNoResults": "No matching chats",

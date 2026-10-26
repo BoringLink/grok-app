@@ -37,7 +37,7 @@ export const deAutomations = {
   "automations.sessionMode.new": "Neuer Chat pro Lauf",
   "automations.sessionMode.reuse": "Bestehender Chat",
   "automations.field.session": "Chat",
-  "automations.field.sessionSearchPh": "Nach Titel suchen",
+  "automations.field.sessionSearchPh": "Nach Titel, ID oder Projekt suchen",
   "automations.sessionNone": "Chat wählen",
   "automations.sessionMissing": "Gespeicherter Chat (nicht in der Liste)",
   "automations.sessionSearchNoResults": "Keine passenden Chats",

@@ -2,9 +2,10 @@
  * @vitest-environment jsdom
  */
 import type { ComponentProps } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
+import * as api from "@/lib/api";
 import { AutomationsPage } from "./AutomationsPage";
 
 vi.mock("@/lib/api", () => ({
@@ -34,7 +35,13 @@ vi.mock("@/lib/api", () => ({
   automationMarkRun: vi.fn(),
 }));
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.mocked(api.automationsList).mockReset();
+  vi.mocked(api.automationsList).mockResolvedValue([]);
+  vi.mocked(api.automationCreate).mockReset();
+  vi.mocked(api.automationUpdate).mockReset();
+});
 
 const t = (key: string) => key;
 
@@ -78,6 +85,45 @@ const relay = {
     { id: "high", name: "High", isDefault: true },
   ],
 };
+
+const otherRelay = {
+  id: "relay-b",
+  name: "Relay B",
+  model: "llama-3",
+  baseUrl: "https://other.example/v1",
+  models: [{ id: "llama-3", name: "Llama 3" }],
+};
+
+function legacyRow(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id: "auto-legacy",
+    title: "Legacy nightly",
+    prompt: "Summarize overnight mail",
+    enabled: true,
+    projectId: null,
+    modelId: "qwen3.8-max",
+    providerId: null,
+    effort: "high",
+    sessionMode: "new",
+    sessionId: null,
+    frequency: "daily",
+    time: "09:00",
+    weekdays: [],
+    notify: "all",
+    createdAt: "2026-10-01T00:00:00Z",
+    updatedAt: "2026-10-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function submitForm(buttonName: string) {
+  const form = screen.getByRole("complementary", {
+    name: "automations.formTitle",
+  });
+  fireEvent.click(within(form).getByRole("button", { name: buttonName }));
+}
 
 async function openCreate() {
   fireEvent.click(await screen.findByText("automations.create"));
@@ -136,6 +182,55 @@ describe("AutomationsPage route controls", () => {
         screen.getByRole("button", { name: "automations.field.model" }),
       ).toHaveTextContent(/Relay A · Qwen 3.8 Max/),
     );
+
+    fireEvent.change(screen.getByPlaceholderText("automations.field.titlePh"), {
+      target: { value: "Nightly digest" },
+    });
+    fireEvent.change(
+      screen.getByPlaceholderText("automations.field.promptPh"),
+      { target: { value: "Summarize overnight mail" } },
+    );
+    submitForm("automations.create");
+    await waitFor(() =>
+      expect(api.automationCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerId: "relay-a",
+          modelId: "qwen3.8-max",
+        }),
+      ),
+    );
+  });
+
+  it("infers the only custom provider that lists a legacy model", async () => {
+    vi.mocked(api.automationsList).mockResolvedValue([legacyRow()] as never);
+    renderPage({
+      providers: [relay, otherRelay],
+      defaultProviderId: "official",
+      defaultModelId: "grok-4.7",
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Legacy nightly/ }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "automations.field.model" }),
+      ).toHaveTextContent(/Relay A · Qwen 3.8 Max/),
+    );
+    expect(
+      screen.getByRole("button", { name: "automations.field.model" }),
+    ).not.toHaveTextContent(/Relay B/);
+
+    submitForm("automations.save");
+    await waitFor(() =>
+      expect(api.automationUpdate).toHaveBeenCalledWith(
+        "auto-legacy",
+        expect.objectContaining({
+          providerId: "relay-a",
+          modelId: "qwen3.8-max",
+        }),
+      ),
+    );
   });
 
   it("switches an SSH project to the official route", async () => {
@@ -163,5 +258,64 @@ describe("AutomationsPage route controls", () => {
     expect(
       screen.getByRole("button", { name: "automations.field.model" }),
     ).not.toHaveTextContent(/Relay A/);
+
+    fireEvent.change(screen.getByPlaceholderText("automations.field.titlePh"), {
+      target: { value: "Remote digest" },
+    });
+    fireEvent.change(
+      screen.getByPlaceholderText("automations.field.promptPh"),
+      { target: { value: "Check the host" } },
+    );
+    submitForm("automations.create");
+    await waitFor(() =>
+      expect(api.automationCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "ssh-1",
+          providerId: "official",
+          modelId: "grok-4.7",
+        }),
+      ),
+    );
+  });
+
+  it("pins an edited SSH task to the official route", async () => {
+    vi.mocked(api.automationsList).mockResolvedValue([
+      legacyRow({
+        id: "auto-ssh",
+        title: "Remote nightly",
+        projectId: "ssh-1",
+        providerId: "relay-a",
+      }),
+    ] as never);
+    renderPage({
+      providers: [relay],
+      defaultProviderId: relay.id,
+      defaultModelId: "qwen3.8-max",
+      projects: [{ id: "ssh-1", name: "Remote", isSshRemote: true }],
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Remote nightly/ }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "automations.field.model" }),
+      ).toHaveTextContent(/composer.modelGroupOfficial/),
+    );
+    expect(
+      screen.getByRole("button", { name: "automations.field.model" }),
+    ).not.toHaveTextContent(/Relay A/);
+
+    submitForm("automations.save");
+    await waitFor(() =>
+      expect(api.automationUpdate).toHaveBeenCalledWith(
+        "auto-ssh",
+        expect.objectContaining({
+          projectId: "ssh-1",
+          providerId: "official",
+          modelId: "grok-4.7",
+        }),
+      ),
+    );
   });
 });

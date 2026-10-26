@@ -65,10 +65,12 @@ describe("automation session target", () => {
       automationProjectOptions([
         { id: "local", name: "Local" },
         { id: "ssh", name: "Remote", sshAlias: "devbox" },
+        { id: "blank", name: "Blank", sshAlias: "   " },
       ]),
     ).toEqual([
       { id: "local", name: "Local", isSshRemote: false },
       { id: "ssh", name: "Remote", isSshRemote: true },
+      { id: "blank", name: "Blank", isSshRemote: false },
     ]);
   });
 });

@@ -38,7 +38,7 @@ export const trAutomations = {
   "automations.sessionMode.new": "Her çalıştırmada yeni sohbet",
   "automations.sessionMode.reuse": "Mevcut sohbet",
   "automations.field.session": "Sohbet",
-  "automations.field.sessionSearchPh": "Başlığa göre ara",
+  "automations.field.sessionSearchPh": "Başlığa, kimliğe veya projeye göre ara",
   "automations.sessionNone": "Bir sohbet seçin",
   "automations.sessionMissing": "Kayıtlı sohbet (son listede yok)",
   "automations.sessionSearchNoResults": "Eşleşen sohbet yok",

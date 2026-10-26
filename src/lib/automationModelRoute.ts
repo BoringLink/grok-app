@@ -57,7 +57,9 @@ function uniqueProviderForModel(
 ): string | null {
   const matches = providers.filter(
     (p) =>
-      p.model === model || (p.models ?? []).some((entry) => entry.id === model),
+      p.id !== model &&
+      (p.model === model ||
+        (p.models ?? []).some((entry) => entry.id === model)),
   );
   return matches.length === 1 ? matches[0]!.id : null;
 }

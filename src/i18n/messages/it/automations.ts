@@ -37,7 +37,7 @@ export const itAutomations = {
   "automations.sessionMode.new": "Nuova chat a ogni esecuzione",
   "automations.sessionMode.reuse": "Chat esistente",
   "automations.field.session": "Chat",
-  "automations.field.sessionSearchPh": "Cerca per titolo",
+  "automations.field.sessionSearchPh": "Cerca per titolo, id o progetto",
   "automations.sessionNone": "Scegli una chat",
   "automations.sessionMissing": "Chat salvata (non nell'elenco recente)",
   "automations.sessionSearchNoResults": "Nessuna chat corrispondente",

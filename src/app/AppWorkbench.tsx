@@ -12459,7 +12459,7 @@ export function AppWorkbench() {
               setToast(tr("automations.aiComposerHint"));
               window.setTimeout(() => setToast(null), 4200);
               }}
-              onRunNow={(auto) => void runAutomation(auto)}
+              onRunNow={runAutomation}
               />            </Suspense>
           ) : (
           <>

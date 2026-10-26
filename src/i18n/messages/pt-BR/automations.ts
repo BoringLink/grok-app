@@ -37,7 +37,7 @@ export const ptBRAutomations = {
   "automations.sessionMode.new": "Novo chat a cada execução",
   "automations.sessionMode.reuse": "Chat existente",
   "automations.field.session": "Chat",
-  "automations.field.sessionSearchPh": "Buscar por título",
+  "automations.field.sessionSearchPh": "Buscar por título, id ou projeto",
   "automations.sessionNone": "Escolha um chat",
   "automations.sessionMissing": "Chat salvo (fora da lista recente)",
   "automations.sessionSearchNoResults": "Nenhuma conversa correspondente",

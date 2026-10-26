@@ -81,6 +81,21 @@ describe("automation model route", () => {
         providers,
       }),
     ).toBe("official");
+    const sameId = [{ id: "qwen3.8-max", model: "qwen3.8-max" }];
+    expect(
+      inferAutomationProviderId({
+        modelId: "qwen3.8-max",
+        officialModelIds: ["grok-4.7"],
+        providers: sameId,
+      }),
+    ).toBe("");
+    expect(
+      effectiveAutomationProviderId(
+        { modelId: "qwen3.8-max" },
+        ["grok-4.7"],
+        sameId,
+      ),
+    ).toBeNull();
   });
 
   it("keeps the active route when a legacy model matches several providers", () => {

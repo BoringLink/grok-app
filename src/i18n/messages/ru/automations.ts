@@ -37,7 +37,7 @@ export const ruAutomations = {
   "automations.sessionMode.new": "Новый чат при каждом запуске",
   "automations.sessionMode.reuse": "Существующий чат",
   "automations.field.session": "Чат",
-  "automations.field.sessionSearchPh": "Поиск по названию",
+  "automations.field.sessionSearchPh": "Поиск по названию, id или проекту",
   "automations.sessionNone": "Выберите чат",
   "automations.sessionMissing": "Сохранённый чат (нет в недавних)",
   "automations.sessionSearchNoResults": "Нет подходящих чатов",

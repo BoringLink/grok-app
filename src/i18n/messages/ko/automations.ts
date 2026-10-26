@@ -37,7 +37,7 @@ export const koAutomations = {
   "automations.sessionMode.new": "매번 새 채팅",
   "automations.sessionMode.reuse": "기존 채팅",
   "automations.field.session": "채팅",
-  "automations.field.sessionSearchPh": "제목으로 검색",
+  "automations.field.sessionSearchPh": "제목, ID 또는 프로젝트로 검색",
   "automations.sessionNone": "채팅 선택",
   "automations.sessionMissing": "저장된 채팅(최근 목록에 없음)",
   "automations.sessionSearchNoResults": "일치하는 채팅이 없습니다",

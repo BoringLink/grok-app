@@ -37,7 +37,7 @@ export const zhAutomations = {
   "automations.sessionMode.new": "每次新建会话",
   "automations.sessionMode.reuse": "现有会话",
   "automations.field.session": "会话",
-  "automations.field.sessionSearchPh": "按标题搜索",
+  "automations.field.sessionSearchPh": "按标题、编号或项目搜索",
   "automations.sessionNone": "选择一个会话",
   "automations.sessionMissing": "已保存的会话（不在最近列表中）",
   "automations.sessionSearchNoResults": "没有匹配的会话",

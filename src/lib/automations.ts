@@ -115,7 +115,7 @@ export function automationProjectOptions(
   return projects.map((p) => ({
     id: p.id,
     name: p.name,
-    isSshRemote: Boolean(p.sshAlias),
+    isSshRemote: Boolean(p.sshAlias?.trim()),
   }));
 }
 

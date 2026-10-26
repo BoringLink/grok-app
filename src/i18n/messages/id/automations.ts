@@ -37,7 +37,7 @@ export const idAutomations = {
   "automations.sessionMode.new": "Chat baru setiap kali",
   "automations.sessionMode.reuse": "Chat yang ada",
   "automations.field.session": "Chat",
-  "automations.field.sessionSearchPh": "Cari berdasarkan judul",
+  "automations.field.sessionSearchPh": "Cari berdasarkan judul, id, atau proyek",
   "automations.sessionNone": "Pilih chat",
   "automations.sessionMissing": "Chat tersimpan (tidak ada di daftar terbaru)",
   "automations.sessionSearchNoResults": "Tidak ada chat yang cocok",
