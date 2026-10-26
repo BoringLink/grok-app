@@ -1,0 +1,33 @@
+src/lib/automations.ts
+  s_4e4d693d576d2d::t_8e0f7a13c9458a 55-72
+  s_dc6e98a83bee89::t_b231a33146ef0f 75,81,84-89,92-104
+  s_4e4d693d576d2d::t_4e3fe444b6d2c4 8-9
+  s_dc6e98a83bee89::t_359acf321f9a6e 73-74,105-123
+  s_4e4d693d576d2d::t_553efc654aa13e 44-45
+  s_4e4d693d576d2d::t_4e183a4848ef84 22-23
+  s_dc6e98a83bee89::t_2e35864b8c3577 21
+  s_dc6e98a83bee89::t_3b389358bd8f0d 76-80,82-83,90-91
+src/lib/automationsSession.test.ts
+  s_dc6e98a83bee89::t_0c75b56fa0d1cc 5,7,32-60
+  s_4e4d693d576d2d::t_118b54acb2fe8c 1-2,4,6,8-31,74
+  s_dc6e98a83bee89::t_69180ea3cfbd72 3,62-72
+src-tauri/src/wallpaper_source.rs
+  s_dc6e98a83bee89::t_ea719dfb9b822a 2971-2980,3020,3075
+CHANGELOG.md
+  s_4e4d693d576d2d::t_8ced8868c12fc4 16-23,26-37
+  s_dc6e98a83bee89::t_fbccae47d321de 39,62
+src/components/AutomationsPage.test.tsx
+  s_dc6e98a83bee89::t_acbe33f273d94a 55,70-74
+  s_dc6e98a83bee89::t_a400595c12469c 69,92-94,97-104
+src/app/AppWorkbench.tsx
+  s_dc6e98a83bee89::t_ae811893a0e2f1 12400
+  s_dc6e98a83bee89::t_4ec5be03d8c73d 12399
+  s_dc6e98a83bee89::t_2d08759db78433 541
+  s_dc6e98a83bee89::t_aa363ef5087fd4 16,1295-1298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "4ca3896d62a52d601167e733171ab8dbdbe3d22b",
+  "prompts": {}
+}
