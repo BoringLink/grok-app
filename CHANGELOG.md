@@ -15,9 +15,19 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 - Scheduled tasks can run in a chat you choose instead of opening a new one every time. The chosen chat keeps its own model and reasoning.
+- Streamed replies fade in smoothly. Turn it off in Appearance; it follows the system Reduce Motion setting.
+- The local session API can start a new chat and report its status.
 
 **中文 · 新增**
 - 定时任务可以选择在指定会话中执行，不必每次新建。所选会话保留自己的模型与推理强度。
+- 流式回复会平滑淡入。可在外观里关闭，并跟随系统的减少动态效果设置。
+- 本地会话接口可以新建对话并查询状态。
+
+### Changed
+- Long-running chats stay responsive: background chats now update the screen less often.
+
+**中文 · 变更**
+- 长时间运行的对话更不容易卡：后台对话降低了刷新频率。
 
 ### Fixed
 - Small icons in macOS System Settings no longer show colored stripes.
@@ -37,6 +47,9 @@ See `docs/llm-wiki/release.md`.
 - A fullwidth @ or / from an IME opens the same composer panel.
 - A PR the agent starts watching shows up in the chat's watch chip and menu.
 - A subagent that is still running stays in the Tasks list when the list is full.
+- Queued messages in background chats now send on their own when the turn ends.
+- Memory embedding URL, key and model save correctly, and a cleared extra prompt stays cleared.
+- The window rebuilds itself after a Windows WebView2 crash instead of staying blank.
 
 **中文 · 修复**
 - macOS 系统设置里的小图标不再出现彩色横纹。
@@ -56,6 +69,9 @@ See `docs/llm-wiki/release.md`.
 - 输入法打出的全角＠或／，也会打开文件面板或斜杠面板。
 - Agent 主动开始监视的 PR，会出现在对话的监视标记和菜单里。
 - 任务列表满了以后，仍在运行的子任务会继续留在列表里。
+- 后台对话里排队的消息，会在这一轮结束后自动发出。
+- 记忆 Embedding 的地址、密钥和模型可以正常保存，清空的追加提示词不会再回来。
+- Windows 上 WebView2 崩溃后，窗口会自动重建，不再一直白屏。
 
 ## [0.2.42] - 2026-10-19
 
