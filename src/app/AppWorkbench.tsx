@@ -788,6 +788,8 @@ export function AppWorkbench() {
     setReplaceProviderBrandLogo,
     welcomeMotionEnabled,
     setWelcomeMotionEnabled,
+    outputMotionEnabled,
+    setOutputMotionEnabled,
     goalOrchUiEnabled,
     setGoalOrchUiEnabled,
     goalOrchEvents,
@@ -12292,6 +12294,8 @@ export function AppWorkbench() {
         replaceProviderBrandLogo={replaceProviderBrandLogo}
         welcomeMotionEnabled={welcomeMotionEnabled}
         setWelcomeMotionEnabled={setWelcomeMotionEnabled}
+        outputMotionEnabled={outputMotionEnabled}
+        setOutputMotionEnabled={setOutputMotionEnabled}
         restoreSessions={restoreSessions}
         runAccountLogin={runAccountLogin}
         runAccountLogout={runAccountLogout}

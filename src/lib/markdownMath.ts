@@ -171,17 +171,117 @@ function startsOnLine(src: string, index: number): boolean {
   return prev === "\n" || prev === "\r";
 }
 
-function rewriteMathChunk(chunk: string, atLineStart: boolean): string {
-  if (!chunk) return chunk;
+/**
+ * One rewrite pass of math normalization. `pattern` must be a global regex;
+ * `rewrite` receives the full match and the captured body and returns the
+ * replacement (returning `full` keeps the text unchanged).
+ *
+ * `normalizeMarkdownMathPasses` walks this table on text outside code spans.
+ * Stream-reveal offset mapping uses those passes, so both see the same edits.
+ */
+export type MarkdownMathRewrite = {
+  pattern: RegExp;
+  rewrite: (full: string, body: string) => string;
+};
+
+export const MARKDOWN_MATH_REWRITES: readonly MarkdownMathRewrite[] = [
+  { pattern: /\\\[([\s\S]+?)\\\]/g, rewrite: (_full, body) => `$$${body}$$` },
+  { pattern: /\\\(([\s\S]+?)\\\)/g, rewrite: (_full, body) => `$${body}$` },
+  {
+    pattern: /^[ \t]*\[(?!\s*$)(?![^\]]+\]\()([^\n]+)\][ \t]*$/gm,
+    rewrite: (full, body) => (LATEX_HINT.test(body) ? `$$${body}$$` : full),
+  },
+];
+
+export type MarkdownMathRewriteMatch = {
+  start: number;
+  end: number;
+  replacement: string;
+};
+
+/**
+ * Runs one rewrite and returns the before / after offset pairs (`start` /
+ * `end` are pre-rewrite coordinates). Matches `String.prototype.replace`
+ * global semantics so normalization and offset mapping can share it.
+ */
+export function applyMarkdownMathRewrite(
+  src: string,
+  rewrite: MarkdownMathRewrite,
+): { text: string; matches: MarkdownMathRewriteMatch[] } {
+  // Clone the regex: a global regex reuses lastIndex, so state must not leak
+  // across calls.
+  const pattern = new RegExp(rewrite.pattern.source, rewrite.pattern.flags);
+  const matches: MarkdownMathRewriteMatch[] = [];
+  let out = "";
+  let cursor = 0;
+  for (const match of src.matchAll(pattern)) {
+    const full = match[0];
+    const start = match.index ?? cursor;
+    const replacement = rewrite.rewrite(
+      full,
+      (match[1] as string | undefined) ?? "",
+    );
+    out += src.slice(cursor, start);
+    out += replacement;
+    cursor = start + full.length;
+    if (replacement !== full) {
+      matches.push({ start, end: cursor, replacement });
+    }
+  }
+  out += src.slice(cursor);
+  return { text: out, matches };
+}
+
+type RewrittenChunk = {
+  text: string;
+  originalLength: number;
+  /** Length of this chunk after each rewrite pass. */
+  lengths: number[];
+  passes: MarkdownMathRewriteMatch[][];
+};
+
+function blankPasses(): MarkdownMathRewriteMatch[][] {
+  return MARKDOWN_MATH_REWRITES.map(() => []);
+}
+
+function unchangedChunk(text: string): RewrittenChunk {
+  return {
+    text,
+    originalLength: text.length,
+    lengths: MARKDOWN_MATH_REWRITES.map(() => text.length),
+    passes: blankPasses(),
+  };
+}
+
+function rewriteMathChunk(chunk: string, atLineStart: boolean): RewrittenChunk {
+  if (!chunk) return unchangedChunk(chunk);
   // A chunk that begins mid-line must not let `^` treat that cut as a new line.
-  const body = atLineStart ? chunk : `\u0000${chunk}`;
-  let out = body.replace(/\\\[([\s\S]+?)\\\]/g, (_m, inner: string) => `$$${inner}$$`);
-  out = out.replace(/\\\(([\s\S]+?)\\\)/g, (_m, inner: string) => `$${inner}$`);
-  out = out.replace(
-    /^[ \t]*\[(?!\s*$)(?![^\]]+\]\()([^\n]+)\][ \t]*$/gm,
-    (full, inner: string) => (LATEX_HINT.test(inner) ? `$$${inner}$$` : full),
-  );
-  return atLineStart ? out : out.slice(1);
+  const guard = atLineStart ? "" : "\u0000";
+  let body = guard + chunk;
+  const passes: MarkdownMathRewriteMatch[][] = [];
+  const lengths: number[] = [];
+  for (const rewrite of MARKDOWN_MATH_REWRITES) {
+    const applied = applyMarkdownMathRewrite(body, rewrite);
+    body = applied.text;
+    const shift = guard.length;
+    const shifted: MarkdownMathRewriteMatch[] = [];
+    for (const match of applied.matches) {
+      if (match.start < shift) continue;
+      shifted.push({
+        start: match.start - shift,
+        end: match.end - shift,
+        replacement: match.replacement,
+      });
+    }
+    passes.push(shifted);
+    lengths.push(body.length - shift);
+  }
+  return {
+    text: body.slice(guard.length),
+    originalLength: chunk.length,
+    lengths,
+    passes,
+  };
 }
 
 function chunkHasMath(chunk: string, atLineStart: boolean): boolean {
@@ -214,18 +314,67 @@ function outsideCode(src: string): Array<{ text: string; atLineStart: boolean }>
   return parts;
 }
 
-export function normalizeMarkdownMath(src: string): string {
-  if (!src) return src;
-  const spans = codeSpans(src);
+export type MarkdownMathNormalization = {
+  text: string;
+  /**
+   * One match list per `MARKDOWN_MATH_REWRITES` entry. Offsets are global
+   * coordinates in that pass's input. Code spans contribute length but no
+   * matches.
+   */
+  passes: readonly (readonly MarkdownMathRewriteMatch[])[];
+};
+
+/**
+ * Rewrites math delimiters outside code and reports each pass's matches.
+ * `normalizeMarkdownMath` and stream-reveal offset mapping both use this.
+ */
+export function normalizeMarkdownMathPasses(src: string): MarkdownMathNormalization {
+  if (!src) return { text: src, passes: blankPasses() };
+  const chunks: RewrittenChunk[] = [];
   let out = "";
   let cursor = 0;
-  for (const span of spans) {
-    out += rewriteMathChunk(src.slice(cursor, span.start), startsOnLine(src, cursor));
-    out += src.slice(span.start, span.end);
-    cursor = span.end;
+  const takeProse = (end: number) => {
+    if (end <= cursor) return;
+    const rewritten = rewriteMathChunk(
+      src.slice(cursor, end),
+      startsOnLine(src, cursor),
+    );
+    out += rewritten.text;
+    chunks.push(rewritten);
+    cursor = end;
+  };
+  const takeCode = (end: number) => {
+    const text = src.slice(cursor, end);
+    out += text;
+    chunks.push(unchangedChunk(text));
+    cursor = end;
+  };
+  for (const span of codeSpans(src)) {
+    takeProse(span.start);
+    takeCode(span.end);
   }
-  out += rewriteMathChunk(src.slice(cursor), startsOnLine(src, cursor));
-  return out;
+  takeProse(src.length);
+
+  const passes: MarkdownMathRewriteMatch[][] = blankPasses();
+  for (let pass = 0; pass < MARKDOWN_MATH_REWRITES.length; pass += 1) {
+    let origin = 0;
+    for (const chunk of chunks) {
+      for (const match of chunk.passes[pass]) {
+        passes[pass].push({
+          start: origin + match.start,
+          end: origin + match.end,
+          replacement: match.replacement,
+        });
+      }
+      origin += pass === 0 ? chunk.originalLength : chunk.lengths[pass - 1];
+    }
+  }
+  return { text: out, passes };
+}
+
+export function normalizeMarkdownMath(src: string): string {
+  if (!src) return src;
+  return normalizeMarkdownMathPasses(src).text;
 }
 
 /** Skip remark-math + KaTeX when the source has no math delimiters. */
