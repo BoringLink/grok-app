@@ -1,0 +1,19 @@
+src-tauri/src/win_webview_recovery.rs
+  s_dc6e98a83bee89::t_c75920506f1057 34,71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "9d4c88c304ccf1e4de80a4e960a376fc470f52de",
+  "prompts": {},
+  "sessions": {
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
