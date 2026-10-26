@@ -832,6 +832,17 @@ impl AcpClient {
         } else {
             None
         };
+        // Sealed homes link sessions/memory/skills out of `$GROK_HOME`. The
+        // built-in profile cannot grow extra write roots, so the CLI flag is a
+        // wrapper defined in the sealed sandbox.toml (#1341). Process reuse
+        // still compares the profile the user asked for.
+        let sandbox_cli = sandbox.as_ref().map(|sb| {
+            let mut cli = sb.clone();
+            if agent_home_prep {
+                cli.profile = crate::agent_proc_home::sealed_share_spawn_profile(&sb.profile);
+            }
+            cli
+        });
         // Soft-fail older CLIs for GROK_SUBAGENT_WORKTREE_SNAPSHOT env.
         let cli_ver = version_raw.clone();
 
@@ -922,7 +933,7 @@ impl AcpClient {
         for a in permission_mode_spawn_flags(spawn_policy, spawn_product_mode) {
             cmd.arg(a);
         }
-        if let Some(ref sb) = sandbox {
+        if let Some(ref sb) = sandbox_cli {
             for a in sb.cli_args() {
                 cmd.arg(a);
             }
@@ -1097,7 +1108,23 @@ impl AcpClient {
             // Last writer before the sealed copy. Shared ~/.grok is not this path.
             let _ = crate::providers::ensure_custom_ids_in_allowed_models();
             match crate::agent_proc_home::create(&grok_home, custom_route) {
-                Ok(dir) => Some(dir),
+                Ok(dir) => {
+                    if let Some(sb) = sandbox.as_ref() {
+                        if let Err(e) = crate::agent_proc_home::install_sealed_share_grant(
+                            &dir,
+                            &grok_home,
+                            &sb.profile,
+                        ) {
+                            crate::agent_proc_home::discard(&dir);
+                            drop(route_auth_guard);
+                            return Err(AgentError::new(
+                                AgentErrorCode::ConnectFailed,
+                                format!("failed to grant sealed session directories: {e}"),
+                            ));
+                        }
+                    }
+                    Some(dir)
+                }
                 Err(e) => {
                     drop(route_auth_guard);
                     return Err(AgentError::new(
@@ -1177,7 +1204,7 @@ impl AcpClient {
         // Route agent traffic through the configured proxy (NEW-02). Windows
         // system proxy is registry-only and never reaches children as env vars.
         crate::proxy::apply_to_tokio_command(&mut cmd);
-        if let Some(ref sb) = sandbox {
+        if let Some(ref sb) = sandbox_cli {
             let (k, v) = sb.env_pair();
             cmd.env(k, v);
         }
