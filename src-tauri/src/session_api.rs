@@ -2760,7 +2760,6 @@ mod tests {
         let log = format!(
             "create:\n{created:#}\nreplay:\n{again:#}\nget:\n{got:#}\nunauth:\n{unauth:#}\nunknown:\n{unknown:#}\n"
         );
-        std::fs::write("/tmp/f5-curl.txt", &log).unwrap();
         eprintln!("{log}");
 
         assert_eq!(created["http"].as_u64().unwrap(), 200);
