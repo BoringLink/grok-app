@@ -50,9 +50,11 @@ export type ComposerSendKeyEvent = {
   altKey: boolean;
   /** Physical key (`Enter` / `NumpadEnter`). WKWebView may omit `key === "Enter"`. */
   code?: string;
-  /** 13 = Enter; 10 = LF (macOS WKWebView / some Windows Ctrl+Enter). */
+  /** 13 = Enter; 10 = LF (macOS WKWebView / some Windows Ctrl+Enter). 229 = IME. */
   keyCode?: number;
   which?: number;
+  /** True while an IME candidate is being composed. */
+  isComposing?: boolean;
   /** Method form stays compatible with React `KeyboardEvent.getModifierState(ModifierKey)`. */
   getModifierState?(key: string): boolean;
   nativeEvent?: {
@@ -61,6 +63,7 @@ export type ComposerSendKeyEvent = {
     keyCode?: number;
     which?: number;
     ctrlKey?: boolean;
+    isComposing?: boolean;
   };
 };
 
@@ -223,4 +226,56 @@ export function sendKeyRedirectsToLiveInsert(opts: {
   if (!opts.enterInsertsLive || !opts.canSteer) return false;
   if (shouldSteerOnKeydown(opts.event)) return false;
   return shouldSendOnKeydown(opts.event, opts.sendPref);
+}
+
+/**
+ * IME candidate confirm. keyCode 229 is the composition key on Windows / WebKit.
+ * A real Ctrl+Enter steer chord is not this: that chord must still reach Steer.
+ */
+export function isComposerImeKeydown(e: ComposerSendKeyEvent): boolean {
+  if (e.isComposing || e.nativeEvent?.isComposing) return true;
+  const kc = e.keyCode ?? e.which ?? e.nativeEvent?.keyCode ?? e.nativeEvent?.which;
+  return kc === 229;
+}
+
+/** What the composer send key should do for one keydown. */
+export type ComposerEnterDecision = "steer" | "send" | "queue" | "none";
+
+/**
+ * Enter while a reply may be running.
+ *
+ * - IME confirm of the send key: `none` (do not send or insert).
+ * - Shift+Enter and any non-send key: `none` (newline stays in the editor).
+ * - Chat idle: `send`.
+ * - Reply running, Steer available, and “Enter inserts into the live turn”
+ *   is on: `steer` — the same path as the Steer button and Ctrl+Enter.
+ * - Reply running and Steer is not available (no live turn to insert into,
+ *   or the Steer gate is closed): `queue`. Callers hand this to the existing
+ *   send path, which enqueues and keeps today's prompts. The setting off
+ *   also queues a busy chat.
+ *
+ * `wouldEnqueue` is `shouldEnqueueSend` (viewed chat is `streaming`).
+ * `canSteer` is the Steer button gate (`canGuideQueuedMessage`).
+ */
+export function decideComposerEnterAction(opts: {
+  event: ComposerSendKeyEvent;
+  sendPref: ComposerSendKeyPref;
+  canSteer: boolean;
+  enterInsertsLive: boolean;
+  wouldEnqueue: boolean;
+}): ComposerEnterDecision {
+  // Control+Return still steers during a stuck composition (WKWebView).
+  if (isComposerImeKeydown(opts.event) && !shouldSteerOnKeydown(opts.event)) {
+    return "none";
+  }
+  const submit = resolveComposerSubmitAction({
+    event: opts.event,
+    sendPref: opts.sendPref,
+    canSteer: opts.canSteer,
+    enterInsertsLive: opts.enterInsertsLive,
+  });
+  if (submit === "none") return "none";
+  if (submit === "steer") return "steer";
+  if (opts.wouldEnqueue) return "queue";
+  return "send";
 }

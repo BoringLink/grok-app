@@ -43,6 +43,11 @@ import {
   type ShortcutRemapMap,
 } from "@/lib/shortcutRemap";
 import {
+  COMPOSER_ENTER_INSERTS_LIVE_CHANGED_EVENT,
+  COMPOSER_ENTER_INSERTS_LIVE_KEY,
+  loadComposerEnterInsertsLive,
+} from "@/lib/composerEnterInsertsLive";
+import {
   COMPOSER_SEND_KEY_CHANGED_EVENT,
   loadComposerSendKeyPref,
   type ComposerSendKeyPref,
@@ -69,6 +74,9 @@ export function ShortcutsSettingsPanel({
   const [sendPref, setSendPref] = useState<ComposerSendKeyPref>(() =>
     loadComposerSendKeyPref(),
   );
+  const [enterInsertsLive, setEnterInsertsLive] = useState(() =>
+    loadComposerEnterInsertsLive(),
+  );
   const [remaps, setRemaps] = useState<ShortcutRemapMap>(() =>
     loadShortcutRemaps(),
   );
@@ -93,12 +101,18 @@ export function ShortcutsSettingsPanel({
 
   useEffect(() => {
     const reloadSend = () => setSendPref(loadComposerSendKeyPref());
+    const reloadEnterInserts = () =>
+      setEnterInsertsLive(loadComposerEnterInsertsLive());
     const reloadRemaps = () => setRemaps(loadShortcutRemaps());
     const reloadVoiceHotkey = () =>
       setVoiceHotkeyEnabled(loadVoiceHotkeyEnabled());
     const reloadIgnoreCross = () =>
       setIgnoreCrossScope(loadIgnoreCrossScopeConflicts());
     window.addEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reloadSend);
+    window.addEventListener(
+      COMPOSER_ENTER_INSERTS_LIVE_CHANGED_EVENT,
+      reloadEnterInserts,
+    );
     window.addEventListener(SHORTCUT_REMAP_CHANGED_EVENT, reloadRemaps);
     window.addEventListener(VOICE_HOTKEY_CHANGED_EVENT, reloadVoiceHotkey);
     window.addEventListener(
@@ -107,6 +121,9 @@ export function ShortcutsSettingsPanel({
     );
     const onStorage = (e: StorageEvent) => {
       if (e.key === "grok.composerSendKey" || e.key === null) reloadSend();
+      if (e.key === COMPOSER_ENTER_INSERTS_LIVE_KEY || e.key === null) {
+        reloadEnterInserts();
+      }
       if (e.key === SHORTCUT_REMAP_STORAGE_KEY || e.key === null) {
         reloadRemaps();
       }
@@ -123,6 +140,10 @@ export function ShortcutsSettingsPanel({
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener(COMPOSER_SEND_KEY_CHANGED_EVENT, reloadSend);
+      window.removeEventListener(
+        COMPOSER_ENTER_INSERTS_LIVE_CHANGED_EVENT,
+        reloadEnterInserts,
+      );
       window.removeEventListener(SHORTCUT_REMAP_CHANGED_EVENT, reloadRemaps);
       window.removeEventListener(VOICE_HOTKEY_CHANGED_EVENT, reloadVoiceHotkey);
       window.removeEventListener(
@@ -185,8 +206,9 @@ export function ShortcutsSettingsPanel({
   }, [recordingId, remaps, t, conflictOpts]);
 
   const groups = useMemo(
-    () => shortcutsByGroup(sendPref, remaps, voiceHotkeyEnabled),
-    [sendPref, remaps, voiceHotkeyEnabled],
+    () =>
+      shortcutsByGroup(sendPref, remaps, voiceHotkeyEnabled, enterInsertsLive),
+    [sendPref, remaps, voiceHotkeyEnabled, enterInsertsLive],
   );
   const filteredGroups = useMemo(
     () =>
@@ -546,6 +568,11 @@ export function ShortcutsSettingsPanel({
         ))
       )}
       <p className="settings-shortcuts-note">{t("settings.shortcuts.note")}</p>
+      {enterInsertsLive ? (
+        <p className="settings-shortcuts-note">
+          {t("settings.composerEnterInsertsLiveDesc")}
+        </p>
+      ) : null}
 
       <GlassModal
         open={resetAllOpen}

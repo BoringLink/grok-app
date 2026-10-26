@@ -20,11 +20,12 @@ import {
 import { composerHasSendPayload } from "@/lib/composerQuotes";
 import {
   composerSteerLive,
-  resolveComposerSubmitAction,
+  decideComposerEnterAction,
   sendKeyRedirectsToLiveInsert,
   type ComposerSendKeyPref,
 } from "@/lib/composerSendKey";
 import { isDraftEmpty, parseStoredContent } from "@/lib/draftDoc";
+import { shouldEnqueueSend } from "@/lib/sendQueue";
 import type { SessionState } from "@/lib/session/types";
 import type { SlashItem } from "@/lib/slashCatalog";
 
@@ -348,13 +349,16 @@ export function useComposerKeyDown(ctx: ComposerKeyDownCtx) {
       canGuideQueuedMessage,
       sessionState: sessionState,
     });
-    const submit = resolveComposerSubmitAction({
+    // `queue` is the existing send() path: a busy chat enqueues and keeps
+    // today's toasts. Steer-unavailable (no insertable turn) uses that path.
+    const decision = decideComposerEnterAction({
       event: e,
       sendPref: composerSendKeyPref,
       canSteer,
       enterInsertsLive,
+      wouldEnqueue: shouldEnqueueSend(sessionState, false),
     });
-    if (submit === "steer") {
+    if (decision === "steer") {
       e.preventDefault();
       // Send-key insert needs a draft. Empty Ctrl+Enter still steers the queue head.
       if (
@@ -379,7 +383,7 @@ export function useComposerKeyDown(ctx: ComposerKeyDownCtx) {
       void steerFromComposer();
       return;
     }
-    if (submit === "send") {
+    if (decision === "send" || decision === "queue") {
       e.preventDefault();
       const hasBody = composerHasSendPayload({
         draftEmpty: isDraftEmpty(parseStoredContent(getDraft())),
