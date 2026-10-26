@@ -13,6 +13,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Paste uses the system clipboard when the page clipboard is empty.
+
+**中文 · 修复**
+
+- 页面剪贴板为空时，粘贴会改用系统剪贴板。
+
 ## [0.2.46] - 2026-10-27
 
 > **Highlight:** macOS chats start again when the Grok home has a bundles folder.
