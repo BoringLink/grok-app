@@ -23,6 +23,7 @@ See `docs/llm-wiki/release.md`.
 - A chat connects when leader mode is on but no leader is running.
 - Show more lists the next chats after the open chat expands the group.
 - A long subagent no longer shows its time as 1m 60s.
+- A slow new chat keeps its text instead of opening an empty second chat.
 
 **中文 · 修复**
 - macOS 系统设置里的小图标不再出现彩色横纹。
@@ -34,6 +35,7 @@ See `docs/llm-wiki/release.md`.
 - 开了 leader、但本机没有 leader 时，对话也能连上。
 - 当前对话把分组撑开之后，显示更多会继续列出后面的会话。
 - 长时间运行的子任务不再把时长显示成 1 分 60 秒。
+- 新建对话连得很慢时，已输入的内容仍留在这一条会话里。
 
 ## [0.2.42] - 2026-10-19
 
