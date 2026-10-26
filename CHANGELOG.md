@@ -27,6 +27,7 @@ See `docs/llm-wiki/release.md`.
 - A file on a Windows network share opens from the chat.
 - Review keeps a Windows network path pointed at that share.
 - A task due in under a minute no longer says 0 min.
+- Math written inside a code span stays as code.
 
 **中文 · 修复**
 - macOS 系统设置里的小图标不再出现彩色横纹。
@@ -42,6 +43,7 @@ See `docs/llm-wiki/release.md`.
 - 对话里的 Windows 网络共享路径可以打开对应的文件。
 - 审查列表里的 Windows 网络路径仍指向原来的共享文件。
 - 不到一分钟就要运行的任务，不再显示成 0 分钟后。
+- 代码里的公式分隔符保持原样，不会被改成公式。
 
 ## [0.2.42] - 2026-10-19
 
