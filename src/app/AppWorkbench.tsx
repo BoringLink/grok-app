@@ -12400,7 +12400,11 @@ export function AppWorkbench() {
               projects={automationProjectOptions(projects)}
               sessionOptions={automationSessionOptions(sessions)}
               providers={customProviders}
-              defaultProviderId={providerActiveId ?? "official"}
+              defaultProviderId={
+                providerActiveSource === "custom"
+                  ? (providerActiveId ?? "official")
+                  : "official"
+              }
               defaultModelId={modelId}
               defaultEffort={effort}
               models={availableModels}
