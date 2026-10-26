@@ -6,12 +6,14 @@
 //!   A running turn is queued, not interrupted.
 //! - Create a new App session in an already-trusted project and start its
 //!   first turn (#1356). Does not add projects and does not bypass the trust gate.
+//!   Optional `worktreePath` binds cwd to an existing worktree of that project
+//!   (`set_session_worktree`); it does not create a worktree or a new project.
 //! - Read one session's turn phase (#1356).
 
 use std::collections::HashSet;
 use std::fs;
 use std::future::Future;
-use std::path::{Path as StdPath, PathBuf};
+use std::path::{Component, Path as StdPath, PathBuf};
 use std::sync::{Arc, LazyLock};
 
 use axum::extract::{Path, Query, State};
@@ -37,6 +39,7 @@ pub const PROMPT_FILE_FLAG: &str = "--prompt-file";
 pub const IDEMPOTENCY_FLAG: &str = "--idempotency-key";
 pub const INCLUDE_ARCHIVED_FLAG: &str = "--include-archived";
 pub const PROJECT_FLAG: &str = "--project";
+pub const WORKTREE_FLAG: &str = "--worktree";
 pub const TITLE_FLAG: &str = "--title";
 pub const SOURCE_FLAG: &str = "--source";
 
@@ -116,9 +119,9 @@ pub enum ApiSessionPhase {
     Error,
 }
 
-/// `POST /v1/sessions` body. `worktreePath` is accepted so a client that sends
-/// it gets a clear 400 instead of a silent ignore. This slice does not create
-/// a worktree session.
+/// `POST /v1/sessions` body. `worktreePath`, when set, is the cwd of the new
+/// chat. It must already be a worktree of the trusted project (or that
+/// project's own root). This route never creates a worktree or a project.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSessionBody {
@@ -152,6 +155,9 @@ pub struct SessionDetail {
     pub updated_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Canonical cwd when this chat is bound to a git worktree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -667,6 +673,7 @@ pub enum CliCommand {
         prompt: String,
         idempotency_key: Option<String>,
         source: Option<String>,
+        worktree: Option<String>,
     },
 }
 
@@ -686,11 +693,15 @@ pub fn parse_cli(argv: &[String]) -> Result<CliCommand, String> {
     }
     if has_new {
         let project = flag_value(&args, PROJECT_FLAG).ok_or_else(|| {
-            "usage: --session-new --project <path> --prompt <text> | --prompt-file <path>"
+            "usage: --session-new --project <path> [--worktree <path>] --prompt <text> | --prompt-file <path>"
                 .to_string()
         })?;
         if project.trim().is_empty() {
             return Err("empty --project".into());
+        }
+        let worktree = flag_value(&args, WORKTREE_FLAG);
+        if worktree.as_deref().is_some_and(|s| s.trim().is_empty()) {
+            return Err("empty --worktree".into());
         }
         let prompt = parse_prompt(&args)?;
         if prompt.trim().is_empty() {
@@ -702,6 +713,7 @@ pub fn parse_cli(argv: &[String]) -> Result<CliCommand, String> {
             prompt,
             idempotency_key: flag_value(&args, IDEMPOTENCY_FLAG),
             source: flag_value(&args, SOURCE_FLAG),
+            worktree,
         });
     }
     if let Some(i) = args.iter().position(|a| *a == SESSION_SEND_FLAG) {
@@ -1148,6 +1160,13 @@ struct ParsedCreate {
     prompt: String,
     idempotency_key: Option<String>,
     source: Option<String>,
+    /// Canonical worktree directory plus the branch name from porcelain, when known.
+    worktree: Option<ResolvedWorktree>,
+}
+
+struct ResolvedWorktree {
+    path: String,
+    branch: Option<String>,
 }
 
 struct CreateInFlight {
@@ -1275,20 +1294,18 @@ fn resolve_trusted_project(
 }
 
 fn parse_create_body(body: &CreateSessionBody) -> Result<ParsedCreate, Box<TurnResult>> {
-    if body
-        .worktree_path
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|s| !s.is_empty())
-    {
-        return Err(Box::new(fail_create("worktreePath is not supported")));
-    }
     let prompt = body.prompt.trim();
     if prompt.is_empty() {
         return Err(Box::new(fail_create("empty prompt")));
     }
     let source = match normalize_source(body.source.as_deref()) {
         Ok(source) => source,
+        Err(err) => return Err(Box::new(fail_create(err))),
+    };
+    // Shape checks do not need the project index. A missing or relative path
+    // fails here, before any store read, and is not recorded as idempotency.
+    let canonical = match canonicalize_worktree_arg(non_empty(body.worktree_path.as_deref())) {
+        Ok(path) => path,
         Err(err) => return Err(Box::new(fail_create(err))),
     };
     let project = match resolve_trusted_project(
@@ -1298,13 +1315,134 @@ fn parse_create_body(body: &CreateSessionBody) -> Result<ParsedCreate, Box<TurnR
         Ok(project) => project,
         Err(err) => return Err(Box::new(fail_create(err))),
     };
+    let worktree = match canonical {
+        Some(path) => match match_project_worktree(&project, &path) {
+            Ok(worktree) => Some(worktree),
+            Err(err) => return Err(Box::new(fail_create(err))),
+        },
+        None => None,
+    };
     Ok(ParsedCreate {
         project,
         title: non_empty(body.title.as_deref()).map(str::to_string),
         prompt: prompt.to_string(),
         idempotency_key: non_empty(body.idempotency_key.as_deref()).map(str::to_string),
         source,
+        worktree,
     })
+}
+
+/// Absolute, no `..`, exists, and canonicalizes to a directory.
+/// `None` means the client did not send a worktree.
+fn canonicalize_worktree_arg(raw: Option<&str>) -> Result<Option<PathBuf>, String> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    if raw.contains('\0') {
+        return Err("worktreePath is not a valid path".into());
+    }
+    let path = StdPath::new(raw);
+    if !path.is_absolute() {
+        return Err("worktreePath must be an absolute path".into());
+    }
+    if path
+        .components()
+        .any(|component| matches!(component, Component::ParentDir))
+    {
+        return Err("worktreePath must not contain ..".into());
+    }
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(format!("worktreePath does not exist: {raw}"));
+        }
+        Err(err) => return Err(format!("worktreePath could not be read: {err}")),
+    }
+    let canon = match path.canonicalize() {
+        Ok(path) => path,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Err(format!("worktreePath does not exist: {raw}"));
+        }
+        Err(err) => return Err(format!("worktreePath could not be resolved: {err}")),
+    };
+    if !canon.is_dir() {
+        return Err("worktreePath is not a directory".into());
+    }
+    Ok(Some(canon))
+}
+
+/// Read-only. Never `git worktree add` — this slice does not create checkouts.
+fn list_project_worktrees(
+    project_path: &str,
+) -> Result<Vec<crate::commands::GitWorktreeEntry>, String> {
+    let out = crate::process_util::command("git")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .args(["-C", project_path, "worktree", "list", "--porcelain"])
+        .output()
+        .map_err(|err| format!("git worktree list failed: {err}"))?;
+    if !out.status.success() {
+        let err_owned = String::from_utf8_lossy(&out.stderr);
+        let err = err_owned.trim();
+        return Err(if err.is_empty() {
+            "git worktree list failed".into()
+        } else {
+            let short: String = err.chars().take(200).collect();
+            format!("git worktree list failed: {short}")
+        });
+    }
+    let raw = String::from_utf8_lossy(&out.stdout);
+    Ok(crate::commands::parse_worktree_porcelain(&raw))
+}
+
+fn same_dir(listed: &str, target: &StdPath) -> bool {
+    StdPath::new(listed)
+        .canonicalize()
+        .ok()
+        .is_some_and(|path| path == target)
+}
+
+/// `canon` is already canonical. It must be the project root or one of
+/// `git worktree list --porcelain` for that repository.
+fn match_project_worktree(
+    project: &store::Project,
+    canon: &StdPath,
+) -> Result<ResolvedWorktree, String> {
+    if project.is_ssh_remote() {
+        return Err("worktreePath is not supported for SSH projects".into());
+    }
+    let project_canon = StdPath::new(&project.path)
+        .canonicalize()
+        .map_err(|_| format!("project path missing: {}", project.name))?;
+    let stored = canon.to_string_lossy().into_owned();
+    let listed = match list_project_worktrees(&project.path) {
+        Ok(listed) => listed,
+        Err(err) => {
+            if canon == project_canon {
+                return Ok(ResolvedWorktree {
+                    path: stored,
+                    branch: None,
+                });
+            }
+            return Err(format!(
+                "worktreePath is not a worktree of this project: {err}"
+            ));
+        }
+    };
+    if let Some(entry) = listed.iter().find(|entry| same_dir(&entry.path, canon)) {
+        return Ok(ResolvedWorktree {
+            path: stored,
+            branch: entry.branch.clone(),
+        });
+    }
+    if canon == project_canon {
+        return Ok(ResolvedWorktree {
+            path: stored,
+            branch: None,
+        });
+    }
+    Err(format!(
+        "worktreePath is not a worktree of this project: {stored}"
+    ))
 }
 
 /// Same row the sidebar's first send writes: `session_create` →
@@ -1319,6 +1457,13 @@ fn materialize_session(parsed: &ParsedCreate) -> Result<SessionMeta, (Option<Str
         if let Err(err) = store::update_session_meta(&meta) {
             return Err((Some(meta.id), err));
         }
+    }
+    // Same row the sidebar writes for a worktree chat. `prepare_send` prefers
+    // this path over the project folder, so the turn's cwd is the worktree
+    // while `project_id` (sidebar group) stays the trusted project.
+    if let Some(wt) = &parsed.worktree {
+        meta = store::set_session_worktree(&meta.id, Some(wt.path.clone()), wt.branch.clone())
+            .map_err(|err| (Some(meta.id.clone()), err))?;
     }
     Ok(meta)
 }
@@ -1510,6 +1655,7 @@ pub fn session_detail(mgr: &SessionManager, id: &str) -> Result<SessionDetail, B
         last_assistant_message,
         updated_at: meta.updated_at.to_rfc3339(),
         source: meta.source,
+        worktree_path: meta.worktree_path.filter(|path| !path.trim().is_empty()),
     })
 }
 
@@ -1892,6 +2038,7 @@ pub fn run_cli() -> i32 {
             prompt,
             idempotency_key,
             source,
+            worktree,
         }) => {
             let Some(ep) = read_endpoint_file() else {
                 let mut out = TurnResult::fail(
@@ -1910,6 +2057,7 @@ pub fn run_cli() -> i32 {
                 &prompt,
                 idempotency_key.as_deref(),
                 source.as_deref(),
+                worktree.as_deref(),
             ) {
                 Ok(r) => {
                     print_turn(&r);
@@ -1980,6 +2128,7 @@ fn http_create(
     prompt: &str,
     idempotency_key: Option<&str>,
     source: Option<&str>,
+    worktree: Option<&str>,
 ) -> Result<TurnResult, String> {
     let url = format!("{}/v1/sessions", ep.url.trim_end_matches('/'));
     let body = CreateSessionBody {
@@ -1989,7 +2138,7 @@ fn http_create(
         prompt: prompt.to_string(),
         idempotency_key: idempotency_key.map(str::to_string),
         source: source.map(str::to_string),
-        worktree_path: None,
+        worktree_path: worktree.map(str::to_string),
     };
     let res = http_client()?
         .post(url)
@@ -2322,8 +2471,43 @@ mod tests {
                 prompt: "do the thing".into(),
                 idempotency_key: Some("k1".into()),
                 source: Some("grok-bot".into()),
+                worktree: None,
             }
         );
+        let cmd = parse_cli(&[
+            "grok-app".into(),
+            "--session-new".into(),
+            "--project".into(),
+            "/tmp/repo".into(),
+            "--worktree".into(),
+            "/tmp/repo-feat".into(),
+            "--prompt".into(),
+            "do the thing".into(),
+        ])
+        .unwrap();
+        assert_eq!(
+            cmd,
+            CliCommand::New {
+                project: "/tmp/repo".into(),
+                title: None,
+                prompt: "do the thing".into(),
+                idempotency_key: None,
+                source: None,
+                worktree: Some("/tmp/repo-feat".into()),
+            }
+        );
+        let err = parse_cli(&[
+            "grok-app".into(),
+            "--session-new".into(),
+            "--project".into(),
+            "/tmp/repo".into(),
+            "--worktree".into(),
+            "   ".into(),
+            "--prompt".into(),
+            "x".into(),
+        ])
+        .unwrap_err();
+        assert!(err.contains("empty --worktree"), "{err}");
         let err = parse_cli(&["grok-app".into(), "--session-new".into()]).unwrap_err();
         assert!(err.contains("--project"), "{err}");
         let err = parse_cli(&[
@@ -2529,6 +2713,8 @@ mod tests {
         assert_eq!(code, StatusCode::BAD_REQUEST);
         assert!(result.message.unwrap().contains("[a-z0-9_-]"));
 
+        let missing =
+            std::env::temp_dir().join(format!("grok-f11-missing-{}", uuid::Uuid::new_v4()));
         let (code, result) = execute_create(
             CreateSessionBody {
                 project_path: Some("/tmp/proj".into()),
@@ -2537,14 +2723,17 @@ mod tests {
                 prompt: "hi".into(),
                 idempotency_key: None,
                 source: None,
-                worktree_path: Some("/tmp/wt".into()),
+                worktree_path: Some(missing.to_string_lossy().into()),
             },
             |_sid, _prompt| async { unreachable!("dispatch") },
             |_| {},
         )
         .await;
         assert_eq!(code, StatusCode::BAD_REQUEST);
-        assert!(result.message.unwrap().contains("worktreePath"));
+        assert!(
+            result.message.unwrap().contains("does not exist"),
+            "missing worktreePath must fail before the project index"
+        );
     }
 
     // The env lock is process-global and must cover every store call inside
@@ -2676,6 +2865,7 @@ mod tests {
         assert!(detail.last_assistant_message.is_none());
         assert_eq!(detail.project_name.as_deref(), Some(project.name.as_str()));
         assert_eq!(detail.source.as_deref(), Some("grok-bot"));
+        assert!(detail.worktree_path.is_none());
 
         let missing = session_detail(&mgr, "missing-session").unwrap_err();
         assert_eq!(missing.status, TurnStatus::NotFound);
@@ -2699,6 +2889,242 @@ mod tests {
         let preview = detail.last_assistant_message.unwrap();
         assert_eq!(preview.chars().count(), LAST_ASSISTANT_MAX_CHARS);
         assert!(preview.ends_with('…'));
+    }
+
+    struct GitTrees {
+        root: std::path::PathBuf,
+        main: std::path::PathBuf,
+        linked: std::path::PathBuf,
+    }
+
+    impl Drop for GitTrees {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn git_at(dir: &std::path::Path, args: &[&str]) {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_AUTHOR_NAME", "f11")
+            .env("GIT_AUTHOR_EMAIL", "f11@example.com")
+            .env("GIT_COMMITTER_NAME", "f11")
+            .env("GIT_COMMITTER_EMAIL", "f11@example.com")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()
+            .unwrap_or_else(|err| panic!("git {args:?}: {err}"));
+        assert!(
+            out.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    fn git_trees() -> GitTrees {
+        let root = std::env::temp_dir().join(format!(
+            "grok-f11-wt-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let main = root.join("repo");
+        let linked = root.join("repo-feat");
+        std::fs::create_dir_all(&main).unwrap();
+        git_at(&main, &["init", "-b", "main"]);
+        git_at(&main, &["config", "user.email", "f11@example.com"]);
+        git_at(&main, &["config", "user.name", "f11"]);
+        git_at(&main, &["commit", "--allow-empty", "-m", "init"]);
+        git_at(
+            &main,
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "feat",
+                linked.to_str().expect("utf8 worktree path"),
+            ],
+        );
+        GitTrees { root, main, linked }
+    }
+
+    fn link_dir(target: &std::path::Path, link: &std::path::Path) {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, link).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(target, link).unwrap();
+    }
+
+    fn canon_path(path: &std::path::Path) -> String {
+        std::fs::canonicalize(path)
+            .unwrap_or_else(|err| panic!("canonicalize {}: {err}", path.display()))
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn create_worktree_is_cwd_and_rejects_bad_paths() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        let _home = Home::enter();
+        let trees = git_trees();
+        let project = store::add_project(trees.main.to_string_lossy().to_string(), true).unwrap();
+        let projects_before = store::load_projects().len();
+        let canon_main = canon_path(&trees.main);
+        let canon_linked = canon_path(&trees.linked);
+
+        let outside = trees.root.join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        let escape = trees.root.join("escape-link");
+        link_dir(&outside, &escape);
+
+        async fn reject(body: CreateSessionBody, needle: &str) {
+            let (code, result) = execute_create(
+                body,
+                |_sid, _prompt| async { unreachable!("dispatch") },
+                |_| {},
+            )
+            .await;
+            assert_eq!(code, StatusCode::BAD_REQUEST);
+            let message = result.message.unwrap_or_default();
+            assert!(message.contains(needle), "expected {needle} in {message}");
+            assert!(result.session_id.is_empty());
+        }
+
+        let base = |worktree: String, key: Option<&str>| CreateSessionBody {
+            project_path: Some(project.path.clone()),
+            project_id: None,
+            title: Some("wt job".into()),
+            prompt: "work the tree".into(),
+            idempotency_key: key.map(str::to_string),
+            source: Some("grok-bot".into()),
+            worktree_path: Some(worktree),
+        };
+
+        reject(base("feat".into(), Some("rel")), "absolute path").await;
+        reject(
+            base(format!("{}/../not-a-worktree", trees.main.display()), None),
+            "must not contain ..",
+        )
+        .await;
+        reject(
+            base(
+                trees.root.join("missing-wt").to_string_lossy().into(),
+                Some("gone"),
+            ),
+            "does not exist",
+        )
+        .await;
+        reject(
+            base(outside.to_string_lossy().into(), None),
+            "not a worktree of this project",
+        )
+        .await;
+        reject(
+            base(escape.to_string_lossy().into(), Some("escape")),
+            "not a worktree of this project",
+        )
+        .await;
+        assert!(
+            store::load_sessions_index().is_empty(),
+            "rejected worktreePath must not create a session or stick the idempotency key"
+        );
+
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let body = base(trees.linked.to_string_lossy().into(), Some("gone"));
+        let c1 = std::sync::Arc::clone(&calls);
+        let (code, first) = execute_create(
+            body.clone(),
+            move |sid, prompt| {
+                c1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async move {
+                    assert_eq!(prompt, "work the tree");
+                    TurnResult::started(sid)
+                }
+            },
+            |_| {},
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(first.status, TurnStatus::TurnStarted);
+
+        let c2 = std::sync::Arc::clone(&calls);
+        let (code, second) = execute_create(
+            body,
+            move |sid, _prompt| {
+                c2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                async move { TurnResult::started(sid) }
+            },
+            |_| {},
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        assert_eq!(second.session_id, first.session_id);
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        let rows = store::load_sessions_index();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].project_id.as_deref(), Some(project.id.as_str()));
+        assert_eq!(
+            rows[0].worktree_path.as_deref(),
+            Some(canon_linked.as_str())
+        );
+        assert_eq!(rows[0].worktree_branch.as_deref(), Some("feat"));
+        assert!(rows[0].is_worktree_session);
+        assert_eq!(rows[0].source.as_deref(), Some("grok-bot"));
+        assert_eq!(store::load_projects().len(), projects_before);
+        assert!(store::load_projects().iter().all(|item| {
+            std::fs::canonicalize(&item.path).ok().as_deref()
+                != std::fs::canonicalize(&trees.linked).ok().as_deref()
+        }));
+
+        let prepared = prepare_send(&first.session_id, "again", "external").unwrap();
+        assert_eq!(
+            prepared.project_path.as_deref(),
+            Some(canon_linked.as_str()),
+            "session cwd is the worktree, not the project root"
+        );
+        let mgr = SessionManager::new();
+        let detail = session_detail(&mgr, &first.session_id).unwrap();
+        assert_eq!(detail.worktree_path.as_deref(), Some(canon_linked.as_str()));
+        assert_eq!(detail.project_id.as_deref(), Some(project.id.as_str()));
+        let json = serde_json::to_value(&detail).unwrap();
+        assert_eq!(json["worktreePath"], canon_linked);
+
+        let (code, at_root) = execute_create(
+            base(trees.main.to_string_lossy().into(), Some("at-root")),
+            |sid, _prompt| async move { TurnResult::started(sid) },
+            |_| {},
+        )
+        .await;
+        assert_eq!(code, StatusCode::OK);
+        let root_row = store::load_sessions_index()
+            .into_iter()
+            .find(|row| row.id == at_root.session_id)
+            .unwrap();
+        assert_eq!(root_row.project_id.as_deref(), Some(project.id.as_str()));
+        assert_eq!(root_row.worktree_path.as_deref(), Some(canon_main.as_str()));
+        assert_eq!(store::load_projects().len(), projects_before);
+
+        let ssh = store::add_ssh_project("devbox", "/srv/app".to_string(), true).unwrap();
+        let sessions_before_ssh = store::load_sessions_index().len();
+        reject(
+            CreateSessionBody {
+                project_path: None,
+                project_id: Some(ssh.id.clone()),
+                title: None,
+                prompt: "work the tree".into(),
+                idempotency_key: Some("ssh-wt".into()),
+                source: None,
+                worktree_path: Some(trees.linked.to_string_lossy().into()),
+            },
+            "SSH projects",
+        )
+        .await;
+        assert_eq!(store::load_sessions_index().len(), sessions_before_ssh);
+        assert!(store::load_projects().iter().any(|item| item.id == ssh.id));
+        assert_eq!(store::load_projects().len(), projects_before + 1);
     }
 
     #[tokio::test]
