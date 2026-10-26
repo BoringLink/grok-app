@@ -1,0 +1,26 @@
+src/components/AutomationsPage.test.tsx
+  s_dc6e98a83bee89::t_a400595c12469c 92,126-165
+  s_dc6e98a83bee89::t_acbe33f273d94a 4,56-58,65,70-85
+src/lib/automations.ts
+  s_dc6e98a83bee89::t_c022c356cf1022 107-121
+src/lib/automationsSession.test.ts
+  s_dc6e98a83bee89::t_69180ea3cfbd72 3,62-72
+src/app/AppWorkbench.tsx
+  s_dc6e98a83bee89::t_4ec5be03d8c73d 541,12411,12413-12414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "dcb4f8b9fea2a265e205cc68ecfa47d75cd01a46",
+  "prompts": {},
+  "sessions": {
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
