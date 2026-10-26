@@ -14,6 +14,7 @@ export interface AutomationDto {
   enabled: boolean;
   projectId: string | null;
   modelId: string | null;
+  providerId?: string | null;
   effort: string | null;
   sessionMode?: string;
   sessionId?: string | null;
@@ -33,6 +34,7 @@ export interface AutomationInputDto {
   enabled?: boolean;
   projectId?: string | null;
   modelId?: string | null;
+  providerId?: string | null;
   effort?: string | null;
   sessionMode?: string;
   sessionId?: string | null;
@@ -138,6 +140,7 @@ export async function automationCreate(
       enabled: input.enabled ?? true,
       projectId: input.projectId ?? null,
       modelId: input.modelId ?? null,
+      providerId: input.providerId ?? null,
       effort: input.effort ?? null,
       sessionMode:
         input.sessionMode?.trim().toLowerCase() === "reuse" &&
@@ -207,6 +210,8 @@ export async function automationUpdate(
       enabled: input.enabled ?? prev.enabled,
       projectId: input.projectId !== undefined ? input.projectId : prev.projectId,
       modelId: input.modelId !== undefined ? input.modelId : prev.modelId,
+      providerId:
+        input.providerId !== undefined ? input.providerId : prev.providerId,
       effort: input.effort !== undefined ? input.effort : prev.effort,
       sessionMode: nextMode,
       sessionId: nextSessionId,

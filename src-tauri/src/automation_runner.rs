@@ -367,6 +367,37 @@ fn validate_project(project: &store::Project) -> Result<(), String> {
     Ok(())
 }
 
+/// Route a stored automation must run on.
+///
+/// Explicit `provider_id` wins. Legacy rows without one infer `official` from
+/// the live catalog (plus the known legacy ids), then a custom provider that
+/// uniquely lists the model. Unknown/ambiguous ids keep the active route.
+pub fn effective_automation_provider_id(auto: &Automation) -> Option<String> {
+    if let Some(id) = auto
+        .provider_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        return Some(id.to_string());
+    }
+    let model = auto.model_id.as_deref().map(str::trim).unwrap_or("");
+    if model.is_empty() {
+        return None;
+    }
+    // The live catalog is the same source the frontend picker uses; the
+    // hardcoded legacy set covers rows written before a cache was available.
+    let official = crate::providers::is_official_catalog_model(model)
+        || crate::models_catalog::list_available_models()
+            .models
+            .iter()
+            .any(|m| m.id == model);
+    if official {
+        return Some(crate::providers::SESSION_PROVIDER_OFFICIAL.to_string());
+    }
+    crate::providers::custom_provider_id_for_model_unique(model)
+}
+
 async fn run_one(
     app: &AppHandle,
     mgr: &Arc<SessionManager>,
@@ -423,20 +454,39 @@ async fn run_one(
         }
     }
 
-    // A reused chat keeps its own model and reasoning. A fresh chat (including
-    // the fallback for a deleted reuse target) gets the automation's prefs.
-    if (!reuse_requested || created_new) && (auto.model_id.is_some() || auto.effort.is_some()) {
-        if let Some(ref mid) = auto.model_id {
-            meta.model_id = Some(mid.clone());
-        }
-        if let Some(ref ef) = auto.effort {
-            meta.effort = Some(ef.clone());
-        }
-        if let Err(e) = store::update_session_meta(&meta) {
-            if created_new {
-                let _ = store::delete_session(&session_id);
+    // A reused chat keeps its own model, reasoning and route. A fresh chat
+    // (including the fallback for a deleted reuse target) gets the
+    // automation's prefs. The session row is what `resolve_composer_prefs`
+    // reads, so writing it here is what makes a scheduled run honor the route.
+    let apply_prefs = !reuse_requested || created_new;
+    let provider_id = effective_automation_provider_id(auto);
+    if apply_prefs {
+        if let Some(pid) = provider_id.as_deref() {
+            if proj.is_some_and(|p| p.is_ssh_remote())
+                && !crate::providers::is_session_provider_official(pid)
+            {
+                if created_new {
+                    let _ = store::delete_session(&session_id);
+                }
+                return Err("custom providers are not supported on SSH projects".into());
             }
-            return Err(format!("session prefs write failed: {e}"));
+        }
+        if provider_id.is_some() || auto.model_id.is_some() || auto.effort.is_some() {
+            if let Some(ref pid) = provider_id {
+                meta.provider_id = Some(pid.clone());
+            }
+            if let Some(ref mid) = auto.model_id {
+                meta.model_id = Some(mid.clone());
+            }
+            if let Some(ref ef) = auto.effort {
+                meta.effort = Some(ef.clone());
+            }
+            if let Err(e) = store::update_session_meta(&meta) {
+                if created_new {
+                    let _ = store::delete_session(&session_id);
+                }
+                return Err(format!("session prefs write failed: {e}"));
+            }
         }
     }
 
@@ -602,6 +652,7 @@ mod tests {
             enabled: true,
             project_id: None,
             model_id: None,
+            provider_id: None,
             effort: None,
             session_mode: "new".into(),
             session_id: None,
@@ -683,6 +734,29 @@ mod tests {
         assert_eq!(automation_reuse_session_id(&a), Some("chat-1".to_string()));
         a.session_id = Some("   ".into());
         assert_eq!(automation_reuse_session_id(&a), None);
+    }
+
+    #[test]
+    fn effective_provider_prefers_explicit_route_and_infers_legacy_official() {
+        let mut a = sample("daily", "09:00", vec![]);
+        assert_eq!(effective_automation_provider_id(&a), None);
+
+        a.model_id = Some("grok-4.7".into());
+        assert_eq!(
+            effective_automation_provider_id(&a).as_deref(),
+            Some("official")
+        );
+
+        a.provider_id = Some("relay-a".into());
+        assert_eq!(
+            effective_automation_provider_id(&a).as_deref(),
+            Some("relay-a")
+        );
+
+        // Unknown model without an explicit route keeps the active route.
+        a.provider_id = None;
+        a.model_id = Some("__no_such_model__".into());
+        assert_eq!(effective_automation_provider_id(&a), None);
     }
 
     #[test]

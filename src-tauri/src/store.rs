@@ -2954,6 +2954,9 @@ pub struct Automation {
     pub enabled: bool,
     pub project_id: Option<String>,
     pub model_id: Option<String>,
+    /// `official` or a custom provider id. When missing, legacy rows infer the
+    /// official route from `model_id`; otherwise they follow the active route.
+    pub provider_id: Option<String>,
     pub effort: Option<String>,
     /// `new` (fresh chat per run) | `reuse` (send into `session_id`).
     #[serde(default = "default_session_mode")]
@@ -3002,6 +3005,7 @@ pub struct AutomationInput {
     pub enabled: Option<bool>,
     pub project_id: Option<String>,
     pub model_id: Option<String>,
+    pub provider_id: Option<String>,
     pub effort: Option<String>,
     pub session_mode: Option<String>,
     pub session_id: Option<String>,
@@ -3065,6 +3069,7 @@ pub fn create_automation(input: AutomationInput) -> Result<Automation, String> {
         enabled: input.enabled.unwrap_or(true),
         project_id: input.project_id,
         model_id: input.model_id,
+        provider_id: input.provider_id,
         effort: input.effort,
         session_mode,
         session_id,
@@ -3112,6 +3117,7 @@ pub fn update_automation(id: &str, input: AutomationInput) -> Result<Automation,
     }
     auto.project_id = input.project_id;
     auto.model_id = input.model_id;
+    auto.provider_id = input.provider_id;
     auto.effort = input.effort;
     if input.session_mode.is_some() || input.session_id.is_some() {
         let mode = input
@@ -3754,6 +3760,7 @@ mod tests {
                 enabled: Some(true),
                 project_id: None,
                 model_id: None,
+                provider_id: None,
                 effort: None,
                 session_mode: Some(mode.into()),
                 session_id: Some(sid.into()),
