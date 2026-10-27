@@ -316,7 +316,7 @@ Contributions, bug reports, and suggestions are warmly welcomed!
 ## 👥 Contributors
 
 <!-- CONTRIBUTORS:START -->
-Thanks to everyone who has contributed to Grok App. All human GitHub contributors (by commit count, updated 2026-10-27).
+Thanks to everyone who has contributed to Grok App. All human GitHub contributors (by commit count, updated 2026-10-28).
 
 <p align="center">
   <a href="https://github.com/RongleCat" title="RongleCat"><img src="https://github.com/RongleCat.png?size=96" width="72" height="72" alt="RongleCat" style="border-radius:50%" /></a>
@@ -341,6 +341,7 @@ Thanks to everyone who has contributed to Grok App. All human GitHub contributor
   <a href="https://github.com/KarnaughK" title="KarnaughK"><img src="https://github.com/KarnaughK.png?size=96" width="72" height="72" alt="KarnaughK" style="border-radius:50%" /></a>
   <a href="https://github.com/Ksndj" title="Ksndj"><img src="https://github.com/Ksndj.png?size=96" width="72" height="72" alt="Ksndj" style="border-radius:50%" /></a>
   <a href="https://github.com/lunar-me" title="lunar-me"><img src="https://github.com/lunar-me.png?size=96" width="72" height="72" alt="lunar-me" style="border-radius:50%" /></a>
+  <a href="https://github.com/statio" title="statio"><img src="https://github.com/statio.png?size=96" width="72" height="72" alt="statio" style="border-radius:50%" /></a>
   <a href="https://github.com/ericyiu9819" title="ericyiu9819"><img src="https://github.com/ericyiu9819.png?size=96" width="72" height="72" alt="ericyiu9819" style="border-radius:50%" /></a>
   <a href="https://github.com/falser101" title="falser101"><img src="https://github.com/falser101.png?size=96" width="72" height="72" alt="falser101" style="border-radius:50%" /></a>
   <a href="https://github.com/nebofeng" title="nebofeng"><img src="https://github.com/nebofeng.png?size=96" width="72" height="72" alt="nebofeng" style="border-radius:50%" /></a>
@@ -366,7 +367,6 @@ Thanks to everyone who has contributed to Grok App. All human GitHub contributor
   <a href="https://github.com/RocStone" title="RocStone"><img src="https://github.com/RocStone.png?size=96" width="72" height="72" alt="RocStone" style="border-radius:50%" /></a>
   <a href="https://github.com/Sixmin" title="Sixmin"><img src="https://github.com/Sixmin.png?size=96" width="72" height="72" alt="Sixmin" style="border-radius:50%" /></a>
   <a href="https://github.com/sk1935" title="sk1935"><img src="https://github.com/sk1935.png?size=96" width="72" height="72" alt="sk1935" style="border-radius:50%" /></a>
-  <a href="https://github.com/statio" title="statio"><img src="https://github.com/statio.png?size=96" width="72" height="72" alt="statio" style="border-radius:50%" /></a>
   <a href="https://github.com/tangwan" title="tangwan"><img src="https://github.com/tangwan.png?size=96" width="72" height="72" alt="tangwan" style="border-radius:50%" /></a>
   <a href="https://github.com/tisrop" title="tisrop"><img src="https://github.com/tisrop.png?size=96" width="72" height="72" alt="tisrop" style="border-radius:50%" /></a>
   <a href="https://github.com/XancelZC" title="XancelZC"><img src="https://github.com/XancelZC.png?size=96" width="72" height="72" alt="XancelZC" style="border-radius:50%" /></a>
