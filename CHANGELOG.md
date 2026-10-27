@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.48] - 2026-10-28
+
+> **Highlight:** A finished background workflow reports back in the chat that started it.
+>
+> **中文 · 亮点：** 后台工作流结束后，结果会回到发起它的对话。
+
 ### Fixed
 
 - A finished background workflow reports its result in the chat that started it. Switching chats or loading another session does not drop that result.
