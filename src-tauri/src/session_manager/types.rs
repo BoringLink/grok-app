@@ -383,6 +383,9 @@ pub(crate) struct ParkedAgent {
     pub(super) sandbox_profile: Option<String>,
     pub(super) needs_history_bootstrap: bool,
     pub(super) backend: String,
+    /// Copied from the live session at park time and restored on unpark.
+    /// A follow-up opens only when this visit already sent a prompt.
+    pub(super) sent_prompt_this_visit: bool,
 }
 
 /// How many journal messages (user+assistant) to carry when session/load fails.

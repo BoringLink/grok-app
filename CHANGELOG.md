@@ -13,6 +13,14 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+
+- A finished background workflow reports its result in the chat that started it. Switching chats or loading another session does not drop that result.
+
+**中文 · 修复**
+
+- 后台工作流结束后，结果会回到发起它的对话。切换对话或加载其他会话时，这个结果也不会丢。
+
 ## [0.2.47] - 2026-10-27
 
 > **Highlight:** Paste from the right-click menu works when the page clipboard is empty.

@@ -129,6 +129,8 @@ mod path_scope;
 
 mod paths;
 
+mod workflow_followup;
+
 mod plan_chrome;
 
 mod permission;

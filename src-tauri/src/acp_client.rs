@@ -172,6 +172,15 @@ pub enum AcpEvent {
     ProcessExited {
         code: Option<i32>,
     },
+    /// CLI-started turn after a background workflow finishes
+    /// (`promptId` prefix `workflow-completed-`). Not a Host `session/prompt`.
+    WorkflowFollowup(crate::workflow_followup::Wire),
+    /// Stream or tool chunk from a `workflow-completed-` turn.
+    /// Applied only when that prompt is the armed follow-up.
+    WorkflowScoped {
+        prompt_id: String,
+        event: Box<AcpEvent>,
+    },
     /// Subagent lifecycle from `_x.ai/session_notification`.
     ///
     /// CLI 1.0.x emits `subagent_spawned` / `subagent_progress` /
@@ -1774,6 +1783,16 @@ impl AcpClient {
         }
     }
 
+    fn session_load_blocks(&self, event_session: Option<&str>) -> bool {
+        let pending = self.pending.lock();
+        let loading: Vec<Option<&str>> = pending
+            .values()
+            .filter(|p| p.method == "session/load")
+            .map(|p| p.session_id.as_deref())
+            .collect();
+        crate::workflow_followup::session_load_suppresses(&loading, event_session)
+    }
+
     fn touch_last_update(&self, session_id: Option<&str>, at: Instant) {
         if let Some(sid) = session_id.filter(|s| !s.is_empty()) {
             self.last_update_by_session
@@ -1866,7 +1885,16 @@ impl AcpClient {
         // decoded events so the SessionManager can route them to the right
         // App session when one process hosts several. Missing sid → None
         // (process-scoped fallback).
-        let events = decode_session_update(params);
+        // A finished background workflow starts its own turn. The open is
+        // prepended so the stream/tool events in this same notification are
+        // not dropped as load replay. The end is appended so usage on
+        // `turn_completed` still sees the turn open. Suppress only while this
+        // session's `session/load` is pending: those copies are history, and
+        // the id stays suppressed for this session after the RPC result
+        // removes the pending entry. Stream and tool chunks of that turn are
+        // wrapped so a busy user turn cannot absorb them.
+        let during_load = self.session_load_blocks(sid.as_deref());
+        let events = adopt_session_update(params, during_load, sid.as_deref());
         if events.is_empty() {
             let update = params.get("update").unwrap_or(params);
             let kind = update
@@ -2252,12 +2280,15 @@ impl AcpClient {
         }
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let (tx, rx) = oneshot::channel();
+        // `session/load` must name its session. A pending load with no id
+        // would suppress every chat's workflow follow-up.
+        let session_id = session_id_for_pending(method, &params);
         self.pending.lock().insert(
             id,
             Pending {
                 method: method.to_string(),
                 tx,
-                session_id: None,
+                session_id,
             },
         );
         let msg = json!({
@@ -2409,6 +2440,40 @@ impl AcpClient {
     /// True while the agent stdout reader is still alive (process usable).
     pub fn is_alive(&self) -> bool {
         self.reader_alive.load(Ordering::SeqCst)
+    }
+
+    /// Alive-or-dead client with no child. Park and unpark tests use this
+    /// instead of spawning `grok`.
+    #[cfg(test)]
+    pub(crate) fn test_stub(alive: bool) -> Arc<Self> {
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        Arc::new(Self {
+            child: AsyncMutex::new(None),
+            child_pid: None,
+            owns_local_process_tree: false,
+            stdin: AsyncMutex::new(None),
+            next_id: AtomicU64::new(1),
+            pending: ParkingMutex::new(HashMap::new()),
+            event_tx,
+            agent_session_id: ParkingMutex::new(None),
+            cli_path: PathBuf::from("test-stub"),
+            cwd: PathBuf::from("."),
+            stopped: AtomicBool::new(false),
+            reader_alive: AtomicBool::new(alive),
+            reader_stop: Arc::new(Notify::new()),
+            stderr_tail: ParkingMutex::new(Vec::new()),
+            last_update_by_session: ParkingMutex::new(HashMap::new()),
+            last_update_unstamped: ParkingMutex::new(None),
+            empty_mcp_servers: false,
+            app_session_id: None,
+            sandbox_profile: ParkingMutex::new(None),
+            custom_route: false,
+            route_provider_id: crate::providers::SESSION_PROVIDER_OFFICIAL.to_string(),
+            rewind_supported: ParkingMutex::new(None),
+            ssh_alias: None,
+            wsl_active: false,
+            proc_home: std::sync::Mutex::new(None),
+        })
     }
 
     /// Working directory this process was spawned with.
@@ -3905,6 +3970,61 @@ fn parse_goal_updated(update: &Value) -> Option<AcpEvent> {
         last_classifier_verdict,
         raw: update.clone(),
     })
+}
+
+/// Session id stamped on a pending `session/load`. Other methods stay unstamped.
+fn session_id_for_pending(method: &str, params: &Value) -> Option<String> {
+    if method != "session/load" {
+        return None;
+    }
+    params
+        .get("sessionId")
+        .or_else(|| params.get("session_id"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
+/// Decode one `session/update`, admit a workflow follow-up, and wrap that
+/// turn's stream and tool chunks so a busy user turn cannot absorb them.
+pub(crate) fn adopt_session_update(
+    params: &Value,
+    during_session_load: bool,
+    event_session: Option<&str>,
+) -> Vec<AcpEvent> {
+    let mut events = decode_session_update(params);
+    if let Some(wire) = crate::workflow_followup::decode_followup(params) {
+        if let Some(place) =
+            crate::workflow_followup::admission(during_session_load, event_session, &wire)
+        {
+            let ev = AcpEvent::WorkflowFollowup(wire);
+            match place {
+                crate::workflow_followup::Admission::Before => events.insert(0, ev),
+                crate::workflow_followup::Admission::After => events.push(ev),
+            }
+        }
+    }
+    let prompt_id = crate::workflow_followup::notification_workflow_prompt(params);
+    scope_workflow_output(events, prompt_id.as_deref())
+}
+
+fn scope_workflow_output(events: Vec<AcpEvent>, prompt_id: Option<&str>) -> Vec<AcpEvent> {
+    let Some(prompt_id) = prompt_id else {
+        return events;
+    };
+    events
+        .into_iter()
+        .map(|ev| match ev {
+            AcpEvent::Stream { .. }
+            | AcpEvent::ToolCall { .. }
+            | AcpEvent::ToolOpenReleased { .. } => AcpEvent::WorkflowScoped {
+                prompt_id: prompt_id.to_string(),
+                event: Box::new(ev),
+            },
+            other => other,
+        })
+        .collect()
 }
 
 /// Pure decode of `session/update` params → host events (no I/O).
@@ -7024,5 +7144,106 @@ mod live_handshake_tests {
         eprintln!("OK session={} in {:?}", sid, t0.elapsed());
         client.kill().await;
         assert!(!sid.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod workflow_followup_host_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn session_load_pending_records_its_session_id() {
+        let params = json!({ "sessionId": "agent-b", "cwd": "/tmp" });
+        assert_eq!(
+            session_id_for_pending("session/load", &params).as_deref(),
+            Some("agent-b")
+        );
+        assert!(session_id_for_pending("session/prompt", &params).is_none());
+        assert!(session_id_for_pending("session/load", &json!({ "cwd": "/tmp" })).is_none());
+    }
+
+    #[test]
+    fn workflow_chunks_are_scoped_and_other_synthetic_cues_are_not() {
+        let id = "workflow-completed-wf_host_scope-1";
+        let params = json!({
+            "sessionId": "agent-a",
+            "update": {
+                "sessionUpdate": "agent_message_chunk",
+                "content": { "type": "text", "text": "the workflow says done" }
+            },
+            "_meta": { "promptId": id }
+        });
+        let events = adopt_session_update(&params, false, Some("agent-a"));
+        assert!(matches!(
+            events.first(),
+            Some(AcpEvent::WorkflowFollowup(crate::workflow_followup::Wire::Start { prompt_id }))
+                if prompt_id == id
+        ));
+        assert!(matches!(
+            events.get(1),
+            Some(AcpEvent::WorkflowScoped { prompt_id, event })
+                if prompt_id == id && matches!(event.as_ref(), AcpEvent::Stream { .. })
+        ));
+
+        let tool = json!({
+            "sessionId": "agent-a",
+            "update": {
+                "sessionUpdate": "tool_call",
+                "toolCallId": "call-1",
+                "title": "read",
+                "kind": "read",
+                "status": "completed"
+            },
+            "_meta": { "promptId": id }
+        });
+        let tool_events = adopt_session_update(&tool, false, Some("agent-a"));
+        assert!(tool_events.iter().any(|ev| matches!(
+            ev,
+            AcpEvent::WorkflowScoped { prompt_id, event }
+                if prompt_id == id && matches!(event.as_ref(), AcpEvent::ToolCall { .. })
+        )));
+
+        let reminder = json!({
+            "sessionId": "agent-a",
+            "update": {
+                "sessionUpdate": "user_message_chunk",
+                "content": {
+                    "type": "text",
+                    "text": "<system-reminder> Background task abc completed"
+                },
+                "_meta": { "syntheticPrompt": true }
+            }
+        });
+        let reminder_events = adopt_session_update(&reminder, false, Some("agent-a"));
+        assert!(reminder_events
+            .iter()
+            .all(|ev| !matches!(ev, AcpEvent::WorkflowFollowup(_))));
+
+        let replay_id = "workflow-completed-wf_host_replay-1";
+        let replay = json!({
+            "sessionId": "agent-b",
+            "update": {
+                "sessionUpdate": "agent_message_chunk",
+                "content": { "type": "text", "text": "old result" }
+            },
+            "_meta": { "promptId": replay_id }
+        });
+        assert!(adopt_session_update(&replay, true, Some("agent-b"))
+            .iter()
+            .all(|ev| !matches!(ev, AcpEvent::WorkflowFollowup(_))));
+        let live_elsewhere = json!({
+            "sessionId": "agent-a",
+            "update": {
+                "sessionUpdate": "agent_thought_chunk",
+                "content": { "type": "text", "text": "still working" }
+            },
+            "_meta": { "promptId": "workflow-completed-wf_host_other-1" }
+        });
+        assert!(
+            adopt_session_update(&live_elsewhere, false, Some("agent-a"))
+                .iter()
+                .any(|ev| matches!(ev, AcpEvent::WorkflowFollowup(_)))
+        );
     }
 }
