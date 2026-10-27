@@ -100,8 +100,9 @@ fn populate(
         }
         let src = entry.path();
         let dest = dir.join(&name);
-        // CLI >= 1.0.60: `bundled` must be a real directory, same as `hooks`.
-        if name == "hooks" || name == "bundled" {
+        // The CLI sandbox refuses a symlinked `hooks`, `bundled` or `bundles`
+        // ("Grok directory has wrong type"): they must be real directories.
+        if name == "hooks" || name == "bundled" || name == "bundles" {
             materialize_real_tree(&src, &dest)?;
             continue;
         }
@@ -700,6 +701,31 @@ mod tests {
                     fs::metadata(sealed.join("sessions")).unwrap().ino()
                 );
             }
+        });
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bundles_is_a_real_tree_too() {
+        with_app_home(|root| {
+            let canonical = canonical_with_config(&root);
+            let bundles_src = root.join("bundles-src");
+            fs::create_dir(&bundles_src).unwrap();
+            fs::write(bundles_src.join("agent.md"), b"bundled-agent\n").unwrap();
+            std::os::unix::fs::symlink(&bundles_src, canonical.join("bundles")).unwrap();
+
+            let sealed = create_from(&canonical, true, None).unwrap();
+            let sealed_bundles = sealed.join("bundles");
+            let meta = fs::symlink_metadata(&sealed_bundles).unwrap();
+            assert!(meta.is_dir());
+            assert!(
+                !meta.file_type().is_symlink(),
+                "sealed bundles must be a real directory"
+            );
+            assert_eq!(
+                fs::read(sealed_bundles.join("agent.md")).unwrap(),
+                b"bundled-agent\n"
+            );
         });
     }
 

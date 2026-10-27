@@ -13,6 +13,18 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.46] - 2026-10-27
+
+> **Highlight:** macOS chats start again when the Grok home has a bundles folder.
+>
+> **中文 · 亮点：** Grok 目录里有 bundles 文件夹时，macOS 对话也能正常启动。
+
+### Fixed
+- Chats with the macOS workspace sandbox start again when the Grok home has a `bundles` folder.
+
+**中文 · 修复**
+- Grok 目录里有 `bundles` 文件夹时，开了工作区沙箱的 macOS 对话也能正常启动。
+
 ## [0.2.45] - 2026-10-27
 
 > **Highlight:** Scheduled tasks can pick their own model, and macOS sandboxed chats start again.
