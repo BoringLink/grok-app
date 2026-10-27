@@ -90,7 +90,7 @@ import { SettingsTabStrip, UiCheck } from "./shared";
 import { resolveLocale } from "@/i18n";
 import type { MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
-import { useDirectorSettingEnabled, setDirectorSettingEnabled } from "@/lib/directorSetting";
+import { useDirectorSettingEnabled, commitDirectorSetting } from "@/lib/directorSetting";
 import {
   buildOpenTargetSelectOptions,
   resolveOpenEditorEmptyState,
@@ -1466,10 +1466,10 @@ export function GeneralSection() {
                   checked={directorEnabled}
                   onChange={() => {
                     const next = !directorEnabled;
-                    setDirectorSettingEnabled(next);
-                    void api.settingsGet().then((cur) =>
-                      api.settingsSet({ ...cur, directorEnabled: next }),
-                    );
+                    void commitDirectorSetting(next, async (value) => {
+                      const cur = await api.settingsGet();
+                      await api.settingsSet({ ...cur, directorEnabled: value });
+                    });
                   }}
                   ariaLabel={t("settings.directorMode")}
                 />

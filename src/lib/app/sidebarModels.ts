@@ -95,8 +95,6 @@ export interface SessionRow {
   systemPromptOverride?: string | null;
   /** Linked Grok agent session id (for CLI `--fork-session` / session/load). */
   agentSessionId?: string | null;
-  /** Per-session director rule on the next `session/new`. Not a `~/.grok` write. */
-  directorMode?: boolean;
 }
 
 /** Normalize sessions_list / create rows into sidebar SessionRow shape. */
@@ -125,7 +123,6 @@ export function normalizeSessionRow(
     worktreeBranch,
     isWorktreeSession,
     agentSessionId,
-    directorMode: x.directorMode === true,
   };
 }
 

@@ -331,10 +331,6 @@ pub struct SessionMeta {
     /// `[a-z0-9_-]`. Metadata only — no sidebar badge in this slice.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
-    /// Director mode. The next `session/new` sends ACP `_meta.rules`.
-    /// Does not rewrite `~/.grok` and does not respawn the live agent.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub director_mode: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -573,10 +569,10 @@ pub struct AppSettings {
     /// top-level `--no-plan` so plan mode is disabled for that process.
     #[serde(default = "default_plan_enabled")]
     pub plan_enabled: bool,
-    /// App-wide director nudge. When true, the next `session/new` sends
-    /// `DIRECTOR_RULE` as ACP `_meta.rules`, and the composer prefixes the
-    /// same paragraph on the next send. Default false. Does not rewrite
-    /// `~/.grok` and does not soft-respawn.
+    /// App-wide director nudge. When true, `session/new` sends `DIRECTOR_RULE`
+    /// as ACP `_meta.rules` at the moment that request is built. An open
+    /// chat is prefixed on the next send instead, so the rule is not sent
+    /// twice. Default false. Does not rewrite `~/.grok`.
     #[serde(default)]
     pub director_enabled: bool,
     /// Allow Grok Build subagent spawning (`Agent` / task tools). Default **true**
@@ -2090,7 +2086,6 @@ pub fn create_session(
         workspace_capability: None,
         provider_id: None,
         source: None,
-        director_mode: false,
     };
     update_sessions_index({
         let meta = meta.clone();
@@ -2364,15 +2359,6 @@ pub fn sanitize_system_prompt_override(raw: Option<String>) -> Option<String> {
             }
         }
     }
-}
-
-/// Record director mode on the session index. Does not touch `~/.grok`.
-pub fn set_session_director_mode(id: &str, director_mode: bool) -> Result<SessionMeta, String> {
-    update_session_row(id, move |s| {
-        s.director_mode = director_mode;
-        s.updated_at = Utc::now();
-        Ok(s.clone())
-    })
 }
 
 /// Set or clear per-session extra rules (`grok --rules` on next spawn).
@@ -4637,7 +4623,6 @@ mod tests {
             workspace_capability: None,
             provider_id: None,
             source: None,
-            director_mode: false,
         }
     }
 
@@ -5158,7 +5143,6 @@ mod tests {
                 workspace_capability: None,
                 provider_id: None,
                 source: None,
-                director_mode: false,
             },
         );
         write_json(&sessions_index_file(), &sessions).expect("seed sessions");

@@ -1,49 +1,37 @@
 /**
- * Per-session director steering.
+ * Director mode steering for a send.
  *
- * App Settings → Director mode turns this on for every chat. The same
- * paragraph is sent as ACP `_meta.rules` on the next `session/new`
- * (see `src-tauri/src/director.rs`). An already-open session is steered by
- * wrapping the next send. This module does not write `~/.grok`.
+ * Settings → Director mode is app-wide. A new agent receives the rule as
+ * ACP `_meta.rules` on `session/new` (see `src-tauri/src/director.rs`), so
+ * this module does not prefix that turn. An open chat, which will not call
+ * `session/new` again, gets the same paragraph on the next send.
+ * This module does not write `~/.grok`.
  */
 
 export const DIRECTOR_RULE =
   "Do lane work with a background workflow or background subagents. Keep this transcript to decisions, blockers, and a short status. Put file lists, diffs, and command output in the child prompt. Name the task ids started. Ask before two writers share one tree.";
 
-export type DirectorIntent = "review" | "fanout";
-
-const INHERITANCE_NOTE =
-  "Subagent model inheritance is on. The CLI will reject a per-child model. Do not set a model on spawn_subagent.";
-
-export function wrapDirectorSend(input: {
-  userText: string;
-  directorOn: boolean;
-  intent?: DirectorIntent | null;
-  childModel?: string | null;
-  inheritanceOn: boolean;
+/** Agent id already attached to this send. Empty means the next connect is `session/new`. */
+export function openAgentSessionId(input: {
+  sendTargetId: string | null | undefined;
+  viewedSessionId: string | null | undefined;
+  viewedAgentSessionId: string | null | undefined;
+  rows: ReadonlyArray<{ id: string; agentSessionId?: string | null }>;
 }): string {
-  const model = (input.childModel || "").trim();
-  const parts: string[] = [];
-  if (input.intent === "review") {
-    parts.push(
-      "Review this in the background. Start a background subagent or workflow. Keep this transcript to the decision and the task id.",
-    );
-  } else if (input.intent === "fanout") {
-    parts.push(
-      "Fan the fixes out in the background. Use a background workflow when the work has phases, or background subagents with isolation worktree when they write files. Ask before two writers share one tree. Name the task ids you start. Keep this transcript to decisions, blockers, and a short status.",
-    );
-  } else if (input.directorOn) {
-    parts.push(DIRECTOR_RULE);
+  const target = (input.sendTargetId || "").trim();
+  const viewed = (input.viewedSessionId || "").trim();
+  const rowId = target || viewed;
+  const row = rowId ? input.rows.find((item) => item.id === rowId) : undefined;
+  const fromRow = (row?.agentSessionId || "").trim();
+  if (fromRow) return fromRow;
+  if (!target || target === viewed) {
+    return (input.viewedAgentSessionId || "").trim();
   }
-  if (model && input.inheritanceOn && (input.intent || input.directorOn)) {
-    parts.push(INHERITANCE_NOTE);
-  } else if (model && (input.intent || input.directorOn)) {
-    parts.push(`Child model: ${model}`);
-  }
-  if (!parts.length) return input.userText;
-  return `${parts.join("\n\n")}\n\nUser request:\n${input.userText.trim()}`;
+  return "";
 }
 
-export function directorChildModelRejected(inheritanceOn: boolean, childModel: string): boolean {
-  return inheritanceOn && childModel.trim().length > 0;
+/** Prefix an already-open chat. New sessions leave the text alone. */
+export function wrapDirectorSend(userText: string, directorOn: boolean): string {
+  if (!directorOn) return userText;
+  return `${DIRECTOR_RULE}\n\nUser request:\n${userText.trim()}`;
 }

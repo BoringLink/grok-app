@@ -1,53 +1,60 @@
 import { describe, expect, it } from "vitest";
-import { DIRECTOR_RULE, directorChildModelRejected, wrapDirectorSend } from "./directorMode";
+import { DIRECTOR_RULE, openAgentSessionId, wrapDirectorSend } from "./directorMode";
 
 describe("wrapDirectorSend", () => {
-  it("leaves the text alone when director mode and chips are off", () => {
-    expect(
-      wrapDirectorSend({
-        userText: "  hello  ",
-        directorOn: false,
-        inheritanceOn: false,
-      }),
-    ).toBe("  hello  ");
+  it("leaves the text alone when director mode is off", () => {
+    expect(wrapDirectorSend("  hello  ", false)).toBe("  hello  ");
   });
 
-  it("prepends the director rule without a child model", () => {
-    const wrapped = wrapDirectorSend({
-      userText: "Ship the drawer",
-      directorOn: true,
-      inheritanceOn: false,
-    });
+  it("prepends the director rule for an open chat", () => {
+    const wrapped = wrapDirectorSend("Ship the drawer", true);
     expect(wrapped.startsWith(DIRECTOR_RULE)).toBe(true);
     expect(wrapped).toContain("User request:\nShip the drawer");
-    expect(wrapped).not.toContain("Child model:");
+  });
+});
+
+describe("openAgentSessionId", () => {
+  it("is empty for a new chat, so the send is not prefixed", () => {
+    expect(
+      openAgentSessionId({
+        sendTargetId: null,
+        viewedSessionId: null,
+        viewedAgentSessionId: null,
+        rows: [],
+      }),
+    ).toBe("");
   });
 
-  it("puts the child model in a review brief", () => {
-    const wrapped = wrapDirectorSend({
-      userText: "Look at the decoder",
-      directorOn: false,
-      intent: "review",
-      childModel: "grok-4.6-build",
-      inheritanceOn: false,
-    });
-    expect(wrapped).toContain("Review this in the background");
-    expect(wrapped).toContain("Child model: grok-4.6-build");
+  it("uses the open chat's agent id", () => {
+    expect(
+      openAgentSessionId({
+        sendTargetId: "chat-1",
+        viewedSessionId: "chat-1",
+        viewedAgentSessionId: null,
+        rows: [{ id: "chat-1", agentSessionId: "agent-1" }],
+      }),
+    ).toBe("agent-1");
   });
 
-  it("tells the model the CLI will reject a per-child model when inheritance is on", () => {
-    const wrapped = wrapDirectorSend({
-      userText: "Fan the fixes",
-      directorOn: true,
-      intent: "fanout",
-      childModel: "grok-4.6-build",
-      inheritanceOn: true,
-    });
-    expect(wrapped).toContain("isolation worktree");
-    expect(wrapped).toContain("The CLI will reject a per-child model");
-    expect(wrapped).not.toContain("Child model: grok-4.6-build");
-    expect(directorChildModelRejected(true, "grok-4.6-build")).toBe(true);
-    expect(directorChildModelRejected(false, "grok-4.6-build")).toBe(false);
-    expect(directorChildModelRejected(true, "  ")).toBe(false);
+  it("uses the live snapshot when the row has not caught up", () => {
+    expect(
+      openAgentSessionId({
+        sendTargetId: "chat-1",
+        viewedSessionId: "chat-1",
+        viewedAgentSessionId: "agent-live",
+        rows: [{ id: "chat-1", agentSessionId: null }],
+      }),
+    ).toBe("agent-live");
+  });
+
+  it("stays empty for another chat that has not started an agent", () => {
+    expect(
+      openAgentSessionId({
+        sendTargetId: "chat-2",
+        viewedSessionId: "chat-1",
+        viewedAgentSessionId: "agent-live",
+        rows: [{ id: "chat-2" }],
+      }),
+    ).toBe("");
   });
 });

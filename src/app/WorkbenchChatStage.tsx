@@ -3,7 +3,7 @@
  * banner, a11y live region, and ConversationThreadLive. Composer is passed
  * as children so it stays inside main__stage.
  */
-import { useEffect, type CSSProperties, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
+import type { CSSProperties, Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import * as api from "@/lib/api";
 import type { MessageKey } from "@/i18n";
 import { createT, resolveLocale } from "@/i18n";
@@ -41,7 +41,6 @@ import { GoalOrchSessionChip } from "@/components/GoalOrchSessionChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import { ChatFindLive } from "@/components/ChatFindLive";
 import { AgentTasksPanelLive } from "@/components/AgentTasksPanelLive";
-import { hydrateDirectorOn } from "@/lib/directorStore";
 
 type TFn = ReturnType<typeof createT>;
 type TStore = typeof sessionTranscriptStoreInstance;
@@ -210,13 +209,6 @@ export function WorkbenchChatStage(p: WorkbenchChatStageProps) {
     tasksPanelOpen, tr, turnStartedAt, viewingSessionIdRef, welcomeSession, worktreeEntryForPath,
     children,
   } = p;
-  useEffect(() => {
-    if (!session.sessionId) return;
-    const row = sessions.find((item) => item.id === session.sessionId);
-    if (row && typeof row.directorMode === "boolean") {
-      hydrateDirectorOn(session.sessionId, row.directorMode);
-    }
-  }, [session.sessionId, sessions]);
   return (
     <>
           {/* Secondary multi-window: concurrent live tip + focus main. */}

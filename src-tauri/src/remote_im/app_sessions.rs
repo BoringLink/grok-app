@@ -314,7 +314,6 @@ mod tests {
             workspace_capability: None,
             provider_id: None,
             source: None,
-            director_mode: false,
         }
     }
 

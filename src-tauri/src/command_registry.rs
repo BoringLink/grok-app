@@ -127,8 +127,6 @@ pub fn app_invoke_handler(
         commands::session_move_to_project,
         commands::session_set_plugin_dirs,
         commands::session_set_extra_rules,
-        commands::session_set_director_mode,
-        commands::subagent_model_inheritance_on,
         commands::session_set_max_agent_turns,
         commands::session_set_system_prompt_override,
         commands::session_set_no_ask_user,

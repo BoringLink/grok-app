@@ -20,6 +20,22 @@ export function setDirectorSettingEnabled(on: boolean): void {
   for (const listener of listeners) listener();
 }
 
+/**
+ * Optimistic checkbox, then persist. A failed save puts the previous value back.
+ */
+export async function commitDirectorSetting(
+  next: boolean,
+  save: (next: boolean) => Promise<void>,
+): Promise<void> {
+  const prev = enabled;
+  setDirectorSettingEnabled(next);
+  try {
+    await save(next);
+  } catch {
+    if (enabled === next) setDirectorSettingEnabled(prev);
+  }
+}
+
 export function subscribeDirectorSetting(listener: Listener): () => void {
   listeners.add(listener);
   return () => {
