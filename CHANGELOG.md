@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.47] - 2026-10-27
+
+> **Highlight:** Paste from the right-click menu works when the page clipboard is empty.
+>
+> **中文 · 亮点：** 页面剪贴板为空时，右键菜单里的粘贴也能用。
+
 ### Fixed
 
 - Paste uses the system clipboard when the page clipboard is empty.
