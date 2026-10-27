@@ -20,6 +20,55 @@ use crate::store::{self, ChatMessageStored};
 use super::*;
 
 impl SessionManager {
+    /// App session of a parked chat that should wake for this follow-up.
+    ///
+    /// A cue does not wake it. An end wakes it only when that prompt is already
+    /// armed. The route-drop path and the live-slot mismatch path both call this.
+    pub(super) fn parked_session_for_followup(
+        &self,
+        process_id: &str,
+        agent_session: Option<&str>,
+        ev: &AcpEvent,
+    ) -> Option<String> {
+        let wire = match ev {
+            AcpEvent::WorkflowFollowup(wire) => wire,
+            _ => return None,
+        };
+        let agent = agent_session?;
+        let sid = self
+            .parked
+            .lock()
+            .values()
+            .find(|p| {
+                p.process_id == process_id && p.meta.agent_session_id.as_deref() == Some(agent)
+            })
+            .map(|p| p.app_session_id.clone())?;
+        let armed = crate::workflow_followup::armed_prompt(&sid);
+        crate::workflow_followup::requeues_parked(wire, armed.as_deref()).then_some(sid)
+    }
+
+    /// Move a parked chat to background and apply the follow-up.
+    /// False means this event is not that case; the caller drops it.
+    fn try_adopt_parked_followup(
+        &self,
+        app: &AppHandle,
+        process_id: &str,
+        agent_session: Option<&str>,
+        ev: &AcpEvent,
+    ) -> bool {
+        let Some(sid) = self.parked_session_for_followup(process_id, agent_session, ev) else {
+            return false;
+        };
+        let delivered = self.requeue_parked_as_background(&sid) || self.is_live_session(&sid);
+        if !delivered {
+            return false;
+        }
+        if let AcpEvent::WorkflowFollowup(wire) = ev {
+            self.handle_workflow_followup(app, &sid, wire.clone());
+        }
+        true
+    }
+
     pub(super) async fn handle_acp_event(
         self: &Arc<Self>,
         app: &AppHandle,
@@ -110,21 +159,10 @@ impl SessionManager {
                     prompt_in_flight: false,
                 })
                 .collect();
-            // A parked director chat still owns the ACP process. A workflow
-            // result is the one event allowed to move that chat to background
-            // so the answer is not dropped. Other events stay dropped.
-            let parked_followup = match &ev {
-                AcpEvent::WorkflowFollowup(_) => session_id.and_then(|agent| {
-                    parked_hints
-                        .iter()
-                        .find(|p| {
-                            p.process_id == process_id
-                                && p.agent_session_id.as_deref() == Some(agent)
-                        })
-                        .map(|p| p.app_session_id.clone())
-                }),
-                _ => None,
-            };
+            // A parked chat still owns the ACP process. Only a workflow start
+            // (or an end for a turn already armed) may move that chat to
+            // background. A synthetic cue must not. The live-slot check below
+            // uses the same rule when focus changed before this event landed.
             match resolve_turn_event_route(
                 process_id,
                 session_id,
@@ -138,17 +176,9 @@ impl SessionManager {
                     return;
                 }
                 TurnEventRoute::Drop => {
-                    if let Some(sid) = parked_followup {
-                        let delivered =
-                            self.requeue_parked_as_background(&sid) || self.is_live_session(&sid);
-                        if delivered {
-                            if let AcpEvent::WorkflowFollowup(wire) = ev {
-                                self.handle_workflow_followup(app, &sid, wire);
-                            }
-                            return;
-                        }
-                    }
-                    if Self::event_carries_turn_output(&ev) {
+                    if !self.try_adopt_parked_followup(app, process_id, session_id, &ev)
+                        && Self::event_carries_turn_output(&ev)
+                    {
                         tracing::debug!(
                             "acp event dropped: no apply target process={process_id} agent_sid={session_id:?} ev={}",
                             Self::event_kind_name(&ev)
@@ -176,7 +206,11 @@ impl SessionManager {
                 })
         });
         if !live_route_matches {
-            if Self::event_carries_turn_output(&ev) {
+            // The snapshot said Live, then focus moved. A parked follow-up
+            // still has to be requeued; dropping it here lost the result.
+            if !self.try_adopt_parked_followup(app, process_id, session_id, &ev)
+                && Self::event_carries_turn_output(&ev)
+            {
                 tracing::debug!(
                     process = %process_id,
                     agent = ?session_id,
@@ -1164,6 +1198,28 @@ impl SessionManager {
                 if !app_sid.is_empty() {
                     let _ = app.emit("session://subagent", sub.to_payload(&app_sid));
                 }
+            }
+            AcpEvent::WorkflowScoped { prompt_id, event } => {
+                let app_sid = {
+                    let guard = self.inner.lock();
+                    guard
+                        .as_ref()
+                        .map(|s| s.app_session_id.clone())
+                        .unwrap_or_default()
+                };
+                if app_sid.is_empty()
+                    || crate::workflow_followup::workflow_output_dropped(&app_sid, &prompt_id)
+                {
+                    tracing::debug!(
+                        session = %app_sid,
+                        prompt = %prompt_id,
+                        "workflow follow-up output dropped: prompt is not the armed turn"
+                    );
+                    return;
+                }
+                // The inner chunk is a plain stream or tool event. Box the
+                // re-entry: an async fn cannot recurse into itself directly.
+                Box::pin(self.handle_acp_event(app, process_id, session_id, *event)).await;
             }
             AcpEvent::WorkflowFollowup(wire) => {
                 let app_sid = {

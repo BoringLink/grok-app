@@ -14,7 +14,7 @@ use crate::workflow_followup::{self, Decision, Wire, CUE_FALLBACK};
 
 use super::*;
 
-enum FollowupPrepared {
+pub(super) enum FollowupPrepared {
     None,
     Opened {
         app_session_id: String,
@@ -141,7 +141,7 @@ impl SessionManager {
         }
     }
 
-    fn prepare_workflow_followup(s: &mut LiveSession, wire: &Wire) -> FollowupPrepared {
+    pub(super) fn prepare_workflow_followup(s: &mut LiveSession, wire: &Wire) -> FollowupPrepared {
         let armed = workflow_followup::armed_prompt(&s.app_session_id);
         let decision = workflow_followup::decide(
             s.prompt_in_flight,

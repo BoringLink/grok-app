@@ -6,9 +6,9 @@
 //! `prompt_in_flight` is false and the replay gate would drop every chunk.
 //! The pane still updates from disk. The parent chat stays idle.
 //!
-//! These helpers recognize that turn. `session/load` replay is not one of
-//! them: the caller suppresses this decode while a `session/load` RPC is
-//! still pending.
+//! These helpers recognize that turn. A `session/load` for this same agent
+//! session is not one of them: the caller suppresses the decode while that
+//! load is still pending, and the prompt id stays dropped for that session.
 
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -104,20 +104,31 @@ pub enum Admission {
     After,
 }
 
-/// `None` while `session/load` is still pending, and for any prompt id seen then.
-/// A live completion (load RPC already gone, id never seen during load) is admitted.
-pub fn admission(during_session_load: bool, wire: &Wire) -> Option<Admission> {
+fn replay_key(session_id: Option<&str>, prompt_id: &str) -> String {
+    let session = session_id.unwrap_or("").trim();
+    format!("{session}\u{1f}{prompt_id}")
+}
+
+/// `None` while this chat's `session/load` is still pending, and for a prompt
+/// id seen on that chat during the load. A load of another chat does not
+/// suppress this one. An unstamped load (no session id recorded) still
+/// suppresses every chat, because that replay cannot be attributed.
+pub fn admission(
+    during_session_load: bool,
+    event_session: Option<&str>,
+    wire: &Wire,
+) -> Option<Admission> {
     let prompt_id = match wire {
         Wire::Start { prompt_id } | Wire::End { prompt_id, .. } => Some(prompt_id.as_str()),
         Wire::Cue { .. } => None,
     };
     if during_session_load {
         if let Some(id) = prompt_id {
-            note_load_replay(id);
+            note_load_replay(event_session, id);
         }
         return None;
     }
-    if prompt_id.is_some_and(seen_during_load) {
+    if prompt_id.is_some_and(|id| seen_during_load(event_session, id)) {
         return None;
     }
     Some(match wire {
@@ -126,22 +137,59 @@ pub fn admission(during_session_load: bool, wire: &Wire) -> Option<Admission> {
     })
 }
 
-/// Remember a prompt id that arrived while `session/load` was still in flight.
-pub fn note_load_replay(prompt_id: &str) {
+/// Remember a prompt id that arrived while this session's `session/load` was in flight.
+pub fn note_load_replay(session_id: Option<&str>, prompt_id: &str) {
     if !is_workflow_followup_prompt(prompt_id) {
         return;
     }
     let mut guard = replayed_ids()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    guard.insert(prompt_id.to_string());
+    guard.insert(replay_key(session_id, prompt_id));
 }
 
-pub fn seen_during_load(prompt_id: &str) -> bool {
-    replayed_ids()
+pub fn seen_during_load(session_id: Option<&str>, prompt_id: &str) -> bool {
+    let guard = replayed_ids()
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .contains(prompt_id)
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if guard.contains(&replay_key(session_id, prompt_id)) {
+        return true;
+    }
+    // A replay that named no session could belong to any chat.
+    !session_id.unwrap_or("").trim().is_empty() && guard.contains(&replay_key(None, prompt_id))
+}
+
+/// True when a pending `session/load` should suppress this update.
+///
+/// `loading_session_ids` are the session ids on those pending RPCs (`None` or
+/// empty means the load was not stamped). A stamped load suppresses only that
+/// session. An unstamped load, or an update that names no session, suppresses
+/// every chat so a replay cannot be adopted as a live result.
+pub fn session_load_suppresses(
+    loading_session_ids: &[Option<&str>],
+    event_session: Option<&str>,
+) -> bool {
+    if loading_session_ids.is_empty() {
+        return false;
+    }
+    let unstamped_load = loading_session_ids
+        .iter()
+        .any(|id| id.map(str::trim).filter(|s| !s.is_empty()).is_none());
+    if unstamped_load {
+        return true;
+    }
+    let Some(event_sid) = event_session.map(str::trim).filter(|s| !s.is_empty()) else {
+        return true;
+    };
+    loading_session_ids
+        .iter()
+        .any(|id| id.is_some_and(|s| s.trim() == event_sid))
+}
+
+fn is_workflow_reminder(text: &str) -> bool {
+    let text = text.trim();
+    text.starts_with("A background workflow stopped")
+        || text.contains("workflow completion reminder")
 }
 
 fn owned_text(value: &Value) -> Option<String> {
@@ -157,6 +205,13 @@ fn prompt_id_from_meta(params: &Value) -> Option<String> {
         .pointer("/_meta/promptId")
         .or_else(|| params.pointer("/_meta/prompt_id"))
         .and_then(owned_text)
+}
+
+/// Prompt id on this notification when it is a workflow follow-up turn.
+pub fn notification_workflow_prompt(params: &Value) -> Option<String> {
+    let update = params.get("update").unwrap_or(params);
+    let id = prompt_id_from_meta(params).or_else(|| prompt_id_from_meta(update))?;
+    is_workflow_followup_prompt(&id).then_some(id)
 }
 
 /// `Some` when this notification is the workflow result turn.
@@ -178,11 +233,19 @@ pub fn decode_followup(params: &Value) -> Option<Wire> {
             if !synthetic {
                 return None;
             }
-            let text = update
-                .pointer("/content/text")
-                .and_then(owned_text)
-                .unwrap_or_else(|| CUE_FALLBACK.to_string());
-            Some(Wire::Cue { text })
+            // Other synthetic wakes (subagent, bash, task) share this flag and
+            // carry no workflow prompt id. Only the workflow reminder is a cue.
+            let text = update.pointer("/content/text").and_then(owned_text);
+            let prefixed = prompt_id_from_meta(params)
+                .or_else(|| prompt_id_from_meta(update))
+                .is_some_and(|id| is_workflow_followup_prompt(&id));
+            let reminder = text.as_deref().is_some_and(is_workflow_reminder);
+            if !reminder && !prefixed {
+                return None;
+            }
+            Some(Wire::Cue {
+                text: text.unwrap_or_else(|| CUE_FALLBACK.to_string()),
+            })
         }
         "turn_completed" => {
             let prompt_id = update
@@ -254,6 +317,23 @@ pub fn decide(
             }
         }
     }
+}
+
+/// Parked recovery. A cue must not move the chat. An end moves it only when
+/// that prompt is already the armed follow-up. The route-drop path and the
+/// live-slot mismatch path both use this.
+pub fn requeues_parked(wire: &Wire, armed_prompt_id: Option<&str>) -> bool {
+    match wire {
+        Wire::Start { .. } => true,
+        Wire::End { prompt_id, .. } => armed_prompt_id == Some(prompt_id.as_str()),
+        Wire::Cue { .. } => false,
+    }
+}
+
+/// Stream and tool chunks for a `workflow-completed-` id apply only while that
+/// id is the armed follow-up. Anything else would append to the user's turn.
+pub fn workflow_output_dropped(session_id: &str, prompt_id: &str) -> bool {
+    armed_prompt(session_id).as_deref() != Some(prompt_id)
 }
 
 pub fn note_cue(session_id: &str, text: &str) {
@@ -339,6 +419,18 @@ mod tests {
             }
         });
         assert!(decode_followup(&real).is_none());
+        // Other synthetic wakes share the flag and have no workflow prompt id.
+        let task_done = json!({
+            "update": {
+                "sessionUpdate": "user_message_chunk",
+                "content": {
+                    "type": "text",
+                    "text": "<system-reminder> Background task abc completed"
+                },
+                "_meta": { "syntheticPrompt": true }
+            }
+        });
+        assert!(decode_followup(&task_done).is_none());
     }
 
     #[test]
@@ -432,18 +524,20 @@ mod tests {
 
     #[test]
     fn load_replay_is_not_admitted_and_a_later_copy_stays_out() {
+        let session = "wf-admit-session-b";
         let replayed = "workflow-completed-wf_admit_load-1";
         let start = Wire::Start {
             prompt_id: replayed.into(),
         };
-        assert!(admission(true, &start).is_none());
-        assert!(seen_during_load(replayed));
-        assert!(admission(false, &start).is_none());
+        assert!(admission(true, Some(session), &start).is_none());
+        assert!(seen_during_load(Some(session), replayed));
+        assert!(admission(false, Some(session), &start).is_none());
 
         let live = "workflow-completed-wf_admit_live-2";
         assert_eq!(
             admission(
                 false,
+                Some("wf-admit-session-a"),
                 &Wire::Start {
                     prompt_id: live.into(),
                 }
@@ -453,6 +547,7 @@ mod tests {
         assert_eq!(
             admission(
                 false,
+                Some("wf-admit-session-a"),
                 &Wire::End {
                     prompt_id: live.into(),
                     stop_reason: "end_turn".into(),
@@ -463,6 +558,7 @@ mod tests {
         assert_eq!(
             admission(
                 false,
+                Some("wf-admit-session-a"),
                 &Wire::Cue {
                     text: "A background workflow stopped.".into(),
                 }
@@ -471,11 +567,94 @@ mod tests {
         );
         assert!(admission(
             true,
+            Some(session),
             &Wire::Cue {
-                text: "replayed cue".into(),
+                text: "A background workflow stopped. Review it.".into(),
             }
         )
         .is_none());
+    }
+
+    #[test]
+    fn another_chats_load_does_not_blacklist_this_one() {
+        let loaded = "workflow-completed-wf_scope_loaded-1";
+        let live = "workflow-completed-wf_scope_live-1";
+        assert!(!session_load_suppresses(
+            &[Some("agent-b")],
+            Some("agent-a")
+        ));
+        assert!(session_load_suppresses(&[Some("agent-b")], Some("agent-b")));
+        assert!(session_load_suppresses(&[None], Some("agent-a")));
+        assert!(session_load_suppresses(&[Some("agent-b")], None));
+        assert!(!session_load_suppresses(&[], Some("agent-a")));
+
+        let during_b = Wire::Start {
+            prompt_id: loaded.into(),
+        };
+        assert!(admission(true, Some("agent-b"), &during_b).is_none());
+        assert!(seen_during_load(Some("agent-b"), loaded));
+        assert!(!seen_during_load(Some("agent-a"), loaded));
+        assert_eq!(
+            admission(
+                false,
+                Some("agent-a"),
+                &Wire::Start {
+                    prompt_id: live.into(),
+                }
+            ),
+            Some(Admission::Before)
+        );
+        assert_eq!(
+            admission(
+                false,
+                Some("agent-a"),
+                &Wire::Start {
+                    prompt_id: loaded.into(),
+                }
+            ),
+            Some(Admission::Before)
+        );
+        assert!(admission(false, Some("agent-b"), &during_b).is_none());
+    }
+
+    #[test]
+    fn parked_requeue_is_start_or_an_armed_end() {
+        let id = "workflow-completed-wf_requeue-1";
+        let other = "workflow-completed-wf_requeue-2";
+        let start = Wire::Start {
+            prompt_id: id.into(),
+        };
+        let cue = Wire::Cue {
+            text: "A background workflow stopped. Review it.".into(),
+        };
+        let end = Wire::End {
+            prompt_id: id.into(),
+            stop_reason: "end_turn".into(),
+        };
+        assert!(requeues_parked(&start, None));
+        assert!(!requeues_parked(&cue, None));
+        assert!(!requeues_parked(&cue, Some(id)));
+        assert!(!requeues_parked(&end, None));
+        assert!(requeues_parked(&end, Some(id)));
+        assert!(!requeues_parked(&end, Some(other)));
+    }
+
+    #[test]
+    fn unarmed_workflow_output_is_dropped_until_that_prompt_is_armed() {
+        let sid = "wf-output-drop-test";
+        let id = "workflow-completed-wf_output-1";
+        let other = "workflow-completed-wf_output-2";
+        disarm(sid);
+        let start = Wire::Start {
+            prompt_id: id.into(),
+        };
+        // A user turn already in flight ignores the opener, so nothing is armed.
+        assert_eq!(decide(true, true, None, &start), Decision::Ignore);
+        assert!(workflow_output_dropped(sid, id));
+        arm(sid, id);
+        assert!(!workflow_output_dropped(sid, id));
+        assert!(workflow_output_dropped(sid, other));
+        disarm(sid);
     }
 
     #[test]

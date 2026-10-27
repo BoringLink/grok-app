@@ -954,6 +954,26 @@ impl SessionManager {
                     Self::emit_state(app, &self.snapshot());
                 }
             }
+            AcpEvent::WorkflowScoped { prompt_id, event } => {
+                if crate::workflow_followup::workflow_output_dropped(app_session_id, &prompt_id) {
+                    tracing::debug!(
+                        session = %app_session_id,
+                        prompt = %prompt_id,
+                        "background workflow follow-up output dropped: prompt is not the armed turn"
+                    );
+                    return;
+                }
+                // The inner chunk is a plain stream or tool event. Box the
+                // re-entry: an async fn cannot recurse into itself directly.
+                Box::pin(self.handle_acp_event_on_background(
+                    app,
+                    app_session_id,
+                    process_id,
+                    agent_session_id,
+                    *event,
+                ))
+                .await;
+            }
             AcpEvent::WorkflowFollowup(wire) => {
                 self.handle_workflow_followup(app, app_session_id, wire);
             }

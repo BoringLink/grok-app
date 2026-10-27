@@ -575,3 +575,183 @@ fn rewind_busy_check_allows_idle_background_session() {
         "an unknown chat has no running turn to protect"
     );
 }
+
+fn parked_for(live: &LiveSession, sent_prompt_this_visit: bool) -> ParkedAgent {
+    ParkedAgent {
+        process_id: live.process_id.clone(),
+        app_session_id: live.app_session_id.clone(),
+        meta: live.meta.clone(),
+        acp: crate::acp_client::AcpClient::test_stub(true),
+        last_activity: live.last_activity,
+        model_id: live.model_id.clone(),
+        effort: live.effort.clone(),
+        product_mode: live.product_mode.clone(),
+        project_path: live.project_path.clone(),
+        policy: live.policy,
+        sandbox_profile: None,
+        needs_history_bootstrap: live.needs_history_bootstrap,
+        backend: live.backend.clone(),
+        sent_prompt_this_visit,
+    }
+}
+
+/// Switching away and back must keep the bit that lets a workflow result open.
+/// Both park sites (live Ready, and background that finished) save it.
+#[test]
+fn parking_keeps_sent_prompt_this_visit_for_the_followup() {
+    let mgr = SessionManager::new();
+    let mut live = bare_live_session("park-visit", "proc-park");
+    live.sent_prompt_this_visit = true;
+    live.acp = Some(crate::acp_client::AcpClient::test_stub(true));
+    *mgr.inner.lock() = Some(live);
+    mgr.try_park_live().expect("park");
+    assert_eq!(
+        mgr.parked
+            .lock()
+            .get("park-visit")
+            .map(|p| p.sent_prompt_this_visit),
+        Some(true)
+    );
+    let restored = mgr.unpark_to_live("park-visit").expect("unpark");
+    assert!(restored.sent_prompt_this_visit);
+
+    let mut bg = bare_live_session("bg-visit", "proc-bg");
+    bg.sent_prompt_this_visit = true;
+    bg.acp = Some(crate::acp_client::AcpClient::test_stub(true));
+    mgr.background.lock().insert("bg-visit".into(), bg);
+    mgr.promote_background_ready_to_parked("bg-visit");
+    assert_eq!(
+        mgr.parked
+            .lock()
+            .get("bg-visit")
+            .map(|p| p.sent_prompt_this_visit),
+        Some(true)
+    );
+    let restored = mgr.unpark_to_live("bg-visit").expect("unpark background");
+    assert!(restored.sent_prompt_this_visit);
+}
+
+/// Requeue must not invent a visit. A viewed-only park stays closed.
+#[test]
+fn requeue_keeps_the_parked_visit_bit() {
+    let mgr = SessionManager::new();
+    let looked = bare_live_session("rq-false", "proc-rq");
+    mgr.parked
+        .lock()
+        .insert("rq-false".into(), parked_for(&looked, false));
+    assert!(mgr.requeue_parked_as_background("rq-false"));
+    assert_eq!(
+        mgr.background
+            .lock()
+            .get("rq-false")
+            .map(|s| s.sent_prompt_this_visit),
+        Some(false)
+    );
+
+    let sent = bare_live_session("rq-true", "proc-rq-2");
+    mgr.parked
+        .lock()
+        .insert("rq-true".into(), parked_for(&sent, true));
+    assert!(mgr.requeue_parked_as_background("rq-true"));
+    assert_eq!(
+        mgr.background
+            .lock()
+            .get("rq-true")
+            .map(|s| s.sent_prompt_this_visit),
+        Some(true)
+    );
+}
+
+/// The restored visit bit is what `prepare` reads. A busy user turn does not arm.
+#[test]
+fn followup_opens_only_when_this_visit_already_sent() {
+    let id = "workflow-completed-wf_visit_open-1";
+    let mut sent = bare_live_session("visit-open", "p-open");
+    sent.sent_prompt_this_visit = true;
+    crate::workflow_followup::disarm("visit-open");
+    SessionManager::prepare_workflow_followup(
+        &mut sent,
+        &crate::workflow_followup::Wire::Start {
+            prompt_id: id.into(),
+        },
+    );
+    assert!(sent.prompt_in_flight);
+    assert_eq!(
+        crate::workflow_followup::armed_prompt("visit-open").as_deref(),
+        Some(id)
+    );
+    crate::workflow_followup::disarm("visit-open");
+
+    let mut idle = bare_live_session("visit-idle", "p-idle");
+    SessionManager::prepare_workflow_followup(
+        &mut idle,
+        &crate::workflow_followup::Wire::Start {
+            prompt_id: "workflow-completed-wf_visit_idle-1".into(),
+        },
+    );
+    assert!(!idle.prompt_in_flight);
+
+    let busy_id = "workflow-completed-wf_visit_busy-1";
+    let mut busy = bare_live_session("visit-busy", "p-busy");
+    busy.sent_prompt_this_visit = true;
+    busy.prompt_in_flight = true;
+    crate::workflow_followup::disarm("visit-busy");
+    SessionManager::prepare_workflow_followup(
+        &mut busy,
+        &crate::workflow_followup::Wire::Start {
+            prompt_id: busy_id.into(),
+        },
+    );
+    assert!(crate::workflow_followup::workflow_output_dropped(
+        "visit-busy", busy_id
+    ));
+}
+
+/// Drop and a live-slot miss share this lookup. A cue does not name the chat.
+#[test]
+fn parked_followup_recovery_accepts_start_and_armed_end_only() {
+    let mgr = SessionManager::new();
+    let mut live = bare_live_session("chat-a", "proc-1");
+    live.meta.agent_session_id = Some("agent-a".into());
+    mgr.parked
+        .lock()
+        .insert("chat-a".into(), parked_for(&live, true));
+    let start_id = "workflow-completed-wf_miss-1";
+    let start = AcpEvent::WorkflowFollowup(crate::workflow_followup::Wire::Start {
+        prompt_id: start_id.into(),
+    });
+    assert_eq!(
+        mgr.parked_session_for_followup("proc-1", Some("agent-a"), &start)
+            .as_deref(),
+        Some("chat-a")
+    );
+    let cue = AcpEvent::WorkflowFollowup(crate::workflow_followup::Wire::Cue {
+        text: "A background workflow stopped. Review it.".into(),
+    });
+    assert!(mgr
+        .parked_session_for_followup("proc-1", Some("agent-a"), &cue)
+        .is_none());
+    let end = AcpEvent::WorkflowFollowup(crate::workflow_followup::Wire::End {
+        prompt_id: start_id.into(),
+        stop_reason: "end_turn".into(),
+    });
+    assert!(mgr
+        .parked_session_for_followup("proc-1", Some("agent-a"), &end)
+        .is_none());
+    crate::workflow_followup::arm("chat-a", start_id);
+    assert_eq!(
+        mgr.parked_session_for_followup("proc-1", Some("agent-a"), &end)
+            .as_deref(),
+        Some("chat-a")
+    );
+    crate::workflow_followup::disarm("chat-a");
+    let stream = AcpEvent::Stream {
+        kind: StreamKind::Assistant,
+        text: "result".into(),
+        message_id: None,
+        done: false,
+    };
+    assert!(mgr
+        .parked_session_for_followup("proc-1", Some("agent-a"), &stream)
+        .is_none());
+}

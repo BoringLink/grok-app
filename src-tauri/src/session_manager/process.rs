@@ -1,6 +1,7 @@
 //! Process capacity, park/unpark, idle recycle, snapshots.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter};
@@ -520,6 +521,26 @@ impl SessionManager {
         Self::clear_provider_retry_memory(s);
     }
 
+    fn parked_agent_from_ready(s: &LiveSession, acp: Arc<AcpClient>) -> ParkedAgent {
+        let sandbox_profile = acp.sandbox_profile();
+        ParkedAgent {
+            process_id: s.process_id.clone(),
+            app_session_id: s.app_session_id.clone(),
+            meta: s.meta.clone(),
+            acp,
+            last_activity: s.last_activity,
+            model_id: s.model_id.clone(),
+            effort: s.effort.clone(),
+            product_mode: s.product_mode.clone(),
+            project_path: s.project_path.clone(),
+            policy: s.policy,
+            sandbox_profile,
+            needs_history_bootstrap: s.needs_history_bootstrap,
+            backend: s.backend.clone(),
+            sent_prompt_this_visit: s.sent_prompt_this_visit,
+        }
+    }
+
     /// Park or background the current live session so focus can move.
     ///
     /// - Idle Ready (no open tools) → warm `parked`.
@@ -634,22 +655,7 @@ impl SessionManager {
                         return Ok(());
                     }
                 }
-                let sandbox_profile = acp.sandbox_profile();
-                let parked = ParkedAgent {
-                    process_id: s.process_id.clone(),
-                    app_session_id: s.app_session_id.clone(),
-                    meta: s.meta.clone(),
-                    acp,
-                    last_activity: s.last_activity,
-                    model_id: s.model_id.clone(),
-                    effort: s.effort.clone(),
-                    product_mode: s.product_mode.clone(),
-                    project_path: s.project_path.clone(),
-                    policy: s.policy,
-                    sandbox_profile,
-                    needs_history_bootstrap: s.needs_history_bootstrap,
-                    backend: s.backend.clone(),
-                };
+                let parked = Self::parked_agent_from_ready(s, acp);
                 let _ = guard.take();
                 drop(guard);
                 self.parked
@@ -719,22 +725,7 @@ impl SessionManager {
         let Some(acp) = s.acp.take() else {
             return;
         };
-        let sandbox_profile = acp.sandbox_profile();
-        let parked = ParkedAgent {
-            process_id: s.process_id.clone(),
-            app_session_id: s.app_session_id.clone(),
-            meta: s.meta.clone(),
-            acp,
-            last_activity: s.last_activity,
-            model_id: s.model_id.clone(),
-            effort: s.effort.clone(),
-            product_mode: s.product_mode.clone(),
-            project_path: s.project_path.clone(),
-            policy: s.policy,
-            sandbox_profile,
-            needs_history_bootstrap: s.needs_history_bootstrap,
-            backend: s.backend.clone(),
-        };
+        let parked = Self::parked_agent_from_ready(&s, acp);
         self.parked
             .lock()
             .insert(parked.app_session_id.clone(), parked);
@@ -799,7 +790,7 @@ impl SessionManager {
             tools_this_turn: 0,
             saw_model_output: false,
             prompt_in_flight: false,
-            sent_prompt_this_visit: false,
+            sent_prompt_this_visit: parked.sent_prompt_this_visit,
             pending_stream_emit: None,
             stream_emit_flush_gen: 0,
             last_tool_heartbeat_emit: None,
@@ -808,9 +799,9 @@ impl SessionManager {
 
     /// Move a parked chat into `background` so a workflow result can land.
     ///
-    /// Does not touch the live slot. The rebuilt session clears
-    /// `sent_prompt_this_visit`; this chat already ran (it was warm-parked),
-    /// and the follow-up is the rest of that visit.
+    /// Does not touch the live slot. `sent_prompt_this_visit` is the bit saved
+    /// at park time: a viewed-only chat stays closed, and a chat that already
+    /// sent can still open the follow-up.
     pub(super) fn requeue_parked_as_background(&self, app_session_id: &str) -> bool {
         if self.background.lock().contains_key(app_session_id) {
             return true;
@@ -823,10 +814,9 @@ impl SessionManager {
         {
             return false;
         }
-        let Some(mut live) = self.unpark_to_live(app_session_id) else {
+        let Some(live) = self.unpark_to_live(app_session_id) else {
             return false;
         };
-        live.sent_prompt_this_visit = true;
         let sid = live.app_session_id.clone();
         self.background.lock().insert(sid, live);
         tracing::info!(
