@@ -499,6 +499,7 @@ fn notify_sound_enabled(sound: Option<bool>) -> bool {
     matches!(sound, Some(true))
 }
 
+#[cfg(any(target_os = "macos", test))]
 /// AppleScript string literal body: no controls, capped, quotes escaped.
 fn apple_script_literal(s: &str) -> String {
     let flat: String = s
@@ -510,11 +511,13 @@ fn apple_script_literal(s: &str) -> String {
     truncated.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+#[cfg(any(target_os = "macos", test))]
 /// Fallback sound for `osascript` only. `"default"` is not a system sound
 /// (`NSSound(named: "default")` is nil). `Tink.aiff` is in
 /// `/System/Library/Sounds`.
 const OSASCRIPT_SOUND_NAME: &str = "Tink";
 
+#[cfg(any(target_os = "macos", test))]
 /// `display notification` script. Sound clause is omitted when `sound` is false
 /// so a disabled pref does not ding via Script Editor.
 fn osascript_notification_script(title: &str, body: &str, sound: bool) -> String {
@@ -529,11 +532,14 @@ fn osascript_notification_script(title: &str, body: &str, sound: bool) -> String
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 /// 880 Hz, 120 ms, 16-bit mono WAV. Same short beep the Settings copy describes.
 /// Sample rate 22050 × 0.12 s = 2646 frames.
 const BEEP_SAMPLE_RATE: u32 = 22_050;
+#[cfg(any(target_os = "macos", test))]
 const BEEP_SAMPLE_COUNT: usize = 2_646;
 
+#[cfg(any(target_os = "macos", test))]
 fn soft_notify_beep_wav() -> Vec<u8> {
     let data_len = (BEEP_SAMPLE_COUNT * 2) as u32;
     let mut wav = Vec::with_capacity(44 + data_len as usize);
