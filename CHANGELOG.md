@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.49] - 2026-10-28
+
+> **Highlight:** Director mode in Settings can send large work to a background workflow.
+>
+> **中文 · 亮点：** 设置里的导演模式可以把大块工作交给后台工作流。
+
 ### Added
 
 - Director mode in Settings asks Grok to put large work in a background workflow. A new chat still gets that rule when an agent is already running.
