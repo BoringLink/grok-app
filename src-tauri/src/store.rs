@@ -569,6 +569,12 @@ pub struct AppSettings {
     /// top-level `--no-plan` so plan mode is disabled for that process.
     #[serde(default = "default_plan_enabled")]
     pub plan_enabled: bool,
+    /// App-wide director nudge. When true, `session/new` sends `DIRECTOR_RULE`
+    /// as ACP `_meta.rules` at the moment that request is built. An open
+    /// chat is prefixed on the next send instead, so the rule is not sent
+    /// twice. Default false. Does not rewrite `~/.grok`.
+    #[serde(default)]
+    pub director_enabled: bool,
     /// Allow Grok Build subagent spawning (`Agent` / task tools). Default **true**
     /// (CLI default). When false, spawn forces `--no-subagents` + `GROK_SUBAGENTS=0`
     /// and independent mode writes `[subagents] enabled = false`.
@@ -941,6 +947,7 @@ impl Default for AppSettings {
             official_effort_xhigh_rows_migrated: true,
             workflows_default_migrated: true,
             plan_enabled: default_plan_enabled(),
+            director_enabled: false,
             subagents_enabled: true,
             subagent_worktree_snapshot_enabled: false,
             auto_wake_enabled: false,

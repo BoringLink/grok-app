@@ -468,10 +468,14 @@ pub struct AcpClient {
     /// Private `GROK_HOME` sealed for this process (#1293). `None` for
     /// `~/.grok`, official-aux, SSH, and TCP. Discarded in `kill`.
     proc_home: std::sync::Mutex<Option<PathBuf>>,
+    /// When true, `session/new` reads Director mode at that moment.
+    /// On for chat processes (warm start and TCP included). Off for
+    /// official aux side tasks.
+    use_app_director_rules: bool,
 }
 
 /// Options applied at agent process start (CLI flags).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct SpawnOptions {
     pub model_id: Option<String>,
     /// `official` or a custom section id. `None` follows the global route.
@@ -492,6 +496,10 @@ pub struct SpawnOptions {
     pub plugin_dirs: Vec<String>,
     /// Per-session extra rules → top-level `grok --rules <TEXT>` (before `agent`).
     pub extra_rules: Option<String>,
+    /// When true (the default), `session/new` reads `director_enabled` and
+    /// may send the director rule as `_meta.rules`. Official aux sets this
+    /// false. Not a process flag and not `grok --rules`.
+    pub use_app_director_rules: bool,
     /// Per-session max turns override → top-level `grok --max-turns N`.
     /// When set (after normalize), wins over `AppSettings.max_agent_turns`.
     pub max_agent_turns: Option<u32>,
@@ -522,6 +530,34 @@ pub struct SpawnOptions {
     /// App session (chat) this agent process serves. The PR-monitor MCP tools
     /// watch PRs *for a chat*, so the injected server needs to know which one.
     pub app_session_id: Option<String>,
+}
+
+impl Default for SpawnOptions {
+    fn default() -> Self {
+        Self {
+            model_id: None,
+            route_provider_id: None,
+            effort: None,
+            permission_policy: None,
+            product_mode: None,
+            sandbox_profile: None,
+            json_schema: None,
+            plugin_dirs: Vec::new(),
+            extra_rules: None,
+            // Warm `..Default::default()` must keep this on. The rule text
+            // is chosen later, when `session/new` is built.
+            use_app_director_rules: true,
+            max_agent_turns: None,
+            system_prompt_override: None,
+            no_ask_user: None,
+            fork_session: false,
+            grok_home_override: None,
+            empty_mcp_servers: false,
+            ssh_alias: None,
+            folder_trust: false,
+            app_session_id: None,
+        }
+    }
 }
 
 mod spawn_flags;
@@ -593,7 +629,7 @@ impl AcpClient {
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
-            return Self::connect_tcp(addr, cwd).await;
+            return Self::connect_tcp(addr, cwd, opts.use_app_director_rules).await;
         }
 
         let ssh_alias = opts
@@ -1280,6 +1316,7 @@ impl AcpClient {
             AgentError::new(AgentErrorCode::AgentCrashed, "no stderr on child")
         })?;
 
+        let use_app_director_rules = opts.use_app_director_rules;
         let client = Arc::new(Self {
             child: AsyncMutex::new(Some(child)),
             child_pid,
@@ -1306,6 +1343,7 @@ impl AcpClient {
             ssh_alias: ssh_alias.clone(),
             wsl_active: wsl_launch.is_some(),
             proc_home: std::sync::Mutex::new(proc_home),
+            use_app_director_rules,
         });
 
         client.start_read_loop(Box::new(stdout));
@@ -1350,6 +1388,7 @@ impl AcpClient {
     pub async fn connect_tcp(
         addr: &str,
         cwd: PathBuf,
+        use_app_director_rules: bool,
     ) -> Result<
         (
             Arc<Self>,
@@ -1409,6 +1448,7 @@ impl AcpClient {
             ssh_alias: None,
             wsl_active: false,
             proc_home: std::sync::Mutex::new(None),
+            use_app_director_rules,
         });
         client.start_read_loop(Box::new(read_half));
         Ok((client, event_rx))
@@ -2446,6 +2486,13 @@ impl AcpClient {
     /// instead of spawning `grok`.
     #[cfg(test)]
     pub(crate) fn test_stub(alive: bool) -> Arc<Self> {
+        Self::test_stub_with(alive, true)
+    }
+
+    /// Alive-or-dead client with no child. `use_app_director_rules` is the
+    /// same flag warm start and TCP keep on, and official aux turns off.
+    #[cfg(test)]
+    pub(crate) fn test_stub_with(alive: bool, use_app_director_rules: bool) -> Arc<Self> {
         let (event_tx, _event_rx) = mpsc::unbounded_channel();
         Arc::new(Self {
             child: AsyncMutex::new(None),
@@ -2473,12 +2520,28 @@ impl AcpClient {
             ssh_alias: None,
             wsl_active: false,
             proc_home: std::sync::Mutex::new(None),
+            use_app_director_rules,
         })
     }
 
     /// Working directory this process was spawned with.
     pub fn cwd(&self) -> &std::path::Path {
         &self.cwd
+    }
+
+    /// `session/new` body. `director_enabled` is the app setting at this
+    /// call, not a copy taken when the process started.
+    pub(crate) fn session_new_params(
+        &self,
+        cwd: &str,
+        mcp_servers: &Value,
+        director_enabled: bool,
+    ) -> Value {
+        wire_session_new_params(
+            cwd,
+            mcp_servers,
+            crate::director::rules_for_session_new(self.use_app_director_rules, director_enabled),
+        )
     }
 
     /// Initialize + auth, then open a session.
@@ -2798,10 +2861,11 @@ impl AcpClient {
         let result = self
             .request_timeout(
                 "session/new",
-                json!({
-                    "cwd": cwd,
-                    "mcpServers": mcp_servers
-                }),
+                self.session_new_params(
+                    &cwd,
+                    &mcp_servers,
+                    crate::store::load_settings().director_enabled,
+                ),
                 HANDSHAKE_TIMEOUT_SECS,
             )
             .await
@@ -4027,6 +4091,23 @@ fn scope_workflow_output(events: Vec<AcpEvent>, prompt_id: Option<&str>) -> Vec<
         .collect()
 }
 
+/// `session/new` params. `rules` is ACP `_meta.rules` (per session, not a
+/// `~/.grok` write). Empty rules omit `_meta` so the body stays
+/// `{ cwd, mcpServers }`.
+///
+/// Live check, grok 1.0.46: `session/new` with `_meta.rules` returned a
+/// `sessionId` (no prompt sent).
+pub fn wire_session_new_params(cwd: &str, mcp_servers: &Value, rules: Option<&str>) -> Value {
+    let mut params = json!({
+        "cwd": cwd,
+        "mcpServers": mcp_servers,
+    });
+    if let Some(text) = rules.map(str::trim).filter(|s| !s.is_empty()) {
+        params["_meta"] = json!({ "rules": text });
+    }
+    params
+}
+
 /// Pure decode of `session/update` params → host events (no I/O).
 /// Used by the live client and golden fixture tests.
 pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
@@ -4612,6 +4693,46 @@ fn parse_ask_user_options(v: &Value) -> Vec<AskUserOption> {
         });
     }
     out
+}
+
+#[cfg(test)]
+mod director_session_new_tests {
+    use super::*;
+
+    #[test]
+    fn warm_default_reads_director_when_session_new_is_built() {
+        let warm = SpawnOptions {
+            model_id: Some("grok".into()),
+            effort: Some("high".into()),
+            ..Default::default()
+        };
+        assert!(warm.use_app_director_rules);
+        let client = AcpClient::test_stub(true);
+        let mcp = json!([]);
+        assert!(client
+            .session_new_params("/work", &mcp, false)
+            .get("_meta")
+            .is_none());
+        assert_eq!(
+            client.session_new_params("/work", &mcp, true)["_meta"]["rules"],
+            crate::director::DIRECTOR_RULE
+        );
+    }
+
+    #[test]
+    fn official_aux_flag_omits_rules_even_when_the_setting_is_on() {
+        let aux = SpawnOptions {
+            use_app_director_rules: false,
+            ..Default::default()
+        };
+        assert!(!aux.use_app_director_rules);
+        let client = AcpClient::test_stub_with(true, false);
+        let mcp = json!([]);
+        assert!(client
+            .session_new_params("/work", &mcp, true)
+            .get("_meta")
+            .is_none());
+    }
 }
 
 #[cfg(test)]

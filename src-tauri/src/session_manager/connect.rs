@@ -1318,6 +1318,8 @@ impl SessionManager {
             } else {
                 meta.plugin_dirs.clone()
             },
+            // The rule is read when session/new is built, not copied here.
+            use_app_director_rules: true,
             extra_rules: if ssh_alias.is_some() {
                 meta.extra_rules
                     .as_ref()
@@ -1936,6 +1938,8 @@ impl SessionManager {
             product_mode: Some(prefs.mode.clone()),
             sandbox_profile: Some(effective_sandbox.clone()),
             extra_rules: crate::official_aux::merge_extra_rules(None),
+            // Director stays on this default. session/new reads the setting
+            // later, so toggling it does not require a new process.
             ..Default::default()
         };
         let scanned_at = chrono::Utc::now();
@@ -2075,6 +2079,8 @@ impl SessionManager {
     }
 
     /// Ownerless prewarm never receives these process-level flags — force cold spawn.
+    /// Director mode is not one of them: `session/new` reads the setting when
+    /// the request is built, including on a process that is already warm.
     pub(super) fn session_needs_cold_spawn_for_flags(
         folder_trust: bool,
         extra_rules: Option<&str>,

@@ -21,6 +21,8 @@ import {
   looksLikeScheduleIntent,
   looksLikeScheduleUpdateIntent,
 } from "@/lib/automationSetup";
+import { openAgentSessionId, wrapDirectorSend } from "@/lib/directorMode";
+import { directorSettingEnabled } from "@/lib/directorSetting";
 import {
   addChatRef,
   lookupChatTitle,
@@ -364,6 +366,13 @@ const executeSend = async (opts: {
   if (inAutomationSetup) {
     agentText = wrapAutomationSetupAgentText(agentText);
   }
+  const openAgent = openAgentSessionId({
+    sendTargetId,
+    viewedSessionId: session.sessionId,
+    viewedAgentSessionId: session.agentSessionId,
+    rows: sessions,
+  });
+  agentText = wrapDirectorSend(agentText, directorSettingEnabled() && openAgent.length > 0);
   const titleSeed =
     serializeForAgent(segments, { pluginSkills }).replace(/\n/g, " ").trim() ||
     quotesForSend[0]?.text.replace(/\n/g, " ").trim() ||
