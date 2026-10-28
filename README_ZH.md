@@ -336,12 +336,12 @@ Windows（可选）：双击 [`install-latest.cmd`](./install-latest.cmd) 会把
   <a href="https://github.com/oykb58246" title="oykb58246"><img src="https://github.com/oykb58246.png?size=96" width="72" height="72" alt="oykb58246" style="border-radius:50%" /></a>
   <a href="https://github.com/ChenYCL" title="ChenYCL"><img src="https://github.com/ChenYCL.png?size=96" width="72" height="72" alt="ChenYCL" style="border-radius:50%" /></a>
   <a href="https://github.com/ChrisHKAI" title="ChrisHKAI"><img src="https://github.com/ChrisHKAI.png?size=96" width="72" height="72" alt="ChrisHKAI" style="border-radius:50%" /></a>
+  <a href="https://github.com/statio" title="statio"><img src="https://github.com/statio.png?size=96" width="72" height="72" alt="statio" style="border-radius:50%" /></a>
   <a href="https://github.com/1parado" title="1parado"><img src="https://github.com/1parado.png?size=96" width="72" height="72" alt="1parado" style="border-radius:50%" /></a>
   <a href="https://github.com/sutongwuyanzu" title="sutongwuyanzu"><img src="https://github.com/sutongwuyanzu.png?size=96" width="72" height="72" alt="sutongwuyanzu" style="border-radius:50%" /></a>
   <a href="https://github.com/KarnaughK" title="KarnaughK"><img src="https://github.com/KarnaughK.png?size=96" width="72" height="72" alt="KarnaughK" style="border-radius:50%" /></a>
   <a href="https://github.com/Ksndj" title="Ksndj"><img src="https://github.com/Ksndj.png?size=96" width="72" height="72" alt="Ksndj" style="border-radius:50%" /></a>
   <a href="https://github.com/lunar-me" title="lunar-me"><img src="https://github.com/lunar-me.png?size=96" width="72" height="72" alt="lunar-me" style="border-radius:50%" /></a>
-  <a href="https://github.com/statio" title="statio"><img src="https://github.com/statio.png?size=96" width="72" height="72" alt="statio" style="border-radius:50%" /></a>
   <a href="https://github.com/ericyiu9819" title="ericyiu9819"><img src="https://github.com/ericyiu9819.png?size=96" width="72" height="72" alt="ericyiu9819" style="border-radius:50%" /></a>
   <a href="https://github.com/falser101" title="falser101"><img src="https://github.com/falser101.png?size=96" width="72" height="72" alt="falser101" style="border-radius:50%" /></a>
   <a href="https://github.com/nebofeng" title="nebofeng"><img src="https://github.com/nebofeng.png?size=96" width="72" height="72" alt="nebofeng" style="border-radius:50%" /></a>
