@@ -310,7 +310,7 @@ describe("粘贴行为", () => {
     expect(editor.state.doc.textContent).toBe("# trending topic");
   });
 
-  it.each(["- 今天去超市买菜", "1. 这不是清单", "> 不是引用", "---"])(
+  it.each(["- 今天去超市买菜", "* 只是一句话", "1. 这不是清单", "> 不是引用", "---"])(
     "包壳里的单行 %s 保持字面量",
     (text) => {
       // Arrange
