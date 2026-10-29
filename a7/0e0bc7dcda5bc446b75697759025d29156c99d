@@ -1,0 +1,27 @@
+src/components/composer/tiptap/composerPaste.ts
+  s_c112598ba55dd4::t_4b3cae03caccfa 1-163
+docs/llm-wiki/composer-markdown.md
+  s_c112598ba55dd4::t_4b3cae03caccfa 1-69
+docs/llm-wiki/README.md
+  s_c112598ba55dd4::t_4b3cae03caccfa 13
+src/components/composer/tiptap/composerPaste.test.ts
+  s_c112598ba55dd4::t_4b3cae03caccfa 1-317
+AGENTS.md
+  s_c112598ba55dd4::t_4b3cae03caccfa 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "a70e0bc7dcda5bc446b75697759025d29156c99d",
+  "prompts": {},
+  "sessions": {
+    "s_c112598ba55dd4": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a186d4-f342-7ba0-bb74-7e548331cac5",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
