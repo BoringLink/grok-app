@@ -1,0 +1,24 @@
+src/styles/chat.part6.css
+  s_dc6e98a83bee89::t_3526964a80d549 498-521
+src/components/Select.tsx
+  s_dc6e98a83bee89::t_74327570b2577c 12-13,87,138-141
+  s_dc6e98a83bee89::t_a97eb17d8cc357 91-95,165
+src/components/AutomationsPage.tsx
+  s_dc6e98a83bee89::t_f94729f9efcf5e 882-885
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "b372dea4aeaa93d603d09edfab597858c6d55bc6",
+  "prompts": {},
+  "sessions": {
+    "s_dc6e98a83bee89": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a154b9-0c89-7e92-841d-08368172c33f",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
