@@ -1,0 +1,53 @@
+docs/llm-wiki/README.md
+  s_c112598ba55dd4::t_4b3cae03caccfa 13
+src/components/composer/tiptap/composerPaste.ts
+  s_c112598ba55dd4::t_b4753c6f902bff 138-147,152
+  s_c112598ba55dd4::t_207f10a59a352f 108
+  s_c112598ba55dd4::t_7dff07939f7618 88
+  s_c112598ba55dd4::t_e35d15e7624da0 8-9,16-17,19,36-37,123-129,135-136,148
+  s_c112598ba55dd4::t_4b3cae03caccfa 1-3,10-15,18,20-23,25,27-29,31-35,38-53,84-87,92-107,109,118-122,130-134,137,149-151,153-164
+  s_c112598ba55dd4::t_4c1736f7bcfd28 54-77
+  s_c112598ba55dd4::t_49d621b511b903 78-83,89-90
+  s_c112598ba55dd4::t_f48e28e726b795 4-7
+  s_c112598ba55dd4::t_c4c79d4585935b 24,26,30
+  s_c112598ba55dd4::t_c820d40ed6f111 91
+  s_c112598ba55dd4::t_6c12849ddab4ae 110-117
+AGENTS.md
+  s_c112598ba55dd4::t_4b3cae03caccfa 11
+docs/llm-wiki/composer-markdown.md
+  s_c112598ba55dd4::t_a3320c3f3bd3a2 23,27-28,33,36-41
+  s_c112598ba55dd4::t_2be4b5647bc429 56-58
+  s_c112598ba55dd4::t_4b3cae03caccfa 1-22,24,26,34-35,42-55,59-71,75-82
+  s_c112598ba55dd4::t_2c31ad0aad7216 72-74,83-84
+  s_c112598ba55dd4::t_1a43266a1e7eda 25,29-32
+src/components/composer/tiptap/composerPaste.test.ts
+  s_c112598ba55dd4::t_038c1658b9bf39 296-309
+  s_c112598ba55dd4::t_3844194675f413 13,348-358
+  s_c112598ba55dd4::t_32256a246abf67 16,159-167
+  s_c112598ba55dd4::t_0c728ac8fa5372 172-173
+  s_c112598ba55dd4::t_a422a5c33ce94a 336-345,362-372,393-408
+  s_c112598ba55dd4::t_c1b03ead8950f7 412-413,417-418
+  s_c112598ba55dd4::t_291b22988983c8 66-70
+  s_c112598ba55dd4::t_3b96cb5c09a41d 374
+  s_c112598ba55dd4::t_b0d84e55393936 156-158
+  s_c112598ba55dd4::t_c1b7817f6a188f 359-361
+  s_c112598ba55dd4::t_69c36a762ebbf1 346-347,373
+  s_c112598ba55dd4::t_4b3cae03caccfa 1-12,14-15,17-65,71-155,171,174-293,310-332,409-411,414-416,419-424
+  s_c112598ba55dd4::t_180aa2b8174f74 377-392
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "f95fd345f0b1eccafe9664672df0af991a7d4fd4",
+  "prompts": {},
+  "sessions": {
+    "s_c112598ba55dd4": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a186d4-f342-7ba0-bb74-7e548331cac5",
+        "model": "unknown"
+      },
+      "human_author": null
+    }
+  }
+}
