@@ -1,0 +1,50 @@
+docs/llm-wiki/composer-markdown.md
+  s_2348b96db620ea::t_a965f51cf7c77f 54
+  s_2348b96db620ea::t_a8e8da989c4549 62-64
+  s_2348b96db620ea::t_799283ea2b9b15 49-53,55-61,65
+  s_2348b96db620ea::t_18a434d2eeeb7e 1-31,34-48,66-69
+  s_2348b96db620ea::t_3398a55ab39aaa 32-33
+AGENTS.md
+  s_2348b96db620ea::t_ea566ee14df0a9 11
+docs/llm-wiki/README.md
+  s_2348b96db620ea::t_ea566ee14df0a9 13
+src/components/composer/tiptap/composerPaste.test.ts
+  s_2348b96db620ea::t_d7c07dd3f6795f 1-42,45-53,55-96,102-143,150-173,177-211,213-215,220-221,223-249,264-267,272-273,301-317
+  s_2348b96db620ea::t_fa28f1957e39c8 250-262
+  s_2348b96db620ea::t_7f8db3921695ea 174-176,212,216-219,222,263,268-271,274
+  s_2348b96db620ea::t_1c9e795969859d 144-149
+  s_2348b96db620ea::t_0965d046919290 97-101
+  s_2348b96db620ea::t_121c5a581a4b8a 276-300
+  s_2348b96db620ea::t_55c8ff9443f568 43-44,54
+src/components/composer/tiptap/composerPaste.ts
+  s_2348b96db620ea::t_f6b0970a2debb7 49-54,56
+  s_2348b96db620ea::t_6891e31d8ef4ad 113-119,141-142
+  s_2348b96db620ea::t_58075f49818857 134-135
+  s_2348b96db620ea::t_f45d1d85f48fc5 29,104-107
+  s_2348b96db620ea::t_2b4980504f6947 86-91
+  s_2348b96db620ea::t_5fa511f4c6b3ce 143-144,146-155
+  s_2348b96db620ea::t_e89e783a50e488 1-23,30-36,48,55,57-61,66-67,73-85,92,97-103,108-112,120-133,136-140,145,156-163
+  s_2348b96db620ea::t_d833f73427ecb8 37-47
+  s_2348b96db620ea::t_314e943143c098 24
+  s_2348b96db620ea::t_3c350c4d0adf5d 25-28
+  s_2348b96db620ea::t_ea08f5b92294ff 93-96
+  s_2348b96db620ea::t_42a27474006ef7 62-65,68-72
+src/components/composer/tiptap/composerExtensions.ts
+  s_2348b96db620ea::t_e6275c956eb744 20,304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "60111cd1c6c0d9d1325107e027ed512e9d717f8a",
+  "prompts": {},
+  "sessions": {
+    "s_2348b96db620ea": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a186b8-4faa-74a3-bdef-80ef3cba6519",
+        "model": "auto(free)"
+      },
+      "human_author": null
+    }
+  }
+}
