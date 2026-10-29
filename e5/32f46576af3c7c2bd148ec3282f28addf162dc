@@ -1,0 +1,40 @@
+src/components/composer/tiptap/composerExtensions.ts
+  s_2348b96db620ea::t_e6275c956eb744 20,304
+AGENTS.md
+  s_2348b96db620ea::t_ea566ee14df0a9 11
+src/components/composer/tiptap/composerPaste.ts
+  s_2348b96db620ea::t_2b4980504f6947 80-85
+  s_2348b96db620ea::t_58075f49818857 118-119
+  s_2348b96db620ea::t_f6b0970a2debb7 43-48,50
+  s_2348b96db620ea::t_ea08f5b92294ff 87-90
+  s_2348b96db620ea::t_d833f73427ecb8 31-41
+  s_2348b96db620ea::t_42a27474006ef7 56-59,62-66
+  s_2348b96db620ea::t_e89e783a50e488 1-30,42,49,51-55,60-61,67-79,86,91-117,120-137
+src/components/composer/tiptap/composerPaste.test.ts
+  s_2348b96db620ea::t_7f8db3921695ea 174-176,212,216-219,222,250,255-258,261
+  s_2348b96db620ea::t_d7c07dd3f6795f 1-42,45-53,55-96,102-143,150-173,177-211,213-215,220-221,223-249,251-254,259-260,262-279
+  s_2348b96db620ea::t_1c9e795969859d 144-149
+  s_2348b96db620ea::t_0965d046919290 97-101
+  s_2348b96db620ea::t_55c8ff9443f568 43-44,54
+docs/llm-wiki/composer-markdown.md
+  s_2348b96db620ea::t_18a434d2eeeb7e 1-31,34-52
+  s_2348b96db620ea::t_3398a55ab39aaa 32-33
+docs/llm-wiki/README.md
+  s_2348b96db620ea::t_ea566ee14df0a9 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "e532f46576af3c7c2bd148ec3282f28addf162dc",
+  "prompts": {},
+  "sessions": {
+    "s_2348b96db620ea": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a186b8-4faa-74a3-bdef-80ef3cba6519",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
