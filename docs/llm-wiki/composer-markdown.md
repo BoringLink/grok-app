@@ -66,6 +66,11 @@ draft 再解析回编辑器、气泡渲染 Markdown 时都靠它区分字面文�
 仍走纯文本 + chip 路径，文本段用 `decodeMarkdownDisplayText()` 还原转义。
 折叠预览先经 `softCloseMarkdown()` 补齐被截断的记号 / 围栏。
 
+输入框里的每个换行都是硬换行（编辑器 `breaks: true`），而 CommonMark 把段内单个
+换行当软换行，HTML 里会并成一行。气泡渲染前 `hardenUserLineBreaks()` 给正文行尾补
+两个空格，把这些换行变成 CommonMark 硬换行；空行仍是空行，围栏与行内代码不动。
+`hr` 在气泡里按设计隐藏（`MdHr` 返回 null）。
+
 ## 粘贴后的标记状态
 
 粘贴内容以标记结尾时（例如从浏览器复制的粗体），光标落在标记范围内，`marks()`

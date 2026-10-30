@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   decodeMarkdownDisplayText,
+  hardenUserLineBreaks,
   transformOutsideCode,
 } from "./markdownSource";
 
@@ -26,8 +27,7 @@ describe("transformOutsideCode", () => {
 });
 
 describe("decodeMarkdownDisplayText", () => {
-  it("还原行首块级记号的防御性转义", () => {
-    expect(decodeMarkdownDisplayText("\\# trending topic")).toBe(
+  it("还原行首块级记号的防御性转义", () => {    expect(decodeMarkdownDisplayText("\\# trending topic")).toBe(
       "# trending topic",
     );
     expect(decodeMarkdownDisplayText("1\\. 这不是清单")).toBe("1. 这不是清单");
@@ -61,5 +61,26 @@ describe("decodeMarkdownDisplayText", () => {
       "C:\\Users\\soren",
     );
     expect(decodeMarkdownDisplayText("\\n 是字面量")).toBe("\\n 是字面量");
+  });
+});
+
+describe("hardenUserLineBreaks", () => {
+  it("段内换行补成 CommonMark 硬换行", () => {
+    // Arrange / Act / Assert
+    expect(hardenUserLineBreaks("a\nb")).toBe("a  \nb");
+  });
+
+  it("空行分隔保持为空行", () => {
+    expect(hardenUserLineBreaks("a\n\nb")).toBe("a  \n  \nb");
+  });
+
+  it("围栏与行内代码保持原样", () => {
+    // Arrange
+    const fenced = "```js\na\nb\n```";
+    const inline = "run `a\nb` now";
+
+    // Act / Assert
+    expect(hardenUserLineBreaks(fenced)).toBe(fenced);
+    expect(hardenUserLineBreaks(inline)).toBe(inline);
   });
 });

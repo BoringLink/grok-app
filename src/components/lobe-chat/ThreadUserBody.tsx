@@ -21,7 +21,10 @@ import {
   parseAttachmentsFromContent,
 } from "@/lib/attachments";
 import { hydrateDisplayContent, parseStoredContentWithRefs } from "@/lib/draftDoc";
-import { decodeMarkdownDisplayText } from "@/lib/markdownSource";
+import {
+  decodeMarkdownDisplayText,
+  hardenUserLineBreaks,
+} from "@/lib/markdownSource";
 import { softCloseMarkdown } from "@/lib/softCloseMarkdown";
 import { MarkdownChat } from "./MarkdownChat";
 import { getFilePathCardLabels } from "@/lib/filePathCardPref";
@@ -70,7 +73,7 @@ const UserBodyText = memo(function UserBodyText({
           findQuery={findQuery}
           findActiveOccurrence={findActiveOccurrence ?? null}
         >
-          {hydrated}
+          {hardenUserLineBreaks(hydrated)}
         </MarkdownChat>
       </div>
     );
