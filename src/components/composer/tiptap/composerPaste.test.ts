@@ -243,8 +243,8 @@ describe("粘贴行为", () => {
     // Assert
     expect(editor.state.doc.textContent).toBe("a _b_ c");
     expect(editor.state.doc.firstChild?.firstChild?.marks).toEqual([]);
-    // 发送继续沿用既有纯文本契约，不给用户原文额外添加反斜杠。
-    expect(normalizeSerializedMarkdown(markdownOf(editor))).toBe("a _b_ c");
+    // 防御性转义要等到用户消息气泡渲染时才还原。
+    expect(normalizeSerializedMarkdown(markdownOf(editor))).toBe("a \\_b\\_ c");
   });
 
   it("纯文本包壳的围栏代码按 Markdown 解析", () => {

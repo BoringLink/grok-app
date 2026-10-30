@@ -116,14 +116,14 @@ describe("Markdown serialization (TipTap composer)", () => {
     expect(out).toBe(stored);
   });
 
-  it("keeps malformed token-looking text as plain text", () => {
-    // Arrange：名字含空格 → 不构成合法 token，必须保持字面文本
+  it("keeps malformed token-looking text as escaped plain text", () => {
+    // Arrange：名字含空格 → 不构成合法 token，按字面量保留并转义
     const stored = "look at [[skill:bro ken]]";
     // Act
     editor = makeEditor(stored);
     const out = markdownOf(editor);
     // Assert
-    expect(out).toBe(stored);
+    expect(out).toBe("look at \\[\\[skill:bro ken\\]\\]");
   });
 });
 
@@ -194,8 +194,11 @@ describe("editor-text space mapping", () => {
 });
 
 describe("normalizeSerializedMarkdown", () => {
-  it("unescapes marks in prose and keeps code backslashes", () => {
-    expect(normalizeSerializedMarkdown("say \\*star\\*")).toBe("say *star*");
+  it("keeps defensive escapes and normalizes hard breaks", () => {
+    expect(normalizeSerializedMarkdown("say \\*star\\*")).toBe("say \\*star\\*");
+    expect(normalizeSerializedMarkdown("\\# trending topic")).toBe(
+      "\\# trending topic",
+    );
     expect(normalizeSerializedMarkdown("line1\\\nline2")).toBe("line1\nline2");
     const fenced = "```js\nconst r = /\\\\/;\n```";
     expect(normalizeSerializedMarkdown(fenced)).toBe(fenced);
@@ -286,26 +289,29 @@ describe("reference tokens", () => {
     );
   });
 
-  it("round-trips a path containing spaces and brackets", () => {
-    // Arrange — 空格与 `]` 是最容易破坏 `[[kind:value]]` 语法的两种字符
+  it("keeps a bracket-broken reference as escaped literal text", () => {
+    // Arrange — `]` 出现在值里，无法构成 `[[kind:value]]`；按字面量保留并转义，
+    // 重新解析时仍是普通文本，不会被误认成引用 token。
     const stored = "[[file:/repo/my dir/a]b.ts]]";
 
     // Act
     editor = makeEditor(stored);
 
     // Assert
-    expect(markdownOf(editor)).toBe(stored);
+    expect(markdownOf(editor)).toBe(
+      "\\[\\[file:/repo/my dir/a\\]b.ts\\]\\]",
+    );
   });
 
-  it("keeps a malformed reference as literal text", () => {
-    // Arrange — 换行会跨段落，无法构成 token，必须原样保留而不是解析成节点
+  it("keeps a malformed reference as escaped literal text", () => {
+    // Arrange — 缺少闭合，无法构成 token，必须原样保留而不是解析成节点
     const stored = "[[file:/repo/a.ts";
 
     // Act
     editor = makeEditor(stored);
 
     // Assert
-    expect(markdownOf(editor)).toBe(stored);
+    expect(markdownOf(editor)).toBe("\\[\\[file:/repo/a.ts");
   });
 
   it("counts the token at its stored length in editor-text space", () => {
