@@ -1,0 +1,56 @@
+src/components/composer/tiptap/composerPaste.test.ts
+  s_dc927bcc9af342::t_27283750ed9c2a 451-453,455,462-463,467-468
+  s_dc927bcc9af342::t_5dcc70f20bebe6 261
+  s_dc927bcc9af342::t_27a4be884aee6b 456-461,464-466
+  s_dc927bcc9af342::t_07c1fb4def08a6 265-266
+  s_dc927bcc9af342::t_66f5026a36c3fb 249,256-260
+  s_dc927bcc9af342::t_6e1b9174779a63 117-120,122-126,128,131,133-135,137-142,145-148,150-151,153,155-157,160,162,164-172,175,177-180
+  s_dc927bcc9af342::t_833cce6887b2f1 70-72
+  s_dc927bcc9af342::t_8af0f36fa82097 454
+  s_dc927bcc9af342::t_af7e3e6528f559 252,255
+src/components/lobe-chat/ThreadUserBody.tsx
+  s_dc927bcc9af342::t_f4ca0b80b98556 75-76
+src/components/composer/tiptap/composerPaste.ts
+  s_dc927bcc9af342::t_93986857d41eb6 263-273
+  s_dc927bcc9af342::t_38a012adab2192 293,295
+  s_dc927bcc9af342::t_b5b47e9fda6a17 76
+  s_dc927bcc9af342::t_50f42159683509 294
+src/components/lobe-chat/MarkdownChat.tsx
+  s_dc927bcc9af342::t_af9e69ec6ef703 316,318
+  s_dc927bcc9af342::t_fa654d449ecfb5 727
+  s_dc927bcc9af342::t_e9b06ba81a8c95 764-765
+  s_dc927bcc9af342::t_3cef18435c7688 707
+  s_dc927bcc9af342::t_50ce360e41b4ac 294,296
+src/lib/markdownLineStart.test.ts
+  s_dc927bcc9af342::t_a02df722077774 27
+  s_dc927bcc9af342::t_868798412c6249 41-42
+src/lib/markdownSource.ts
+  s_dc927bcc9af342::t_00dd0f19831a96 100,111,115-120
+src/components/lobe-chat/ThreadUserBody.test.tsx
+  s_dc927bcc9af342::t_84e9e6ca5a1aa5 165-167
+src/lib/markdownLineStart.ts
+  s_dc927bcc9af342::t_f95e7263de3065 24
+  s_dc927bcc9af342::t_ea9d3c7b615a23 43-44,54-55
+src/lib/markdownSource.test.ts
+  s_dc927bcc9af342::t_d62b816e60383d 40-41
+  s_dc927bcc9af342::t_ea7add5f350640 77
+docs/llm-wiki/composer-markdown.md
+  s_dc927bcc9af342::t_1c5b5e66821013 36-39,43-47
+  s_dc927bcc9af342::t_3209d1c88eb840 79,82-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "5e9cc02885d70f0e5011514a61a8745e0fb8a39a",
+  "prompts": {},
+  "sessions": {
+    "s_dc927bcc9af342": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1879c-1df9-7101-b097-c0817f084de0",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
