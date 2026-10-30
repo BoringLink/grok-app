@@ -1,0 +1,26 @@
+src/components/composer/tiptap/composerPaste.ts
+  s_8f3025db336253::t_a65185be37ae01 24,330-335,337-338
+  s_8f3025db336253::t_ede3092541c1e0 26,274,281,285,287-297,300-302,314,317-321,323-327,329,336,339-340,342-347,355,358-360,362-372
+  s_8f3025db336253::t_5ec75b5eb0a3da 392,402-410
+src/components/composer/tiptap/composerPaste.test.ts
+  s_8f3025db336253::t_84a8867cb6e3ae 17,63,69
+  s_8f3025db336253::t_94a8f8d88ba59a 667-704
+  s_8f3025db336253::t_0948c1abfdfa44 932-933
+  s_8f3025db336253::t_c2e3d23ed1c4bd 834-931,934-955
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "fbded6d54ca361e0149c949fafd73c1d93480a87",
+  "prompts": {},
+  "sessions": {
+    "s_8f3025db336253": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a18bb8-b574-7501-90f8-52a9d1e6fba5",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
