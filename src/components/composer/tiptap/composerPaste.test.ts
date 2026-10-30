@@ -13,9 +13,6 @@ import { Slice } from "@tiptap/pm/model";
 import { buildComposerExtensions } from "@/components/composer/tiptap/composerExtensions";
 import { normalizeSerializedMarkdown } from "@/lib/composerMarkdown";
 import {
-  clipboardHtmlIsMarkdownSource,
-  clipboardHtmlIsOwnSlice,
-  clipboardHtmlIsPlainWrapper,
   normalizePastedMarkdown,
   planPastedMarkdown,
 } from "@/components/composer/tiptap/composerPaste";
@@ -70,6 +67,11 @@ function dispatchRealPaste(ed: Editor, plain: string, html?: string): void {
   ed.view.dom.dispatchEvent(pasteEvent(plain, html));
 }
 
+/** ProseMirror 的 preferPlain 来自内部 input 状态，类型里没有暴露。 */
+function setShiftPaste(ed: Editor): void {
+  (ed.view as unknown as { input: { shiftKey: boolean } }).input.shiftKey = true;
+}
+
 function blockTypes(ed: Editor): string[] {
   const names: string[] = [];
   ed.state.doc.forEach((node) => names.push(node.type.name));
@@ -112,96 +114,70 @@ describe("normalizePastedMarkdown", () => {
   });
 });
 
-describe("clipboardHtmlIsPlainWrapper", () => {
-  it("div 包壳视为纯文本", () => {
-    expect(clipboardHtmlIsPlainWrapper("<div>## 标题</div>", "## 标题\n")).toBe(
-      true,
+describe("planPastedMarkdown 的 HTML 判定", () => {
+  it("无语义包壳按纯文本处理", () => {
+    expect(planPastedMarkdown("## 标题\n", "<div>## 标题</div>").plan).toBe(
+      "inline",
+    );
+    expect(planPastedMarkdown("a\nb\n", "<div>a<br>b</div>").plan).toBe(
+      "inline",
+    );
+    expect(planPastedMarkdown("## 标题", '<meta charset="utf-8">').plan).toBe(
+      "inline",
+    );
+    expect(planPastedMarkdown("## 标题", "   ").plan).toBe("inline");
+  });
+
+  it("带语义的 HTML 不接管", () => {
+    expect(
+      planPastedMarkdown("粗体", "<div><strong>粗体</strong></div>").plan,
+    ).toBe("none");
+    expect(planPastedMarkdown("标题", "<h2>标题</h2>").plan).toBe("none");
+    expect(
+      planPastedMarkdown("红", '<div><span style="color:red">红</span></div>')
+        .plan,
+    ).toBe("none");
+    expect(planPastedMarkdown("少了 一段", "<div>少了</div>").plan).toBe(
+      "none",
     );
   });
 
-  it("br 分行的包壳仍视为纯文本", () => {
-    expect(
-      clipboardHtmlIsPlainWrapper("<div>a<br>b</div>", "a\nb\n"),
-    ).toBe(true);
-  });
-
-  it("语义标签不算包壳", () => {
-    expect(
-      clipboardHtmlIsPlainWrapper("<div><strong>粗体</strong></div>", "粗体"),
-    ).toBe(false);
-    expect(clipboardHtmlIsPlainWrapper("<h2>标题</h2>", "标题")).toBe(false);
-    expect(
-      clipboardHtmlIsPlainWrapper("<pre><code>a</code></pre>", "a"),
-    ).toBe(false);
-  });
-
-  it("带样式的 span 不算包壳", () => {
-    expect(
-      clipboardHtmlIsPlainWrapper(
-        '<div><span style="color:red">红</span></div>',
-        "红",
-      ),
-    ).toBe(false);
-  });
-
-  it("HTML 文本与纯文本不一致时不接管", () => {
-    expect(clipboardHtmlIsPlainWrapper("<div>少了</div>", "少了 一段")).toBe(
-      false,
+  it("code / pre 包壳按块级解析", () => {
+    expect(planPastedMarkdown("a", "<pre><code>a</code></pre>").plan).toBe(
+      "block",
     );
-  });
-
-  it("HTML 为空壳时以纯文本为准", () => {
     expect(
-      clipboardHtmlIsPlainWrapper('<meta charset="utf-8">', "## 标题"),
-    ).toBe(true);
-  });
-
-  it("纯空白 HTML 视为空壳", () => {
-    expect(clipboardHtmlIsPlainWrapper("   ", "## 标题")).toBe(true);
-  });
-});
-
-describe("clipboardHtmlIsOwnSlice", () => {
-  it("识别本编辑器写入的 data-pm-slice", () => {
+      planPastedMarkdown("## **标题**", "<code>## **标题**</code>").plan,
+    ).toBe("block");
     expect(
-      clipboardHtmlIsOwnSlice('<p data-pm-slice="1 1 []">- hello</p>'),
-    ).toBe(true);
-    expect(clipboardHtmlIsOwnSlice("<p>- hello</p>")).toBe(false);
-  });
-});
-
-describe("clipboardHtmlIsMarkdownSource", () => {
-  it("行内 code 包壳视为 Markdown 源码", () => {
-    expect(
-      clipboardHtmlIsMarkdownSource("<code>## **标题**</code>", "## **标题**"),
-    ).toBe(true);
-  });
-
-  it("pre + 高亮 span 仍视为源码包壳", () => {
-    expect(
-      clipboardHtmlIsMarkdownSource(
-        '<pre><code><span class="hljs-keyword">const</span> a = 1;</code></pre>',
+      planPastedMarkdown(
         "const a = 1;",
-      ),
-    ).toBe(true);
+        '<pre><code><span class="hljs-keyword">const</span> a = 1;</code></pre>',
+      ).plan,
+    ).toBe("block");
   });
 
-  it("正文里的行内代码不算源码包壳", () => {
+  it("正文里的行内代码与语义标签不算源码包壳", () => {
     expect(
-      clipboardHtmlIsMarkdownSource(
-        "<p>参见 <code>npm run build</code> 命令</p>",
+      planPastedMarkdown(
         "参见 npm run build 命令",
-      ),
-    ).toBe(false);
+        "<p>参见 <code>npm run build</code> 命令</p>",
+      ).plan,
+    ).toBe("none");
+    expect(
+      planPastedMarkdown(
+        "文档",
+        '<pre><code><a href="https://example.com">文档</a></code></pre>',
+      ).plan,
+    ).toBe("none");
   });
 
-  it("代码包壳里的语义标签不算源码", () => {
+  it("data-pm-slice 交还给 ProseMirror", () => {
     expect(
-      clipboardHtmlIsMarkdownSource(
-        '<pre><code><a href="https://example.com">文档</a></code></pre>',
-        "文档",
-      ),
-    ).toBe(false);
+      planPastedMarkdown("- hello", '<p data-pm-slice="1 1 []">- hello</p>')
+        .plan,
+    ).toBe("none");
+    expect(planPastedMarkdown("- hello", "<p>- hello</p>").plan).toBe("inline");
   });
 });
 
@@ -237,12 +213,6 @@ describe("planPastedMarkdown", () => {
     });
   });
 
-  it("本编辑器自己的 slice 不接管", () => {
-    expect(
-      planPastedMarkdown("- hello", '<p data-pm-slice="1 1 []">- hello</p>'),
-    ).toEqual({ plan: "none", markdown: null });
-  });
-
   it("带语义的 HTML 不接管", () => {
     expect(
       planPastedMarkdown(
@@ -276,12 +246,24 @@ describe("粘贴行为", () => {
     expect(markdownOf(editor)).toBe("`code`");
   });
 
+  it("Shift+粘贴交回 ProseMirror 的纯文本路径", () => {
+    // Arrange
+    editor = makeEditor();
+    setShiftPaste(editor);
+
+    // Act
+    const handled = dispatchPaste(editor, "## 标题\n", "<div>## 标题</div>");
+
+    // Assert
+    expect(handled).toBe(false);
+  });
+
   it("浏览器行内代码包壳的标题按 Markdown 解析", () => {
     // Arrange
     editor = makeEditor();
 
-    // Act
-    dispatchPaste(editor, "## **标题**\n", "<code>## **标题**</code>");
+    // Act —— 走完整粘贴事件，不直接调用插件属性
+    dispatchRealPaste(editor, "## **标题**\n", "<code>## **标题**</code>");
 
     // Assert
     expect(blockTypes(editor)[0]).toBe("heading");
@@ -466,6 +448,24 @@ describe("粘贴行为", () => {
 });
 
 describe("真实粘贴管线", () => {
+  it("Shift+粘贴按纯文本插入", () => {
+    // Arrange
+    editor = makeEditor();
+    setShiftPaste(editor);
+
+    // Act —— 多行 Markdown 源码；普通粘贴会拆成标题，Shift 粘贴不应解析
+    dispatchRealPaste(
+      editor,
+      "## 标题\n\n正文",
+      "<div>## 标题<br><br>正文</div>",
+    );
+
+    // Assert
+    expect(blockTypes(editor)).not.toContain("heading");
+    expect(editor.state.doc.textContent).toContain("## 标题");
+    expect(editor.state.doc.textContent).toContain("正文");
+  });
+
   it("段落内粘贴单行纯文本标题时保持字面量", () => {
     // Arrange
     editor = makeEditor("hello");

@@ -21,7 +21,7 @@ const BLOCK_START_PATTERNS = [
 ];
 
 /** 该行以 Markdown 块级记号开头。 */
-export function isMarkdownBlockStart(line: string): boolean {
+function isMarkdownBlockStart(line: string): boolean {
   return BLOCK_START_PATTERNS.some((pattern) => pattern.test(line));
 }
 
@@ -40,7 +40,8 @@ export function looksLikeMarkdownBlockSource(markdown: string): boolean {
  * 让一行在再解析时保持字面量：在行首块级记号前补反斜杠。
  *
  * `#` / `-` / `+` / `>` / `|` / `=` 都是可转义标点；有序列表转义分隔符
- * （`1\.`），转义数字会让反斜杠显示出来。
+ * （`1\.`），转义数字会让反斜杠显示出来。分隔线逐个转义：只转义第一个字符
+ * 会留下可以和后文配对的 `**`。
  */
 export function escapeMarkdownLineStart(line: string): string {
   if (!isMarkdownBlockStart(line)) return line;
@@ -49,6 +50,9 @@ export function escapeMarkdownLineStart(line: string): string {
   const ordered = /^(\d{1,9})([.)])(?:[ \t]|$)/.exec(rest);
   if (ordered) {
     return `${indent}${ordered[1]}\\${rest.slice(ordered[1].length)}`;
+  }
+  if (/^[*_]/.test(rest)) {
+    return `${indent}${rest.replace(/([*_])/g, "\\$1")}`;
   }
   return `${indent}\\${rest}`;
 }

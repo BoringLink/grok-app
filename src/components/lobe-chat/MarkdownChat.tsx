@@ -291,9 +291,9 @@ export const MarkdownChat = memo(function MarkdownChat({
    * When false, ```mermaid fences stay as plain code blocks. The user bubble
    * matches the composer, which shows the fence source.
    */
-  mermaid = true,
+  renderMermaid = true,
   /** When false, code blocks hide the copy button (user bubble matches the composer). */
-  codeCopy = true,
+  showCodeCopy = true,
   imagePathMap,
   projectPath,
   sshAlias,
@@ -313,9 +313,9 @@ export const MarkdownChat = memo(function MarkdownChat({
   /** Default true. Thinking passes false so URLs/paths render as original text. */
   pathCards?: boolean;
   /** Default true. User bubbles pass false to keep ```mermaid fences as code. */
-  mermaid?: boolean;
+  renderMermaid?: boolean;
   /** Default true. User bubbles pass false to hide the code copy button. */
-  codeCopy?: boolean;
+  showCodeCopy?: boolean;
   imagePathMap?: Record<string, string>;
   projectPath?: string | null;
   sshAlias?: string | null;
@@ -704,7 +704,7 @@ export const MarkdownChat = memo(function MarkdownChat({
           return <code className="chat-md__inline-code">{paint(c)}</code>;
         }
         const language = match?.[1] || "text";
-        if (mermaid && isMermaidLanguage(language)) {
+        if (renderMermaid && isMermaidLanguage(language)) {
           return (
             <MermaidBlock
               streaming={streaming}
@@ -724,7 +724,7 @@ export const MarkdownChat = memo(function MarkdownChat({
             wrapLabel={tr("chat.codeWrap")}
             unwrapLabel={tr("chat.codeUnwrap")}
             copyLabel={tr("message.copy")}
-            showCopy={codeCopy}
+            showCopy={showCodeCopy}
           >
             {c as ReactNode}
           </CodeBlock>
@@ -761,8 +761,8 @@ export const MarkdownChat = memo(function MarkdownChat({
     qFind,
     findActiveOccurrence,
     pathCards,
-    mermaid,
-    codeCopy,
+    renderMermaid,
+    showCodeCopy,
     projectPath,
     imagePathMap,
     fileLabels,

@@ -73,7 +73,7 @@ export function normalizePastedMarkdown(text: string): string {
   return normalized.trim() ? normalized : "";
 }
 
-/** 剪贴板 HTML 的一次解析结果，三个判定共用。 */
+/** 供粘贴判定使用的单次解析结果；导出包装会重新解析，因此不对外暴露。 */
 type ClipboardHtml = {
   elements: Element[];
   text: string;
@@ -141,24 +141,6 @@ function isMarkdownSource(parsed: ClipboardHtml, plain: string): boolean {
       SOURCE_TAGS.has(element.tagName) &&
       comparableText(element.textContent ?? "") === sourceText,
   );
-}
-
-/** 供测试与外部判定复用的单次解析包装。 */
-export function clipboardHtmlIsPlainWrapper(html: string, plain: string): boolean {
-  return isPlainWrapper(parseClipboardHtml(html), plain);
-}
-
-/** 本编辑器复制时会在首个元素写 `data-pm-slice`，靠它恢复完整 slice。 */
-export function clipboardHtmlIsOwnSlice(html: string): boolean {
-  return parseClipboardHtml(html).hasOwnSlice;
-}
-
-/** 供测试与外部判定复用的单次解析包装。 */
-export function clipboardHtmlIsMarkdownSource(
-  html: string,
-  plain: string,
-): boolean {
-  return isMarkdownSource(parseClipboardHtml(html), plain);
 }
 
 /** 这次粘贴按哪种粒度解析 `text/plain`。 */
@@ -278,6 +260,17 @@ function insertInlineMarkdown(editor: Editor, markdown: string): boolean {
   return true;
 }
 
+/**
+ * ProseMirror 把 Shift 状态记在内部 `input` 上（`ClipboardEvent` 没有修饰键），
+ * 自己处理粘贴时也用它判断 `preferPlain`。类型没有公开这个字段，按结构读取。
+ */
+function isPlainTextPaste(view: EditorView): boolean {
+  return (
+    (view as unknown as { input?: { shiftKey?: boolean } }).input?.shiftKey ===
+    true
+  );
+}
+
 /** 剪贴板粘贴：按来源决定解析粒度；所有纯文本粘贴先归一化。 */
 export const ComposerMarkdownPaste = Extension.create({
   name: "composerMarkdownPaste",
@@ -297,6 +290,9 @@ export const ComposerMarkdownPaste = Extension.create({
             return normalizePastedMarkdown(text);
           },
           handlePaste(view: EditorView, event: ClipboardEvent) {
+            // Shift+粘贴是 ProseMirror 的“纯文本粘贴”：交给库的
+            // `clipboardTextParser` 返回 null 后走默认纯文本解析。
+            if (isPlainTextPaste(view)) return false;
             const { selection } = view.state;
             if (
               selection.$from.parent.type.spec.code ||

@@ -162,7 +162,9 @@ describe("user bubble renders like the composer", () => {
     // Assert
     expect(root.querySelector(".chat-mermaid")).toBeNull();
     expect(root.textContent).toContain("graph TD;");
-    expect(root.querySelector('button[aria-label="Copy"]')).toBeNull();
+    expect(root.querySelectorAll(".chat-code__bar-actions button")).toHaveLength(
+      2,
+    );
     expect(root.querySelectorAll("pre code")).toHaveLength(2);
   });
 

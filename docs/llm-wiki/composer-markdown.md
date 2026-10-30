@@ -33,15 +33,18 @@
 
 判据细节：
 
-- `clipboardHtmlIsOwnSlice()`：出现 `data-pm-slice` 即认定是本编辑器写出的剪贴板。
-- `clipboardHtmlIsMarkdownSource()`：所有标签只能是包壳 / 高亮 `span` / `code` / `pre`，
-  且 `code` / `pre` 的文本与纯文本完全一致（忽略空白）。页面里"正文 + 行内代码"
-  不会命中，因为 `code` 只覆盖片段。
+- `data-pm-slice`：出现即认定是本编辑器写出的剪贴板。
+- 源码包壳：所有标签只能是包壳 / 高亮 `span` / `code` / `pre`，且 `code` / `pre`
+  的文本与纯文本完全一致（忽略空白）。页面里"正文 + 行内代码"不会命中，因为
+  `code` 只覆盖片段。
 - `looksLikeMarkdownBlockSource()`：至少两行，且有一行以块级记号开头（标题、围栏、
   列表、引用、表格行、分隔线、setext 下划线）。单行 `# 话题` / `- 一句话` 与普通
   句子无法区分，一律按字面量。
-- `clipboardHtmlIsPlainWrapper()`：标签无语义 + 文本一致（比较时忽略一切空白，
-  `<br>` / `<div>` 的换行不会造成误判）。
+- 纯文本包壳：标签无语义 + 文本一致（比较时忽略一切空白，`<br>` / `<div>` 的换行
+  不会造成误判）。
+
+Shift+粘贴走 ProseMirror 自己的纯文本路径（`handlePaste` 直接返回 `false`），不解析
+Markdown。
 
 `inline` 档有两个退回字面量的条件：
 
@@ -73,8 +76,11 @@ draft 再解析回编辑器、气泡渲染 Markdown 时都靠它区分字面文�
 
 输入框里的每个换行都是硬换行（编辑器 `breaks: true`），而 CommonMark 把段内单个
 换行当软换行，HTML 里会并成一行。气泡渲染前 `hardenUserLineBreaks()` 给正文行尾补
-两个空格，把这些换行变成 CommonMark 硬换行；空行仍是空行，围栏与行内代码不动。
+两个空格，把这些换行变成 CommonMark 硬换行；空行不补，围栏与行内代码不动。
 `hr` 在气泡里按设计隐藏（`MdHr` 返回 null）。
+
+用户气泡与编辑器所见一致：`renderMermaid={false}` 让 ```mermaid 围栏保持代码块，
+`showCodeCopy={false}` 隐藏代码块复制按钮（短代码多为手动输入，长代码来自剪贴板）。
 
 ## 粘贴后的标记状态
 
