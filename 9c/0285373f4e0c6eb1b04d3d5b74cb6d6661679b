@@ -1,0 +1,21 @@
+docs/llm-wiki/mcp-icons.md
+  s_023a6b3c2b5c98::t_1f80df37342ebf 1-38
+AGENTS.md
+  s_023a6b3c2b5c98::t_74c4deddddda84 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "9c0285373f4e0c6eb1b04d3d5b74cb6d6661679b",
+  "prompts": {},
+  "sessions": {
+    "s_023a6b3c2b5c98": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a18c37-bacc-7363-a2c4-bb2c3cf29ad3",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
