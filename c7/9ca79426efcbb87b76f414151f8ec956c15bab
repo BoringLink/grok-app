@@ -1,0 +1,33 @@
+src/components/lobe-chat/ThreadUserBody.test.tsx
+  s_dc927bcc9af342::t_fc4996fa0e3e49 95-113,115-131,135,137-138,141-144
+  s_dc927bcc9af342::t_efe5851dfd4418 114,132-134
+  s_dc927bcc9af342::t_ec694305727b9d 136,139-140
+  s_dc927bcc9af342::t_ed6d107b24a1b1 5
+src/components/lobe-chat/ThreadUserBody.tsx
+  s_dc927bcc9af342::t_035d22af740f7b 24-27
+  s_dc927bcc9af342::t_53115f4ad1e8e3 76
+src/lib/markdownSource.test.ts
+  s_dc927bcc9af342::t_95f5ad49cd8997 30
+  s_dc927bcc9af342::t_b1f416a2480f52 4
+  s_dc927bcc9af342::t_f568e880d55fcc 66-86
+docs/llm-wiki/composer-markdown.md
+  s_dc927bcc9af342::t_d166de9fdf6a90 69-73
+src/lib/markdownSource.ts
+  s_dc927bcc9af342::t_889dc3a1b3d84d 105-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "c79ca79426efcbb87b76f414151f8ec956c15bab",
+  "prompts": {},
+  "sessions": {
+    "s_dc927bcc9af342": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1879c-1df9-7101-b097-c0817f084de0",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
