@@ -212,9 +212,29 @@ export function markdownOffsetForDocPos(
 }
 
 /**
+ * 段内硬换行之后的行首：块级记号必须转义。
+ *
+ * 序列化器的 `atBlockStart` 只在文本块开头为真，`\\\n`（硬换行）之后的行仍属于
+ * 同一段，`#` / `-` / `1.` 不会被转义。这样的草稿再解析时（消息气泡、agent、回退）
+ * 会被当成标题 / 列表 / 分隔线，编辑器与气泡因此显示不一致。
+ *
+ * 只处理 Markdown 需要的标点：`*` / `_` / 反引号在任意位置都会被转义，`>` 已写成
+ * `&gt;`；有序列表转义分隔符（`1\.`），转义数字会让反斜杠显示出来。
+ */
+function escapeHardBreakLine(line: string): string {
+  if (/^#{1,6}(?:[ \t]|$)/.test(line)) return `\\${line}`;
+  if (/^>/.test(line)) return `\\${line}`;
+  if (/^[-+](?:[ \t]|-|$)/.test(line)) return `\\${line}`;
+  const ordered = /^(\d{1,9})([.)])(?:[ \t]|$)/.exec(line);
+  if (ordered) return `${ordered[1]}\\${line.slice(ordered[1].length)}`;
+  return line;
+}
+
+/**
  * 归一化 tiptap-markdown 序列化输出：
  * - hard break 被序列化为 `\\\n`（Markdown 转义换行），还原为普通 `\n`
  *   （`breaks: true` 下 `\n` 反解析回硬换行，draft 保持旧格式的纯换行约定）；
+ *   `\\\n` 之后的行属于同一段，行首块级记号在这里补转义；
  * - **保留**序列化器的防御性转义（`\*` / `\_` / `\#` / `1\.` / `&gt;`）：
  *   draft 再解析回编辑器、用户气泡渲染 Markdown 时都靠它区分字面文本与真实记号；
  * - 围栏代码块和行内代码按原文保留：序列化器不会给它们加防御性转义；
@@ -222,7 +242,11 @@ export function markdownOffsetForDocPos(
  */
 export function normalizeSerializedMarkdown(md: string): string {
   const out = transformOutsideCode(md, (plain) =>
-    plain.replace(/\\\n/g, "\n"),
+    plain.replace(
+      // 行内容不能吞掉下一个硬换行的反斜杠，否则连续硬换行会隔一个漏转义。
+      /\\\n((?:(?!\\\n)[^\n])*)/g,
+      (_match, line: string) => `\n${escapeHardBreakLine(line)}`,
+    ),
   );
   // WebKit 的方向键垫片可能先进入 ProseMirror 文档再被序列化；草稿边界统一剔除。
   return stripComposerGhostChars(out).replace(/\n+$/, "");
