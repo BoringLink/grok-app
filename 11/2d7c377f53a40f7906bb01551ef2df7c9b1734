@@ -1,0 +1,23 @@
+src/lib/mcpIcon.test.ts
+  s_023a6b3c2b5c98::t_9f9fd6a0f8529c 12
+  s_023a6b3c2b5c98::t_1540dc7aa8f49d 85
+src-tauri/src/mcp_icon.rs
+  s_023a6b3c2b5c98::t_d8aec9802e8cf8 1,303
+  s_023a6b3c2b5c98::t_556ea404d56b61 145-147,606-608
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "112d7c377f53a40f7906bb01551ef2df7c9b1734",
+  "prompts": {},
+  "sessions": {
+    "s_023a6b3c2b5c98": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a18c37-bacc-7363-a2c4-bb2c3cf29ad3",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
