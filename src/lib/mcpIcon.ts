@@ -8,7 +8,7 @@
 import * as api from "@/lib/api";
 import { isDesktopHost } from "@/lib/api/host";
 
-export type McpIconSource = "site" | "favicon" | "none";
+export type McpIconSource = "server" | "site" | "favicon" | "none";
 
 /** 宿主 DTO 是唯一权威形状；前端只负责校验与缓存。 */
 export type McpIconResult = api.McpIconDto;
@@ -43,11 +43,21 @@ export function mcpIconTargetUrl(target: string | null | undefined): string | nu
   return url.toString();
 }
 
-/** 图标请求的去重键：同一厂商主机的不同路径共享一次解析。 */
-export function mcpIconRequestKey(target: string | null | undefined): string {
+/**
+ * 图标请求的去重键：同一服务器共享一次解析。
+ *
+ * 带上服务器名，因为 `serverInfo.icons` 是每个服务器自报的；同一域名下的
+ * 两个服务器可能声明不同图标。没有服务器名时退化为按主机去重。
+ */
+export function mcpIconRequestKey(
+  target: string | null | undefined,
+  serverName?: string | null,
+): string {
   const url = mcpIconTargetUrl(target);
   if (!url) return "";
-  return new URL(url).hostname.toLowerCase();
+  const host = new URL(url).hostname.toLowerCase();
+  const name = (serverName ?? "").trim().toLowerCase();
+  return name ? `${host}\u0000${name}` : host;
 }
 
 /** 服务器名的首个字母或数字；没有可用字符时返回 `?`。 */
@@ -73,7 +83,12 @@ export function normalizeMcpIconResult(value: unknown): McpIconResult | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
   const source = raw.source;
-  if (source !== "site" && source !== "favicon" && source !== "none") {
+  if (
+    source !== "server" &&
+    source !== "site" &&
+    source !== "favicon" &&
+    source !== "none"
+  ) {
     return null;
   }
   const dataUrl =
@@ -120,8 +135,9 @@ function releaseSlot(): void {
 /** 同步读取已解析结果，避免列表重挂载时闪一下字母徽标。 */
 export function peekMcpIcon(
   target: string | null | undefined,
+  serverName?: string | null,
 ): McpIconResult | null {
-  const key = mcpIconRequestKey(target);
+  const key = mcpIconRequestKey(target, serverName);
   return key ? (resolvedCache.get(key) ?? null) : null;
 }
 
@@ -131,10 +147,11 @@ export function peekMcpIcon(
  */
 export function loadMcpIcon(
   target: string | null | undefined,
+  serverName?: string | null,
 ): Promise<McpIconResult | null> {
   const url = mcpIconTargetUrl(target);
   if (!url) return Promise.resolve(null);
-  const key = mcpIconRequestKey(url);
+  const key = mcpIconRequestKey(url, serverName);
   if (!key) return Promise.resolve(null);
   const cached = resolvedCache.get(key);
   if (cached) return Promise.resolve(cached);
@@ -145,7 +162,7 @@ export function loadMcpIcon(
   const task = (async (): Promise<McpIconResult | null> => {
     await acquireSlot();
     try {
-      const raw = await api.mcpIconResolve(url);
+      const raw = await api.mcpIconResolve(url, serverName ?? undefined);
       const result = normalizeMcpIconResult(raw);
       if (!result || result.source === "none") return null;
       resolvedCache.set(key, result);
