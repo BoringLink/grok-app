@@ -143,6 +143,29 @@ describe("user bubble renders like the composer", () => {
     );
   });
 
+  it("keeps mermaid fences as code and hides the copy button", () => {
+    // Arrange —— 编辑器里 ```mermaid 就是代码块，气泡保持一致
+    const content = [
+      "```mermaid",
+      "graph TD;",
+      "A-->B;",
+      "```",
+      "",
+      "```js",
+      "const a = 1;",
+      "```",
+    ].join("\n");
+
+    // Act
+    const root = renderBody(content);
+
+    // Assert
+    expect(root.querySelector(".chat-mermaid")).toBeNull();
+    expect(root.textContent).toContain("graph TD;");
+    expect(root.querySelector('button[aria-label="Copy"]')).toBeNull();
+    expect(root.querySelectorAll("pre code")).toHaveLength(2);
+  });
+
   it("highlights find matches inside rendered Markdown", () => {
     // Arrange
     const { container } = render(
