@@ -10,15 +10,14 @@ import { isDesktopHost } from "@/lib/api/host";
 
 export type McpIconSource = "site" | "favicon" | "none";
 
-export interface McpIconResult {
-  dataUrl: string | null;
-  domain: string | null;
-  source: McpIconSource;
-  fromCache: boolean;
-}
+/** 宿主 DTO 是唯一权威形状；前端只负责校验与缓存。 */
+export type McpIconResult = api.McpIconDto;
 
-/** 字母徽标的配色档位数，与 CSS 中的 `--tone-*` 一一对应。 */
-export const MCP_MONOGRAM_TONES = 6;
+/**
+ * 字母徽标的配色档位数，与 CSS 中的 `--tone-*` 一一对应：
+ * accent / success / warning / danger / info。新增档位要同时改样式表。
+ */
+export const MCP_MONOGRAM_TONES = 5;
 
 /** 同时进行的图标请求上限；设置页一次可能挂出几十行。 */
 const MAX_IN_FLIGHT = 4;
@@ -60,16 +59,13 @@ export function mcpMonogramLabel(name: string): string {
 }
 
 /** 由名称得到稳定的配色档位：同名永远同色，与列表顺序无关。 */
-export function mcpMonogramTone(
-  name: string,
-  tones: number = MCP_MONOGRAM_TONES,
-): number {
+export function mcpMonogramTone(name: string): number {
   let hash = 0x811c9dc5;
   for (const ch of (name ?? "").trim().toLowerCase()) {
     hash ^= ch.codePointAt(0) ?? 0;
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  return hash % tones;
+  return hash % MCP_MONOGRAM_TONES;
 }
 
 /** 校验宿主返回的图标负载，丢弃形状不对的字段。 */
@@ -83,7 +79,7 @@ export function normalizeMcpIconResult(value: unknown): McpIconResult | null {
   const dataUrl =
     typeof raw.dataUrl === "string" &&
     raw.dataUrl.startsWith("data:image/") &&
-    raw.dataUrl.length <= 400_000
+    raw.dataUrl.length <= 1_000_000
       ? raw.dataUrl
       : null;
   const domain =
@@ -136,7 +132,9 @@ export function peekMcpIcon(
 export function loadMcpIcon(
   target: string | null | undefined,
 ): Promise<McpIconResult | null> {
-  const key = mcpIconRequestKey(target);
+  const url = mcpIconTargetUrl(target);
+  if (!url) return Promise.resolve(null);
+  const key = mcpIconRequestKey(url);
   if (!key) return Promise.resolve(null);
   const cached = resolvedCache.get(key);
   if (cached) return Promise.resolve(cached);
@@ -147,7 +145,7 @@ export function loadMcpIcon(
   const task = (async (): Promise<McpIconResult | null> => {
     await acquireSlot();
     try {
-      const raw = await api.mcpIconResolve(target as string);
+      const raw = await api.mcpIconResolve(url);
       const result = normalizeMcpIconResult(raw);
       if (!result || result.source === "none") return null;
       resolvedCache.set(key, result);

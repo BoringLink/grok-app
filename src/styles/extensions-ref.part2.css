@@ -61,32 +61,33 @@
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
-  color: #fff;
-  background: var(--ext-mcp-mono-bg, #4b5563);
+  /* 用主题 token 做底色 + 同色文字：两种主题下都保持足够对比度 */
+  color: var(--ext-mcp-mono-color, var(--text-primary));
+  background: color-mix(
+    in srgb,
+    var(--ext-mcp-mono-color, var(--text-primary)) 18%,
+    transparent
+  );
 }
 
 .ext-ref-row__icon-mono--tone-0 {
-  --ext-mcp-mono-bg: #4f5bd5;
+  --ext-mcp-mono-color: var(--accent);
 }
 
 .ext-ref-row__icon-mono--tone-1 {
-  --ext-mcp-mono-bg: #0f8a68;
+  --ext-mcp-mono-color: var(--success);
 }
 
 .ext-ref-row__icon-mono--tone-2 {
-  --ext-mcp-mono-bg: #b45309;
+  --ext-mcp-mono-color: var(--warning);
 }
 
 .ext-ref-row__icon-mono--tone-3 {
-  --ext-mcp-mono-bg: #be185d;
+  --ext-mcp-mono-color: var(--danger);
 }
 
 .ext-ref-row__icon-mono--tone-4 {
-  --ext-mcp-mono-bg: #0369a1;
-}
-
-.ext-ref-row__icon-mono--tone-5 {
-  --ext-mcp-mono-bg: #6d28d9;
+  --ext-mcp-mono-color: var(--info);
 }
 
 .ext-ref-row__body {

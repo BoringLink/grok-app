@@ -81,7 +81,7 @@ describe("mcpMonogramTone", () => {
     const first = mcpMonogramTone("Context7");
     expect(mcpMonogramTone("context7")).toBe(first);
     expect(first).toBeGreaterThanOrEqual(0);
-    expect(first).toBeLessThan(6);
+    expect(first).toBeLessThan(5);
   });
 });
 
@@ -132,6 +132,33 @@ describe("loadMcpIcon", () => {
     mcpIconResolve.mockRejectedValue(new Error("boom"));
 
     await expect(loadMcpIcon("https://linear.app/mcp")).resolves.toBeNull();
+  });
+
+  it("caps in-flight lookups at four", async () => {
+    const resolvers: Array<(value: unknown) => void> = [];
+    mcpIconResolve.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+
+    const tasks = ["a", "b", "c", "d", "e"].map((host) =>
+      loadMcpIcon(`https://${host}.example.com/mcp`),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mcpIconResolve).toHaveBeenCalledTimes(4);
+
+    resolvers[0]({ ...ICON, dataUrl: null, source: "none" });
+    await tasks[0];
+    await Promise.resolve();
+    expect(mcpIconResolve).toHaveBeenCalledTimes(5);
+
+    resolvers.slice(1).forEach((resolve) =>
+      resolve({ ...ICON, dataUrl: null, source: "none" }),
+    );
+    await Promise.all(tasks);
   });
 
   it("does not call the host outside the desktop app", async () => {

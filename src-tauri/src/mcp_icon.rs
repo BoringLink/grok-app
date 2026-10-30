@@ -94,7 +94,7 @@ impl CacheEntry {
             && self
                 .domain
                 .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_'));
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.'));
         if !domain_ok {
             return false;
         }
@@ -130,6 +130,10 @@ fn parse_target(target: &str) -> Option<IconTarget> {
         return None;
     }
     let host = url.host_str()?.trim_end_matches('.').to_ascii_lowercase();
+    // 图标只对域名有意义；IP 字面量（含私网）直接拒绝，不依赖 DNS 层兜底。
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return None;
+    }
     let valid_host = host.contains('.')
         && !host.starts_with('.')
         && host != "localhost"
@@ -175,8 +179,18 @@ fn largest_declared_size(sizes: Option<&str>) -> u32 {
         .unwrap_or(0)
 }
 
-/// 按「apple-touch-icon → svg → 声明尺寸（大到小）→ 文档顺序」排序并去重。
-fn extract_site_icon_urls(base: &Url, html: &str) -> Vec<String> {
+fn url_stays_on_domain(url: &Url, domain: &str) -> bool {
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    registrable_domain(&host.to_ascii_lowercase()) == domain
+}
+
+/// 按「svg → apple-touch-icon → 声明尺寸（大到小）→ 文档顺序」排序并去重。
+///
+/// 只保留仍在该注册域上的候选：厂商页面若把图标放在第三方 CDN，
+/// 宁可回落到 `/favicon.ico`，也不把用户配置了哪些 MCP 厂商发给第三方。
+fn extract_site_icon_urls(base: &Url, html: &str, domain: &str) -> Vec<String> {
     let document = Html::parse_document(html);
     let selector = Selector::parse("link").expect("static link selector");
     let mut candidates: Vec<SiteIconCandidate> = Vec::new();
@@ -197,6 +211,12 @@ fn extract_site_icon_urls(base: &Url, html: &str) -> Vec<String> {
         let Some(url) = resolve_https_url(base, href) else {
             continue;
         };
+        let Ok(parsed) = Url::parse(&url) else {
+            continue;
+        };
+        if !url_stays_on_domain(&parsed, domain) {
+            continue;
+        }
         candidates.push(SiteIconCandidate {
             url,
             apple_touch,
@@ -209,8 +229,8 @@ fn extract_site_icon_urls(base: &Url, html: &str) -> Vec<String> {
     }
     candidates.sort_by_key(|candidate| {
         (
-            !candidate.apple_touch,
             !candidate.svg,
+            !candidate.apple_touch,
             std::cmp::Reverse(candidate.size),
             candidate.order,
         )
@@ -362,11 +382,32 @@ fn is_html_content_type(content_type: Option<&str>) -> bool {
         .eq_ignore_ascii_case("text/html")
 }
 
+fn vendor_policy(domain: &str) -> OriginPolicy {
+    OriginPolicy::SameRegistrableDomain {
+        domain: domain.to_string(),
+    }
+}
+
+/// 站点声明取不到时的回落顺序：注册域 `/favicon.ico` → 原始主机 `/favicon.ico`。
+fn fallback_icon_candidates(target: &IconTarget) -> Vec<(String, McpIconSource)> {
+    let mut out = vec![(
+        format!("https://{}/favicon.ico", target.domain),
+        McpIconSource::Favicon,
+    )];
+    if target.host != target.domain {
+        out.push((
+            format!("https://{}/favicon.ico", target.host),
+            McpIconSource::Favicon,
+        ));
+    }
+    out
+}
+
 async fn fetch_site_document(domain: &str) -> Option<(Url, String)> {
     let start = format!("https://{domain}/");
     let response = match skin_net::safe_https_get_browser_document_response(
         &start,
-        OriginPolicy::AnyHttps,
+        vendor_policy(domain),
         SITE_DOC_MAX_BYTES,
     )
     .await
@@ -386,9 +427,9 @@ async fn fetch_site_document(domain: &str) -> Option<(Url, String)> {
     Some((response.final_url, html))
 }
 
-async fn download_icon_data_url(url: &str) -> Option<String> {
+async fn download_icon_data_url(url: &str, domain: &str) -> Option<String> {
     let bytes =
-        match skin_net::safe_https_get(url, OriginPolicy::AnyHttps, ICON_MAX_BYTES, None).await {
+        match skin_net::safe_https_get(url, vendor_policy(domain), ICON_MAX_BYTES, None).await {
             Ok(bytes) => bytes,
             Err(error) => {
                 // 单个候选失败属正常（404 / 非图片 / 超限），继续下一个候选。
@@ -405,28 +446,26 @@ async fn resolve_remote(target: &IconTarget) -> Option<(String, McpIconSource)> 
     let mut candidates: Vec<(String, McpIconSource)> = Vec::new();
     if let Some((base, html)) = fetch_site_document(&target.domain).await {
         candidates.extend(
-            extract_site_icon_urls(&base, &html)
+            extract_site_icon_urls(&base, &html, &target.domain)
                 .into_iter()
                 .map(|url| (url, McpIconSource::Site)),
         );
     }
-    candidates.push((
-        format!("https://{}/favicon.ico", target.domain),
-        McpIconSource::Favicon,
-    ));
-    if target.host != target.domain {
-        candidates.push((
-            format!("https://{}/favicon.ico", target.host),
-            McpIconSource::Favicon,
-        ));
-    }
+    candidates.extend(fallback_icon_candidates(target));
 
     for (url, source) in candidates {
-        if let Some(data_url) = download_icon_data_url(&url).await {
+        if let Some(data_url) = download_icon_data_url(&url, &target.domain).await {
             return Some((data_url, source));
         }
     }
     None
+}
+
+/// 过期后重取失败时的回落：只沿用真正带图标的旧条目，且标记为缓存命中。
+fn stale_icon_fallback(cached: Option<CacheEntry>) -> Option<McpIconResult> {
+    cached
+        .filter(|entry| entry.data_url.is_some())
+        .map(result_from_cache)
 }
 
 fn result_from_cache(entry: CacheEntry) -> McpIconResult {
@@ -473,20 +512,10 @@ pub async fn resolve_mcp_icon(target: &str) -> McpIconResult {
             }
         }
         None => {
-            // 厂商临时故障或超时不应让已有图标闪回字母徽标：沿用旧图标并顺延时间戳，
-            // 避免每次打开设置都重新请求。
-            if let Some(stale) = cached.filter(|entry| entry.data_url.is_some()) {
-                let refreshed = CacheEntry {
-                    fetched_at: now,
-                    ..stale.clone()
-                };
-                write_cache(&path, &refreshed);
-                return McpIconResult {
-                    data_url: stale.data_url,
-                    domain: Some(stale.domain),
-                    source: stale.source,
-                    from_cache: false,
-                };
+            // 厂商临时故障或超时不应让已有图标闪回字母徽标：沿用旧缓存，不改写时间戳。
+            // 前端会把结果缓存在内存里，所以同一会话只重试一次；下次启动或 30 天后再试。
+            if let Some(stale) = stale_icon_fallback(cached) {
+                return stale;
             }
             let entry = CacheEntry {
                 domain: parsed.domain.clone(),
@@ -569,6 +598,9 @@ mod tests {
             "https://app.localhost/mcp",
             "https://printer.local/mcp",
             "https://intranet/mcp",
+            "https://127.0.0.1/mcp",
+            "https://10.0.0.5/mcp",
+            "https://[::1]/mcp",
             "not a url",
             "",
         ] {
@@ -577,7 +609,28 @@ mod tests {
     }
 
     #[test]
-    fn extract_site_icons_ranks_apple_svg_size_then_document_order() {
+    fn fallback_candidates_try_the_domain_before_the_original_host() {
+        let target = parse_target("https://mcp.context7.com/mcp").expect("valid target");
+        assert_eq!(
+            fallback_icon_candidates(&target),
+            vec![
+                (
+                    "https://context7.com/favicon.ico".to_string(),
+                    McpIconSource::Favicon
+                ),
+                (
+                    "https://mcp.context7.com/favicon.ico".to_string(),
+                    McpIconSource::Favicon
+                ),
+            ]
+        );
+
+        let bare = parse_target("https://context7.com/mcp").expect("valid target");
+        assert_eq!(fallback_icon_candidates(&bare).len(), 1);
+    }
+
+    #[test]
+    fn extract_site_icons_ranks_svg_apple_size_then_document_order() {
         let base = Url::parse("https://context7.com/").expect("base url");
         let html = r#"
           <html><head>
@@ -589,15 +642,16 @@ mod tests {
             <link rel="mask-icon" href="/mask.svg">
             <link rel="icon" href="http://insecure.example.com/i.png">
             <link rel="icon" href="https://user:pass@example.com/i.png">
+            <link rel="icon" href="https://third-party-cdn.example.com/i.png">
           </head></html>
         "#;
-        let urls = extract_site_icon_urls(&base, html);
+        let urls = extract_site_icon_urls(&base, html, "context7.com");
         assert_eq!(
             urls,
             vec![
+                "https://context7.com/logo.svg",
                 "https://context7.com/apple-touch-icon.png",
                 "https://context7.com/apple-120.png",
-                "https://context7.com/logo.svg",
                 "https://context7.com/favicon-32.png",
                 "https://context7.com/favicon-16.png",
             ]
@@ -612,7 +666,7 @@ mod tests {
             <link rel="icon" href="assets/favicon.png">
             <link rel="icon" href="//cdn.context7.com/icon.png">
         "#;
-        let urls = extract_site_icon_urls(&base, html);
+        let urls = extract_site_icon_urls(&base, html, "context7.com");
         assert_eq!(
             urls,
             vec![
@@ -620,6 +674,32 @@ mod tests {
                 "https://cdn.context7.com/icon.png",
             ]
         );
+    }
+
+    #[test]
+    fn extract_site_icons_drops_other_vendors() {
+        let base = Url::parse("https://foo.github.io/").expect("base url");
+        let html = r#"
+            <link rel="icon" href="https://foo.github.io/icon.png">
+            <link rel="icon" href="https://bar.github.io/icon.png">
+        "#;
+        assert_eq!(
+            extract_site_icon_urls(&base, html, "foo.github.io"),
+            vec!["https://foo.github.io/icon.png"]
+        );
+    }
+
+    #[test]
+    fn stale_fallback_keeps_only_entries_that_hold_an_icon() {
+        let now = 10 * SUCCESS_TTL_SECS;
+        let stale = cached_entry(Some("data:image/png;base64,AAAA"), now - 90 * DAY);
+        let resolved = stale_icon_fallback(Some(stale)).expect("stale icon");
+        assert!(resolved.from_cache);
+        assert!(resolved.data_url.is_some());
+        assert_eq!(resolved.domain.as_deref(), Some("context7.com"));
+
+        assert!(stale_icon_fallback(Some(cached_entry(None, now - 90 * DAY))).is_none());
+        assert!(stale_icon_fallback(None).is_none());
     }
 
     #[test]

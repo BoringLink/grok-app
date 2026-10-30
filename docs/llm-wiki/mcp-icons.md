@@ -11,15 +11,15 @@ Related: [media-delivery.md](./media-delivery.md)（本地/远程图片展示）
 | 层 | 职责 |
 |----|------|
 | Target → 注册域 | 宿主从 MCP Target 取主机名，用 `psl` 求注册域（`mcp.context7.com` → `context7.com`） |
-| 发现图标 | 读注册域根文档的 `<link rel="icon">` / `apple-touch-icon`，再回落 `/favicon.ico`，最后试原始主机 |
-| 交付 | 位图转 64×64 PNG、SVG 原样保留，编码成 `data:image/...;base64,` 返回前端 |
+| 发现图标 | 读注册域根文档的 `<link rel="icon">` / `apple-touch-icon`（SVG 优先、再按尺寸），再回落 `/favicon.ico`，最后试原始主机 |
+| 交付 | 位图缩到最长边 ≤64 px 的 PNG（只缩不放）、SVG 原样保留，编码成 `data:image/...;base64,` 返回前端 |
 | 展示 | `McpServerIcon` 异步替换字母徽标；拿不到图标时保留字母徽标 |
 | 缓存 | `{app data}/cache/mcp-icons/{domain hash}.json`；成功 30 天、失败 7 天 |
 
 ## 硬规则
 
-- **只访问厂商自己的域名**。不要接 Google S2、DuckDuckGo icons 或任何图标聚合服务：
-  那会把用户配置了哪些厂商外泄，并且离线失效。
+- **只访问厂商自己的注册域（含子域）**。站点把图标放在第三方 CDN 时宁可回落到 `/favicon.ico`；
+  不要接 Google S2、DuckDuckGo icons 或任何图标聚合服务，那会把用户配置了哪些厂商外泄，并且离线失效。
 - 只接受 `https`；拒绝 userinfo 与私网 DNS 解析；单次响应 ≤ 512 KiB、总超时 8 秒。
   下载与跳转必须走 `skin_net` 的安全客户端，不要新建裸 `reqwest` 客户端。
 - 缓存键只用注册域。**磁盘上不得出现 Target 原文或查询参数**（远程 MCP 的 URL 可能带密钥）。

@@ -20,12 +20,12 @@ GitHub 这类不同的 MCP 服务器。MCP Target 里已经有远程服务器的
 
 **厂商标识由宿主解析，来源限定为厂商自己的站点，并落盘缓存。**
 
-1. 从 MCP Target 提取主机名，用 Public Suffix List 求**注册域**；只访问该注册域（必要时加
-   原始主机）的 `https` 地址。
-2. 先读站点根文档里的 `<link rel="icon">` / `<link rel="apple-touch-icon">` 候选，按尺寸优先；
-   取不到再试 `/favicon.ico`。
+1. 从 MCP Target 提取主机名，用 Public Suffix List 求**注册域**；只访问该注册域及其子域
+   （含原始主机）的 `https` 地址，第三方 CDN 一律不取。
+2. 先读站点根文档里的 `<link rel="icon">` / `<link rel="apple-touch-icon">` 候选，SVG 优先、
+   其次按声明尺寸；取不到再试 `/favicon.ico`。
 3. 下载走既有的安全 HTTPS 客户端（DNS 校验 + 防 SSRF），限制体积与超时；解码后统一转成
-   64×64 PNG（SVG 原样保留），以 data URL 交给前端渲染。
+   最长边 ≤64 px 的 PNG（只缩不放；SVG 原样保留），以 data URL 交给前端渲染。
 4. 结果按注册域缓存在 App 数据目录，正常结果 30 天、失败结果 7 天；过期后重新解析，失败时
    继续使用旧缓存。
 5. 拿不到图标时回落到**字母徽标**，不请求任何第三方图标服务。
