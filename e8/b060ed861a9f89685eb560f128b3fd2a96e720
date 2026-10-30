@@ -1,0 +1,36 @@
+src-tauri/src/command_registry.rs
+  s_79e138630b43e3::t_771b1a7f6babc9 288
+src-tauri/Cargo.toml
+  s_79e138630b43e3::t_db916d0b40ebda 80-81,86-87
+src-tauri/src/mcp_icon.rs
+  s_79e138630b43e3::t_8461734610d667 390-398
+  s_79e138630b43e3::t_0961da2e874a6b 27
+  s_79e138630b43e3::t_f4e58acc6e983a 132,187-189,312-316,521-523,553-554,629-632
+  s_79e138630b43e3::t_5544f277f71cc3 190
+  s_79e138630b43e3::t_8af6750e5a80c1 1-16,18-26,28-131,133-186,191-262,270-311,317-366,368-372,381-389,399-520,524-552,555-628,633-778
+  s_79e138630b43e3::t_9ea09e3a86b49a 17,263-269
+  s_79e138630b43e3::t_8208e39d0046a5 367,373-380
+src-tauri/src/lib.rs
+  s_79e138630b43e3::t_0ee54c2904830d 95
+src-tauri/src/commands/fs.rs
+  s_79e138630b43e3::t_ddaecd05bee83e 639,641-642
+  s_79e138630b43e3::t_2c9fce2a82e51c 640,643-647
+src-tauri/src/paths.rs
+  s_79e138630b43e3::t_0d47012ff7989f 56-57,108-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "e8b060ed861a9f89685eb560f128b3fd2a96e720",
+  "prompts": {},
+  "sessions": {
+    "s_79e138630b43e3": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a18c5d-b4d7-7352-8e6f-10a396b9f0ce",
+        "model": "ada-openai__auto-free"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
