@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { UserMessageBody } from "./ThreadUserBody";
 
 afterEach(cleanup);
@@ -91,5 +91,55 @@ describe("user bubble renders like the composer", () => {
     expect(root.textContent).toContain("## **标题**");
     expect(root.textContent).toContain("---");
     expect(root.textContent).not.toContain("\\");
+  });
+
+  it("renders every input newline as a visible line break", () => {
+    // Arrange —— 输入框里每个换行都是硬换行；气泡需要渲染出同样的 5 个换行
+    const content = [
+      "\\- 今天去超市买菜",
+      "&gt; 不是引用",
+      "a \\_b\\_ c",
+      "**测试**",
+      "\\## \\*\\*标题\\*\\*",
+    ].join("\n");
+
+    // Act
+    const root = renderBody(content);
+
+    // Assert —— 段内换行渲染成 `<br>`，而不是被 HTML 折叠成空格
+    expect(root.querySelectorAll("p br")).toHaveLength(4);
+  });
+
+  it("keeps blank lines as paragraph breaks and fenced code intact", () => {
+    // Arrange —— 与发送后的新消息同形：段落、空行、分隔线、围栏（12 行 → 默认折叠）
+    const content = [
+      "\\# trending topic",
+      "",
+      "1\\. 这不是清单",
+      "",
+      "\\- 今天去超市买菜",
+      "&gt; 不是引用",
+      "",
+      "---",
+      "",
+      "```js",
+      "const a = 1;",
+      "```",
+    ].join("\n");
+
+    // Act
+    const root = renderBody(content);
+    const foldable = root.querySelector(".lobe-chat-user-body-wrap--foldable");
+    expect(foldable?.querySelectorAll("p br").length).toBeGreaterThan(0);
+    fireEvent.click(foldable as HTMLElement);
+
+    // Assert —— 展开后：三段正文、一个段内换行、围栏都在（`hr` 在气泡里隐藏）
+    expect(root.querySelectorAll("p")).toHaveLength(3);
+    expect(root.querySelectorAll("p br")).toHaveLength(1);
+    expect(root.querySelector("h1")).toBeNull();
+    expect(root.querySelector("h2")).toBeNull();
+    expect(root.querySelector("pre code")?.textContent).toContain(
+      "const a = 1;",
+    );
   });
 });
