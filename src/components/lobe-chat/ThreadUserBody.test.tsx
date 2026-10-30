@@ -63,4 +63,33 @@ describe("user bubble renders like the composer", () => {
     expect(root.textContent).toBe("a *b* c");
     expect(root.querySelector("em")).toBeNull();
   });
+
+  it("renders hard-break continuation lines as literal text", () => {
+    // Arrange —— 段内 Shift+Enter 换行在 journal 里只隔一个换行
+    const content = [
+      "\\# trending topic",
+      "1\\. 这不是清单",
+      "\\- 今天去超市买菜",
+      "&gt; 不是引用",
+      "\\## \\*\\*标题\\*\\*",
+      "\\---",
+    ].join("\n");
+
+    // Act
+    const root = renderBody(content);
+
+    // Assert —— 不再提升成列表 / 标题 / 分隔线
+    expect(root.querySelector("ol")).toBeNull();
+    expect(root.querySelector("ul")).toBeNull();
+    expect(root.querySelector("h1")).toBeNull();
+    expect(root.querySelector("h2")).toBeNull();
+    expect(root.querySelector("hr")).toBeNull();
+    expect(root.textContent).toContain("# trending topic");
+    expect(root.textContent).toContain("1. 这不是清单");
+    expect(root.textContent).toContain("- 今天去超市买菜");
+    expect(root.textContent).toContain("> 不是引用");
+    expect(root.textContent).toContain("## **标题**");
+    expect(root.textContent).toContain("---");
+    expect(root.textContent).not.toContain("\\");
+  });
 });

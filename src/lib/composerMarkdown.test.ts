@@ -53,6 +53,32 @@ describe("Markdown serialization (TipTap composer)", () => {
     expect(out).toBe(source);
   });
 
+  it("段内硬换行的字面块记号在存储态被转义", () => {
+    // Arrange —— Shift+Enter 换行后逐行粘进来的字面文本
+    editor = makeEditor("");
+    const { schema } = editor.state;
+    const lines = [
+      "# trending topic",
+      "1. 这不是清单",
+      "- 今天去超市买菜",
+      "---",
+    ];
+    const children = lines.flatMap((line, i) =>
+      i === 0
+        ? [schema.text(line)]
+        : [schema.nodes.hardBreak.create(), schema.text(line)],
+    );
+    editor.view.dispatch(editor.state.tr.replaceWith(1, 1, children));
+
+    // Act
+    const out = markdownOf(editor);
+
+    // Assert —— 气泡再解析时保持字面量，不会变成标题 / 列表 / 分隔线
+    expect(out).toBe(
+      "\\# trending topic\n1\\. 这不是清单\n\\- 今天去超市买菜\n\\---",
+    );
+  });
+
   it("代码块带上语言栏属性，且不影响 markdown 往返", () => {
     // Arrange
     const source = "```ts\nconst a = 1;\n```";
@@ -214,6 +240,41 @@ describe("normalizeSerializedMarkdown", () => {
 
     // Act / Assert
     expect(normalizeSerializedMarkdown(raw)).toBe("hello");
+  });
+
+  it("硬换行后的行首块级记号补转义", () => {
+    // Arrange —— 序列化器只在文本块开头转义，`\\\n` 之后的行原样输出
+    const raw = [
+      "\\# trending topic",
+      "1. 这不是清单",
+      "- 今天去超市买菜",
+      "> 不是引用",
+      "a \\_b\\_ c",
+      "## \\*\\*标题\\*\\*",
+      "---",
+    ].join("\\\n");
+
+    // Act
+    const out = normalizeSerializedMarkdown(raw);
+
+    // Assert —— 再解析（气泡 / agent / 回退）仍是字面文本
+    expect(out).toBe(
+      [
+        "\\# trending topic",
+        "1\\. 这不是清单",
+        "\\- 今天去超市买菜",
+        "\\> 不是引用",
+        "a \\_b\\_ c",
+        "\\## \\*\\*标题\\*\\*",
+        "\\---",
+      ].join("\n"),
+    );
+  });
+
+  it("硬换行后的普通文字与序号数字不受影响", () => {
+    expect(normalizeSerializedMarkdown("line1\\\nline2")).toBe("line1\nline2");
+    expect(normalizeSerializedMarkdown("x\\\n1.5 倍")).toBe("x\n1.5 倍");
+    expect(normalizeSerializedMarkdown("x\\\n+5 元")).toBe("x\n+5 元");
   });
 });
 

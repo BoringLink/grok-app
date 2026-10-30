@@ -55,6 +55,12 @@
 draft 再解析回编辑器、气泡渲染 Markdown 时都靠它区分字面文本与真实记号；
 去掉转义会让字面 `#` 变成标题、字面 `*` 变成斜体。
 
+**段内硬换行**（Shift+Enter）的行需要额外补转义：序列化器只在文本块开头把
+`atBlockStart` 置为 true，`hardBreak` 序列化成 `\\\n` 之后仍属于同一段，`#` / `-` /
+`1.` 不会被转义。草稿再解析时（气泡、agent、回退后的编辑器）会把这类行当成标题 /
+列表 / 分隔线，编辑器与气泡因此显示不一致。`normalizeSerializedMarkdown()` 对
+`\\\n` 之后的行补行首转义（`\#` / `\-` / `1\.` / `\---`），围栏与行内代码不受影响。
+
 用户气泡与编辑器一致，按 Markdown 渲染：无 token 的消息直接走 `MarkdownChat`，
 标题、粗体、围栏、列表都会渲染，转义由渲染器还原。带 skill / 引用 token 的消息
 仍走纯文本 + chip 路径，文本段用 `decodeMarkdownDisplayText()` 还原转义。
