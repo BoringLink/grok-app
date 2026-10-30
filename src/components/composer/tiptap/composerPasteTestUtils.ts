@@ -1,12 +1,18 @@
-/** headless 编辑器与剪贴板事件工具；真实 paste 测试复用产品扩展清单。 */
+/**
+ * 粘贴测试共用的 headless 编辑器与事件工具。
+ *
+ * 拆出来是为了让"粘贴判定"与"纯文本手势"各占一个测试文件，同时避免两处各抄
+ * 一份编辑器装配与剪贴板事件。
+ */
 import { Editor } from "@tiptap/react";
 import type { Content } from "@tiptap/react";
 import { Slice } from "@tiptap/pm/model";
 import { buildComposerExtensions } from "@/components/composer/tiptap/composerExtensions";
+import type { ComposerPasteOptions } from "@/components/composer/tiptap/composerPaste";
 
 /** 装配一个 headless 编辑器；调用方负责销毁编辑器并移除 host。 */
 export function createComposerEditor(
-  opts: { content?: Content } = {},
+  opts: { content?: Content; paste?: ComposerPasteOptions } = {},
 ): { editor: Editor; host: HTMLDivElement } {
   const host = document.createElement("div");
   document.body.appendChild(host);
@@ -14,6 +20,7 @@ export function createComposerEditor(
     element: host,
     extensions: buildComposerExtensions({
       showPlaceholderWhenEditable: false,
+      plainTextPaste: opts.paste,
     }),
     content: opts.content ?? "",
     editable: true,
@@ -87,3 +94,30 @@ export function hasHardBreak(ed: Editor): boolean {
   return found;
 }
 
+/** 按下纯文本粘贴和弦，等异步剪贴板读完。 */
+export async function pressPlainPaste(
+  ed: Editor,
+  opts: { repeat?: boolean; mac?: boolean } = {},
+): Promise<void> {
+  const mac = opts.mac ?? false;
+  ed.view.dom.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      // macOS 的 Option 会把 key 映射成 "√"，物理键仍靠 code 识别。
+      key: mac ? "√" : "v",
+      code: "KeyV",
+      ctrlKey: !mac,
+      metaKey: mac,
+      altKey: true,
+      shiftKey: mac,
+      repeat: opts.repeat ?? false,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** 光标放到文档末尾；不走 `focus` 以免 jsdom 缺布局 API。 */
+export function caretAtEnd(ed: Editor): void {
+  ed.commands.setTextSelection(ed.state.doc.content.size);
+}
