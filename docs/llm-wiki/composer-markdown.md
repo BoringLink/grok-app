@@ -48,6 +48,18 @@
 
 多行普通段落保留换行（`breaks: true` 下是软换行），不做块级提升。
 
+## 用户气泡的展示
+
+存储态与提示词保留 Markdown 源码：字面文本会被序列化器转义（`\*` / `\#` / `1\.`），
+`<` `>` 写成 `&gt;` / `&lt;`。`normalizeSerializedMarkdown()` **保留**这些转义：
+draft 再解析回编辑器、气泡渲染 Markdown 时都靠它区分字面文本与真实记号；
+去掉转义会让字面 `#` 变成标题、字面 `*` 变成斜体。
+
+用户气泡与编辑器一致，按 Markdown 渲染：无 token 的消息直接走 `MarkdownChat`，
+标题、粗体、围栏、列表都会渲染，转义由渲染器还原。带 skill / 引用 token 的消息
+仍走纯文本 + chip 路径，文本段用 `decodeMarkdownDisplayText()` 还原转义。
+折叠预览先经 `softCloseMarkdown()` 补齐被截断的记号 / 围栏。
+
 ## 粘贴后的标记状态
 
 粘贴内容以标记结尾时（例如从浏览器复制的粗体），光标落在标记范围内，`marks()`

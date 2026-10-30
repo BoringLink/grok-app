@@ -335,6 +335,10 @@ describe("粘贴行为", () => {
     // Assert
     expect(editor.state.doc.textContent).toBe("a _b_ c");
     expect(editor.state.doc.firstChild?.firstChild?.marks).toEqual([]);
+    // 序列化器保留防御性转义，气泡渲染时才不会把字面量当成斜体。
+    expect(normalizeSerializedMarkdown(markdownOf(editor))).toBe(
+      "a \\_b\\_ c",
+    );
   });
 
   it("纯文本包壳的围栏代码按 Markdown 解析", () => {

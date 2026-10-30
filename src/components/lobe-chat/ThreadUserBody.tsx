@@ -21,6 +21,9 @@ import {
   parseAttachmentsFromContent,
 } from "@/lib/attachments";
 import { hydrateDisplayContent, parseStoredContentWithRefs } from "@/lib/draftDoc";
+import { decodeMarkdownDisplayText } from "@/lib/markdownSource";
+import { softCloseMarkdown } from "@/lib/softCloseMarkdown";
+import { MarkdownChat } from "./MarkdownChat";
 import { getFilePathCardLabels } from "@/lib/filePathCardPref";
 import {
   parseRemoteImUserContent,
@@ -57,18 +60,20 @@ const UserBodyText = memo(function UserBodyText({
         s.type === "ref",
     )
   ) {
-    if (findQuery?.trim()) {
-      return (
-        <span className="user-msg-body">
-          <HighlightedText
-            text={hydrated}
-            query={findQuery}
-            activeOccurrence={findActiveOccurrence ?? null}
-          />
-        </span>
-      );
-    }
-    return <span className="user-msg-body">{hydrated}</span>;
+    // 与编辑器一致：气泡按 Markdown 渲染（标题、粗体、围栏、列表），
+    // 序列化器的防御性转义由渲染器还原。带 token 分段的消息仍走纯文本路径。
+    return (
+      <div className="user-msg-body user-msg-body--markdown">
+        <MarkdownChat
+          locale={locale}
+          pathCards={false}
+          findQuery={findQuery}
+          findActiveOccurrence={findActiveOccurrence ?? null}
+        >
+          {hydrated}
+        </MarkdownChat>
+      </div>
+    );
   }
   return (
     <span className="user-msg-body">
@@ -117,7 +122,7 @@ const UserBodyText = memo(function UserBodyText({
           return (
             <HighlightedText
               key={`t-${i}`}
-              text={s.text}
+              text={decodeMarkdownDisplayText(s.text)}
               query={findQuery}
               activeOccurrence={findActiveOccurrence ?? null}
             />
@@ -125,7 +130,7 @@ const UserBodyText = memo(function UserBodyText({
         }
         return (
           <span key={`t-${i}`} className="user-msg-body__text">
-            {s.text}
+            {decodeMarkdownDisplayText(s.text)}
           </span>
         );
       })}
@@ -146,6 +151,8 @@ const UserPlainOrSkills = memo(function UserPlainOrSkills({
   locale: Locale;
 }) {
   const parsed = parseQuotesFromContent(content);
+  // 无 token 的消息按 Markdown 渲染，转义交给渲染器还原；带 token 的消息走纯文本，
+  // 在 UserBodyText 里逐段解码，避免 `\#` 之类的源码泄漏到气泡。
   const body = parsed.text;
   const quotes: ComposerQuote[] = parsed.quotes;
   const tr = createT(locale);
@@ -155,7 +162,10 @@ const UserPlainOrSkills = memo(function UserPlainOrSkills({
   const findActiveHere = !!findQuery?.trim();
   const canFold = shouldFoldUserMessage(targetText) && !findActiveHere;
   const displayText =
-    canFold && !showFull ? previewUserMessageText(targetText) : targetText;
+    canFold && !showFull
+      ? // 折叠预览会截断 Markdown：补齐未闭合的记号 / 围栏，避免吞掉后半段。
+        softCloseMarkdown(previewUserMessageText(targetText), true)
+      : targetText;
 
   const handleBubbleClick = useCallback(
     (e: React.MouseEvent) => {
