@@ -27,7 +27,8 @@ describe("transformOutsideCode", () => {
 });
 
 describe("decodeMarkdownDisplayText", () => {
-  it("还原行首块级记号的防御性转义", () => {    expect(decodeMarkdownDisplayText("\\# trending topic")).toBe(
+  it("还原行首块级记号的防御性转义", () => {
+    expect(decodeMarkdownDisplayText("\\# trending topic")).toBe(
       "# trending topic",
     );
     expect(decodeMarkdownDisplayText("1\\. 这不是清单")).toBe("1. 这不是清单");

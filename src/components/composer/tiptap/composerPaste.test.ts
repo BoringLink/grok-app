@@ -16,7 +16,6 @@ import {
   clipboardHtmlIsMarkdownSource,
   clipboardHtmlIsOwnSlice,
   clipboardHtmlIsPlainWrapper,
-  looksLikeMarkdownBlockSource,
   normalizePastedMarkdown,
   planPastedMarkdown,
 } from "@/components/composer/tiptap/composerPaste";
@@ -206,54 +205,42 @@ describe("clipboardHtmlIsMarkdownSource", () => {
   });
 });
 
-describe("looksLikeMarkdownBlockSource", () => {
-  it("单行普通文字不算块级源码", () => {
-    expect(looksLikeMarkdownBlockSource("# trending topic")).toBe(false);
-    expect(looksLikeMarkdownBlockSource("- 今天去超市买菜")).toBe(false);
-    expect(looksLikeMarkdownBlockSource("1. 这不是清单")).toBe(false);
-    expect(looksLikeMarkdownBlockSource("> 不是引用")).toBe(false);
-    expect(looksLikeMarkdownBlockSource("---")).toBe(false);
-    expect(looksLikeMarkdownBlockSource("a _b_ c")).toBe(false);
-  });
-
-  it("多行普通段落不算块级源码", () => {
-    expect(looksLikeMarkdownBlockSource("第一行\n第二行")).toBe(false);
-  });
-
-  it("多行含块级记号按源码处理", () => {
-    expect(looksLikeMarkdownBlockSource("# 标题\n正文")).toBe(true);
-    expect(looksLikeMarkdownBlockSource("- 一项\n- 二项")).toBe(true);
-    expect(looksLikeMarkdownBlockSource("```js\nconst a = 1;\n```")).toBe(true);
-    expect(looksLikeMarkdownBlockSource("| a | b |\n| --- | --- |")).toBe(true);
-    expect(looksLikeMarkdownBlockSource("标题\n===")).toBe(true);
-  });
-});
-
 describe("planPastedMarkdown", () => {
   it("code 包壳按块级解析", () => {
     expect(
-      planPastedMarkdown("## **标题**", "<code>## **标题**</code>"),
+      planPastedMarkdown("## **标题**", "<code>## **标题**</code>").plan,
     ).toBe("block");
   });
 
   it("单行普通文字按行内解析", () => {
     expect(
-      planPastedMarkdown("# trending topic", "<div># trending topic</div>"),
+      planPastedMarkdown("# trending topic", "<div># trending topic</div>")
+        .plan,
     ).toBe("inline");
-    expect(planPastedMarkdown("**测试**", null)).toBe("inline");
+    expect(planPastedMarkdown("**测试**", null).plan).toBe("inline");
   });
 
   it("多行块级源码按块级解析", () => {
-    expect(planPastedMarkdown("```js\nconst a = 1;\n```", null)).toBe("block");
-    expect(planPastedMarkdown("## 标题\n\n正文", "<div>## 标题<br><br>正文</div>")).toBe(
+    expect(planPastedMarkdown("```js\nconst a = 1;\n```", null).plan).toBe(
       "block",
     );
+    expect(
+      planPastedMarkdown("## 标题\n\n正文", "<div>## 标题<br><br>正文</div>")
+        .plan,
+    ).toBe("block");
+  });
+
+  it("返回归一化后的 Markdown 源码", () => {
+    expect(planPastedMarkdown("\n\n**测试**\n", null)).toEqual({
+      plan: "inline",
+      markdown: "**测试**",
+    });
   });
 
   it("本编辑器自己的 slice 不接管", () => {
     expect(
       planPastedMarkdown("- hello", '<p data-pm-slice="1 1 []">- hello</p>'),
-    ).toBe("none");
+    ).toEqual({ plan: "none", markdown: null });
   });
 
   it("带语义的 HTML 不接管", () => {
@@ -262,11 +249,14 @@ describe("planPastedMarkdown", () => {
         "- Docs now",
         '<ul><li><a href="https://example.com">Docs</a> <strong>now</strong></li></ul>',
       ),
-    ).toBe("none");
+    ).toEqual({ plan: "none", markdown: null });
   });
 
   it("空粘贴不接管", () => {
-    expect(planPastedMarkdown("\n\n", "<div></div>")).toBe("none");
+    expect(planPastedMarkdown("\n\n", "<div></div>")).toEqual({
+      plan: "none",
+      markdown: null,
+    });
   });
 });
 
@@ -401,10 +391,10 @@ describe("粘贴行为", () => {
     editor = ed;
     ed.commands.setTextSelection({ from: 1, to: ed.state.doc.content.size - 1 });
 
-    // Act + Assert
-    expect(() =>
-      dispatchRealPaste(ed, "普通文字", "<div>普通文字</div>"),
-    ).not.toThrow();
+    // Act
+    dispatchRealPaste(ed, "普通文字", "<div>普通文字</div>");
+
+    // Assert
     expect(ed.state.doc.textContent).toContain("普通文字");
   });
 

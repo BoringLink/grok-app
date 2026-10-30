@@ -62,6 +62,8 @@ describe("Markdown serialization (TipTap composer)", () => {
       "1. 这不是清单",
       "- 今天去超市买菜",
       "---",
+      "===",
+      "| a | b |",
     ];
     const children = lines.flatMap((line, i) =>
       i === 0
@@ -73,9 +75,16 @@ describe("Markdown serialization (TipTap composer)", () => {
     // Act
     const out = markdownOf(editor);
 
-    // Assert —— 气泡再解析时保持字面量，不会变成标题 / 列表 / 分隔线
+    // Assert —— 气泡再解析时保持字面量，不会变成标题 / 列表 / 表格
     expect(out).toBe(
-      "\\# trending topic\n1\\. 这不是清单\n\\- 今天去超市买菜\n\\---",
+      [
+        "\\# trending topic",
+        "1\\. 这不是清单",
+        "\\- 今天去超市买菜",
+        "\\---",
+        "\\===",
+        "\\| a | b |",
+      ].join("\n"),
     );
   });
 
@@ -252,6 +261,8 @@ describe("normalizeSerializedMarkdown", () => {
       "a \\_b\\_ c",
       "## \\*\\*标题\\*\\*",
       "---",
+      "===",
+      "| a | b |",
     ].join("\\\n");
 
     // Act
@@ -267,6 +278,8 @@ describe("normalizeSerializedMarkdown", () => {
         "a \\_b\\_ c",
         "\\## \\*\\*标题\\*\\*",
         "\\---",
+        "\\===",
+        "\\| a | b |",
       ].join("\n"),
     );
   });

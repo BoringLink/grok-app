@@ -12,6 +12,9 @@
 | `src/components/composer/tiptap/ComposerEditorTiptap.tsx` | 编辑器实例、文件 / 图片 / URL chip 的粘贴前置分支 |
 | `src/components/composer/tiptap/composerExtensions.ts` | 扩展清单（内置档与 headless 测试共用） |
 | `src/components/composer/tiptap/composerPaste.ts` | 粘贴归一化 + 来源判定 + 行内 / 块级插入 |
+| `src/lib/markdownLineStart.ts` | 行首块级记号的识别与转义（粘贴判定与序列化共用） |
+| `src/lib/composerMarkdown.ts` | 序列化归一化（防御性转义、硬换行、caret 换算） |
+| `src/lib/markdownSource.ts` | 代码感知扫描、展示态还原、气泡硬换行 |
 
 ## 粘贴判定
 
@@ -57,9 +60,11 @@ draft 再解析回编辑器、气泡渲染 Markdown 时都靠它区分字面文�
 
 **段内硬换行**（Shift+Enter）的行需要额外补转义：序列化器只在文本块开头把
 `atBlockStart` 置为 true，`hardBreak` 序列化成 `\\\n` 之后仍属于同一段，`#` / `-` /
-`1.` 不会被转义。草稿再解析时（气泡、agent、回退后的编辑器）会把这类行当成标题 /
-列表 / 分隔线，编辑器与气泡因此显示不一致。`normalizeSerializedMarkdown()` 对
-`\\\n` 之后的行补行首转义（`\#` / `\-` / `1\.` / `\---`），围栏与行内代码不受影响。
+`1.` / `=` / `|` 不会被转义。草稿再解析时（气泡、agent、回退后的编辑器）会把这类行
+当成标题 / 列表 / 分隔线 / 表格，编辑器与气泡因此显示不一致。
+`normalizeSerializedMarkdown()` 对 `\\\n` 之后的行补行首转义（`\#` / `\-` / `\>` /
+`1\.` / `\===` / `\|`）；记号判定与转义共用 `src/lib/markdownLineStart.ts`，围栏与
+行内代码不受影响。
 
 用户气泡与编辑器一致，按 Markdown 渲染：无 token 的消息直接走 `MarkdownChat`，
 标题、粗体、围栏、列表都会渲染，转义由渲染器还原。带 skill / 引用 token 的消息

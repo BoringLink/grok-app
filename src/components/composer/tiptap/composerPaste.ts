@@ -19,6 +19,7 @@ import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
+import { looksLikeMarkdownBlockSource } from "@/lib/markdownLineStart";
 
 /** `doc.body` 内不携带语义的标签。 */
 const NEUTRAL_TAGS = new Set(["META", "TITLE", "DIV", "P", "BR", "SPAN"]);
@@ -54,20 +55,9 @@ const BLOCK_TAGS = new Set([
 ]);
 
 /**
- * 行首的块级记号。命中任意一条即视为 Markdown 块级源码。
- *
- * 单行 `# 话题` / `- 一句话` 与普通句子无法区分，因此只在多行内容里生效。
+ * 行首的块级记号由 `@/lib/markdownLineStart` 统一维护：粘贴判定和序列化防歧义
+ * 必须用同一份规则，否则会像 setext `===` / 表格 `|` 那样漂移。
  */
-const BLOCK_START_PATTERNS = [
-  /^ {0,3}#{1,6}(?:[ \t]|$)/, // ATX 标题
-  /^ {0,3}(?:```|~~~)/, // 围栏
-  /^ {0,3}>/, // 引用
-  /^ {0,3}[-*+][ \t]/, // 无序列表
-  /^ {0,3}\d{1,9}[.)][ \t]/, // 有序列表
-  /^ {0,3}\|/, // 表格行
-  /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/, // 分隔线
-  /^ {0,3}=+[ \t]*$/, // setext 下划线
-];
 
 /** 比较用文本：忽略一切空白差异。 */
 function comparableText(text: string): string {
@@ -83,34 +73,57 @@ export function normalizePastedMarkdown(text: string): string {
   return normalized.trim() ? normalized : "";
 }
 
+/** 剪贴板 HTML 的一次解析结果，三个判定共用。 */
+type ClipboardHtml = {
+  elements: Element[];
+  text: string;
+  hasOwnSlice: boolean;
+};
+
+function parseClipboardHtml(html: string): ClipboardHtml {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return {
+    elements: Array.from(doc.body.querySelectorAll("*")),
+    text: doc.body.textContent ?? "",
+    hasOwnSlice: doc.body.querySelector("[data-pm-slice]") !== null,
+  };
+}
+
+/** 元素里是否存在包壳之外的标签。 */
+function hasElementsOutside(
+  elements: Element[],
+  isWrapper: (element: Element) => boolean,
+): boolean {
+  return elements.some((element) => !isWrapper(element));
+}
+
+/** 纯文本包壳：无语义标签；带 style / class 的 `span` 视为有语义。 */
+function isPlainWrapperElement(element: Element): boolean {
+  if (!NEUTRAL_TAGS.has(element.tagName)) return false;
+  if (element.tagName !== "SPAN") return true;
+  return !element.hasAttribute("style") && !element.hasAttribute("class");
+}
+
+/** 源码包壳：允许外观标签、高亮 `span` 与 `code` / `pre`。 */
+function isSourceWrapperElement(element: Element): boolean {
+  return (
+    NEUTRAL_TAGS.has(element.tagName) ||
+    element.tagName === "SPAN" ||
+    SOURCE_TAGS.has(element.tagName)
+  );
+}
+
 /**
  * `text/html` 是否只是 `text/plain` 的包壳。
  *
  * 标签无语义、且文本内容与纯文本一致才算包壳；判据细节见
  * docs/llm-wiki/composer-markdown.md。
  */
-export function clipboardHtmlIsPlainWrapper(html: string, plain: string): boolean {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const elements = Array.from(doc.body.querySelectorAll("*"));
-  const hasSemantics = elements.some(
-    (el) =>
-      !NEUTRAL_TAGS.has(el.tagName) ||
-      (el.tagName === "SPAN" &&
-        (el.hasAttribute("style") || el.hasAttribute("class"))),
-  );
-  if (hasSemantics) return false;
-  const htmlText = comparableText(doc.body.textContent ?? "");
+function isPlainWrapper(parsed: ClipboardHtml, plain: string): boolean {
+  if (hasElementsOutside(parsed.elements, isPlainWrapperElement)) return false;
+  const htmlText = comparableText(parsed.text);
   if (!htmlText) return comparableText(plain).length > 0;
   return htmlText === comparableText(plain);
-}
-
-/**
- * 本编辑器复制时会在首个元素写 `data-pm-slice`，ProseMirror 靠它恢复完整 slice
- * （列表项、代码块等）。返回 `true` 表示这次粘贴归 ProseMirror 自己处理。
- */
-export function clipboardHtmlIsOwnSlice(html: string): boolean {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  return doc.body.querySelector("[data-pm-slice]") !== null;
 }
 
 /**
@@ -120,42 +133,43 @@ export function clipboardHtmlIsOwnSlice(html: string): boolean {
  * 代码高亮器会在 `code` 里塞 `span`，因此外观标签不算语义。要求包壳内的文本与
  * 纯文本完全一致，页面里"正文 + 行内代码"不会被误判成源码。
  */
+function isMarkdownSource(parsed: ClipboardHtml, plain: string): boolean {
+  if (hasElementsOutside(parsed.elements, isSourceWrapperElement)) return false;
+  const sourceText = comparableText(plain);
+  return parsed.elements.some(
+    (element) =>
+      SOURCE_TAGS.has(element.tagName) &&
+      comparableText(element.textContent ?? "") === sourceText,
+  );
+}
+
+/** 供测试与外部判定复用的单次解析包装。 */
+export function clipboardHtmlIsPlainWrapper(html: string, plain: string): boolean {
+  return isPlainWrapper(parseClipboardHtml(html), plain);
+}
+
+/** 本编辑器复制时会在首个元素写 `data-pm-slice`，靠它恢复完整 slice。 */
+export function clipboardHtmlIsOwnSlice(html: string): boolean {
+  return parseClipboardHtml(html).hasOwnSlice;
+}
+
+/** 供测试与外部判定复用的单次解析包装。 */
 export function clipboardHtmlIsMarkdownSource(
   html: string,
   plain: string,
 ): boolean {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const elements = Array.from(doc.body.querySelectorAll("*"));
-  const hasSemantics = elements.some(
-    (el) =>
-      !NEUTRAL_TAGS.has(el.tagName) &&
-      el.tagName !== "SPAN" &&
-      !SOURCE_TAGS.has(el.tagName),
-  );
-  if (hasSemantics) return false;
-  const sourceText = comparableText(plain);
-  return elements.some(
-    (el) =>
-      SOURCE_TAGS.has(el.tagName) &&
-      comparableText(el.textContent ?? "") === sourceText,
-  );
-}
-
-/**
- * 纯文本是否像一段 Markdown 块级源码：至少两行，且有一行以块级记号开头。
- *
- * 多行普通段落（例如网页上的两句话）不含块级记号，仍按行内处理。
- */
-export function looksLikeMarkdownBlockSource(markdown: string): boolean {
-  const lines = markdown.split("\n");
-  if (lines.length < 2) return false;
-  return lines.some((line) =>
-    BLOCK_START_PATTERNS.some((pattern) => pattern.test(line)),
-  );
+  return isMarkdownSource(parseClipboardHtml(html), plain);
 }
 
 /** 这次粘贴按哪种粒度解析 `text/plain`。 */
 export type ComposerPastePlan = "block" | "inline" | "none";
+
+/** 粘贴判定结果：粒度 + 归一化后的 Markdown 源码。 */
+export type PastedMarkdown = {
+  plan: ComposerPastePlan;
+  /** `plan === "none"` 时为 `null`，这次粘贴交给 ProseMirror 的 HTML 解析。 */
+  markdown: string | null;
+};
 
 /**
  * 决定粘贴的解析粒度。
@@ -166,15 +180,17 @@ export type ComposerPastePlan = "block" | "inline" | "none";
 export function planPastedMarkdown(
   plain: string,
   html: string | null,
-): ComposerPastePlan {
+): PastedMarkdown {
   const markdown = normalizePastedMarkdown(plain);
-  if (!markdown) return "none";
+  if (!markdown) return { plan: "none", markdown: null };
   if (html) {
-    if (clipboardHtmlIsOwnSlice(html)) return "none";
-    if (clipboardHtmlIsMarkdownSource(html, plain)) return "block";
-    if (!clipboardHtmlIsPlainWrapper(html, plain)) return "none";
+    const parsed = parseClipboardHtml(html);
+    if (parsed.hasOwnSlice) return { plan: "none", markdown: null };
+    if (isMarkdownSource(parsed, plain)) return { plan: "block", markdown };
+    if (!isPlainWrapper(parsed, plain)) return { plan: "none", markdown: null };
   }
-  return looksLikeMarkdownBlockSource(markdown) ? "block" : "inline";
+  const plan = looksLikeMarkdownBlockSource(markdown) ? "block" : "inline";
+  return { plan, markdown };
 }
 
 /** tiptap-markdown 在运行时挂到 `storage.markdown` 上的解析器（只取用到的部分）。 */
@@ -292,13 +308,12 @@ export const ComposerMarkdownPaste = Extension.create({
             if (!data) return false;
             const plain = data.getData("text/plain");
             const html = data.getData("text/html");
-            const plan = planPastedMarkdown(plain, html);
-            if (plan === "none") return false;
+            const { plan, markdown } = planPastedMarkdown(plain, html);
+            if (plan === "none" || !markdown) return false;
 
             const parser = (editor.storage as MarkdownParserStorage).markdown
               ?.parser;
             if (!parser?.parse) return false;
-            const markdown = normalizePastedMarkdown(plain);
             const inserted =
               plan === "block"
                 ? editor.commands.insertContentAt(

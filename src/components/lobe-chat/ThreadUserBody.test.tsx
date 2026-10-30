@@ -142,4 +142,20 @@ describe("user bubble renders like the composer", () => {
       "const a = 1;",
     );
   });
+
+  it("highlights find matches inside rendered Markdown", () => {
+    // Arrange
+    const { container } = render(
+      <UserMessageBody
+        content="**测试** 与普通文字"
+        scheduledLabel="Scheduled"
+        remoteImLabel="Remote IM"
+        locale="en"
+        findQuery="测试"
+      />,
+    );
+
+    // Assert
+    expect(container.querySelector("mark")?.textContent).toBe("测试");
+  });
 });
