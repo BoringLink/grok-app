@@ -23,21 +23,21 @@ export interface McpServerIconProps {
 
 export function McpServerIcon({ name, target }: McpServerIconProps) {
   const [icon, setIcon] = useState<McpIconResult | null>(() =>
-    peekMcpIcon(target),
+    peekMcpIcon(target, name),
   );
 
   useEffect(() => {
-    const cached = peekMcpIcon(target);
+    const cached = peekMcpIcon(target, name);
     setIcon(cached);
     if (cached) return;
     let cancelled = false;
-    void loadMcpIcon(target).then((result) => {
+    void loadMcpIcon(target, name).then((result) => {
       if (!cancelled && result) setIcon(result);
     });
     return () => {
       cancelled = true;
     };
-  }, [target]);
+  }, [name, target]);
 
   const dataUrl = icon?.dataUrl ?? null;
   const tone = mcpMonogramTone(name);

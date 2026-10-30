@@ -47,15 +47,16 @@ MCP 列表里每个远程服务器显示它所属厂商的方形标识，来源�
   解析、图片解码与落盘缓存，且必须复用既有的安全 HTTPS 客户端来防 SSRF。
 - **注册域**：引入 `psl` crate（Mozilla Public Suffix List），求注册域，避免把
   `foo.github.io` 误判成 `github.io`。
-- **候选顺序**：注册域根文档的 `<link rel="icon">` / `<link rel="apple-touch-icon">`
+- **候选顺序**：MCP 服务器 `initialize` 回复里的 `serverInfo.icons`（带配置鉴权头，
+  厂商自报，优先级最高）→ 注册域根文档的 `<link rel="icon">` / `<link rel="apple-touch-icon">`
   （按声明尺寸与格式优选）→ 注册域 `/favicon.ico` → 原始主机 `/favicon.ico`。
 - **安全边界**：只接受 `https`；拒绝带 userinfo 的 URL；DNS 解析结果必须为公网地址；
   单次响应体上限 512 KiB、总超时 8 秒；错误信息不回传原始 Target（可能含密钥）。
 - **输出格式**：位图缩到最长边 ≤64 px 的 PNG（只缩不放，保留透明通道）；SVG 原样保留并限制体积；以
   `data:image/...;base64,` 返回，前端 `<img>` 直接渲染。CSP 已允许 `data:`。
-- **缓存**：App 数据目录 `cache/mcp-icons/`，按注册域哈希命名；成功 30 天、失败 7 天；
+- **缓存**：App 数据目录 `cache/mcp-icons/`，按「注册域 + 服务器名」哈希命名；成功 30 天、失败 7 天；
   过期后重新解析，失败则继续用旧值。缓存条目只存域名与图标，不存 Target 原文。
-- **接口**：宿主命令 `mcp_icon_resolve(target)` 返回
+- **接口**：宿主命令 `mcp_icon_resolve(target, serverName)` 返回
   `{ dataUrl, domain, source: "site" | "favicon" | "none", fromCache }`；
   前端遇到 `none` 或命令失败时渲染字母徽标。
 - **前端边界**：新增纯函数模块承载「Target → 可解析 URL」「字母与配色」「请求去重缓存」，
@@ -80,14 +81,14 @@ MCP 列表里每个远程服务器显示它所属厂商的方形标识，来源�
 ## Out of Scope
 
 - 其他界面（MCP 状态弹窗、Doctor 报告、插件市场卡片）的图标。
-- 读取 MCP 规范 `serverInfo.icons`（需要连服务器握手）。
+- `stdio` 服务器的 `serverInfo.icons`：设置页不为图标启动子进程。
 - 随包内置品牌图标表。
 - 用户自定义上传图标。
 - 第三方图标服务（Google S2 / DuckDuckGo）。
 
 ## Further Notes
 
-- 远程 MCP 的 Target 可能是 OAuth 回调地址或带查询参数；缓存键与请求都只用注册域，
+- 远程 MCP 的 Target 可能是 OAuth 回调地址或带查询参数；缓存键与请求都只用注册域和服务器名，
   避免把查询参数写进磁盘。
 - 图标只是识别辅助；用户重命名服务器不会改变图标来源（来源是 Target）。
 - 失败结果也缓存，避免每次打开设置都重复请求 404 的厂商。

@@ -520,12 +520,22 @@ export async function inspectMcp(projectPath?: string | null) {
 export interface McpIconDto {
   dataUrl: string | null;
   domain: string | null;
-  source: "site" | "favicon" | "none";
+  /** `server` = declared by the MCP server's own `initialize` reply. */
+  source: "server" | "site" | "favicon" | "none";
   fromCache: boolean;
 }
 
-export async function mcpIconResolve(target: string) {
-  return invoke<McpIconDto>("mcp_icon_resolve", { target });
+/**
+ * Resolve a vendor icon for one MCP server.
+ *
+ * `serverName` lets the host attach the server's configured auth headers to a
+ * short `initialize` probe, so `serverInfo.icons` can win over site favicons.
+ */
+export async function mcpIconResolve(target: string, serverName?: string) {
+  return invoke<McpIconDto>("mcp_icon_resolve", {
+    target,
+    serverName: serverName?.trim() || null,
+  });
 }
 
 // ── Project inspect summary (`grok inspect --json`, secret-safe DTO) ────────

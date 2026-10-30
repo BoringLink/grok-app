@@ -59,6 +59,15 @@ describe("mcpIconRequestKey", () => {
     );
   });
 
+  it("separates two servers on the same host", () => {
+    expect(mcpIconRequestKey("https://mcp.example.com/a", "alpha")).not.toBe(
+      mcpIconRequestKey("https://mcp.example.com/b", "beta"),
+    );
+    expect(mcpIconRequestKey("https://mcp.example.com/a", "Alpha")).toBe(
+      mcpIconRequestKey("https://mcp.example.com/b", "alpha"),
+    );
+  });
+
   it("returns an empty key for unusable targets", () => {
     expect(mcpIconRequestKey("stdio://server")).toBe("");
   });
@@ -87,8 +96,12 @@ describe("mcpMonogramTone", () => {
 });
 
 describe("normalizeMcpIconResult", () => {
-  it("keeps a valid payload", () => {
+  it("keeps a valid payload, including a server-declared icon", () => {
     expect(normalizeMcpIconResult(ICON)).toEqual(ICON);
+    expect(normalizeMcpIconResult({ ...ICON, source: "server" })).toEqual({
+      ...ICON,
+      source: "server",
+    });
   });
 
   it("drops unknown sources and non-image data URLs", () => {

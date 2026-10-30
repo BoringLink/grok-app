@@ -14,6 +14,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
+use bytes::Bytes;
+use hyper::header::{HeaderMap, HeaderName, HeaderValue, ACCEPT, CONTENT_TYPE};
 use image::imageops::FilterType;
 use image::{DynamicImage, ImageFormat, ImageReader, Limits};
 use scraper::{Html, Selector};
@@ -21,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
 
+use crate::extensions::list_mcp_server_defs;
 use crate::paths;
 use crate::skin_net::{self, OriginPolicy};
 
@@ -38,12 +41,21 @@ const ICON_DECODE_MAX_ALLOC: u64 = 64 * 1024 * 1024;
 /// 整轮解析（站点文档 + 全部候选）的总预算；单次请求自身的超时更长，
 /// 这里靠外层 timeout 取消，避免慢域名拖住设置页。
 const RESOLVE_TOTAL_TIMEOUT: Duration = Duration::from_secs(8);
+/// `initialize` 只用来读 `serverInfo.icons`；服务器慢或要鉴权时尽快回落。
+const SERVER_INFO_TIMEOUT: Duration = Duration::from_secs(4);
+/// initialize 响应只需容纳 serverInfo，小体积足够。
+const SERVER_INFO_MAX_BYTES: usize = 64 * 1024;
+/// 服务器可以用 `data:` 直接内联图标；限制类型与体积后再交给 `<img>`。
+const SERVER_ICON_DATA_URL_MAX_BYTES: usize = 256 * 1024;
+const SERVER_ICON_MAX_COUNT: usize = 8;
 const SUCCESS_TTL_SECS: u64 = 30 * 24 * 60 * 60;
 const NONE_TTL_SECS: u64 = 7 * 24 * 60 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum McpIconSource {
+    /// MCP `initialize` 的 `serverInfo.icons`（厂商自报，优先级最高）。
+    Server,
     Site,
     Favicon,
     None,
@@ -71,6 +83,8 @@ impl McpIconResult {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct IconTarget {
+    /// 原始 Target URL，仅用于对 MCP 服务器做 `initialize`（不落盘、不打日志）。
+    url: String,
     host: String,
     domain: String,
 }
@@ -145,7 +159,11 @@ fn parse_target(target: &str) -> Option<IconTarget> {
     // 注册域必须被 PSL 认可。`https://github.io/mcp` 这类「主机名本身就是公共后缀」
     // 的 Target 会让域策略覆盖所有租户，直接拒绝而不是退化成 host。
     let domain = psl::domain_str(&host)?.to_ascii_lowercase();
-    Some(IconTarget { host, domain })
+    Some(IconTarget {
+        url: url.to_string(),
+        host,
+        domain,
+    })
 }
 
 /// 用 Public Suffix List 求注册域；列表不认识的 TLD 回退到主机名本身，
@@ -338,8 +356,11 @@ fn short_hash(value: &str) -> String {
         .collect()
 }
 
-fn cache_path_for(domain: &str) -> PathBuf {
-    paths::mcp_icons_dir().join(format!("{}.json", short_hash(domain)))
+/// 缓存按「域名 + 服务器名」定位：同一域名下两个服务器可以各自声明不同图标。
+/// 服务器名来自用户配置，不含 Target 的路径或查询参数。
+fn cache_path_for(domain: &str, server_name: Option<&str>) -> PathBuf {
+    let name = server_name.map(str::trim).unwrap_or("");
+    paths::mcp_icons_dir().join(format!("{}.json", short_hash(&format!("{domain}\0{name}"))))
 }
 
 fn read_cache(path: &Path) -> Option<CacheEntry> {
@@ -442,9 +463,187 @@ async fn download_icon_data_url(url: &str, domain: &str) -> Option<String> {
     icon_data_url(None, &bytes)
 }
 
-/// 候选顺序：站点声明的图标 → 注册域 `/favicon.ico` → 原始主机 `/favicon.ico`。
+fn is_allowed_server_icon_data_url(value: &str) -> bool {
+    const PREFIXES: &[&str] = &[
+        "data:image/png;base64,",
+        "data:image/jpeg;base64,",
+        "data:image/webp;base64,",
+        "data:image/svg+xml;base64,",
+        "data:image/x-icon;base64,",
+        "data:image/vnd.microsoft.icon;base64,",
+    ];
+    value.len() <= SERVER_ICON_DATA_URL_MAX_BYTES
+        && PREFIXES.iter().any(|prefix| value.starts_with(prefix))
+}
+
+fn icon_sources_from_json(value: &serde_json::Value) -> Vec<String> {
+    let icons = value
+        .get("result")
+        .and_then(|result| result.get("serverInfo"))
+        .and_then(|info| info.get("icons"))
+        .and_then(|icons| icons.as_array());
+    let Some(icons) = icons else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = Vec::new();
+    for icon in icons.iter().take(SERVER_ICON_MAX_COUNT) {
+        let Some(src) = icon.get("src").and_then(|src| src.as_str()).map(str::trim) else {
+            continue;
+        };
+        let allowed = if src.starts_with("data:image/") {
+            is_allowed_server_icon_data_url(src)
+        } else {
+            Url::parse(src)
+                .map(|url| {
+                    url.scheme() == "https"
+                        && url.host_str().is_some()
+                        && url.username().is_empty()
+                        && url.password().is_none()
+                })
+                .unwrap_or(false)
+        };
+        if allowed && !out.iter().any(|seen| seen == src) {
+            out.push(src.to_string());
+        }
+    }
+    out
+}
+
+/// MCP 服务器的 `initialize` 回复可能是普通 JSON，也可能是 SSE 帧。
+fn parse_server_icon_sources(body: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(body);
+    let trimmed = text.trim_start_matches('\u{feff}').trim_start();
+    if trimmed.starts_with('{') {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            return icon_sources_from_json(&value);
+        }
+    }
+    for line in text.lines() {
+        let Some(payload) = line.trim_start().strip_prefix("data:") else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(payload.trim()) else {
+            continue;
+        };
+        let icons = icon_sources_from_json(&value);
+        if !icons.is_empty() {
+            return icons;
+        }
+    }
+    Vec::new()
+}
+
+/// 从已保存的 MCP 配置里取该服务器的请求头（Authorization / x-api-key 等）。
+/// 这些头只放在这一次 initialize 请求里，不进入缓存或返回值。
+fn server_initialize_headers(server_name: Option<&str>) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    let name = server_name.map(str::trim).filter(|name| !name.is_empty());
+    let Some(name) = name else {
+        return headers;
+    };
+    let defs = list_mcp_server_defs(None);
+    let Some(def) = defs.iter().find(|def| def.name == name) else {
+        return headers;
+    };
+    for (key, value) in def.headers.iter().flatten() {
+        let Ok(header_name) = HeaderName::from_bytes(key.trim().as_bytes()) else {
+            continue;
+        };
+        let Ok(header_value) = HeaderValue::from_str(value.trim()) else {
+            continue;
+        };
+        headers.insert(header_name, header_value);
+    }
+    headers
+}
+
+/// 问 MCP 服务器自己要图标：`initialize` → `result.serverInfo.icons`。
+///
+/// 只对 https Target 生效（stdio 服务器需要真正启动进程，设置页不做这件事）。
+/// 未鉴权的服务器通常直接 401，调用方随后回落到站点图标。
+async fn declared_server_icons(server_name: Option<&str>, target: &IconTarget) -> Vec<String> {
+    let Ok(url) = Url::parse(&target.url) else {
+        return Vec::new();
+    };
+    // 配置读取可能触发 `grok mcp list`，放到阻塞线程池，避免占住异步 worker。
+    let name = server_name.map(str::to_string);
+    let mut headers =
+        tokio::task::spawn_blocking(move || server_initialize_headers(name.as_deref()))
+            .await
+            .unwrap_or_default();
+    headers
+        .entry(CONTENT_TYPE)
+        .or_insert(HeaderValue::from_static("application/json"));
+    headers.entry(ACCEPT).or_insert(HeaderValue::from_static(
+        "application/json, text/event-stream",
+    ));
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "grok-app",
+                "version": env!("CARGO_PKG_VERSION"),
+            },
+        },
+    })
+    .to_string();
+
+    let mut response = match crate::safe_https_client::shared()
+        .post_json(&url, headers, Bytes::from(body), SERVER_INFO_TIMEOUT)
+        .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            tracing::debug!(error = %error, "mcp_icon: initialize skipped");
+            return Vec::new();
+        }
+    };
+    if !response.status().is_success() {
+        return Vec::new();
+    }
+    let mut bytes: Vec<u8> = Vec::new();
+    loop {
+        match response.chunk().await {
+            Ok(Some(chunk)) => {
+                if bytes.len() + chunk.len() > SERVER_INFO_MAX_BYTES {
+                    return Vec::new();
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            Ok(None) => break,
+            Err(_) => return Vec::new(),
+        }
+    }
+    parse_server_icon_sources(&bytes)
+}
+
+/// 服务器自报的图标可能是 `data:` 内联，也可能在厂商 CDN 上。
+async fn server_icon_data_url(src: &str) -> Option<String> {
+    if src.starts_with("data:image/") {
+        return is_allowed_server_icon_data_url(src).then(|| src.to_string());
+    }
+    let bytes = skin_net::safe_https_get(src, OriginPolicy::AnyHttps, ICON_MAX_BYTES, None)
+        .await
+        .ok()?;
+    icon_data_url(None, &bytes)
+}
+
+/// 候选顺序：`serverInfo.icons`（厂商自报）→ 站点声明的图标 →
+/// 注册域 `/favicon.ico` → 原始主机 `/favicon.ico`。
 /// 只有注册域根文档能提供 `<link>` 候选；MCP 子域通常没有站点页面。
-async fn resolve_remote(target: &IconTarget) -> Option<(String, McpIconSource)> {
+async fn resolve_remote(
+    target: &IconTarget,
+    server_name: Option<&str>,
+) -> Option<(String, McpIconSource)> {
+    for src in declared_server_icons(server_name, target).await {
+        if let Some(data_url) = server_icon_data_url(&src).await {
+            return Some((data_url, McpIconSource::Server));
+        }
+    }
     let mut candidates: Vec<(String, McpIconSource)> = Vec::new();
     if let Some((base, html)) = fetch_site_document(&target.domain).await {
         candidates.extend(
@@ -479,11 +678,11 @@ fn result_from_cache(entry: CacheEntry) -> McpIconResult {
     }
 }
 
-pub async fn resolve_mcp_icon(target: &str) -> McpIconResult {
+pub async fn resolve_mcp_icon(target: &str, server_name: Option<&str>) -> McpIconResult {
     let Some(parsed) = parse_target(target) else {
         return McpIconResult::unresolved();
     };
-    let path = cache_path_for(&parsed.domain);
+    let path = cache_path_for(&parsed.domain, server_name);
     let now = unix_now_secs();
     let cached = read_cache(&path);
     if let Some(entry) = cached.as_ref() {
@@ -492,10 +691,11 @@ pub async fn resolve_mcp_icon(target: &str) -> McpIconResult {
         }
     }
 
-    let resolved = tokio::time::timeout(RESOLVE_TOTAL_TIMEOUT, resolve_remote(&parsed))
-        .await
-        .ok()
-        .flatten();
+    let resolved =
+        tokio::time::timeout(RESOLVE_TOTAL_TIMEOUT, resolve_remote(&parsed, server_name))
+            .await
+            .ok()
+            .flatten();
 
     match resolved {
         Some((data_url, source)) => {
@@ -611,6 +811,55 @@ mod tests {
         ] {
             assert!(parse_target(bad).is_none(), "must reject {bad}");
         }
+    }
+
+    #[test]
+    fn server_info_icons_keep_only_https_and_image_data_urls() {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "serverInfo": {
+                    "name": "context7",
+                    "icons": [
+                        { "src": "https://context7.com/logo.svg", "mimeType": "image/svg+xml" },
+                        { "src": "data:image/png;base64,AAAA" },
+                        { "src": "http://insecure.example/icon.png" },
+                        { "src": "javascript:alert(1)" },
+                        { "src": "https://context7.com/logo.svg" },
+                        { "src": "data:text/html;base64,AAAA" }
+                    ]
+                }
+            }
+        })
+        .to_string();
+        assert_eq!(
+            parse_server_icon_sources(body.as_bytes()),
+            vec![
+                "https://context7.com/logo.svg".to_string(),
+                "data:image/png;base64,AAAA".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn server_info_icons_parse_sse_frames() {
+        let body = "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"serverInfo\":{\"icons\":[{\"src\":\"https://linear.app/icon.png\"}]}}}\n\n";
+        assert_eq!(
+            parse_server_icon_sources(body.as_bytes()),
+            vec!["https://linear.app/icon.png".to_string()]
+        );
+    }
+
+    #[test]
+    fn server_info_icons_ignore_missing_or_malformed_payloads() {
+        assert!(parse_server_icon_sources(b"").is_empty());
+        assert!(parse_server_icon_sources(b"not json").is_empty());
+        assert!(parse_server_icon_sources(b"{\"result\":{}}").is_empty());
+        assert!(
+            parse_server_icon_sources(b"{\"result\":{\"serverInfo\":{\"icons\":\"nope\"}}}")
+                .is_empty()
+        );
     }
 
     #[test]
