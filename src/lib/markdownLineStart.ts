@@ -1,4 +1,12 @@
-/** Markdown 粘贴来源的行首块级记号。 */
+/**
+ * Markdown 行首块级记号：粘贴来源判定与序列化防歧义共用同一份规则。
+ *
+ * 两处需求不同、规则必须同步：
+ * - 粘贴判定要知道一段纯文本像不像 Markdown 源码；
+ * - 序列化归一化要让硬换行后的行在再解析时保持字面量。
+ *
+ * 规则分开维护时两侧已经漂移过（setext `===` 与表格 `|` 漏转义），因此集中在这里。
+ */
 
 /** 行首块级记号，允许至多 3 个缩进空格。 */
 const BLOCK_START_PATTERNS = [
@@ -13,7 +21,7 @@ const BLOCK_START_PATTERNS = [
 ];
 
 /** 该行以 Markdown 块级记号开头。 */
-function isMarkdownBlockStart(line: string): boolean {
+export function isMarkdownBlockStart(line: string): boolean {
   return BLOCK_START_PATTERNS.some((pattern) => pattern.test(line));
 }
 
@@ -28,3 +36,19 @@ export function looksLikeMarkdownBlockSource(markdown: string): boolean {
   return lines.length >= 2 && lines.some(isMarkdownBlockStart);
 }
 
+/**
+ * 让一行在再解析时保持字面量：在行首块级记号前补反斜杠。
+ *
+ * `#` / `-` / `+` / `>` / `|` / `=` 都是可转义标点；有序列表转义分隔符
+ * （`1\.`），转义数字会让反斜杠显示出来。
+ */
+export function escapeMarkdownLineStart(line: string): string {
+  if (!isMarkdownBlockStart(line)) return line;
+  const indent = /^ {0,3}/.exec(line)?.[0] ?? "";
+  const rest = line.slice(indent.length);
+  const ordered = /^(\d{1,9})([.)])(?:[ \t]|$)/.exec(rest);
+  if (ordered) {
+    return `${indent}${ordered[1]}\\${rest.slice(ordered[1].length)}`;
+  }
+  return `${indent}\\${rest}`;
+}

@@ -50,9 +50,11 @@ const UserBodyText = memo(function UserBodyText({
 }) {
   const chatLookup = useAttachedChatLookup();
   const fileLabels = useMemo(() => getFilePathCardLabels(locale), [locale]);
-  const hydrated = hydrateDisplayContent(
-    parseAttachmentsFromContent(content).text,
+  const hydrated = useMemo(
+    () => hydrateDisplayContent(parseAttachmentsFromContent(content).text),
+    [content],
   );
+  const markdown = useMemo(() => hardenUserLineBreaks(hydrated), [hydrated]);
   const segs = parseStoredContentWithRefs(hydrated);
   if (
     !segs.some(
@@ -73,7 +75,7 @@ const UserBodyText = memo(function UserBodyText({
           findQuery={findQuery}
           findActiveOccurrence={findActiveOccurrence ?? null}
         >
-          {hardenUserLineBreaks(hydrated)}
+          {markdown}
         </MarkdownChat>
       </div>
     );
