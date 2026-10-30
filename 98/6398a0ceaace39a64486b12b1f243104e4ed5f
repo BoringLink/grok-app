@@ -1,0 +1,31 @@
+src/components/lobe-chat/ThreadUserBody.tsx
+  s_dc927bcc9af342::t_396746e1291879 24
+  s_dc927bcc9af342::t_f7be66e462b6b0 150-152
+docs/llm-wiki/composer-markdown.md
+  s_dc927bcc9af342::t_8dbffa9c9b3056 51-57
+src/lib/markdownSource.test.ts
+  s_dc927bcc9af342::t_26b32e15f59a14 1-65
+src/components/lobe-chat/ThreadUserBody.test.tsx
+  s_dc927bcc9af342::t_39969716470d04 1-48
+src/lib/markdownSource.ts
+  s_dc927bcc9af342::t_e022b3898043f8 1-104
+src/lib/composerMarkdown.ts
+  s_dc927bcc9af342::t_f29517d39b720e 17
+  s_dc927bcc9af342::t_881ae3bc1b56fc 226-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "986398a0ceaace39a64486b12b1f243104e4ed5f",
+  "prompts": {},
+  "sessions": {
+    "s_dc927bcc9af342": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1879c-1df9-7101-b097-c0817f084de0",
+        "model": "unknown"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
