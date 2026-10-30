@@ -1,0 +1,30 @@
+src/components/lobe-chat/ThreadUserBody.test.tsx
+  s_dc927bcc9af342::t_f08b97e3d5c108 146-168
+src/components/lobe-chat/ThreadUserBody.tsx
+  s_dc927bcc9af342::t_b31362cc825b96 75-76
+src/components/lobe-chat/CodeBlock.tsx
+  s_dc927bcc9af342::t_81964ef825d71d 116-123
+  s_dc927bcc9af342::t_3a6263ea600b89 114-115,124-125
+  s_dc927bcc9af342::t_023d425205f28e 38,47-48
+src/components/lobe-chat/MarkdownChat.tsx
+  s_dc927bcc9af342::t_2367d778619b97 290-296
+  s_dc927bcc9af342::t_56cf1c3748285a 315-318
+  s_dc927bcc9af342::t_a6733b4546b3f2 764-765
+  s_dc927bcc9af342::t_a2be9bcf12ee30 707,727
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "00aed12f749e5f02fa59bbaea82b592c736f977f",
+  "prompts": {},
+  "sessions": {
+    "s_dc927bcc9af342": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1879c-1df9-7101-b097-c0817f084de0",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
