@@ -1,0 +1,54 @@
+docs/llm-wiki/composer-markdown.md
+  s_dc927bcc9af342::t_8dbffa9c9b3056 51-52,62
+  s_dc927bcc9af342::t_8d7b369928dcb7 53-61
+src/lib/composerMarkdown.ts
+  s_dc927bcc9af342::t_f29517d39b720e 17
+  s_dc927bcc9af342::t_94246a7fd4f7a9 218-220,225
+  s_dc927bcc9af342::t_881ae3bc1b56fc 224,226
+src/components/lobe-chat/ThreadUserBody.test.tsx
+  s_dc927bcc9af342::t_b4eb0561a4c0f3 10,19,22-24,28,31-35,38,40,43,46-64
+  s_dc927bcc9af342::t_39969716470d04 1-9,11-18,20-21,25-27,29-30,36-37,39,41-42,44-45,65-66
+src/lib/markdownSource.ts
+  s_dc927bcc9af342::t_e022b3898043f8 1-104
+src/components/composer/index.test.tsx
+  s_dc927bcc9af342::t_c89a312f6a40d8 83-96
+src/components/lobe-chat/lobe-chat.part1.css
+  s_dc927bcc9af342::t_4283286eda4f2a 368,371-374,379-380
+  s_dc927bcc9af342::t_c1449b1d148241 369-370,375-378
+src/components/composer/tiptap/ComposerEditorTiptap.tsx
+  s_dc927bcc9af342::t_2d5f46a786fd6e 67-83
+  s_dc927bcc9af342::t_b3b73547cd3556 144-148,153
+src/lib/composerMarkdown.test.ts
+  s_dc927bcc9af342::t_797aa54ff1f5ab 197-201
+  s_dc927bcc9af342::t_bb97d9f01691aa 119-120,126
+  s_dc927bcc9af342::t_ccea2652ca419e 292-294,301-303,306-307,314
+src/components/composer/tiptap/composerPaste.test.ts
+  s_dc927bcc9af342::t_c5b249d4e9ecd8 338-341
+src/components/composer/index.tsx
+  s_dc927bcc9af342::t_d6cf8e3262eef0 56-61
+src/lib/markdownSource.test.ts
+  s_dc927bcc9af342::t_26b32e15f59a14 1-65
+src/components/lobe-chat/ThreadUserBody.tsx
+  s_dc927bcc9af342::t_396746e1291879 24
+  s_dc927bcc9af342::t_c36c42d1e906cb 63-76
+  s_dc927bcc9af342::t_469a65a27771a1 25-26
+  s_dc927bcc9af342::t_3a964697b4490c 125,133
+  s_dc927bcc9af342::t_1750636ab7dac1 154-155
+  s_dc927bcc9af342::t_ef232443ca2514 165-168
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "e9022adf017035fc072f3018569cfc42e486a13d",
+  "prompts": {},
+  "sessions": {
+    "s_dc927bcc9af342": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1879c-1df9-7101-b097-c0817f084de0",
+        "model": "unknown"
+      },
+      "human_author": null
+    }
+  }
+}
