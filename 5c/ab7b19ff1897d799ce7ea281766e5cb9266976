@@ -1,0 +1,40 @@
+src/lib/mcpIcon.ts
+  s_023a6b3c2b5c98::t_61eff57033dbfc 13-14,16-20,62,68,82
+  s_023a6b3c2b5c98::t_a45796d75b34b8 135-137,148
+docs/adr/0006-mcp-icons-from-vendor-registrable-domain.md
+  s_023a6b3c2b5c98::t_839c12872a503a 25-26
+src/lib/mcpIcon.test.ts
+  s_023a6b3c2b5c98::t_e51f559e82d77e 84,137-161
+src-tauri/src/skin_net.rs
+  s_023a6b3c2b5c98::t_a2429c1b14cff1 51-54
+  s_023a6b3c2b5c98::t_0cca8f43ae85ee 100-107
+  s_023a6b3c2b5c98::t_0bd2b8126b2c7b 549-569
+src/styles/extensions-ref.part2.css
+  s_023a6b3c2b5c98::t_ad0a7dba6bf3a0 64-70,74,78,82,86,90
+src-tauri/src/mcp_icon.rs
+  s_023a6b3c2b5c98::t_a3c388265fd325 182-193,214-219,233
+  s_023a6b3c2b5c98::t_a10b211b31d4a1 385-405,410,430,432
+  s_023a6b3c2b5c98::t_98ed21aafd2524 633,645,648,652,669,679-688
+  s_023a6b3c2b5c98::t_5f22232e96db9b 464-470,517-518
+  s_023a6b3c2b5c98::t_4713490621500d 515-516
+  s_023a6b3c2b5c98::t_4178ee27f2fa40 449,454,457
+  s_023a6b3c2b5c98::t_eb01f9e41f506b 601-603,612-629
+  s_023a6b3c2b5c98::t_792c6bc7b5b02c 97,133-136
+  s_023a6b3c2b5c98::t_15df181b2a2e3b 693-704
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "5cab7b19ff1897d799ce7ea281766e5cb9266976",
+  "prompts": {},
+  "sessions": {
+    "s_023a6b3c2b5c98": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a18c37-bacc-7363-a2c4-bb2c3cf29ad3",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
