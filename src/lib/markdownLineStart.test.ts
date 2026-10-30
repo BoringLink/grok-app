@@ -1,29 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   escapeMarkdownLineStart,
-  isMarkdownBlockStart,
   looksLikeMarkdownBlockSource,
 } from "./markdownLineStart";
-
-describe("isMarkdownBlockStart", () => {
-  it("识别行首块级记号", () => {
-    expect(isMarkdownBlockStart("# 标题")).toBe(true);
-    expect(isMarkdownBlockStart("```js")).toBe(true);
-    expect(isMarkdownBlockStart("> 引用")).toBe(true);
-    expect(isMarkdownBlockStart("- 今天去超市买菜")).toBe(true);
-    expect(isMarkdownBlockStart("1. 这不是清单")).toBe(true);
-    expect(isMarkdownBlockStart("| a | b |")).toBe(true);
-    expect(isMarkdownBlockStart("---")).toBe(true);
-    expect(isMarkdownBlockStart("===")).toBe(true);
-    expect(isMarkdownBlockStart(">不是引用")).toBe(true);
-  });
-
-  it("普通文字不算块级记号", () => {
-    expect(isMarkdownBlockStart("a _b_ c")).toBe(false);
-    expect(isMarkdownBlockStart("1.5 倍")).toBe(false);
-    expect(isMarkdownBlockStart("+5 元")).toBe(false);
-  });
-});
 
 describe("looksLikeMarkdownBlockSource", () => {
   it("单行普通文字不算块级源码", () => {
@@ -45,6 +24,7 @@ describe("looksLikeMarkdownBlockSource", () => {
     expect(looksLikeMarkdownBlockSource("```js\nconst a = 1;\n```")).toBe(true);
     expect(looksLikeMarkdownBlockSource("| a | b |\n| --- | --- |")).toBe(true);
     expect(looksLikeMarkdownBlockSource("标题\n===")).toBe(true);
+    expect(looksLikeMarkdownBlockSource(">引用\n正文")).toBe(true);
   });
 });
 
@@ -58,6 +38,8 @@ describe("escapeMarkdownLineStart", () => {
     expect(escapeMarkdownLineStart("| a | b |")).toBe("\\| a | b |");
     expect(escapeMarkdownLineStart("---")).toBe("\\---");
     expect(escapeMarkdownLineStart("===")).toBe("\\===");
+    expect(escapeMarkdownLineStart("***")).toBe("\\*\\*\\*");
+    expect(escapeMarkdownLineStart("_ _ _")).toBe("\\_ \\_ \\_");
   });
 
   it("有序列表转义分隔符", () => {

@@ -72,8 +72,8 @@ const UserBodyText = memo(function UserBodyText({
         <MarkdownChat
           locale={locale}
           pathCards={false}
-          mermaid={false}
-          codeCopy={false}
+          renderMermaid={false}
+          showCodeCopy={false}
           findQuery={findQuery}
           findActiveOccurrence={findActiveOccurrence ?? null}
         >
