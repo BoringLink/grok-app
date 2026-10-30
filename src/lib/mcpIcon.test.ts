@@ -9,6 +9,7 @@ vi.mock("@/lib/api", () => ({ mcpIconResolve }));
 vi.mock("@/lib/api/host", () => ({ isDesktopHost }));
 
 import {
+  MCP_MONOGRAM_TONES,
   loadMcpIcon,
   mcpIconRequestKey,
   mcpIconTargetUrl,
@@ -81,7 +82,7 @@ describe("mcpMonogramTone", () => {
     const first = mcpMonogramTone("Context7");
     expect(mcpMonogramTone("context7")).toBe(first);
     expect(first).toBeGreaterThanOrEqual(0);
-    expect(first).toBeLessThan(5);
+    expect(first).toBeLessThan(MCP_MONOGRAM_TONES);
   });
 });
 

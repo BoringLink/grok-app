@@ -1,4 +1,4 @@
-//! MCP 厂商标识：从 Target 的注册域抓取站点图标，统一成 64×64 PNG / SVG data URL。
+//! MCP 厂商标识：从 Target 的注册域抓取站点图标，统一成最长边 ≤64 px 的 PNG / SVG data URL。
 //!
 //! 图标只是识别辅助，因此所有失败都收敛成 [`McpIconSource::None`]，不向上抛错。
 //! Target 可能带 OAuth 回调参数或密钥，所以缓存键与网络请求都只用注册域，
@@ -142,7 +142,9 @@ fn parse_target(target: &str) -> Option<IconTarget> {
     if !valid_host {
         return None;
     }
-    let domain = registrable_domain(&host);
+    // 注册域必须被 PSL 认可。`https://github.io/mcp` 这类「主机名本身就是公共后缀」
+    // 的 Target 会让域策略覆盖所有租户，直接拒绝而不是退化成 host。
+    let domain = psl::domain_str(&host)?.to_ascii_lowercase();
     Some(IconTarget { host, domain })
 }
 
@@ -298,7 +300,7 @@ fn png_data_url_from_icon(bytes: &[u8]) -> Option<String> {
     Some(format!("data:image/png;base64,{}", BASE64.encode(png)))
 }
 
-/// SVG 原样保留（矢量在任何尺寸都清晰），位图统一转 64×64 PNG。
+/// SVG 原样保留（矢量在任何尺寸都清晰），位图统一缩到最长边 ≤64 px 的 PNG。
 fn icon_data_url(content_type: Option<&str>, bytes: &[u8]) -> Option<String> {
     if bytes.is_empty() {
         return None;
@@ -601,6 +603,9 @@ mod tests {
             "https://127.0.0.1/mcp",
             "https://10.0.0.5/mcp",
             "https://[::1]/mcp",
+            // 主机名本身就是公共后缀：域策略没有可限制的范围
+            "https://github.io/mcp",
+            "https://co.uk/mcp",
             "not a url",
             "",
         ] {
