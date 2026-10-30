@@ -44,6 +44,51 @@
   color: var(--text-primary);
 }
 
+/* MCP 行：厂商站点图标与字母徽标 */
+.ext-ref-row__icon-img {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  object-fit: contain;
+}
+
+.ext-ref-row__icon-mono {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: var(--ext-mcp-mono-bg, #4b5563);
+}
+
+.ext-ref-row__icon-mono--tone-0 {
+  --ext-mcp-mono-bg: #4f5bd5;
+}
+
+.ext-ref-row__icon-mono--tone-1 {
+  --ext-mcp-mono-bg: #0f8a68;
+}
+
+.ext-ref-row__icon-mono--tone-2 {
+  --ext-mcp-mono-bg: #b45309;
+}
+
+.ext-ref-row__icon-mono--tone-3 {
+  --ext-mcp-mono-bg: #be185d;
+}
+
+.ext-ref-row__icon-mono--tone-4 {
+  --ext-mcp-mono-bg: #0369a1;
+}
+
+.ext-ref-row__icon-mono--tone-5 {
+  --ext-mcp-mono-bg: #6d28d9;
+}
+
 .ext-ref-row__body {
   flex: 1 1 auto;
   min-width: 0;
