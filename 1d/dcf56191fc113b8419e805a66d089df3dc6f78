@@ -1,0 +1,46 @@
+src/components/ExtensionsPanel.tsx
+  s_023a6b3c2b5c98::t_54248499cb5cc9 2657-2661
+src/lib/mcpIcon.test.ts
+  s_023a6b3c2b5c98::t_fd1c717c10e8c2 114-125
+src/components/McpServerIcon.test.tsx
+  s_023a6b3c2b5c98::t_e2a311f07743e3 60-74
+src-tauri/src/mcp_icon.rs
+  s_023a6b3c2b5c98::t_a6a1effb8adb7d 661-670,673-677,679-688,700
+  s_023a6b3c2b5c98::t_3ba3f8eae92844 6-7
+  s_023a6b3c2b5c98::t_1920b86c9beaa2 546-561,563,565,568,570,583-592
+  s_023a6b3c2b5c98::t_bed6a33aef6b9d 605-610
+  s_023a6b3c2b5c98::t_e60e00a35bdb39 474-476
+  s_023a6b3c2b5c98::t_31941a07035a1f 671-672
+  s_023a6b3c2b5c98::t_df37269310dfa7 1-5,8,11-12,14-15
+  s_023a6b3c2b5c98::t_bf155c826d5a99 504
+src-tauri/src/safe_https_client/tests.rs
+  s_023a6b3c2b5c98::t_cf5a5c023c314c 222-240
+  s_023a6b3c2b5c98::t_f7cb7545741a40 1
+src-tauri/src/safe_https_client.rs
+  s_023a6b3c2b5c98::t_09a0856d345a20 981-982
+src/components/McpServerIcon.tsx
+  s_023a6b3c2b5c98::t_2859f6145b2852 41,49
+  s_023a6b3c2b5c98::t_caf45bfec51a0b 22-26,29-33
+src-tauri/src/safe_https_client/post.rs
+  s_023a6b3c2b5c98::t_391670c0a162c5 1-35
+src/lib/mcpIcon.ts
+  s_023a6b3c2b5c98::t_8ea839c633df03 94,97-98
+src-tauri/src/mcp_icon/tests.rs
+  s_023a6b3c2b5c98::t_879c6cedd5da0f 8-11,14-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "1ddcf56191fc113b8419e805a66d089df3dc6f78",
+  "prompts": {},
+  "sessions": {
+    "s_023a6b3c2b5c98": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a18c37-bacc-7363-a2c4-bb2c3cf29ad3",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
