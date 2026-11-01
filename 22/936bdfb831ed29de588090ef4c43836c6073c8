@@ -1,0 +1,21 @@
+src/components/composer/tiptap/composerPaste.test.ts
+  s_8f3025db336253::t_67017ae0ae2d3b 12
+src/components/composer/tiptap/composerPasteTestUtils.ts
+  s_8f3025db336253::t_1bead22329d6c7 1-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "22936bdfb831ed29de588090ef4c43836c6073c8",
+  "prompts": {},
+  "sessions": {
+    "s_8f3025db336253": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a18bb8-b574-7501-90f8-52a9d1e6fba5",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+src/components/composer/tiptap/composerPaste.test.ts
+  s_8f3025db336253::t_67017ae0ae2d3b 12
+  s_8f3025db336253::t_94a8f8d88ba59a 685
+src/components/composer/tiptap/composerExtensions.ts
+  s_8f3025db336253::t_7c593278abea96 22,255-256
+  s_8f3025db336253::t_c516b6443be79d 309
+docs/llm-wiki/composer-markdown.md
+  s_8f3025db336253::t_b803cbba486ba0 19-30,66-68,72-73
+src/components/composer/tiptap/composerPaste.ts
+  s_8f3025db336253::t_617ee20ab0818a 18-22,26-28
+  s_8f3025db336253::t_0b05e1da013596 270-271,273-278,280-283,286-287,295-296,304-312,314-315,317,319,327-328,330-332,335-336,338,342-343
+  s_8f3025db336253::t_9fb1d66b2a18ab 356
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "297e7aa0709bc9e34e05eac9e1493ce5e4943446",
+  "prompts": {},
+  "sessions": {
+    "s_8f3025db336253": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a18bb8-b574-7501-90f8-52a9d1e6fba5",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}

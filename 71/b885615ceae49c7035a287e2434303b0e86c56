@@ -1,0 +1,22 @@
+docs/llm-wiki/composer-markdown.md
+  s_8f3025db336253::t_b803cbba486ba0 19-30,66-68,73-74
+  s_8f3025db336253::t_bd1c9bb8b370e9 69-72,75-76
+  s_8f3025db336253::t_3f6f1aa8627624 115,117-118
+  s_8f3025db336253::t_aad38ec433d994 131-132,148-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "71b885615ceae49c7035a287e2434303b0e86c56",
+  "prompts": {},
+  "sessions": {
+    "s_8f3025db336253": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a18bb8-b574-7501-90f8-52a9d1e6fba5",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
