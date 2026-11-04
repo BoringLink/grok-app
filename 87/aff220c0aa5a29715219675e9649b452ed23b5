@@ -1,0 +1,41 @@
+src-tauri/src/remote_im/app_sessions.rs
+  s_2aec3426f54010::t_94ae2489fae5af 215,273-289
+  s_2aec3426f54010::t_85b8b6f71148e6 145,238
+src-tauri/src/remote_im/mod.rs
+  s_2aec3426f54010::t_3f8451c92ea2fb 18
+src-tauri/src/attachments/store.rs
+  s_2aec3426f54010::t_5d8ab6f1150c56 676-680
+src-tauri/src/remote_im/outbound_media.rs
+  s_2aec3426f54010::t_f3e2005a62e559 1-31,34,39-102,104-151
+  s_2aec3426f54010::t_defc87d0a7095e 32-33,35-38
+src-tauri/src/attachments/mod.rs
+  s_2aec3426f54010::t_ac6174754a524e 12-13
+src-tauri/src/remote_im/outbound.rs
+  s_2aec3426f54010::t_002873fe87b548 6,9-10,117-150
+src-tauri/src/remote_im/engine.rs
+  s_2aec3426f54010::t_3dfbd4413bca75 1730,1983-1988
+  s_2aec3426f54010::t_14618e7ddc36f8 17,26-28
+  s_2aec3426f54010::t_45357eecfba253 1541-1693
+  s_2aec3426f54010::t_01cd30f3e0c9e6 1833-1839,1841-1842,1844-1847,1849,1852-1856,1865
+  s_2aec3426f54010::t_50ecf386795f4b 1727,1832,1840,1843,1848,1850-1851,1860-1861
+  s_2aec3426f54010::t_e7cc57468bec50 1731
+src-tauri/src/remote_im/channels/feishu.rs
+  s_2aec3426f54010::t_df097041a90555 1337-1339
+  s_2aec3426f54010::t_9f39ce2c7f37f4 1340-1583
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "87aff220c0aa5a29715219675e9649b452ed23b5",
+  "prompts": {},
+  "sessions": {
+    "s_2aec3426f54010": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1a151-335f-7030-b745-3da0438ecaca",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
