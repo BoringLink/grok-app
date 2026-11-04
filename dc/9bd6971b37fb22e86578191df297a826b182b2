@@ -1,0 +1,21 @@
+src-tauri/src/remote_im/engine.rs
+  s_2aec3426f54010::t_62d47944750eca 1591-1592
+src-tauri/src/remote_im/channels/feishu.rs
+  s_2aec3426f54010::t_850ac467c70880 1354,1371-1372
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "dc9bd6971b37fb22e86578191df297a826b182b2",
+  "prompts": {},
+  "sessions": {
+    "s_2aec3426f54010": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1a151-335f-7030-b745-3da0438ecaca",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
