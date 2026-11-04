@@ -1,0 +1,48 @@
+src/lib/imageSrc.test.ts
+  s_2aec3426f54010::t_f4477851e03261 3,40
+  s_2aec3426f54010::t_382a2408825c4f 15-39
+src/lib/mapStoredMessages.ts
+  s_2aec3426f54010::t_04353f8f8aa5b7 44-46,60-63,65-67
+  s_2aec3426f54010::t_48ee119d3bcc25 108-110
+src/lib/mapStoredMessages.test.ts
+  s_2aec3426f54010::t_621fe8a45a9c3d 30-57
+src/lib/attachments.ts
+  s_2aec3426f54010::t_4a43fdc7b525a7 24-28,46-47
+  s_2aec3426f54010::t_8df8238f6523f2 896-897
+src/lib/session/types.ts
+  s_2aec3426f54010::t_5d0aad0348234f 41-43
+src/lib/sessionJournalHydrate.test.ts
+  s_2aec3426f54010::t_f23d03fa2bb51c 114-130
+src/lib/attachments.test.ts
+  s_2aec3426f54010::t_54b84af7fbdb70 47-55
+src/components/AttachmentCard.tsx
+  s_2aec3426f54010::t_ff6eb815d22638 246-249,256-257,268-278
+  s_2aec3426f54010::t_0a38753c7c7474 18,76-78,80,95-108,140
+  s_2aec3426f54010::t_ff4cd3bd0963d3 24,207
+  s_2aec3426f54010::t_8162c8f0408518 164,166-167,178,187,196,205-206,208-209,214-219
+src-tauri/src/media_server.rs
+  s_2aec3426f54010::t_0ad4f56162ee25 22,28,169-173
+  s_2aec3426f54010::t_0856d5674a22a3 108-116,387-454
+src/components/lobe-chat/UserAttachments.tsx
+  s_2aec3426f54010::t_a1b41cff3d58c0 42-44,62
+src/lib/sessionJournalHydrate.ts
+  s_2aec3426f54010::t_395b764119f22c 156-157,178-179
+src/lib/imageSrc.ts
+  s_2aec3426f54010::t_1a00ff0180095e 141-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "88b0463cf0fb63cb60eb75279615e17ccce7ad7a",
+  "prompts": {},
+  "sessions": {
+    "s_2aec3426f54010": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1a151-335f-7030-b745-3da0438ecaca",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
