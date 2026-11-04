@@ -1,0 +1,44 @@
+src-tauri/src/commands/session_p2.rs
+  s_2aec3426f54010::t_34c872dac4be09 43
+src-tauri/src/attachments/store.rs
+  s_2aec3426f54010::t_1ef510127941ca 142,150-152,180,185,207,270
+  s_2aec3426f54010::t_ee65530eb13c51 219,313,317,321-322
+  s_2aec3426f54010::t_c361d7c542d6c3 7-11
+  s_2aec3426f54010::t_4bd396f512466e 1-6,12-141,143-149,153-179,181-184,186-206,208-218,220-269,271-312,314-316,318-320,323-366,370-522,524-592,594-681,717-943,966-985
+  s_2aec3426f54010::t_a81478113acf6d 593,682-716
+  s_2aec3426f54010::t_8ca3a99290ff1d 944-965
+  s_2aec3426f54010::t_6b3dcd326ea20c 523
+  s_2aec3426f54010::t_23c8eb67892610 367-368
+  s_2aec3426f54010::t_b61c892f8df5e0 369
+src-tauri/src/attachments/mod.rs
+  s_2aec3426f54010::t_a613f417960ac0 9-10
+  s_2aec3426f54010::t_8414fe162d6b0a 1-8,11-14
+src-tauri/src/mirror/rpc.rs
+  s_2aec3426f54010::t_d2928e829c19da 450
+src-tauri/Cargo.toml
+  s_2aec3426f54010::t_b392f859155f3a 40
+src-tauri/src/session_manager/types.rs
+  s_2aec3426f54010::t_a570b65c1461f0 1801,2098
+src-tauri/src/lib.rs
+  s_2aec3426f54010::t_cb44d785eeff90 12-13
+src-tauri/src/store.rs
+  s_2aec3426f54010::t_8a5b93180ee0a4 1032,1035-1041,1043,1047-1050
+src-tauri/src/cli_sessions.rs
+  s_2aec3426f54010::t_b9a60688b4debb 1341
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "be51209c5ad3a500b4db9dcb801836901b1d6360",
+  "prompts": {},
+  "sessions": {
+    "s_2aec3426f54010": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1a151-335f-7030-b745-3da0438ecaca",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
