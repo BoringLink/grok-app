@@ -1,0 +1,41 @@
+docs/plans/2026-11-04-remote-attachment-store-DESIGN.md
+  s_2aec3426f54010::t_499d69a2ae19f2 3,93,101-102,557
+  s_2aec3426f54010::t_1ac189749a2dac 655,668
+src-tauri/src/attachments/store.rs
+  s_2aec3426f54010::t_cb4aacf648730d 678-681,686-689
+  s_2aec3426f54010::t_51c874f39127e3 12
+  s_2aec3426f54010::t_babb09ef026740 814
+  s_2aec3426f54010::t_2bb9f3fe467e51 339,349-350,356
+  s_2aec3426f54010::t_9d513efe64baf1 65-66
+src-tauri/src/attachments/mod.rs
+  s_2aec3426f54010::t_2bf18a39c988ee 28-36,38-42
+docs/adr/0006-remote-attachment-store.md
+  s_2aec3426f54010::t_ea139adffa956c 1-35
+CHANGELOG.md
+  s_2aec3426f54010::t_520c21a499c642 17,21
+  s_2aec3426f54010::t_e88c4d21c5d2b6 16,18,20,22
+docs/llm-wiki/remote-im.md
+  s_2aec3426f54010::t_e0f9e1831f613d 616-618,621,623-624,626-632
+src-tauri/src/attachments/gc.rs
+  s_2aec3426f54010::t_2e5e331ef2a3cd 210,229-239
+docs/llm-wiki/media-delivery.md
+  s_2aec3426f54010::t_596fddea53f840 34-51
+src-tauri/src/lib.rs
+  s_2aec3426f54010::t_8e83490b827fef 590
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "a4c1a31a01cab3f5c1bb0e58bdd5a9d59188aa99",
+  "prompts": {},
+  "sessions": {
+    "s_2aec3426f54010": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1a151-335f-7030-b745-3da0438ecaca",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
