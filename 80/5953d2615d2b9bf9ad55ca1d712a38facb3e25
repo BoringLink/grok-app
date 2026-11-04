@@ -1,0 +1,45 @@
+src-tauri/src/remote_im/channels/feishu.rs
+  s_2aec3426f54010::t_1d0ee4d264fe30 342-343,501
+  s_2aec3426f54010::t_9f733f18232fee 408,417,426,435,437,445,584-592,600,622,644
+  s_2aec3426f54010::t_ff8dd6330aac00 7-8,11,13-14
+  s_2aec3426f54010::t_12192a1b4b88fa 1522-1523,1581
+src-tauri/src/attachments/store.rs
+  s_2aec3426f54010::t_11134b7e82f090 489-514,517-538,547,567
+src-tauri/src/attachments/mod.rs
+  s_2aec3426f54010::t_5b73453c834b60 12-13
+  s_2aec3426f54010::t_597d998131c2df 9-10,15-21
+src-tauri/src/remote_im/engine.rs
+  s_2aec3426f54010::t_3b017160f08e67 1571-1574
+  s_2aec3426f54010::t_2445bb99220332 23,25,27,244,246-248,294,346,386-394
+  s_2aec3426f54010::t_36ea5846e7e07b 1599,1675-1682
+  s_2aec3426f54010::t_bd3e00d3d3649a 1543-1544
+  s_2aec3426f54010::t_09962dea1cab60 1428-1537
+  s_2aec3426f54010::t_79236450e9dccc 1803-1817
+src-tauri/src/remote_im/types.rs
+  s_2aec3426f54010::t_635a6aae6a74e6 3,7,23-72
+  s_2aec3426f54010::t_64f31d38621314 87-89
+src-tauri/src/store.rs
+  s_2aec3426f54010::t_7d392db1a04399 334-337
+src-tauri/src/remote_im/app_sessions.rs
+  s_2aec3426f54010::t_4e957c08c900aa 366,383-395
+  s_2aec3426f54010::t_2e3183481364e4 165-166,186-187,196
+  s_2aec3426f54010::t_e22909775195be 5,144
+  s_2aec3426f54010::t_365756393df57a 159,214-235,239,243
+  s_2aec3426f54010::t_23757b720ee39c 288-296,308,310-316
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.51-trip",
+  "base_commit_sha": "805953d2615d2b9bf9ad55ca1d712a38facb3e25",
+  "prompts": {},
+  "sessions": {
+    "s_2aec3426f54010": {
+      "agent_id": {
+        "tool": "grok",
+        "id": "01a1a151-335f-7030-b745-3da0438ecaca",
+        "model": "auto(free)"
+      },
+      "human_author": "Soren <boringlink@outlook.com>"
+    }
+  }
+}
