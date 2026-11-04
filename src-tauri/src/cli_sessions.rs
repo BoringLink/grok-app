@@ -1371,6 +1371,7 @@ pub fn parse_at_path_attachments(content: &str) -> (String, Vec<MessageAttachmen
                     path,
                     name,
                     is_dir: false,
+                    ..Default::default()
                 });
             }
             continue;
