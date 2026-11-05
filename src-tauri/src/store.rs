@@ -331,6 +331,10 @@ pub struct SessionMeta {
     /// `[a-z0-9_-]`. Metadata only — no sidebar badge in this slice.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
+    /// Remote-control channel (`feishu`, `telegram`, …) that touched this chat.
+    /// Attachment GC marks only sessions with this marker.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_im: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1029,13 +1033,25 @@ pub struct SecretsFile {
 }
 
 /// File/image card persisted with a chat message (user attach or agent image_gen).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageAttachmentStored {
+    /// AttachmentStore UUIDv7. Present for remote-control media; absent on
+    /// legacy path rows and remote URLs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    /// Legacy / agent-output path, or a remote `http(s)` URL. Empty when the
+    /// row is backed by an attachment id.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub path: String,
+    #[serde(default)]
     pub name: String,
     #[serde(default)]
     pub is_dir: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2057,6 +2073,7 @@ pub fn create_session(
     let id = Uuid::new_v4().to_string();
     let now = Utc::now();
     let meta = SessionMeta {
+        remote_im: None,
         id: id.clone(),
         project_id,
         title: title.unwrap_or_else(|| "New chat".into()),
@@ -2160,6 +2177,7 @@ pub fn delete_session(id: &str) -> Result<(), String> {
     })?;
     let dir = session_dir(id);
     let _ = fs::remove_dir_all(dir);
+    crate::attachments::schedule_gc();
     Ok(())
 }
 
@@ -2862,6 +2880,8 @@ pub fn fork_session(
     meta.effort = source.effort.clone();
     meta.mode = source.mode.clone();
     meta.permission_policy = source.permission_policy.clone();
+    // Forked remote chats keep the GC marker so shared refs stay marked.
+    meta.remote_im = source.remote_im.clone();
     // Worktree linkage follows the source project/cwd story.
     meta.worktree_path = source.worktree_path.clone();
     meta.worktree_branch = source.worktree_branch.clone();
@@ -4594,6 +4614,7 @@ mod tests {
 
     fn sample_session(id: &str, pinned: bool, updated: DateTime<Utc>) -> SessionMeta {
         SessionMeta {
+            remote_im: None,
             id: id.into(),
             project_id: None,
             title: id.into(),
@@ -5114,6 +5135,7 @@ mod tests {
         sessions.insert(
             0,
             SessionMeta {
+                remote_im: None,
                 id: sid.clone(),
                 project_id: Some(GENERAL_PROJECT_ID.into()),
                 title: "legacy".into(),

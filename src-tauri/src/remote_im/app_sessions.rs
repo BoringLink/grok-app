@@ -2,7 +2,8 @@
 
 use super::context::ContextCompactSnapshot;
 use super::control_plane::{AppSessionEntry, PendingMode, ScopeBinding};
-use crate::store::{self, ChatMessageStored, SessionMeta};
+use crate::attachments::AttachmentRef;
+use crate::store::{self, ChatMessageStored, MessageAttachmentStored, SessionMeta};
 use chrono::Utc;
 use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter};
@@ -140,6 +141,8 @@ pub fn sync_turn_to_app(
     assistant_text: &str,
     is_error: bool,
     channel: &str,
+    attachments: &[AttachmentRef],
+    assistant_attachments: &[AttachmentRef],
 ) -> ScopeBinding {
     let agent_id = binding
         .agent_session_id
@@ -154,13 +157,14 @@ pub fn sync_turn_to_app(
 
     if app_id.is_none() {
         // Create a new App chat so /r and the sidebar see this IM conversation.
-        let title = title_from_prompt(user_prompt, channel);
+        let title = title_for_turn(user_prompt, channel, attachments);
         match store::create_session(binding.project_id.clone(), Some(title), false) {
             Ok(mut meta) => {
                 if let Some(aid) = agent_id {
                     meta.agent_session_id = Some(aid.to_string());
-                    let _ = store::update_session_meta(&meta);
                 }
+                meta.remote_im = Some(channel.to_string());
+                let _ = store::update_session_meta(&meta);
                 app_id = Some(meta.id.clone());
                 next.local_session_id = meta.id.clone();
                 tracing::info!(
@@ -180,7 +184,8 @@ pub fn sync_turn_to_app(
         // stream's newer agent-session binding from another process.
         let id_for_update = id.clone();
         let project_id = binding.project_id.clone();
-        let title = title_from_prompt(user_prompt, channel);
+        let title = title_for_turn(user_prompt, channel, attachments);
+        let channel = channel.to_string();
         let _ = store::update_sessions_index(move |list| {
             if let Some(s) = list.iter_mut().find(|s| s.id == id_for_update) {
                 if let Some(aid) = agent_id {
@@ -189,6 +194,7 @@ pub fn sync_turn_to_app(
                 if s.project_id.is_none() {
                     s.project_id = project_id;
                 }
+                s.remote_im = Some(channel);
                 // First meaningful title: replace default "New chat" / placeholder
                 if is_placeholder_title(&s.title) {
                     s.title = title;
@@ -206,14 +212,20 @@ pub fn sync_turn_to_app(
 
     // Journal: user + assistant rows (App UI reads messages.json)
     let now = Utc::now();
+    let stored_attachments = attachment_rows(attachments);
+    let content = if user_prompt.trim().is_empty() {
+        format!("[Remote IM · {channel}]")
+    } else {
+        format!("[Remote IM · {channel}]\n{user_prompt}")
+    };
     let user_msg = ChatMessageStored {
         id: uuid::Uuid::new_v4().to_string(),
         role: "user".into(),
-        content: format!("[Remote IM · {channel}]\n{user_prompt}"),
+        content,
         thought: None,
         created_at: now,
         is_error: false,
-        attachments: None,
+        attachments: stored_attachments,
         marker: None,
     };
     let asst_msg = ChatMessageStored {
@@ -223,7 +235,7 @@ pub fn sync_turn_to_app(
         thought: None,
         created_at: Utc::now(),
         is_error,
-        attachments: None,
+        attachments: attachment_rows(assistant_attachments),
         marker: None,
     };
     if let Err(e) = store::append_message(&sid, user_msg) {
@@ -258,6 +270,36 @@ fn find_app_session_id(local_id: &str, agent_id: Option<&str>) -> Option<String>
     None
 }
 
+fn attachment_rows(attachments: &[AttachmentRef]) -> Option<Vec<MessageAttachmentStored>> {
+    if attachments.is_empty() {
+        return None;
+    }
+    Some(
+        attachments
+            .iter()
+            .map(|attachment| MessageAttachmentStored {
+                id: Some(attachment.id.clone()),
+                path: String::new(),
+                name: attachment.name.clone(),
+                is_dir: false,
+                kind: Some(attachment.kind.as_str().to_string()),
+                size: Some(attachment.size),
+            })
+            .collect(),
+    )
+}
+
+/// Resolve the App session id for an existing binding without creating one.
+/// Used to check the 512 MB budget before the turn; a brand-new chat starts at 0.
+pub fn resolve_app_session_id(binding: &ScopeBinding) -> Option<String> {
+    let agent_id = binding
+        .agent_session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    find_app_session_id(binding.local_session_id.as_str(), agent_id)
+}
+
 fn is_placeholder_title(t: &str) -> bool {
     // Remote IM adds one default of its own on top of the app-wide names.
     // The shared matcher covers every shipped locale; this copy knew only
@@ -267,8 +309,19 @@ fn is_placeholder_title(t: &str) -> bool {
     crate::session_title::is_placeholder_title(t) || t.starts_with("Remote IM")
 }
 
-fn title_from_prompt(prompt: &str, channel: &str) -> String {
+fn title_for_turn(prompt: &str, channel: &str, attachments: &[AttachmentRef]) -> String {
     let one_line = prompt.lines().next().unwrap_or(prompt).trim();
+    // Media-only turns have an empty body; use the first attachment name so the
+    // sidebar stays distinguishable. Legacy `请查看附件` rows use the same rule.
+    if one_line.is_empty() || one_line == "请查看附件" {
+        if let Some(name) = attachments
+            .first()
+            .map(|a| a.name.trim())
+            .filter(|n| !n.is_empty())
+        {
+            return name.chars().take(48).collect();
+        }
+    }
     let clipped: String = one_line.chars().take(48).collect();
     if clipped.is_empty() {
         format!("Remote IM · {channel}")
@@ -314,6 +367,7 @@ mod tests {
             workspace_capability: None,
             provider_id: None,
             source: None,
+            remote_im: None,
         }
     }
 
@@ -327,5 +381,21 @@ mod tests {
         let f = map_and_filter(&list, Some("p1"));
         assert_eq!(f.len(), 1);
         assert_eq!(f[0].agent_session_id.as_deref(), Some("ag1"));
+    }
+
+    #[test]
+    fn media_only_title_uses_attachment_name() {
+        let attachments = vec![AttachmentRef {
+            id: "0190c3d2-0000-7000-8000-000000000000".into(),
+            name: "screenshot.png".into(),
+            kind: crate::attachments::AttachmentKind::Image,
+            size: 10,
+        }];
+        assert_eq!(title_for_turn("", "feishu", &attachments), "screenshot.png");
+        assert_eq!(
+            title_for_turn("这张图怎么处理？", "feishu", &attachments),
+            "这张图怎么处理？"
+        );
+        assert_eq!(title_for_turn("", "feishu", &[]), "Remote IM · feishu");
     }
 }

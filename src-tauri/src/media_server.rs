@@ -24,8 +24,10 @@ use axum::http::{header, HeaderMap, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
+
+mod attachment;
 use rand::RngCore;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 
@@ -156,6 +158,12 @@ pub async fn start() -> Result<MediaServerHandle, String> {
         .route(
             "/v1/media",
             get(media_get).head(media_get).options(media_options),
+        )
+        .route(
+            "/v1/attachment/{id}",
+            get(attachment::attachment_get)
+                .head(attachment::attachment_get)
+                .options(media_options),
         )
         .route("/v1/health", get(health))
         .fallback(fallback_not_found)
