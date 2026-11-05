@@ -287,6 +287,7 @@ pub fn app_invoke_handler(
         commands::media_image_thumb,
         commands::attachment_open,
         commands::attachments_gc,
+        commands::mcp_icon_resolve,
         // ── Git, worktrees & PR hub ──
         commands::git_file_diff,
         commands::git_status,

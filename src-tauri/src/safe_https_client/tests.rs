@@ -1,3 +1,4 @@
+use super::post::reject_redirect;
 use super::*;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
@@ -218,11 +219,31 @@ fn no_proxy_matches_domains_ips_cidr_and_optional_ports() {
 }
 
 #[test]
+fn post_json_treats_redirects_as_blocked() {
+    for status in [
+        StatusCode::MOVED_PERMANENTLY,
+        StatusCode::FOUND,
+        StatusCode::SEE_OTHER,
+        StatusCode::TEMPORARY_REDIRECT,
+        StatusCode::PERMANENT_REDIRECT,
+    ] {
+        assert!(
+            reject_redirect(status).is_err(),
+            "{status} must not be followed with caller credentials"
+        );
+    }
+    assert_eq!(
+        reject_redirect(StatusCode::OK).expect("200 passes"),
+        StatusCode::OK
+    );
+}
+
+#[test]
 fn request_keeps_the_original_http_host() {
     let uri = "https://cdn.example:8443/image.jpg".parse().unwrap();
     let mut headers = HeaderMap::new();
     headers.insert(HOST, HeaderValue::from_static("forged.example"));
-    let request = build_get_request(uri, headers).unwrap();
+    let request = build_request(hyper::Method::GET, uri, headers, Bytes::new()).unwrap();
     assert_eq!(request.headers().get(HOST).unwrap(), "cdn.example:8443");
 }
 
@@ -235,7 +256,8 @@ fn request_rejects_caller_supplied_proxy_authorization() {
         HeaderValue::from_static("Basic sentinel-proxy-credential"),
     );
 
-    let error = build_get_request(uri, headers).expect_err("proxy credentials must stay hop-only");
+    let error = build_request(hyper::Method::GET, uri, headers, Bytes::new())
+        .expect_err("proxy credentials must stay hop-only");
 
     assert_eq!(error.kind(), SafeHttpsErrorKind::Blocked);
 }
