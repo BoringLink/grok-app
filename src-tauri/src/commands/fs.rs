@@ -652,6 +652,18 @@ pub async fn attachments_gc() -> Result<crate::attachments::GcReport, String> {
         .map_err(|e| format!("attachment gc task: {e}"))?
 }
 
+/// 解析 MCP Target 所属厂商的图标（站点 `<link>` → `/favicon.ico`）。
+///
+/// 永不失败：非法或不可达的 Target 返回 `source: "none"`，由列表回退到字母徽标。
+/// Target 原文不会进入缓存、日志或返回值，只有注册域会。
+#[tauri::command]
+pub async fn mcp_icon_resolve(
+    target: String,
+    server_name: Option<String>,
+) -> crate::mcp_icon::McpIconResult {
+    crate::mcp_icon::resolve_mcp_icon(&target, server_name.as_deref()).await
+}
+
 /// Open a file or folder with the OS default application.
 ///
 /// Spawn is fully detached (null stdio, no wait). Holding a pipe or waiting on

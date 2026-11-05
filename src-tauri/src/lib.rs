@@ -94,6 +94,7 @@ mod editors;
 mod error;
 
 mod extensions;
+mod mcp_icon;
 mod mcp_oauth;
 mod plugin_auth_transport;
 mod plugin_mcp;
