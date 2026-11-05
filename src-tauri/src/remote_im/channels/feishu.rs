@@ -3,6 +3,8 @@
 use super::super::outbound::{http_client, opt_str, secret_or_opt};
 use super::super::pb_frame::{decode_frame, encode_frame, Frame, Header};
 use super::super::types::{ChannelInstance, IncomingMessage};
+pub use super::feishu_upload::send_media;
+use crate::remote_im::i18n::MessageKey;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -86,168 +88,201 @@ async fn run_once(
     let mut ping_iv = tokio::time::interval(Duration::from_millis(ping_interval_ms.max(10_000)));
     ping_iv.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
+    // Media downloads run on a worker so a slow 50 MB attachment cannot stall
+    // the WS read loop (heartbeat / pong / next ACK). One worker keeps message
+    // order; it exits when this connection drops the sender.
+    let (media_tx, media_rx) = mpsc::channel::<super::feishu_media::ParsedInbound>(16);
+    {
+        let worker_inst = inst.clone();
+        let worker_tx = tx.clone();
+        tokio::spawn(async move {
+            super::feishu_media::run_media_worker(worker_inst, media_rx, worker_tx).await;
+        });
+    }
+
     // fragment cache: message_id -> (sum, parts)
     #[allow(clippy::type_complexity)]
     let mut fragments: HashMap<String, (usize, Vec<Option<Vec<u8>>>)> = HashMap::new();
 
     loop {
         tokio::select! {
-            _ = cancel.changed() => {
-                if *cancel.borrow() {
-                    let _ = write.close().await;
-                    return Ok(());
+                _ = cancel.changed() => {
+                    if *cancel.borrow() {
+                        let _ = write.close().await;
+                        return Ok(());
+                    }
                 }
-            }
-            _ = ping_iv.tick() => {
-                let frame = Frame {
-                    seq_id: 0,
-                    log_id: 0,
-                    service: service_id,
-                    method: FRAME_CONTROL,
-                    headers: vec![Header { key: "type".into(), value: "ping".into() }],
-                    ..Default::default()
-                };
-                let bin = encode_frame(&frame);
-                if write.send(Message::Binary(bin.into())).await.is_err() {
-                    return Err("ws ping send failed".into());
+                _ = ping_iv.tick() => {
+                    let frame = Frame {
+                        seq_id: 0,
+                        log_id: 0,
+                        service: service_id,
+                        method: FRAME_CONTROL,
+                        headers: vec![Header { key: "type".into(), value: "ping".into() }],
+                        ..Default::default()
+                    };
+                    let bin = encode_frame(&frame);
+                    if write.send(Message::Binary(bin.into())).await.is_err() {
+                        return Err("ws ping send failed".into());
+                    }
                 }
-            }
-            msg = read.next() => {
-                match msg {
-                    Some(Ok(Message::Binary(b))) => {
-                        let frame = decode_frame(&b).map_err(|e| format!("frame decode: {e}"))?;
-                        let headers: HashMap<String, String> = frame
-                            .headers
-                            .iter()
-                            .map(|h| (h.key.clone(), h.value.clone()))
-                            .collect();
-                        let ty = headers.get("type").map(|s| s.as_str()).unwrap_or("");
-                        if frame.method == FRAME_CONTROL {
-                            continue;
-                        }
-                        if frame.method != FRAME_DATA || ty != "event" {
-                            continue;
-                        }
-                        let payload = frame.payload.clone().unwrap_or_default();
-                        let merged = merge_payload(&mut fragments, &headers, payload);
-                        // Peek event type before ACK so card.action.trigger gets a toast body
-                        // (Feishu client otherwise shows timeout / failed interaction).
-                        let peeked: Option<Value> = merged.as_ref().and_then(|b| {
-                            serde_json::from_str(&String::from_utf8_lossy(b)).ok()
-                        });
-                        let is_card = peeked
-                            .as_ref()
-                            .map(|e| {
-                                e.pointer("/header/event_type")
-                                    .and_then(|x| x.as_str())
-                                    .unwrap_or("")
-                                    .contains("card.action")
-                                    || e.pointer("/event/action").is_some()
-                            })
-                            .unwrap_or(false);
-                        let resp_bytes = if is_card {
-                            serde_json::to_vec(&json!({
-                                "toast": {
-                                    "type": "info",
-                                    "content": "已收到"
-                                }
-                            }))
-                            .unwrap_or_else(|_| br#"{"code":200}"#.to_vec())
-                        } else {
-                            serde_json::to_vec(&json!({ "code": 200 })).unwrap_or_default()
-                        };
-                        let mut ack_headers = frame.headers.clone();
-                        ack_headers.push(Header {
-                            key: "biz_rt".into(),
-                            value: "1".into(),
-                        });
-                        let ack = Frame {
-                            seq_id: frame.seq_id,
-                            log_id: frame.log_id,
-                            service: service_id,
-                            method: FRAME_DATA,
-                            headers: ack_headers,
-                            payload: Some(resp_bytes),
-                            ..Default::default()
-                        };
-                        let _ = write
-                            .send(Message::Binary(encode_frame(&ack).into()))
-                            .await;
-                        if let Some(bytes) = merged {
-                            let text = String::from_utf8_lossy(&bytes);
-                            let event: Value = serde_json::from_str(&text).unwrap_or(json!({}));
-                            // Card action callback (card.action.trigger)
-                            if let Some(content) = card_action_to_content(&event) {
-                                let (chat_id, sender) = card_action_ids(&event);
-                                let chat_id = if chat_id.is_empty() {
-                                    if !sender.is_empty() {
-                                        sender.clone()
-                                    } else {
-                                        "card".into()
+                msg = read.next() => {
+                    match msg {
+                        Some(Ok(Message::Binary(b))) => {
+                            let frame = decode_frame(&b).map_err(|e| format!("frame decode: {e}"))?;
+                            let headers: HashMap<String, String> = frame
+                                .headers
+                                .iter()
+                                .map(|h| (h.key.clone(), h.value.clone()))
+                                .collect();
+                            let ty = headers.get("type").map(|s| s.as_str()).unwrap_or("");
+                            if frame.method == FRAME_CONTROL {
+                                continue;
+                            }
+                            if frame.method != FRAME_DATA || ty != "event" {
+                                continue;
+                            }
+                            let payload = frame.payload.clone().unwrap_or_default();
+                            let merged = merge_payload(&mut fragments, &headers, payload);
+                            // Peek event type before ACK so card.action.trigger gets a toast body
+                            // (Feishu client otherwise shows timeout / failed interaction).
+                            let peeked: Option<Value> = merged.as_ref().and_then(|b| {
+                                serde_json::from_str(&String::from_utf8_lossy(b)).ok()
+                            });
+                            let is_card = peeked
+                                .as_ref()
+                                .map(|e| {
+                                    e.pointer("/header/event_type")
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("")
+                                        .contains("card.action")
+                                        || e.pointer("/event/action").is_some()
+                                })
+                                .unwrap_or(false);
+                            let resp_bytes = if is_card {
+                                serde_json::to_vec(&json!({
+                                    "toast": {
+                                        "type": "info",
+                                        "content": "已收到"
                                     }
-                                } else {
-                                    chat_id
-                                };
-                                tracing::info!(
-                                    instance = %inst.id,
-                                    %chat_id,
-                                    %sender,
-                                    %content,
-                                    "feishu card.action.trigger"
-                                );
-                                if let Err(e) = tx
-                                    .send(IncomingMessage {
-                                        channel: inst.channel.clone(),
-                                        instance_id: inst.id.clone(),
-                                        message_id: event
-                                            .pointer("/event/context/open_message_id")
-                                            .or_else(|| event.pointer("/header/event_id"))
-                                            .and_then(|x| x.as_str())
-                                            .unwrap_or("")
-                                            .into(),
-                                        chat_id,
-                                        chat_type: "p2p".into(),
-                                        sender_id: sender,
-                                        content,
-                                        mentioned_bot: true,
-                                        thread_id: None,                                    })
-                                    .await
-                                {
-                                    tracing::error!(
+                                }))
+                                .unwrap_or_else(|_| br#"{"code":200}"#.to_vec())
+                            } else {
+                                serde_json::to_vec(&json!({ "code": 200 })).unwrap_or_default()
+                            };
+                            let mut ack_headers = frame.headers.clone();
+                            ack_headers.push(Header {
+                                key: "biz_rt".into(),
+                                value: "1".into(),
+                            });
+                            let ack = Frame {
+                                seq_id: frame.seq_id,
+                                log_id: frame.log_id,
+                                service: service_id,
+                                method: FRAME_DATA,
+                                headers: ack_headers,
+                                payload: Some(resp_bytes),
+                                ..Default::default()
+                            };
+                            let _ = write
+                                .send(Message::Binary(encode_frame(&ack).into()))
+                                .await;
+                            if let Some(bytes) = merged {
+                                let text = String::from_utf8_lossy(&bytes);
+                                let event: Value = serde_json::from_str(&text).unwrap_or(json!({}));
+                                // Card action callback (card.action.trigger)
+                                if let Some(content) = card_action_to_content(&event) {
+                                    let (chat_id, sender) = card_action_ids(&event);
+                                    let chat_id = if chat_id.is_empty() {
+                                        if !sender.is_empty() {
+                                            sender.clone()
+                                        } else {
+                                            "card".into()
+                                        }
+                                    } else {
+                                        chat_id
+                                    };
+                                    tracing::info!(
                                         instance = %inst.id,
-                                        err = %e,
-                                        "feishu: engine channel closed — card action dropped"
+                                        %chat_id,
+                                        %sender,
+                                        %content,
+                                        "feishu card.action.trigger"
                                     );
-                                }
-                            } else if let Some(incoming) = parse_im_event(inst, &event) {
-                                tracing::info!(
-                                    instance = %inst.id,
-                                    chat = %incoming.chat_id,
-                                    content_len = incoming.content.len(),
-                                    preview = %incoming.content.chars().take(40).collect::<String>(),
-                                    "feishu inbound message"
-                                );
-                                if let Err(e) = tx.send(incoming).await {
-                                    tracing::error!(
-                                        instance = %inst.id,
-                                        err = %e,
-                                        "feishu: engine channel closed — message dropped"
-                                    );
+                                    if let Err(e) = tx
+                                        .send(IncomingMessage {
+        staged_attachments: Vec::new(),
+        attachment_note: None,                                            channel: inst.channel.clone(),
+                                            instance_id: inst.id.clone(),
+                                            message_id: event
+                                                .pointer("/event/context/open_message_id")
+                                                .or_else(|| event.pointer("/header/event_id"))
+                                                .and_then(|x| x.as_str())
+                                                .unwrap_or("")
+                                                .into(),
+                                            chat_id,
+                                            chat_type: "p2p".into(),
+                                            sender_id: sender,
+                                            content,
+                                            mentioned_bot: true,
+                                            thread_id: None,                                    })
+                                        .await
+                                    {
+                                        tracing::error!(
+                                            instance = %inst.id,
+                                            err = %e,
+                                            "feishu: engine channel closed — card action dropped"
+                                        );
+                                    }
+                                } else if let Some(parsed) = super::feishu_media::parse_im_event(inst, &event) {
+                                    // Hand off to the media worker; the WS loop keeps
+                                    // reading heartbeats and the next events.
+                                    match media_tx.try_send(parsed) {
+                                        Ok(()) => {}
+                                        Err(mpsc::error::TrySendError::Full(mut parsed)) => {
+                                            // Never stall the socket on a slow disk: forward
+                                            // the message without its attachments.
+                                            if !parsed.media.is_empty() {
+                                                super::feishu_media::push_media_failure(
+                                                    &mut parsed.message.attachment_note,
+                                                    super::feishu_media::bridge_copy(MessageKey::AttachmentQueueFull),
+                                                );
+                                            }
+                                            let message = parsed.message;
+                                            tracing::warn!(
+                                                instance = %inst.id,
+                                                chat = %message.chat_id,
+                                                "feishu media queue full — forwarding without attachments"
+                                            );
+                                            if let Err(e) = tx.send(message).await {
+                                                tracing::error!(
+                                                    instance = %inst.id,
+                                                    err = %e,
+                                                    "feishu: engine channel closed — message dropped"
+                                                );
+                                            }
+                                        }
+                                        Err(mpsc::error::TrySendError::Closed(_)) => {
+                                            tracing::error!(
+                                                instance = %inst.id,
+                                                "feishu: media worker closed — message dropped"
+                                            );
+                                        }
+                                    }
                                 }
                             }
                         }
+                        Some(Ok(Message::Ping(p))) => {
+                            let _ = write.send(Message::Pong(p)).await;
+                        }
+                        Some(Ok(Message::Close(_))) | None => {
+                            return Ok(());
+                        }
+                        Some(Ok(_)) => {}
+                        Some(Err(e)) => return Err(format!("ws read: {e}")),
                     }
-                    Some(Ok(Message::Ping(p))) => {
-                        let _ = write.send(Message::Pong(p)).await;
-                    }
-                    Some(Ok(Message::Close(_))) | None => {
-                        return Ok(());
-                    }
-                    Some(Ok(_)) => {}
-                    Some(Err(e)) => return Err(format!("ws read: {e}")),
                 }
             }
-        }
     }
 }
 
@@ -289,150 +324,6 @@ fn merge_payload(
     } else {
         None
     }
-}
-
-fn parse_im_event(inst: &ChannelInstance, root: &Value) -> Option<IncomingMessage> {
-    // EventDispatcher wraps: { type, event: { message, sender } } or schema 2.0
-    let event = root
-        .get("event")
-        .cloned()
-        .or_else(|| root.get("data").and_then(|d| d.get("event")).cloned())
-        .unwrap_or_else(|| root.clone());
-
-    let header_type = root
-        .get("header")
-        .and_then(|h| h.get("event_type"))
-        .and_then(|x| x.as_str())
-        .or_else(|| root.get("type").and_then(|x| x.as_str()))
-        .unwrap_or("");
-
-    if !header_type.is_empty()
-        && header_type != "im.message.receive_v1"
-        && !header_type.contains("message")
-    {
-        // still try parse message body
-    }
-
-    let message = event.get("message")?;
-    let msg_type = message
-        .get("message_type")
-        .and_then(|x| x.as_str())
-        .unwrap_or("text");
-
-    let content_raw = message
-        .get("content")
-        .and_then(|x| x.as_str())
-        .unwrap_or("{}");
-    let content_json: Value = serde_json::from_str(content_raw).unwrap_or(json!({}));
-    let mut text = content_json
-        .get("text")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
-    if text.is_empty() {
-        // post content
-        if let Some(title) = content_json.pointer("/title").and_then(|x| x.as_str()) {
-            text = title.to_string();
-        }
-    }
-    // Text-adjacent media: surface image/file keys into the prompt (download optional).
-    if text.is_empty() || msg_type == "image" || msg_type == "file" || msg_type == "audio" {
-        if let Some(key) = content_json
-            .get("image_key")
-            .or_else(|| content_json.get("file_key"))
-            .and_then(|x| x.as_str())
-        {
-            let tag = format!("[{msg_type}:{key}]");
-            if text.is_empty() {
-                text = format!("请查看附件 {tag}");
-            } else {
-                text = format!("{text}\n{tag}");
-            }
-        }
-    }
-    // strip @mention placeholders like @_user_1
-    let re_clean = regex_lite_strip_mentions(&text);
-
-    let chat_id = message
-        .get("chat_id")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
-    let message_id = message
-        .get("message_id")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
-    let chat_type_raw = message
-        .get("chat_type")
-        .and_then(|x| x.as_str())
-        .unwrap_or("p2p");
-    let chat_type = if chat_type_raw == "group" || chat_type_raw == "public" {
-        "group"
-    } else {
-        "p2p"
-    };
-
-    let sender_id = event
-        .pointer("/sender/sender_id/open_id")
-        .or_else(|| event.pointer("/sender/sender_id/user_id"))
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let mentions = message.get("mentions").and_then(|x| x.as_array());
-    let mentioned_bot = mentions
-        .map(|arr| {
-            arr.iter().any(|m| {
-                m.get("id")
-                    .and_then(|id| id.get("open_id"))
-                    .and_then(|x| x.as_str())
-                    .map(|s| s.starts_with("ou_"))
-                    .unwrap_or(false)
-                    || m.get("name")
-                        .and_then(|x| x.as_str())
-                        .map(|n| n.contains("bot") || n.contains("机器人"))
-                        .unwrap_or(false)
-                    || m.get("key").is_some()
-            })
-        })
-        .unwrap_or(chat_type == "p2p");
-
-    if re_clean.trim().is_empty() {
-        return None;
-    }
-
-    Some(IncomingMessage {
-        channel: inst.channel.clone(),
-        instance_id: inst.id.clone(),
-        message_id,
-        chat_id,
-        chat_type: chat_type.into(),
-        sender_id,
-        content: re_clean,
-        mentioned_bot: mentioned_bot || chat_type == "p2p",
-        thread_id: None,
-    })
-}
-
-fn regex_lite_strip_mentions(s: &str) -> String {
-    // remove @_user_N and bare @xxx patterns used by Feishu
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '@' {
-            // skip until space or end
-            while let Some(&n) = chars.peek() {
-                if n.is_whitespace() {
-                    break;
-                }
-                chars.next();
-            }
-            continue;
-        }
-        out.push(c);
-    }
-    out.trim().to_string()
 }
 
 async fn pull_endpoint(
@@ -490,7 +381,7 @@ fn extract_query_i32(url: &str, key: &str) -> Option<i32> {
     None
 }
 
-fn open_domain(channel: &str, options: &Value) -> String {
+pub(super) fn open_domain(channel: &str, options: &Value) -> String {
     if let Some(d) = opt_str(options, "domain") {
         return d
             .trim_start_matches("https://")
@@ -732,37 +623,8 @@ fn receive_id_type(id: &str) -> &'static str {
     }
 }
 
-/// Send interactive card (msg_type=interactive).
 pub fn protocol_name() -> &'static str {
     "feishu-ws-long-connection"
-}
-
-/// Download inbound image bytes (text-adjacent media path).
-#[allow(dead_code)]
-pub async fn download_message_resource(
-    channel: &str,
-    secrets: &HashMap<String, String>,
-    options: &Value,
-    message_id: &str,
-    file_key: &str,
-    resource_type: &str, // image | file
-) -> Result<Vec<u8>, String> {
-    let token = tenant_token(channel, secrets, options).await?;
-    let domain = open_domain(channel, options);
-    let client = http_client()?;
-    let url = format!(
-        "https://{domain}/open-apis/im/v1/messages/{message_id}/resources/{file_key}?type={resource_type}"
-    );
-    let res = client
-        .get(url)
-        .bearer_auth(&token)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !res.status().is_success() {
-        return Err(format!("feishu media download: {}", res.status()));
-    }
-    Ok(res.bytes().await.map_err(|e| e.to_string())?.to_vec())
 }
 
 pub async fn send_card(

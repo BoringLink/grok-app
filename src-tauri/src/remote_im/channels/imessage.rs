@@ -251,6 +251,8 @@ pub async fn run(
                     }
                     let mentioned_bot = item.chat_type != "group";
                     let incoming = IncomingMessage {
+                        staged_attachments: Vec::new(),
+                        attachment_note: None,
                         channel: "imessage".into(),
                         instance_id: inst.id.clone(),
                         message_id: item.row_id.to_string(),
