@@ -299,6 +299,7 @@ export function CodePreview({
           scrollToKey={
             activeLine != null ? String(activeLine - 1) : null
           }
+          scrollAlign={findQuery ? "center" : "nearest"}
           style={{ paddingTop: 14, paddingBottom: 20 }}
           renderItem={(_line, index) => {
             const isFocus = activeLine === index + 1;

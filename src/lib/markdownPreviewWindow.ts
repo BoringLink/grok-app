@@ -79,6 +79,17 @@ export function splitMarkdownSections(text: string): MarkdownPreviewSection[] {
   return sections;
 }
 
+/** Section index that contains a 1-based source line, or -1. */
+export function markdownSectionIndexForLine(
+  sections: readonly { startLine: number; lineCount: number }[],
+  line: number,
+): number {
+  if (line < 1) return -1;
+  return sections.findIndex(
+    (section) => line >= section.startLine && line < section.startLine + section.lineCount,
+  );
+}
+
 export function markdownSectionLayout(
   sections: readonly { lineCount: number }[],
   linePx = MARKDOWN_SECTION_LINE_HEIGHT_PX,
