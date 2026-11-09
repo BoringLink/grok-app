@@ -21,6 +21,36 @@ See `docs/llm-wiki/release.md`.
 - 远程控制附件改为去重、限额的附件文件系统，无引用文件会自动清理。
 - 远程控制可以把 agent 生成的文件作为原生附件发回 IM。
 
+## [0.2.51] - 2026-11-09
+
+> **Highlight:** Find any file by fuzzy name and search inside it without leaving the pane.
+>
+> **中文 · 亮点：** 按文件名模糊查找，并直接在文件面板内搜索内容。
+
+### Added
+- Files open from fuzzy project-wide search, including unexpanded folders.
+- Find in file with Cmd/Ctrl+F in previews and both editors.
+- Paste clipboard text literally with ⌥⇧⌘V / Ctrl+Alt+V.
+- MCP server rows show their vendor icon.
+- Remote-control attachments use a deduplicated, size-limited store. Unreferenced files are cleaned up automatically.
+- Remote control can send agent-created files back as native attachments.
+
+### Fixed
+- Chat user bubbles render Markdown like the composer.
+- Pasting Markdown source keeps headings, lists, and fences.
+
+**中文 · 新增**
+- 文件面板支持全项目模糊搜索，未展开的目录也能直接打开。
+- 预览和编辑器支持 Cmd/Ctrl+F 文件内查找。
+- ⌥⇧⌘V / Ctrl+Alt+V 按纯文本粘贴。
+- MCP 服务器行显示所属厂商图标。
+- 远程控制附件改为去重、限额的附件文件系统，无引用文件会自动清理。
+- 远程控制可以把 agent 生成的文件作为原生附件发回 IM。
+
+**中文 · 修复**
+- 聊天气泡按编辑器的 Markdown 渲染。
+- 粘贴 Markdown 源码时保留标题、列表和代码块。
+
 ## [0.2.50] - 2026-10-28
 
 > **Highlight:** Every model of a custom provider is selectable again, and the chosen one is the one used.
