@@ -12,9 +12,8 @@ import {
   resolveMediaLoadError,
 } from "@/lib/mediaLoadPro";
 import { HtmlBrowser } from "@/components/HtmlBrowser";
-import { MarkdownPreview } from "@/components/MarkdownPreview";
+import { MarkdownFindPreview } from "./MarkdownFindPreview";
 import { findBarLabelsFromT } from "@/components/ChatFindBar";
-import { OverlayScroll } from "@/components/OverlayScroll";
 import { ImageUi } from "@/components/ImageUi";
 import { revealInOsLabel } from "@/lib/appPlatform";
 import {
@@ -155,6 +154,8 @@ export type ResourcePreviewBodyProps = {
   findMode?: boolean;
   /** Current find query; source previews mark every occurrence. */
   findQuery?: string;
+  /** Active match index within the find query (0-based). */
+  findActive?: number;
   /** Bumped when the pane wants the mounted editor to open its find bar. */
   findRequest?: number;
 };
@@ -198,6 +199,7 @@ export function ResourcePreviewBody({
   findFocusLine = null,
   findMode = false,
   findQuery = "",
+  findActive = -1,
   findRequest = 0,
 }: ResourcePreviewBodyProps): ReactNode {
   // Session / workspace change diff takes over the preview in Changes mode.
@@ -730,23 +732,16 @@ export function ResourcePreviewBody({
             </Suspense>
           )
         ) : isMarkdown ? (
-          findMode ? (
-            <FindSourcePreview
-              code={draftText || preview.text || ""}
-              name={preview.name}
-              focusLine={findFocusLine}
-              footer={preview.truncated ? tr("resources.truncated") : null}
-              findQuery={findQuery}
-            />
-          ) : (
-            <OverlayScroll className="rp-editor__preview-scroll">
-              <div className="rp-editor__preview-body rp-preview__md">
-                <MarkdownPreview locale={locale}>
-                  {draftText || preview.text || ""}
-                </MarkdownPreview>
-              </div>
-            </OverlayScroll>
-          )
+          // Rendered markdown stays mounted during find so closing the bar
+          // keeps the reading position.
+          <MarkdownFindPreview
+            text={draftText || preview.text || ""}
+            locale={locale}
+            findQuery={findQuery}
+            findActive={findActive}
+            findLine={findFocusLine}
+            footer={preview.truncated ? tr("resources.truncated") : null}
+          />
         ) : isHtml ? (
           findMode ? (
             <FindSourcePreview
@@ -864,20 +859,15 @@ export function ResourcePreviewBody({
         <div className="rp-preview__msg">{tr("resources.binary")}</div>
       );
     case "markdown":
-      return findMode ? (
-        <FindSourcePreview
-          code={activeTab?.draftText ?? preview.text ?? ""}
-          name={preview.name}
-          focusLine={findFocusLine}
-          footer={preview.truncated ? tr("resources.truncated") : null}
+      return (
+        <MarkdownFindPreview
+          text={activeTab?.draftText ?? preview.text ?? ""}
+          locale={locale}
           findQuery={findQuery}
+          findActive={findActive}
+          findLine={findFocusLine}
+          footer={preview.truncated ? tr("resources.truncated") : null}
         />
-      ) : (
-        <div className="rp-preview__md">
-          <MarkdownPreview locale={locale}>
-            {activeTab?.draftText ?? preview.text ?? ""}
-          </MarkdownPreview>
-        </div>
       );
     case "html":
       // Do not use file:// in iframe — WKWebView/Tauri blocks it (blank page).
