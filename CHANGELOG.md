@@ -21,6 +21,18 @@ See `docs/llm-wiki/release.md`.
 - 远程控制附件改为去重、限额的附件文件系统，无引用文件会自动清理。
 - 远程控制可以把 agent 生成的文件作为原生附件发回 IM。
 
+## [0.2.52] - 2026-11-09
+
+> **Highlight:** Update checks now follow this fork's Releases.
+>
+> **中文 · 亮点：** 版本更新检查改为跟随本 fork 的 Releases。
+
+### Changed
+- Update checks use the fork release channel.
+
+**中文 · 变更**
+- 版本更新检查改用 fork 的 Release 通道。
+
 ## [0.2.51] - 2026-11-09
 
 > **Highlight:** Find any file by fuzzy name and search inside it without leaving the pane.
