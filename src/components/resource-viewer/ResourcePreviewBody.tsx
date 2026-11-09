@@ -72,11 +72,13 @@ function FindSourcePreview({
   name,
   focusLine,
   footer,
+  findQuery,
 }: {
   code: string;
   name: string;
   focusLine: number | null;
   footer: string | null;
+  findQuery: string;
 }) {
   return (
     <div className="rp-editor__code-preview">
@@ -86,6 +88,7 @@ function FindSourcePreview({
           fileName={name}
           focusLine={focusLine}
           footer={footer}
+          findQuery={findQuery}
         />
       </Suspense>
     </div>
@@ -150,6 +153,10 @@ export type ResourcePreviewBodyProps = {
    * active match line can be scrolled to and highlighted.
    */
   findMode?: boolean;
+  /** Current find query; source previews mark every occurrence. */
+  findQuery?: string;
+  /** Bumped when the pane wants the mounted editor to open its find bar. */
+  findRequest?: number;
 };
 
 export function ResourcePreviewBody({
@@ -190,6 +197,8 @@ export function ResourcePreviewBody({
   hideToolbar = false,
   findFocusLine = null,
   findMode = false,
+  findQuery = "",
+  findRequest = 0,
 }: ResourcePreviewBodyProps): ReactNode {
   // Session / workspace change diff takes over the preview in Changes mode.
   if (sideMode === "changes" && diffView) {
@@ -701,6 +710,7 @@ export function ResourcePreviewBody({
                   }),
                 }}
                 findLabels={findBarLabelsFromT(tr)}
+                findRequest={findRequest}
               />
             </Suspense>
           ) : (
@@ -714,6 +724,8 @@ export function ResourcePreviewBody({
                 onSave={() => void saveActiveFile()}
                 disabled={!!activeTab.saving}
                 ariaLabel={tr("resources.editorAria", { name: preview.name })}
+                findLabels={findBarLabelsFromT(tr)}
+                findRequest={findRequest}
               />
             </Suspense>
           )
@@ -724,6 +736,7 @@ export function ResourcePreviewBody({
               name={preview.name}
               focusLine={findFocusLine}
               footer={preview.truncated ? tr("resources.truncated") : null}
+              findQuery={findQuery}
             />
           ) : (
             <OverlayScroll className="rp-editor__preview-scroll">
@@ -741,6 +754,7 @@ export function ResourcePreviewBody({
               name={preview.name}
               focusLine={findFocusLine}
               footer={preview.truncated ? tr("resources.truncated") : null}
+              findQuery={findQuery}
             />
           ) : (
             <HtmlBrowser
@@ -760,6 +774,7 @@ export function ResourcePreviewBody({
                 footer={
                   preview.truncated ? tr("resources.truncated") : null
                 }
+                findQuery={findQuery}
               />
             </Suspense>
           </div>
@@ -855,6 +870,7 @@ export function ResourcePreviewBody({
           name={preview.name}
           focusLine={findFocusLine}
           footer={preview.truncated ? tr("resources.truncated") : null}
+          findQuery={findQuery}
         />
       ) : (
         <div className="rp-preview__md">
@@ -872,6 +888,7 @@ export function ResourcePreviewBody({
           name={preview.name}
           focusLine={findFocusLine}
           footer={preview.truncated ? tr("resources.truncated") : null}
+          findQuery={findQuery}
         />
       ) : (
         <HtmlBrowser
@@ -897,6 +914,7 @@ export function ResourcePreviewBody({
           footer={
           preview.truncated ? tr("resources.truncated") : null
           }
+          findQuery={findQuery}
           />        </Suspense>
       );
     }
@@ -911,6 +929,7 @@ export function ResourcePreviewBody({
             footer={
             preview.truncated ? tr("resources.truncated") : null
             }
+            findQuery={findQuery}
             />          </Suspense>
         );
       }
