@@ -67,8 +67,6 @@ import {
 import { activeFileFindLine, findFileTextMatches } from "@/lib/filesFind";
 import { matchGlobalShortcut } from "@/lib/shortcuts";
 import { useFindSession } from "@/hooks/useFindSession";
-import { EditorView } from "@codemirror/view";
-import { openSearchPanel } from "@codemirror/search";
 import {
   pathBaseName,
   type SessionFileChange,
@@ -174,6 +172,8 @@ export function FilesWorkspace({
   const [resizingTree, setResizingTree] = useState(false);
   const paneRef = useRef<HTMLDivElement>(null);
   const findReturnFocusRef = useRef<HTMLElement | null>(null);
+  /** Bumped to open the mounted editor's own find bar (edit mode). */
+  const [editorFindRequest, setEditorFindRequest] = useState(0);
   const splitRef = useRef<HTMLDivElement>(null);
   const lastCloseToken = useRef<number | null>(null);
   const pendingSideClosePath = useRef<string | null>(null);
@@ -262,17 +262,35 @@ export function FilesWorkspace({
 
   // Window capture runs before the App shell's document-level ⌘F handler, so
   // the pane can claim find without editing AppWorkbench.
-  const findContextRef = useRef({ hasPreview: false, canFind: false });
+  const findContextRef = useRef({
+    hasPreview: false,
+    canFind: false,
+    editMode: false,
+  });
   findContextRef.current = {
     hasPreview: !!previewTab,
     canFind: !!previewText,
+    editMode: !!previewTab?.editMode,
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.isComposing) return;
       const root = paneRef.current;
       const target = e.target as Node | null;
-      if (!root || !target || !root.contains(target)) return;
+      const element = target instanceof Element ? target : null;
+      const insidePane = !!root && !!target && root.contains(target);
+      // Preview surfaces have no focusable text node. When the Files pane is
+      // the active aside, claim the chord from an unfocused body/page target
+      // so read-only previews are searchable; real inputs keep the
+      // conversation find.
+      const previewOwnsChord =
+        !insidePane &&
+        paneActive &&
+        findContextRef.current.hasPreview &&
+        !element?.closest(
+          "input, textarea, select, [contenteditable='true'], .cm-editor, .ProseMirror",
+        );
+      if (!insidePane && !previewOwnsChord) return;
 
       if (e.key === "Escape" && findOpenRef.current) {
         e.preventDefault();
@@ -291,22 +309,19 @@ export function FilesWorkspace({
       });
       if (matched !== "findInChat") return;
 
-      const element = target as HTMLElement | null;
-      // CodeMirror already ships a search panel; open it instead of our bar.
-      if (element?.closest?.(".cm-editor")) {
-        const editorDom = element.closest(".cm-editor") as HTMLElement;
-        const view = EditorView.findFromDOM(editorDom);
-        if (view) {
-          e.preventDefault();
-          e.stopPropagation();
-          openSearchPanel(view);
-        }
-        return;
-      }
-      // TipTap editors own their find bar (see MarkdownTiptapEditor).
-      if (element?.closest?.(".ProseMirror")) return;
+      // CodeMirror and TipTap editors own their find bar.
+      if (element?.closest?.(".cm-editor, .ProseMirror")) return;
       // Tree-only pane keeps the conversation find.
       if (!findContextRef.current.hasPreview) return;
+      // Edit mode: focus may sit on the toolbar or page body. Ask the mounted
+      // editor to open its own bar instead of the preview bar, which cannot
+      // mark or scroll the live editor.
+      if (findContextRef.current.editMode) {
+        e.preventDefault();
+        e.stopPropagation();
+        setEditorFindRequest((current) => current + 1);
+        return;
+      }
 
       e.preventDefault();
       e.stopPropagation();
@@ -315,12 +330,12 @@ export function FilesWorkspace({
       if (!findContextRef.current.canFind) return;
       const active = document.activeElement;
       findReturnFocusRef.current =
-        active instanceof HTMLElement ? active : null;
+        insidePane && active instanceof HTMLElement ? active : null;
       openFind();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [openFind, resetFind, restoreFindFocus]);
+  }, [openFind, paneActive, resetFind, restoreFindFocus]);
 
   useEffect(() => {
     onDirtyPathsChange?.(dirtyPaths);
@@ -1014,6 +1029,8 @@ export function FilesWorkspace({
                 hideToolbar={showEditorChrome}
                 findFocusLine={findOpen ? findFocusLine : null}
                 findMode={findOpen && !!findQuery.trim()}
+                findQuery={findOpen ? findQuery : ""}
+                findRequest={editorFindRequest}
               />
             );
           })()}

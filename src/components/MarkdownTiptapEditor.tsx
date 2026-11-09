@@ -19,6 +19,10 @@ import { Markdown } from "tiptap-markdown";
 import { ChatFindBar, type ChatFindBarLabels } from "@/components/ChatFindBar";
 import { Tip } from "@/components/ui/tooltip";
 import { findPmTextMatches } from "@/lib/pmFind";
+import {
+  createPmFindHighlightPlugin,
+  pmFindHighlightKey,
+} from "@/lib/pmFindHighlight";
 import { useFindSession } from "@/hooks/useFindSession";
 import { matchGlobalShortcut } from "@/lib/shortcuts";
 import {
@@ -63,6 +67,8 @@ export type MarkdownTiptapEditorProps = {
   labels: MarkdownTiptapLabels;
   /** Enables in-editor Cmd/Ctrl+F; omit to leave find to the host. */
   findLabels?: ChatFindBarLabels;
+  /** Bumped by the host to open the bar while focus is outside the editor. */
+  findRequest?: number;
   className?: string;
 };
 
@@ -94,6 +100,7 @@ export function MarkdownTiptapEditor({
   disabled = false,
   labels,
   findLabels,
+  findRequest = 0,
   className = "",
 }: MarkdownTiptapEditorProps) {
   const lastEmitted = useRef(value);
@@ -154,6 +161,16 @@ export function MarkdownTiptapEditor({
     },
   });
 
+  // Registered imperatively: @tiptap/core is the editor's peer, not a direct
+  // dependency of this app, so the plugin is not passed as an extension.
+  useEffect(() => {
+    if (!editor) return;
+    editor.registerPlugin(createPmFindHighlightPlugin());
+    return () => {
+      editor.unregisterPlugin(pmFindHighlightKey);
+    };
+  }, [editor]);
+
   const findDoc = editor?.state.doc ?? null;
   const findPmMatches = useCallback(
     (query: string) => (findDoc ? findPmTextMatches(findDoc, query) : []),
@@ -177,22 +194,41 @@ export function MarkdownTiptapEditor({
     editor?.commands.focus();
   }, [editor, resetFind]);
 
-  // Select the active match and scroll it into view without moving focus away
-  // from the find input. Reads the latest matches through a ref so typing in
-  // the document does not re-select the match on every transaction.
-  const findMatchesRef = useRef(findMatches);
-  findMatchesRef.current = findMatches;
+  // Paint every match, then select + scroll the active one. The selection is
+  // set without focusing the editor so the find input keeps the caret; the
+  // decoration is what the user actually sees.
   useEffect(() => {
-    const match = findMatchesRef.current[findActive];
-    if (!editor || !findOpen || !match) return;
-    editor.view.dispatch(
-      editor.state.tr
-        .setSelection(
-          TextSelection.create(editor.state.doc, match.from, match.to),
-        )
-        .scrollIntoView(),
-    );
-  }, [editor, findActive, findOpen, findQuery]);
+    if (!editor) return;
+    const meta = {
+      query: findOpen ? findQuery : "",
+      active: findOpen ? findActive : -1,
+    };
+    const match = findOpen ? findMatches[findActive] : undefined;
+    let tr = editor.state.tr.setMeta(pmFindHighlightKey, meta);
+    if (match) {
+      tr = tr.setSelection(
+        TextSelection.create(editor.state.doc, match.from, match.to),
+      );
+    }
+    editor.view.dispatch(tr);
+    if (!match) return;
+    // ProseMirror drops scrollIntoView when the DOM selection lives outside
+    // the editor (the find input owns focus). Scroll the match's block
+    // directly so off-screen hits still jump into view.
+    const at = editor.view.domAtPos(match.from);
+    const node =
+      at.node.nodeType === Node.ELEMENT_NODE
+        ? (at.node as Element)
+        : at.node.parentElement;
+    const block = node?.closest("p, li, h1, h2, h3, blockquote, pre") ?? node;
+    if (block && typeof block.scrollIntoView === "function") {
+      block.scrollIntoView({ block: "center", inline: "nearest" });
+    }
+  }, [editor, findActive, findMatches, findOpen, findQuery]);
+
+  useEffect(() => {
+    if (findRequest > 0 && findLabels) openFind();
+  }, [findRequest, findLabels, openFind]);
 
   useEffect(() => {
     if (!findLabels) return;
