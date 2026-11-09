@@ -62,7 +62,18 @@ describe("MarkdownTiptapEditor find", () => {
     await userEvent.type(input, "beta");
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
 
+    // Every match carries a visible decoration; the active one is distinct.
+    await waitFor(() => {
+      expect(container.querySelectorAll(".rp-find-hit")).toHaveLength(2);
+    });
+    expect(
+      container.querySelectorAll(".rp-find-hit.is-active"),
+    ).toHaveLength(1);
+
     await userEvent.click(screen.getByRole("button", { name: "Next match" }));
     expect(screen.getByText("2 / 2")).toBeInTheDocument();
+    const active = container.querySelectorAll(".rp-find-hit.is-active");
+    expect(active).toHaveLength(1);
+    expect(active[0]).toHaveTextContent("beta");
   });
 });

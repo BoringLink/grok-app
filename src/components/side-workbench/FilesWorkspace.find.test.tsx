@@ -18,6 +18,8 @@ const tabMocks = vi.hoisted(() => ({
   activeTab: null as FileTab | null,
   openFile: vi.fn(),
   previewFindFocusLine: null as number | null | undefined,
+  previewFindQuery: undefined as string | undefined,
+  previewFindRequest: 0,
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -38,8 +40,15 @@ vi.mock("@/components/ui/tooltip", () => ({
 }));
 
 vi.mock("@/components/resource-viewer/ResourcePreviewBody", () => ({
-  ResourcePreviewBody: (props: { findFocusLine?: number | null }) => {
+  ResourcePreviewBody: (props: {
+    findFocusLine?: number | null;
+    findMode?: boolean;
+    findQuery?: string;
+    findRequest?: number;
+  }) => {
     tabMocks.previewFindFocusLine = props.findFocusLine;
+    tabMocks.previewFindQuery = props.findMode ? props.findQuery : "";
+    tabMocks.previewFindRequest = props.findRequest ?? 0;
     return <div data-testid="preview-body" />;
   },
 }));
@@ -108,6 +117,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   tabMocks.activeTab = null;
   tabMocks.previewFindFocusLine = undefined;
+  tabMocks.previewFindQuery = undefined;
+  tabMocks.previewFindRequest = 0;
   tabMocks.openFile.mockReset();
   apiMocks.fsListDir.mockReset();
   apiMocks.projectFileIndexSearch.mockReset();
@@ -180,6 +191,64 @@ describe("FilesWorkspace in-file find", () => {
     await userEvent.click(next);
     expect(screen.getByText("2 / 2")).toBeInTheDocument();
     await waitFor(() => expect(tabMocks.previewFindFocusLine).toBe(3));
+  });
+
+  it("opens from a read-only preview when focus sits on the page body", async () => {
+    tabMocks.activeTab = codeTab("alpha\nbeta\n");
+    apiMocks.fsListDir.mockResolvedValue([]);
+
+    render(<FilesWorkspace {...baseProps} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-body")).toBeInTheDocument(),
+    );
+
+    (document.activeElement as HTMLElement | null)?.blur();
+    await userEvent.keyboard("{Meta>}f{/Meta}");
+
+    const findInput = await screen.findByRole("searchbox", {
+      name: "Find in file…",
+    });
+    await userEvent.type(findInput, "beta");
+    expect(screen.getByText("1 / 1")).toBeInTheDocument();
+    await waitFor(() => expect(tabMocks.previewFindQuery).toBe("beta"));
+  });
+
+  it("routes edit-mode find to the mounted editor bar", async () => {
+    const tab = codeTab("alpha\nbeta\n");
+    tab.editMode = true;
+    tabMocks.activeTab = tab;
+    apiMocks.fsListDir.mockResolvedValue([]);
+
+    render(<FilesWorkspace {...baseProps} />);
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-body")).toBeInTheDocument(),
+    );
+
+    (document.activeElement as HTMLElement | null)?.blur();
+    await userEvent.keyboard("{Meta>}f{/Meta}");
+
+    await waitFor(() => expect(tabMocks.previewFindRequest).toBe(1));
+    expect(screen.queryByTestId("files-find-bar")).not.toBeInTheDocument();
+  });
+
+  it("leaves the chord to an input outside the pane", async () => {
+    tabMocks.activeTab = codeTab("alpha\nbeta\n");
+    apiMocks.fsListDir.mockResolvedValue([]);
+
+    render(
+      <>
+        <FilesWorkspace {...baseProps} />
+        <textarea aria-label="Composer" />
+      </>,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("preview-body")).toBeInTheDocument(),
+    );
+
+    screen.getByRole("textbox", { name: "Composer" }).focus();
+    await userEvent.keyboard("{Meta>}f{/Meta}");
+
+    expect(screen.queryByTestId("files-find-bar")).not.toBeInTheDocument();
   });
 
   it("closes on Escape and returns focus to the pane", async () => {

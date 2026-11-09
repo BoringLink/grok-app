@@ -101,6 +101,8 @@ export interface CodePreviewProps {
    * Soft-fail when out of range / invalid (no scroll, no highlight).
    */
   focusLine?: number | null;
+  /** Find query; every literal occurrence in the rendered lines is marked. */
+  findQuery?: string;
 }
 
 function readDocTheme(): "light" | "dark" {
@@ -170,6 +172,46 @@ function highlightOneLine(text: string, lang: string): string {
   return highlightSource(text, lang);
 }
 
+/** Wrap occurrences of an already-escaped needle inside text-only segments. */
+function markTextSegment(segment: string, needle: string): string {
+  if (!segment || !needle) return segment;
+  const haystack = segment.toLowerCase();
+  let out = "";
+  let from = 0;
+  let at = haystack.indexOf(needle);
+  while (at !== -1) {
+    out +=
+      segment.slice(from, at) +
+      '<mark class="rp-code__hit">' +
+      segment.slice(at, at + needle.length) +
+      "</mark>";
+    from = at + needle.length;
+    at = haystack.indexOf(needle, from);
+  }
+  return out + segment.slice(from);
+}
+
+/**
+ * Mark matches inside highlighted HTML without touching tag names or
+ * attributes. Matches that span several highlight tokens stay unmarked; the
+ * active line still scrolls into view.
+ */
+function markFindHits(html: string, query: string): string {
+  if (!html || !query) return html;
+  const needle = escapeHtml(query).toLowerCase();
+  if (!needle) return html;
+  let out = "";
+  let from = 0;
+  const tags = /<[^>]*>/g;
+  let tag: RegExpExecArray | null;
+  while ((tag = tags.exec(html))) {
+    out += markTextSegment(html.slice(from, tag.index), needle);
+    out += tag[0];
+    from = tags.lastIndex;
+  }
+  return out + markTextSegment(html.slice(from), needle);
+}
+
 export function CodePreview({
   code,
   fileName,
@@ -178,6 +220,7 @@ export function CodePreview({
   footer,
   showLineNumbers = true,
   focusLine = null,
+  findQuery = "",
 }: CodePreviewProps) {
   ensureLangs();
 
@@ -259,7 +302,9 @@ export function CodePreview({
           style={{ paddingTop: 14, paddingBottom: 20 }}
           renderItem={(_line, index) => {
             const isFocus = activeLine === index + 1;
-            const html = htmlAt(index);
+            const html = findQuery
+              ? markFindHits(htmlAt(index), findQuery)
+              : htmlAt(index);
             return (
               <div
                 className={cn("rp-code__row", isFocus && "is-focus")}
