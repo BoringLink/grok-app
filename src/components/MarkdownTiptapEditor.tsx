@@ -361,18 +361,20 @@ export function MarkdownTiptapEditor({
       }
     >
       {findOpen && findLabels ? (
-        <ChatFindBar
-          query={findQuery}
-          activeIndex={findActive}
-          matchCount={findMatches.length}
-          focusNonce={findNonce}
-          testId="md-find-bar"
-          labels={findLabels}
-          onQueryChange={setFindQuery}
-          onPrev={() => stepFind(-1)}
-          onNext={() => stepFind(1)}
-          onClose={closeFind}
-        />
+        <div className="rp-find-overlay">
+          <ChatFindBar
+            query={findQuery}
+            activeIndex={findActive}
+            matchCount={findMatches.length}
+            focusNonce={findNonce}
+            testId="md-find-bar"
+            labels={findLabels}
+            onQueryChange={setFindQuery}
+            onPrev={() => stepFind(-1)}
+            onNext={() => stepFind(1)}
+            onClose={closeFind}
+          />
+        </div>
       ) : null}
       <div
         className="rp-md-editor__fmt"

@@ -59,6 +59,9 @@ describe("MarkdownTiptapEditor find", () => {
     await userEvent.keyboard("{Meta>}f{/Meta}");
 
     const input = await screen.findByRole("searchbox", { name: "Find in file…" });
+    expect(screen.getByTestId("md-find-bar").parentElement).toHaveClass(
+      "rp-find-overlay",
+    );
     await userEvent.type(input, "beta");
     expect(screen.getByText("1 / 2")).toBeInTheDocument();
 
