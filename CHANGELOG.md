@@ -21,6 +21,26 @@ See `docs/llm-wiki/release.md`.
 - 远程控制附件改为去重、限额的附件文件系统，无引用文件会自动清理。
 - 远程控制可以把 agent 生成的文件作为原生附件发回 IM。
 
+### Added
+- Files open from fuzzy project-wide search, including unexpanded folders.
+- Find in file with Cmd/Ctrl+F in previews and both editors.
+- Paste clipboard text literally with ⌥⇧⌘V / Ctrl+Alt+V.
+- MCP server rows show their vendor icon.
+
+**中文 · 新增**
+- 文件面板支持全项目模糊搜索，未展开的目录也能直接打开。
+- 预览和编辑器支持 Cmd/Ctrl+F 文件内查找。
+- ⌥⇧⌘V / Ctrl+Alt+V 按纯文本粘贴。
+- MCP 服务器行显示所属厂商图标。
+
+### Fixed
+- Chat user bubbles render Markdown like the composer.
+- Pasting Markdown source keeps headings, lists, and fences.
+
+**中文 · 修复**
+- 聊天气泡按编辑器的 Markdown 渲染。
+- 粘贴 Markdown 源码时保留标题、列表和代码块。
+
 ## [0.2.51] - 2026-11-14
 
 > **Highlight:** Rewound chats keep their new replies, and model menus use a fresh catalog.
@@ -40,6 +60,7 @@ See `docs/llm-wiki/release.md`.
 - 官方模型菜单采用最新可用目录。
 - CLI 批量导入只统计符合条件的会话，全部失败时会显示错误。
 - Markdown 粘贴保留块结构，后续输入不再沿用粘贴内容的格式。
+- 会话标题自动生成改用与会话数据模式一致的 Grok home，修复自定义供应商误报 401 鉴权错误。
 
 ## [0.2.50] - 2026-10-28
 
