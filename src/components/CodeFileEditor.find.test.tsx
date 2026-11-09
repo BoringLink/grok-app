@@ -43,6 +43,9 @@ describe("CodeFileEditor find", () => {
     });
     // CodeMirror's own bottom panel is bypassed in favor of the shared bar.
     expect(container.querySelector(".cm-search")).toBeNull();
+    expect(screen.getByTestId("code-find-bar").parentElement).toHaveClass(
+      "rp-find-overlay",
+    );
 
     await userEvent.type(input, "beta");
     expect(screen.getByText("1 / 2")).toBeInTheDocument();

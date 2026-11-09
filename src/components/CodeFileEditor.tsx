@@ -347,29 +347,25 @@ export function CodeFileEditor({
       ref={rootRef}
       className="rp-code-editor"
       data-testid="code-file-editor"
-      style={{
-        position: "relative",
-        height: "100%",
-        minHeight: 0,
-        display: "flex",
-        flexDirection: "column",
-      }}
+      style={{ position: "relative", height: "100%", minHeight: 0 }}
     >
       {findOpen && findLabels ? (
-        <ChatFindBar
-          query={findQuery}
-          activeIndex={findActive}
-          matchCount={findMatches.length}
-          focusNonce={findNonce}
-          testId="code-find-bar"
-          labels={findLabels}
-          onQueryChange={setFindQuery}
-          onPrev={() => stepFind(-1)}
-          onNext={() => stepFind(1)}
-          onClose={closeFind}
-        />
+        <div className="rp-find-overlay">
+          <ChatFindBar
+            query={findQuery}
+            activeIndex={findActive}
+            matchCount={findMatches.length}
+            focusNonce={findNonce}
+            testId="code-find-bar"
+            labels={findLabels}
+            onQueryChange={setFindQuery}
+            onPrev={() => stepFind(-1)}
+            onNext={() => stepFind(1)}
+            onClose={closeFind}
+          />
+        </div>
       ) : null}
-      <div ref={hostRef} style={{ flex: "1 1 auto", minHeight: 0 }} />
+      <div ref={hostRef} style={{ height: "100%", minHeight: 0 }} />
       {showProbe ? (
         <div className="rp-code-editor__probe" role="status">
           {`CM probe value=${probe.valueLen} dom=${probe.domLen} lines=${probe.lines} box=${probe.width}x${probe.height}`}
