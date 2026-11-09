@@ -845,6 +845,21 @@ html[data-theme="light"] .rp-code-editor .cm-editor {
   pointer-events: none;
 }
 
+/* In-editor / in-preview find hits (Files pane Cmd/Ctrl+F). */
+.rp-find-hit,
+.rp-code-editor .cm-find-hit,
+.rp-code__hit {
+  border-radius: 2px;
+  background: color-mix(in srgb, #f5c542 42%, transparent);
+  color: inherit;
+}
+
+.rp-find-hit.is-active,
+.rp-code-editor .cm-find-hit--active {
+  background: color-mix(in srgb, #f5a623 68%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, #f5a623 75%, transparent);
+}
+
 /* Code highlight pane (sidebar open .ts/.rs/…) fills remaining editor height. */
 .rp-editor__code-preview {
   flex: 1;
