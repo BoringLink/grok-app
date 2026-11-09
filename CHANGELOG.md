@@ -41,6 +41,18 @@ See `docs/llm-wiki/release.md`.
 - 聊天气泡按编辑器的 Markdown 渲染。
 - 粘贴 Markdown 源码时保留标题、列表和代码块。
 
+## [0.2.52] - 2026-11-09
+
+> **Highlight:** Update checks now follow this fork's Releases.
+>
+> **中文 · 亮点：** 版本更新检查改为跟随本 fork 的 Releases。
+
+### Changed
+- Update checks use the fork release channel.
+
+**中文 · 变更**
+- 版本更新检查改用 fork 的 Release 通道。
+
 ## [0.2.51] - 2026-11-14
 
 > **Highlight:** Rewound chats keep their new replies, and model menus use a fresh catalog.
