@@ -149,7 +149,13 @@ mod process_limits;
 
 mod process_util;
 
+mod fuzzy_path;
+
 mod project_codebase_search;
+
+mod project_file_index;
+
+mod project_walk;
 
 mod project_rules;
 

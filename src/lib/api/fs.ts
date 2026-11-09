@@ -351,6 +351,40 @@ export async function projectCodebaseSearch(opts: {
   });
 }
 
+/** Indexed file row — the hit fields the Files pane already renders. */
+export type FileIndexHit = Pick<
+  CodebaseSearchHit,
+  "path" | "name" | "relativePath" | "size" | "mtimeMs"
+>;
+
+export type FileIndexSearchResult = {
+  hits: FileIndexHit[];
+  projectPath: string;
+  query: string;
+  limit: number;
+  /** More matches exist than were returned. */
+  truncated: boolean;
+  /** The index hit its entry cap, so some files are not searchable. */
+  indexTruncated: boolean;
+  softFail?: string | null;
+};
+
+/**
+ * Fuzzy quick-open over the host's cached per-project file index.
+ * Soft-fails for missing / untrusted projects (`softFail`).
+ */
+export async function projectFileIndexSearch(opts: {
+  projectPath: string;
+  query: string;
+  limit?: number | null;
+}) {
+  return invoke<FileIndexSearchResult>("project_file_index_search", {
+    projectPath: opts.projectPath,
+    query: opts.query,
+    limit: opts.limit ?? null,
+  });
+}
+
 /** Read file under project root for preview (text or base64). */
 export async function fsReadFile(projectPath: string, relative: string) {
   return invoke<FsReadResult>("fs_read_file", {
