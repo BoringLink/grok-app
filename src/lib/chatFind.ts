@@ -1,5 +1,6 @@
 /**
- * Pure in-conversation find helpers (Cmd/Ctrl+F).
+ * Find helpers shared by the conversation find bar and the Files pane /
+ * Markdown editor find sessions.
  * Case-insensitive match over user + assistant message text (and tool titles).
  */
 
@@ -121,7 +122,7 @@ export function findMatchesBeforeVisible(input: {
 }
 
 /** Next / previous match index with wrap-around. */
-export function stepChatFindIndex(
+export function stepFindIndex(
   current: number,
   total: number,
   direction: 1 | -1,

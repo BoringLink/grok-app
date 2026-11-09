@@ -20,6 +20,11 @@ const tabMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/api", () => ({
   isTauri: () => true,
+  projectFileIndexSearch: vi.fn(async () => ({
+    hits: [],
+    truncated: false,
+    indexTruncated: false,
+  })),
   fsListDir: vi.fn(async () => []),
   settingsGet: vi.fn(),
   settingsSet: vi.fn(),

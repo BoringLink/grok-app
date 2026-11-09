@@ -5,7 +5,7 @@ import {
   formatChatFindCount,
   searchableTextForMessage,
   splitHighlightParts,
-  stepChatFindIndex,
+  stepFindIndex,
   type ChatFindMessage,
 } from "./chatFind";
 
@@ -121,18 +121,18 @@ describe("findMatchesBeforeVisible", () => {
   });
 });
 
-describe("stepChatFindIndex", () => {
+describe("stepFindIndex", () => {
   it("wraps forward and backward", () => {
-    expect(stepChatFindIndex(0, 3, 1)).toBe(1);
-    expect(stepChatFindIndex(2, 3, 1)).toBe(0);
-    expect(stepChatFindIndex(0, 3, -1)).toBe(2);
-    expect(stepChatFindIndex(1, 3, -1)).toBe(0);
+    expect(stepFindIndex(0, 3, 1)).toBe(1);
+    expect(stepFindIndex(2, 3, 1)).toBe(0);
+    expect(stepFindIndex(0, 3, -1)).toBe(2);
+    expect(stepFindIndex(1, 3, -1)).toBe(0);
   });
 
   it("handles empty / out-of-range", () => {
-    expect(stepChatFindIndex(0, 0, 1)).toBe(0);
-    expect(stepChatFindIndex(-1, 4, 1)).toBe(0);
-    expect(stepChatFindIndex(99, 4, -1)).toBe(3);
+    expect(stepFindIndex(0, 0, 1)).toBe(0);
+    expect(stepFindIndex(-1, 4, 1)).toBe(0);
+    expect(stepFindIndex(99, 4, -1)).toBe(3);
   });
 });
 

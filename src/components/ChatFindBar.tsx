@@ -1,5 +1,5 @@
 /**
- * In-conversation find bar (Cmd/Ctrl+F).
+ * Find bar shared by the conversation and the Files pane (Cmd/Ctrl+F).
  * Query + prev/next + match count; Escape closes via parent.
  */
 
@@ -11,6 +11,7 @@ import {
   IconSearch,
 } from "@/components/icons";
 import { formatChatFindCount } from "@/lib/chatFind";
+import type { MessageKey } from "@/i18n";
 
 export type ChatFindBarLabels = {
   placeholder: string;
@@ -23,6 +24,21 @@ export type ChatFindBarLabels = {
   aria: string;
 };
 
+/** Labels for file-pane find bars sharing this component. */
+export function findBarLabelsFromT(
+  tr: (key: MessageKey) => string,
+): ChatFindBarLabels {
+  return {
+    placeholder: tr("resources.findPh"),
+    aria: tr("resources.findAria"),
+    prev: tr("chatFind.prev"),
+    next: tr("chatFind.next"),
+    close: tr("chatFind.close"),
+    count: tr("chatFind.count"),
+    noMatches: tr("chatFind.noMatches"),
+  };
+}
+
 export type ChatFindBarProps = {
   query: string;
   activeIndex: number;
@@ -30,6 +46,8 @@ export type ChatFindBarProps = {
   labels: ChatFindBarLabels;
   /** Bump to focus+select the input without remounting the live island. */
   focusNonce?: number;
+  /** Distinguishes the conversation bar from the Files pane bar in tests. */
+  testId?: string;
   onQueryChange: (q: string) => void;
   onPrev: () => void;
   onNext: () => void;
@@ -42,6 +60,7 @@ export function ChatFindBar({
   matchCount,
   labels,
   focusNonce = 0,
+  testId = "chat-find-bar",
   onQueryChange,
   onPrev,
   onNext,
@@ -70,7 +89,7 @@ export function ChatFindBar({
       className="chat-find"
       role="search"
       aria-label={labels.aria}
-      data-testid="chat-find-bar"
+      data-testid={testId}
     >
       <span className="chat-find__icon" aria-hidden>
         <IconSearch size={15} />

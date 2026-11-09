@@ -319,6 +319,7 @@ pub fn app_invoke_handler(
         // ── Filesystem browser & codebase search ──
         commands::fs_list_dir,
         commands::project_codebase_search,
+        commands::project_file_index_search,
         commands::fs_read_file,
         commands::fs_write_file,
         commands::fs_write_absolute,
