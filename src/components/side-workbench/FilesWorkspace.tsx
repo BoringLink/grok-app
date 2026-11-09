@@ -14,41 +14,21 @@ import {
 } from "react";
 import * as api from "@/lib/api";
 import { createT, type Locale } from "@/i18n";
-import { detectAppPlatform, revealInOsLabel } from "@/lib/appPlatform";
-import {
-  IconChevronDown,
-  IconChevronRight,
-  IconListTree,
-  IconRefresh,
-  IconSearch,
-} from "@/components/icons";
-import { OpenLocationButton } from "@/components/OpenLocationButton";
-import { OverlayScroll } from "@/components/OverlayScroll";
-import { VirtualList } from "@/components/VirtualList";
-import { Tip } from "@/components/ui/tooltip";
-import { GlassModal } from "@/components/GlassModal";
 import { ChatFindBar, findBarLabelsFromT } from "@/components/ChatFindBar";
-import { FileKindMark } from "@/components/resource-viewer/FileKindMark";
-import { ResourceEditorActions } from "@/components/resource-viewer/ResourceEditorActions";
 import { ResourcePreviewBody } from "@/components/resource-viewer/ResourcePreviewBody";
 import {
   clampTreeWidth,
   loadTreeWidth,
   persistTreeWidth,
-  TREE_WIDTH_MIN,
 } from "@/components/resource-viewer/helpers";
 import type { FileTab, TreeNode } from "@/components/resource-viewer/types";
 import { useResourceFileTabs } from "@/components/resource-viewer/useResourceFileTabs";
 import {
-  formatOpenEditorErrorMessage,
   readOpenTargetStorage,
-  resolveOpenEditorError,
   writeOpenTargetStorage,
 } from "@/lib/openEditorHonesty";
 import { resolveFilesWorkbenchSplitLayout } from "@/lib/resourceTabs";
 import {
-  RESOURCE_TREE_ROW_HEIGHT_PX,
-  RESOURCE_TREE_VIRTUALIZE_THRESHOLD,
   expandKeysForResourcePath,
   expandKeysForResourceTreeFilter,
   filterResourceTreeNodes,
@@ -73,6 +53,9 @@ import {
 } from "@/lib/sessionChanges";
 import { sshChatRelative, sshRemoteDirToList } from "@/lib/sshChatPath";
 import { sshListDirShouldSetPaneError } from "@/lib/sshListDirHonesty";
+import { FilesToolbar } from "./FilesToolbar";
+import { FilesCloseModals } from "./FilesCloseModals";
+import { FilesTreePanel } from "./FilesTreePanel";
 
 export type FilesWorkspaceProps = {
   locale: Locale | string;
@@ -107,34 +90,6 @@ export type FilesWorkspaceProps = {
 
 const NOOP = () => {};
 const NOOP_ASYNC = async () => {};
-
-/** Chevron/gap + kind mark shared by tree rows and flat search-result rows. */
-function TreeRowLeading({
-  name,
-  isDir,
-  open = false,
-}: {
-  name: string;
-  isDir: boolean;
-  open?: boolean;
-}) {
-  return (
-    <>
-      <span className="rp-tree__chev">
-        {isDir ? (
-          open ? (
-            <IconChevronDown size={14} />
-          ) : (
-            <IconChevronRight size={14} />
-          )
-        ) : (
-          <span className="rp-tree__gap" />
-        )}
-      </span>
-      <FileKindMark name={name} isDir={isDir} />
-    </>
-  );
-}
 
 export function FilesWorkspace({
   locale,
@@ -253,6 +208,22 @@ export function FilesWorkspace({
     resetFind();
     restoreFindFocus();
   }, [resetFind, restoreFindFocus]);
+
+  const cancelDiscardClose = useCallback(() => {
+    const sidePath = pendingSideClosePath.current;
+    setDiscardTabId(null);
+    pendingSideClosePath.current = null;
+    if (sidePath) onClosePathResult?.(sidePath, false);
+  }, [onClosePathResult, setDiscardTabId]);
+
+  const confirmDiscardClose = useCallback(() => {
+    const id = discardTabId;
+    const sidePath = pendingSideClosePath.current;
+    setDiscardTabId(null);
+    pendingSideClosePath.current = null;
+    if (id) closeTabForced(id);
+    if (sidePath) onClosePathResult?.(sidePath, true);
+  }, [closeTabForced, discardTabId, onClosePathResult, setDiscardTabId]);
 
   // A new preview tab (or edit mode) ends the find session so focus and
   // query never leak across files.
@@ -808,126 +779,27 @@ export function FilesWorkspace({
       className="sw-files rp--embedded"
       data-testid="files-workspace"
     >
-      {/* Dual-row chrome: editor actions (or crumbs) LEFT · tree + 打开 RIGHT */}
-      <div className="rp-files-toolbar" data-testid="files-toolbar">
-        {showEditorChrome ? (
-          <ResourceEditorActions
-            tr={tr}
-            editMode={!!previewTab?.editMode}
-            saving={!!previewTab?.saving}
-            dirty={previewDirty}
-            onToggleEdit={toggleActiveEditMode}
-            onSave={() => void saveActiveFile()}
-            onRevert={() => revertActiveDraft()}
-            align="start"
-            className="rp-files-toolbar__editor"
-            title={previewTab?.relativePath || projectName || ""}
-            testIds={{
-              edit: "files-editor-edit",
-              save: "files-editor-save",
-              revert: "files-editor-revert",
-            }}
-          />
-        ) : (
-          <div
-            className="rp-files-toolbar__crumbs"
-            title={activeTab?.relativePath || projectName || ""}
-          >
-            {crumbs.length === 0 ? (
-              <span className="rp-files-toolbar__muted">
-                {projectName || tr("resources.files")}
-              </span>
-            ) : (
-              crumbs.map((c, i) => (
-                <span key={`${c}-${i}`} className="rp-files-toolbar__crumb-wrap">
-                  {i > 0 ? (
-                    <span className="rp-files-toolbar__sep" aria-hidden>
-                      ›
-                    </span>
-                  ) : null}
-                  <span
-                    className={
-                      "rp-files-toolbar__crumb" +
-                      (i === crumbs.length - 1 ? " is-current" : "")
-                    }
-                  >
-                    {c}
-                  </span>
-                </span>
-              ))
-            )}
-          </div>
-        )}
-        <div className="rp-files-toolbar__actions">
-          <Tip
-            label={
-              previewDirty ? tr("resources.unsaved") : tr("resources.refresh")
-            }
-          >
-            <button
-              type="button"
-              className="chrome-btn"
-              aria-label={
-                previewDirty ? tr("resources.unsaved") : tr("resources.refresh")
-              }
-              data-testid="files-reload"
-              disabled={!canReloadPreview}
-              onClick={() => {
-                if (!canReloadPreview) return;
-                void reloadActiveFile();
-              }}
-            >
-              <IconRefresh size={16} />
-            </button>
-          </Tip>
-          <Tip
-            label={
-              treeVisible
-                ? tr("resources.collapseTree")
-                : tr("resources.expandTree")
-            }
-          >
-            <button
-              type="button"
-              className={
-                "chrome-btn main__pane-toggle" + (treeVisible ? " is-on" : "")
-              }
-              aria-label={
-                treeVisible
-                  ? tr("resources.collapseTree")
-                  : tr("resources.expandTree")
-              }
-              data-testid="files-tree-toggle"
-              onClick={() => onTreeVisibleChange(!treeVisible)}
-            >
-              <IconListTree size={16} />
-            </button>
-          </Tip>
-          {absPath ? (
-            <OpenLocationButton
-              path={absPath}
-              line={activeTab?.focusLine ?? activeLine}
-              target={openWithTarget}
-              onTargetChange={persistOpenWithTarget}
-              onOpenError={(e) => {
-                const resolved = resolveOpenEditorError(e);
-                if (resolved.silent) return;
-                setError(formatOpenEditorErrorMessage(resolved, tr));
-              }}
-              compact
-              platform={detectAppPlatform()}
-              labels={{
-                openLocation: tr("resources.open"),
-                openHint: tr("main.openLocationHint"),
-                openMenu: tr("main.openLocationMenu"),
-                finder: revealInOsLabel(tr),
-                systemDefault: tr("resources.openDefault"),
-                copyPath: tr("attach.copyPath"),
-              }}
-            />
-          ) : null}
-        </div>
-      </div>
+      <FilesToolbar
+        tr={tr}
+        previewTab={previewTab}
+        activeTab={activeTab}
+        crumbs={crumbs}
+        projectName={projectName}
+        showEditorChrome={showEditorChrome}
+        previewDirty={previewDirty}
+        canReloadPreview={canReloadPreview}
+        treeVisible={treeVisible}
+        absPath={absPath}
+        activeLine={activeLine}
+        openWithTarget={openWithTarget}
+        onOpenTargetChange={persistOpenWithTarget}
+        onToggleEdit={toggleActiveEditMode}
+        onSave={() => void saveActiveFile()}
+        onRevert={() => revertActiveDraft()}
+        onReload={() => void reloadActiveFile()}
+        onToggleTree={() => onTreeVisibleChange(!treeVisible)}
+        onOpenError={setError}
+      />
 
       {error ? (
         <div className="rp__error" role="alert">
@@ -1038,236 +910,47 @@ export function FilesWorkspace({
           })()}
         </div>
         {splitLayout.mode === "split" ? (
-          <>
-            <div
-              className="rp-split__resizer"
-              role="separator"
-              aria-orientation="vertical"
-              aria-valuenow={treeWidth}
-              aria-label={tr("resources.resizeTree")}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                setResizingTree(true);
-              }}
-            />
-            <div
-              className="rp-split__tree"
-              style={{
-                width: treeWidth,
-                flex: `0 0 ${Math.max(TREE_WIDTH_MIN, treeWidth)}px`,
-                maxWidth: treeWidth,
-              }}
-              data-testid="files-tree"
-            >
-              <div className="rp-tree-search">
-                <IconSearch size={14} />
-                <input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={tr("resources.searchPh")}
-                  aria-label={tr("resources.searchPh")}
-                />
-              </div>
-              {!hostSearchEnabled && query.trim() ? (
-                <div className="rp-tree__search-note">
-                  {tr("resources.searchLocalOnly")}
-                </div>
-              ) : null}
-              <OverlayScroll className="rp-tree-scroll">
-                {showProjectHits ? (
-                  projectSearchPending ? (
-                    <div className="rp__empty-desc" style={{ padding: 12 }}>
-                      {tr("resources.searching")}
-                    </div>
-                  ) : searchFailed ? (
-                    <div className="rp__empty-desc" style={{ padding: 12 }}>
-                      {tr("resources.searchFailed")}
-                    </div>
-                  ) : projectHits.length === 0 ? (
-                    <div className="rp__empty-desc" style={{ padding: 12 }}>
-                      {tr("resources.searchEmpty")}
-                    </div>
-                  ) : (
-                    <>
-                      <VirtualList
-                        items={projectHits}
-                        getKey={(hit) => hit.path || hit.relativePath}
-                        rowHeight={RESOURCE_TREE_ROW_HEIGHT_PX}
-                        threshold={RESOURCE_TREE_VIRTUALIZE_THRESHOLD}
-                        renderItem={(hit) => {
-                          const selected =
-                            !!activeTab &&
-                            (activeTab.relativePath === hit.relativePath ||
-                              activeTab.absolutePath === hit.path);
-                          return (
-                            <button
-                              type="button"
-                              className={
-                                "rp-tree__row rp-tree__row--search" +
-                                (selected ? " is-selected" : "")
-                              }
-                              style={{ paddingLeft: 8 }}
-                              title={hit.relativePath || hit.path}
-                              disabled={!hit.relativePath}
-                              onClick={() => {
-                                if (!hit.relativePath) return;
-                                void onTreeFileClick(hit.relativePath, hit.name);
-                              }}
-                            >
-                              <TreeRowLeading name={hit.name} isDir={false} />
-                              <span className="rp-tree__name">{hit.name}</span>
-                              <span className="rp-tree__search-path">
-                                {hit.relativePath || hit.path}
-                              </span>
-                            </button>
-                          );
-                        }}
-                      />
-                      {searchTruncated ? (
-                        <div className="rp-tree__search-note">
-                          {tr("resources.searchTruncated", {
-                            count: String(projectHits.length),
-                          })}
-                        </div>
-                      ) : null}
-                      {searchIndexTruncated ? (
-                        <div className="rp-tree__search-note">
-                          {tr("resources.searchIndexPartial")}
-                        </div>
-                      ) : null}
-                    </>
-                  )
-                ) : loadingTree ? (
-                  <div className="rp__empty-desc" style={{ padding: 12 }}>
-                    {tr("resources.loading")}
-                  </div>
-                ) : filteredRoot.length === 0 ? (
-                  <div className="rp__empty-desc" style={{ padding: 12 }}>
-                    {query.trim()
-                      ? tr("resources.filterEmpty")
-                      : tr("resources.empty")}
-                  </div>
-                ) : (
-                  <VirtualList
-                    items={visibleRows}
-                    getKey={(row) => row.node.relativePath || row.node.name}
-                    rowHeight={RESOURCE_TREE_ROW_HEIGHT_PX}
-                    threshold={RESOURCE_TREE_VIRTUALIZE_THRESHOLD}
-                    scrollToKey={selectedTreeKey}
-                    renderItem={(row) => {
-                      const n = row.node;
-                      const open = !!displayExpanded[n.relativePath];
-                      const selected =
-                        !!activeTab &&
-                        (activeTab.relativePath === n.relativePath ||
-                          activeTab.absolutePath === n.relativePath);
-                      return (
-                        <button
-                          type="button"
-                          className={
-                            "rp-tree__row" + (selected ? " is-selected" : "")
-                          }
-                          style={{ paddingLeft: 8 + row.depth * 12 }}
-                          onClick={() => {
-                            if (n.isDir) void toggleDir(n);
-                            else void onTreeFileClick(n.relativePath, n.name);
-                          }}
-                        >
-                          <TreeRowLeading
-                            name={n.name}
-                            isDir={n.isDir}
-                            open={open}
-                          />
-                          <span className="rp-tree__name">{n.name}</span>
-                        </button>
-                      );
-                    }}
-                  />
-                )}
-              </OverlayScroll>
-            </div>
-          </>
+          <FilesTreePanel
+            tr={tr}
+            width={treeWidth}
+            query={query}
+            onQueryChange={setQuery}
+            hostSearchEnabled={hostSearchEnabled}
+            showProjectHits={showProjectHits}
+            projectSearchPending={projectSearchPending}
+            searchFailed={searchFailed}
+            projectHits={projectHits}
+            searchTruncated={searchTruncated}
+            searchIndexTruncated={searchIndexTruncated}
+            loadingTree={loadingTree}
+            treeEmpty={filteredRoot.length === 0}
+            rows={visibleRows}
+            activeTab={activeTab}
+            expanded={displayExpanded}
+            selectedTreeKey={selectedTreeKey}
+            onOpenFile={onTreeFileClick}
+            onToggleDir={toggleDir}
+            onResizeStart={() => setResizingTree(true)}
+          />
         ) : null}
       </div>
 
-      <GlassModal
-        open={!!discardTabId}
-        onClose={() => {
-          const sidePath = pendingSideClosePath.current;
-          setDiscardTabId(null);
-          pendingSideClosePath.current = null;
-          if (sidePath) onClosePathResult?.(sidePath, false);
+      <FilesCloseModals
+        tr={tr}
+        discardOpen={!!discardTabId}
+        onDiscardClose={cancelDiscardClose}
+        onDiscardConfirm={confirmDiscardClose}
+        conflictOpen={!!conflictTabId}
+        onConflictClose={() => setConflictTabId(null)}
+        onConflictReload={() => {
+          setConflictTabId(null);
+          void reloadActiveFile();
         }}
-        title={tr("resources.discardTitle")}
-        size="sm"
-        closeLabel={tr("common.close")}
-        footer={
-          <>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => {
-                const sidePath = pendingSideClosePath.current;
-                setDiscardTabId(null);
-                pendingSideClosePath.current = null;
-                if (sidePath) onClosePathResult?.(sidePath, false);
-              }}
-            >
-              {tr("common.cancel")}
-            </button>
-            <button
-              type="button"
-              className="btn btn--danger"
-              onClick={() => {
-                const id = discardTabId;
-                const sidePath = pendingSideClosePath.current;
-                setDiscardTabId(null);
-                pendingSideClosePath.current = null;
-                if (id) closeTabForced(id);
-                if (sidePath) onClosePathResult?.(sidePath, true);
-              }}
-            >
-              {tr("resources.discardConfirm")}
-            </button>
-          </>
-        }
-      >
-        <p className="modal__body-text">{tr("resources.discardBody")}</p>
-      </GlassModal>
-
-      <GlassModal
-        open={!!conflictTabId}
-        onClose={() => setConflictTabId(null)}
-        title={tr("resources.conflictTitle")}
-        size="sm"
-        closeLabel={tr("common.close")}
-        footer={
-          <>
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => {
-                setConflictTabId(null);
-                void reloadActiveFile();
-              }}
-            >
-              {tr("resources.conflictReload")}
-            </button>
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={() => {
-                setConflictTabId(null);
-                void saveActiveFile({ force: true });
-              }}
-            >
-              {tr("resources.conflictOverwrite")}
-            </button>
-          </>
-        }
-      >
-        <p className="modal__body-text">{tr("resources.conflictBody")}</p>
-      </GlassModal>
+        onConflictOverwrite={() => {
+          setConflictTabId(null);
+          void saveActiveFile({ force: true });
+        }}
+      />
     </div>
   );
 }
