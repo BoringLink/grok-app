@@ -36,4 +36,28 @@ if (typeof Element.prototype.scrollTo === "undefined") {
   Element.prototype.scrollTo = function scrollTo() {};
 }
 
+// ProseMirror's scroll-into-view asks a Range for its client rects; jsdom
+// implements neither. Empty geometry keeps the code path harmless in tests.
+if (typeof Range !== "undefined" && !Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = function getClientRects() {
+    return [] as unknown as DOMRectList;
+  };
+}
+
+if (typeof Range !== "undefined" && !Range.prototype.getBoundingClientRect) {
+  Range.prototype.getBoundingClientRect = function getBoundingClientRect() {
+    return {
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      toJSON: () => ({}),
+    } as DOMRect;
+  };
+}
+
 export {};

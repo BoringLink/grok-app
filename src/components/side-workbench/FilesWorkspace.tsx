@@ -27,6 +27,7 @@ import { OverlayScroll } from "@/components/OverlayScroll";
 import { VirtualList } from "@/components/VirtualList";
 import { Tip } from "@/components/ui/tooltip";
 import { GlassModal } from "@/components/GlassModal";
+import { ChatFindBar, findBarLabelsFromT } from "@/components/ChatFindBar";
 import { FileKindMark } from "@/components/resource-viewer/FileKindMark";
 import { ResourceEditorActions } from "@/components/resource-viewer/ResourceEditorActions";
 import { ResourcePreviewBody } from "@/components/resource-viewer/ResourcePreviewBody";
@@ -59,6 +60,15 @@ import {
   sessionChangePathsKey,
 } from "@/lib/resourceTree";
 import { isResourceDraftDirty } from "@/lib/resourceEdit";
+import {
+  clampCodebaseSearchLimit,
+  CODEBASE_SEARCH_DEBOUNCE_MS,
+} from "@/lib/codebaseSearch";
+import { activeFileFindLine, findFileTextMatches } from "@/lib/filesFind";
+import { matchGlobalShortcut } from "@/lib/shortcuts";
+import { useFindSession } from "@/hooks/useFindSession";
+import { EditorView } from "@codemirror/view";
+import { openSearchPanel } from "@codemirror/search";
 import {
   pathBaseName,
   type SessionFileChange,
@@ -100,6 +110,34 @@ export type FilesWorkspaceProps = {
 const NOOP = () => {};
 const NOOP_ASYNC = async () => {};
 
+/** Chevron/gap + kind mark shared by tree rows and flat search-result rows. */
+function TreeRowLeading({
+  name,
+  isDir,
+  open = false,
+}: {
+  name: string;
+  isDir: boolean;
+  open?: boolean;
+}) {
+  return (
+    <>
+      <span className="rp-tree__chev">
+        {isDir ? (
+          open ? (
+            <IconChevronDown size={14} />
+          ) : (
+            <IconChevronRight size={14} />
+          )
+        ) : (
+          <span className="rp-tree__gap" />
+        )}
+      </span>
+      <FileKindMark name={name} isDir={isDir} />
+    </>
+  );
+}
+
 export function FilesWorkspace({
   locale,
   projectPath,
@@ -125,8 +163,17 @@ export function FilesWorkspace({
   const [loadingTree, setLoadingTree] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  /** Host-wide file name search (project root). Empty → tree filter fallback. */
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [projectHits, setProjectHits] = useState<api.FileIndexHit[]>([]);
+  const [searchingProject, setSearchingProject] = useState(false);
+  const [searchTruncated, setSearchTruncated] = useState(false);
+  const [searchIndexTruncated, setSearchIndexTruncated] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
   const [treeWidth, setTreeWidth] = useState(loadTreeWidth);
   const [resizingTree, setResizingTree] = useState(false);
+  const paneRef = useRef<HTMLDivElement>(null);
+  const findReturnFocusRef = useRef<HTMLElement | null>(null);
   const splitRef = useRef<HTMLDivElement>(null);
   const lastCloseToken = useRef<number | null>(null);
   const pendingSideClosePath = useRef<string | null>(null);
@@ -176,6 +223,104 @@ export function FilesWorkspace({
   const splitLayout = resolveFilesWorkbenchSplitLayout({ treeVisible });
   // Pathless「文件」chip is a tree-only workspace, not a preview target.
   const previewTab = activePath?.trim() ? activeTab : null;
+
+  const previewText = previewTab?.draftText ?? previewTab?.preview?.text ?? "";
+  const findFileMatches = useCallback(
+    (query: string) => findFileTextMatches(previewText, query),
+    [previewText],
+  );
+  const {
+    open: findOpen,
+    query: findQuery,
+    matches: findMatches,
+    active: findActive,
+    nonce: findNonce,
+    setQuery: setFindQuery,
+    openFind,
+    close: resetFind,
+    step: stepFind,
+  } = useFindSession(findFileMatches);
+  const findFocusLine = activeFileFindLine(findMatches, findActive);
+  const findOpenRef = useRef(false);
+  findOpenRef.current = findOpen;
+
+  const restoreFindFocus = useCallback(() => {
+    const back = findReturnFocusRef.current;
+    findReturnFocusRef.current = null;
+    if (back?.isConnected) back.focus();
+  }, []);
+  const closeFind = useCallback(() => {
+    resetFind();
+    restoreFindFocus();
+  }, [resetFind, restoreFindFocus]);
+
+  // A new preview tab (or edit mode) ends the find session so focus and
+  // query never leak across files.
+  useEffect(() => {
+    resetFind();
+  }, [previewTab?.id, previewTab?.editMode, resetFind]);
+
+  // Window capture runs before the App shell's document-level ⌘F handler, so
+  // the pane can claim find without editing AppWorkbench.
+  const findContextRef = useRef({ hasPreview: false, canFind: false });
+  findContextRef.current = {
+    hasPreview: !!previewTab,
+    canFind: !!previewText,
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
+      const root = paneRef.current;
+      const target = e.target as Node | null;
+      if (!root || !target || !root.contains(target)) return;
+
+      if (e.key === "Escape" && findOpenRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        resetFind();
+        restoreFindFocus();
+        return;
+      }
+
+      const matched = matchGlobalShortcut({
+        key: e.key.toLowerCase(),
+        mod: e.metaKey || e.ctrlKey,
+        shift: e.shiftKey,
+        alt: e.altKey,
+        typing: false,
+      });
+      if (matched !== "findInChat") return;
+
+      const element = target as HTMLElement | null;
+      // CodeMirror already ships a search panel; open it instead of our bar.
+      if (element?.closest?.(".cm-editor")) {
+        const editorDom = element.closest(".cm-editor") as HTMLElement;
+        const view = EditorView.findFromDOM(editorDom);
+        if (view) {
+          e.preventDefault();
+          e.stopPropagation();
+          openSearchPanel(view);
+        }
+        return;
+      }
+      // TipTap editors own their find bar (see MarkdownTiptapEditor).
+      if (element?.closest?.(".ProseMirror")) return;
+      // Tree-only pane keeps the conversation find.
+      if (!findContextRef.current.hasPreview) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      // Binary / office previews have no searchable text: claim the chord so
+      // it cannot open the conversation find.
+      if (!findContextRef.current.canFind) return;
+      const active = document.activeElement;
+      findReturnFocusRef.current =
+        active instanceof HTMLElement ? active : null;
+      openFind();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [openFind, resetFind, restoreFindFocus]);
 
   useEffect(() => {
     onDirtyPathsChange?.(dirtyPaths);
@@ -271,7 +416,69 @@ export function FilesWorkspace({
     void refresh();
     setExpanded(loadTreeExpanded(projectPath || ""));
     setQuery("");
+    setDebouncedQuery("");
+    setProjectHits([]);
+    resetFind();
   }, [projectPath]); // eslint-disable-line react-hooks/exhaustive-deps -- refresh on path only
+
+  // Host search covers the whole project; SSH / browser hosts keep the
+  // loaded-tree filter (no remote rg endpoint yet).
+  const hostSearchEnabled = !sshAlias && api.isTauri();
+
+  useEffect(() => {
+    if (!hostSearchEnabled || !query.trim()) {
+      setDebouncedQuery("");
+      return;
+    }
+    const id = window.setTimeout(
+      () => setDebouncedQuery(query.trim()),
+      CODEBASE_SEARCH_DEBOUNCE_MS,
+    );
+    return () => window.clearTimeout(id);
+  }, [query, hostSearchEnabled]);
+
+  useEffect(() => {
+    if (!hostSearchEnabled || !debouncedQuery) {
+      setProjectHits([]);
+      setSearchingProject(false);
+      setSearchTruncated(false);
+      setSearchIndexTruncated(false);
+      setSearchFailed(false);
+      return;
+    }
+    let cancelled = false;
+    setSearchingProject(true);
+    setSearchFailed(false);
+    void api
+      .projectFileIndexSearch({
+        projectPath: projectPath || "",
+        query: debouncedQuery,
+        limit: clampCodebaseSearchLimit(100),
+      })
+      .then((res) => {
+        if (cancelled) return;
+        setProjectHits(res.hits || []);
+        setSearchTruncated(!!res.truncated);
+        setSearchIndexTruncated(!!res.indexTruncated);
+        // Untrusted / missing roots surface as softFail — do not report them
+        // as an empty result.
+        setSearchFailed(!!res.softFail);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.error("[files] project file search failed", e);
+        setProjectHits([]);
+        setSearchTruncated(false);
+        setSearchIndexTruncated(false);
+        setSearchFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setSearchingProject(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedQuery, hostSearchEnabled, projectPath]);
 
   // Persist expand map when it changes (per project).
   useEffect(() => {
@@ -563,6 +770,12 @@ export function FilesWorkspace({
     !!activeTabEditable &&
     previewTab.draftText != null;
 
+  const showProjectHits = hostSearchEnabled && !!query.trim();
+  // While the debounce runs, `debouncedQuery` still holds the previous term.
+  const projectSearchPending =
+    showProjectHits &&
+    (searchingProject || query.trim() !== debouncedQuery);
+
   if (!projectPath) {
     return (
       <div className="sw-files" data-testid="files-workspace">
@@ -575,7 +788,11 @@ export function FilesWorkspace({
   }
 
   return (
-    <div className="sw-files rp--embedded" data-testid="files-workspace">
+    <div
+      ref={paneRef}
+      className="sw-files rp--embedded"
+      data-testid="files-workspace"
+    >
       {/* Dual-row chrome: editor actions (or crumbs) LEFT · tree + 打开 RIGHT */}
       <div className="rp-files-toolbar" data-testid="files-toolbar">
         {showEditorChrome ? (
@@ -703,6 +920,21 @@ export function FilesWorkspace({
         </div>
       ) : null}
 
+      {findOpen ? (
+        <ChatFindBar
+          query={findQuery}
+          activeIndex={findActive}
+          matchCount={findMatches.length}
+          focusNonce={findNonce}
+          testId="files-find-bar"
+          labels={findBarLabelsFromT(tr)}
+          onQueryChange={setFindQuery}
+          onPrev={() => stepFind(-1)}
+          onNext={() => stepFind(1)}
+          onClose={closeFind}
+        />
+      ) : null}
+
       <div
         ref={splitRef}
         className={
@@ -780,6 +1012,8 @@ export function FilesWorkspace({
                 requestBatchAcceptHunks={NOOP}
                 requestBatchRejectHunks={NOOP}
                 hideToolbar={showEditorChrome}
+                findFocusLine={findOpen ? findFocusLine : null}
+                findMode={findOpen && !!findQuery.trim()}
               />
             );
           })()}
@@ -811,12 +1045,80 @@ export function FilesWorkspace({
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder={tr("resources.filterPh")}
-                  aria-label={tr("resources.filterPh")}
+                  placeholder={tr("resources.searchPh")}
+                  aria-label={tr("resources.searchPh")}
                 />
               </div>
+              {!hostSearchEnabled && query.trim() ? (
+                <div className="rp-tree__search-note">
+                  {tr("resources.searchLocalOnly")}
+                </div>
+              ) : null}
               <OverlayScroll className="rp-tree-scroll">
-                {loadingTree ? (
+                {showProjectHits ? (
+                  projectSearchPending ? (
+                    <div className="rp__empty-desc" style={{ padding: 12 }}>
+                      {tr("resources.searching")}
+                    </div>
+                  ) : searchFailed ? (
+                    <div className="rp__empty-desc" style={{ padding: 12 }}>
+                      {tr("resources.searchFailed")}
+                    </div>
+                  ) : projectHits.length === 0 ? (
+                    <div className="rp__empty-desc" style={{ padding: 12 }}>
+                      {tr("resources.searchEmpty")}
+                    </div>
+                  ) : (
+                    <>
+                      <VirtualList
+                        items={projectHits}
+                        getKey={(hit) => hit.path || hit.relativePath}
+                        rowHeight={RESOURCE_TREE_ROW_HEIGHT_PX}
+                        threshold={RESOURCE_TREE_VIRTUALIZE_THRESHOLD}
+                        renderItem={(hit) => {
+                          const selected =
+                            !!activeTab &&
+                            (activeTab.relativePath === hit.relativePath ||
+                              activeTab.absolutePath === hit.path);
+                          return (
+                            <button
+                              type="button"
+                              className={
+                                "rp-tree__row rp-tree__row--search" +
+                                (selected ? " is-selected" : "")
+                              }
+                              style={{ paddingLeft: 8 }}
+                              title={hit.relativePath || hit.path}
+                              disabled={!hit.relativePath}
+                              onClick={() => {
+                                if (!hit.relativePath) return;
+                                void onTreeFileClick(hit.relativePath, hit.name);
+                              }}
+                            >
+                              <TreeRowLeading name={hit.name} isDir={false} />
+                              <span className="rp-tree__name">{hit.name}</span>
+                              <span className="rp-tree__search-path">
+                                {hit.relativePath || hit.path}
+                              </span>
+                            </button>
+                          );
+                        }}
+                      />
+                      {searchTruncated ? (
+                        <div className="rp-tree__search-note">
+                          {tr("resources.searchTruncated", {
+                            count: String(projectHits.length),
+                          })}
+                        </div>
+                      ) : null}
+                      {searchIndexTruncated ? (
+                        <div className="rp-tree__search-note">
+                          {tr("resources.searchIndexPartial")}
+                        </div>
+                      ) : null}
+                    </>
+                  )
+                ) : loadingTree ? (
                   <div className="rp__empty-desc" style={{ padding: 12 }}>
                     {tr("resources.loading")}
                   </div>
@@ -852,18 +1154,11 @@ export function FilesWorkspace({
                             else void onTreeFileClick(n.relativePath, n.name);
                           }}
                         >
-                          <span className="rp-tree__chev">
-                            {n.isDir ? (
-                              open ? (
-                                <IconChevronDown size={14} />
-                              ) : (
-                                <IconChevronRight size={14} />
-                              )
-                            ) : (
-                              <span className="rp-tree__gap" />
-                            )}
-                          </span>
-                          <FileKindMark name={n.name} isDir={n.isDir} />
+                          <TreeRowLeading
+                            name={n.name}
+                            isDir={n.isDir}
+                            open={open}
+                          />
                           <span className="rp-tree__name">{n.name}</span>
                         </button>
                       );
