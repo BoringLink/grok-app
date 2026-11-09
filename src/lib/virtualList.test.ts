@@ -240,4 +240,18 @@ describe("scrollTopForIndex", () => {
     // Item absolute top = 200 + 5*(30+2) = 360; viewport 300 → need scroll
     expect(top).toBe(listOffsetTop + itemOffset(idx, H, G) + H - base.viewportHeight);
   });
+
+  it("centers the row when align is center", () => {
+    const idx = 40;
+    const top = scrollTopForIndex(idx, {
+      ...base,
+      currentScrollTop: 0,
+      align: "center",
+    });
+    const itemTop = itemOffset(idx, H, G);
+    expect(top).toBe(Math.round(itemTop - (base.viewportHeight - H) / 2));
+    // Centered row leaves room above and below the viewport edges.
+    expect(itemTop - top).toBeGreaterThan(0);
+    expect(itemTop + H - top).toBeLessThan(base.viewportHeight);
+  });
 });
