@@ -208,6 +208,9 @@ describe("FilesWorkspace in-file find", () => {
     const findInput = await screen.findByRole("searchbox", {
       name: "Find in file…",
     });
+    const bar = screen.getByTestId("files-find-bar");
+    expect(bar.parentElement).toHaveClass("rp-find-overlay");
+    expect(bar.closest(".rp-split__preview")).not.toBeNull();
     await userEvent.type(findInput, "beta");
     expect(screen.getByText("1 / 1")).toBeInTheDocument();
     await waitFor(() => expect(tabMocks.previewFindQuery).toBe("beta"));

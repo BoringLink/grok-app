@@ -935,21 +935,6 @@ export function FilesWorkspace({
         </div>
       ) : null}
 
-      {findOpen ? (
-        <ChatFindBar
-          query={findQuery}
-          activeIndex={findActive}
-          matchCount={findMatches.length}
-          focusNonce={findNonce}
-          testId="files-find-bar"
-          labels={findBarLabelsFromT(tr)}
-          onQueryChange={setFindQuery}
-          onPrev={() => stepFind(-1)}
-          onNext={() => stepFind(1)}
-          onClose={closeFind}
-        />
-      ) : null}
-
       <div
         ref={splitRef}
         className={
@@ -960,6 +945,22 @@ export function FilesWorkspace({
         data-split-mode={splitLayout.mode}
       >
         <div className="rp-split__preview">
+          {findOpen ? (
+            <div className="rp-find-overlay">
+              <ChatFindBar
+                query={findQuery}
+                activeIndex={findActive}
+                matchCount={findMatches.length}
+                focusNonce={findNonce}
+                testId="files-find-bar"
+                labels={findBarLabelsFromT(tr)}
+                onQueryChange={setFindQuery}
+                onPrev={() => stepFind(-1)}
+                onNext={() => stepFind(1)}
+                onClose={closeFind}
+              />
+            </div>
+          ) : null}
           {(() => {
             // Directory / failed "not a file" → empty placeholder, not an error wall.
             const isDirOpenError =
