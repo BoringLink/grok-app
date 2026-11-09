@@ -45,6 +45,8 @@ export type VirtualListProps<T> = {
    * (active session, etc.). Re-runs when the key changes.
    */
   scrollToKey?: string | null;
+  /** `nearest` keeps minimal scrolling; `center` parks the row mid-viewport. */
+  scrollAlign?: "nearest" | "center";
 };
 
 function findScrollParent(el: HTMLElement | null): HTMLElement | null {
@@ -116,6 +118,7 @@ export function VirtualList<T>({
   className,
   style,
   scrollToKey,
+  scrollAlign = "nearest",
 }: VirtualListProps<T>) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollParentRef = useRef<HTMLElement | null>(null);
@@ -214,6 +217,7 @@ export function VirtualList<T>({
         viewportHeight: parent.clientHeight,
         currentScrollTop: parent.scrollTop,
         listOffsetTop,
+        align: scrollAlign,
       });
       if (nextTop !== parent.scrollTop) parent.scrollTop = nextTop;
       recompute();
@@ -236,7 +240,7 @@ export function VirtualList<T>({
     align();
     // scrollToKey-driven only (not every items identity change while scrolling).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scrollToKey, count, rowHeight, gap]);
+  }, [scrollToKey, count, rowHeight, gap, scrollAlign]);
 
   if (!shouldVirtualize) {
     // Same structure as a plain mapped list — no spacers, no extra wrappers.

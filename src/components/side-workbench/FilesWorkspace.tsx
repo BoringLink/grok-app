@@ -1031,6 +1031,7 @@ export function FilesWorkspace({
                 findFocusLine={findOpen ? findFocusLine : null}
                 findMode={findOpen && !!findQuery.trim()}
                 findQuery={findOpen ? findQuery : ""}
+                findActive={findOpen ? findActive : -1}
                 findRequest={editorFindRequest}
               />
             );
