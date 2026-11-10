@@ -11,21 +11,27 @@ See `docs/llm-wiki/release.md`.
 
 **What's New popup:** each bullet's **first sentence** is what users see. Keep that sentence to one short line (added / fixed / improved — no paths, no implementation, no issue piles). A second short sentence is allowed for GitHub / this file only. Do **not** rewrite already-shipped `## [X.Y.Z]` sections.
 
-## [Unreleased]
+## [0.2.53] - 2026-11-10
+
+> **Highlight:** Auto-generated session titles no longer hit the wrong Grok home, so custom providers stop failing with 401.
+>
+> **中文 · 亮点：** 自动会话标题不再走错 Grok home，自定义供应商不再误报 401。
 
 ### Added
 - Remote-control attachments now use a deduplicated, size-limited store. Unreferenced files are cleaned up automatically.
 - Remote control can send agent-created files back as native attachments.
 
+### Fixed
+- The file panel no longer jumps back to the opened file when you expand or collapse a folder.
+- Auto-generated session titles run against the Grok home that matches your session data mode, so custom providers stop returning 401.
+
 **中文 · 新增**
 - 远程控制附件改为去重、限额的附件文件系统，无引用文件会自动清理。
 - 远程控制可以把 agent 生成的文件作为原生附件发回 IM。
 
-### Fixed
-- The file panel no longer jumps back to the opened file when you expand or collapse a folder.
-
 **中文 · 修复**
 - 修复展开或折叠任意目录时，文件树视图会跳回已打开文件导致的闪烁。
+- 会话标题自动生成改用与会话数据模式一致的 Grok home，修复自定义供应商误报 401 鉴权错误。
 
 ## [0.2.52] - 2026-11-09
 
