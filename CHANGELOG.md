@@ -21,6 +21,12 @@ See `docs/llm-wiki/release.md`.
 - 远程控制附件改为去重、限额的附件文件系统，无引用文件会自动清理。
 - 远程控制可以把 agent 生成的文件作为原生附件发回 IM。
 
+### Fixed
+- The file panel no longer jumps back to the opened file when you expand or collapse a folder.
+
+**中文 · 修复**
+- 修复展开或折叠任意目录时，文件树视图会跳回已打开文件导致的闪烁。
+
 ## [0.2.52] - 2026-11-09
 
 > **Highlight:** Update checks now follow this fork's Releases.
