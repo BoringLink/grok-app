@@ -163,6 +163,15 @@ fn title_prompt(snippet: &str, locale: Locale) -> String {
     }
 }
 
+/// GROK_HOME for the headless title CLI, aligned with the session data mode
+/// the user picked in settings. Without this the child falls back to shared
+/// `~/.grok`, whose default model may live on an `env_key`-style provider the
+/// GUI process cannot resolve (no shell env) — the request then goes out
+/// unauthenticated (401) even though the chat itself runs fine on agent-home.
+fn title_cli_grok_home(settings: &store::AppSettings) -> std::path::PathBuf {
+    crate::paths::resolve_agent_grok_home(&settings.session_data_mode)
+}
+
 /// Call Grok CLI headless with low effort.
 fn llm_title_via_cli(message: &str) -> Option<String> {
     // Same settings path as other CLI call sites (doctor, session spawn, etc.).
@@ -193,6 +202,7 @@ fn llm_title_via_cli(message: &str) -> Option<String> {
     if let Some(path_env) = crate::process_util::enriched_path_env() {
         cmd.env("PATH", path_env);
     }
+    cmd.env("GROK_HOME", title_cli_grok_home(&settings));
     crate::proxy::apply_to_std_command(&mut cmd);
 
     let output = std::thread::spawn(move || cmd.output()).join().ok()?.ok()?;
@@ -275,6 +285,30 @@ pub fn refine_title_in_background(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 标题任务的 GROK_HOME 必须跟随设置中的会话数据模式：independent 指向
+    /// App agent-home（inline `api_key`），shared 指向 `~/.grok`。回落到默认
+    /// 共享 home 会让 GUI 进程用到 `env_key` 型 provider 且拿不到环境变量（401）。
+    #[test]
+    fn title_home_follows_session_data_mode() {
+        let mut settings = store::AppSettings::default();
+        settings.session_data_mode = "shared".into();
+        assert_eq!(
+            title_cli_grok_home(&settings),
+            crate::process_util::user_home().join(".grok")
+        );
+        settings.session_data_mode = "independent".into();
+        assert_eq!(
+            title_cli_grok_home(&settings),
+            crate::paths::agent_home_dir()
+        );
+        // 未知值按 independent 处理（与 resolve_agent_grok_home 的语义一致）。
+        settings.session_data_mode = "bogus".into();
+        assert_eq!(
+            title_cli_grok_home(&settings),
+            crate::paths::agent_home_dir()
+        );
+    }
 
     #[test]
     fn placeholders() {
