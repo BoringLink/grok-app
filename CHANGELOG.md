@@ -25,6 +25,7 @@ See `docs/llm-wiki/release.md`.
 - Official model menus use the newest available catalog.
 - CLI bulk import counts eligible sessions and reports complete import failures.
 - Markdown paste keeps block structure and stops formatting the next text.
+- Auto-generated session titles run against the Grok home that matches your session data mode, so custom providers stop returning 401.
 
 **中文 · 修复**
 
@@ -32,6 +33,7 @@ See `docs/llm-wiki/release.md`.
 - 官方模型菜单采用最新可用目录。
 - CLI 批量导入只统计符合条件的会话，全部失败时会显示错误。
 - Markdown 粘贴保留块结构，后续输入不再沿用粘贴内容的格式。
+- 会话标题自动生成改用与会话数据模式一致的 Grok home，修复自定义供应商误报 401 鉴权错误。
 
 ## [0.2.50] - 2026-10-28
 
