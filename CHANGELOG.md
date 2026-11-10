@@ -36,10 +36,12 @@ See `docs/llm-wiki/release.md`.
 ### Fixed
 - Chat user bubbles render Markdown like the composer.
 - Pasting Markdown source keeps headings, lists, and fences.
+- The file panel no longer jumps back to the opened file when you expand or collapse a folder.
 
 **中文 · 修复**
 - 聊天气泡按编辑器的 Markdown 渲染。
 - 粘贴 Markdown 源码时保留标题、列表和代码块。
+- 修复展开或折叠任意目录时，文件树视图会跳回已打开文件导致的闪烁。
 
 ## [0.2.52] - 2026-11-09
 
