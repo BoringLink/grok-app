@@ -42,7 +42,8 @@ export type VirtualListProps<T> = {
   style?: CSSProperties;
   /**
    * When set and present in `items`, keep that row scrolled into view
-   * (active session, etc.). Re-runs when the key changes.
+   * (active session, etc.). Re-runs when the key changes or the row
+   * reappears after being absent; row-count changes alone never re-align.
    */
   scrollToKey?: string | null;
 };
@@ -125,7 +126,7 @@ export function VirtualList<T>({
   const [win, setWin] = useState<VirtualWindow>(() =>
     initialWindow(count, shouldVirtualize, overscan),
   );
-  /** Last scrollToKey that triggered an alignment pass. */
+  /** Key of the last successful alignment pass; null when deselected or the key is absent. */
   const alignedKeyRef = useRef<string | null>(null);
 
   const recompute = useCallback(() => {
@@ -191,26 +192,20 @@ export function VirtualList<T>({
     };
   }, [recompute, shouldVirtualize, count]);
 
-  // Keep the active/scroll target row in view when its key changes.
+  // Keep the active/scroll target row in view. Alignment runs when the key
+  // changes, when the key reappears after being absent from `items` (async
+  // root load, filter), or after a previous pass could not act (scroll
+  // parent missing). Row-count changes alone (directory expand/collapse)
+  // never re-align, or the viewport would jump back to the opened file.
   useLayoutEffect(() => {
-    if (scrollToKey == null || scrollToKey === "") return;
-    // Expand/collapse changes `count` and re-runs this effect; re-aligning
-    // then would yank the viewport back to the target row on every toggle
-    // (CLS jump to the opened file). Align only when the key changes or
-    // when this key becomes present in `items` for the first time (async
-    // root load) — not on every row-count change.
-    if (alignedKeyRef.current === scrollToKey) return;
-    const index = items.findIndex(
-      (item, i) => getKey(item, i) === scrollToKey,
-    );
-    if (index < 0) return;
-    alignedKeyRef.current = scrollToKey;
-
-    const align = () => {
+    const settle = (aligned: boolean) => {
+      if (aligned) alignedKeyRef.current = scrollToKey ?? null;
+    };
+    const align = (): boolean => {
       const el = rootRef.current;
-      if (!el) return;
+      if (!el) return false;
       const parent = scrollParentRef.current ?? findScrollParent(el);
-      if (!parent) return;
+      if (!parent) return false;
       scrollParentRef.current = parent;
       const rootRect = el.getBoundingClientRect();
       const parentRect = parent.getBoundingClientRect();
@@ -226,7 +221,25 @@ export function VirtualList<T>({
       });
       if (nextTop !== parent.scrollTop) parent.scrollTop = nextTop;
       recompute();
+      return true;
     };
+
+    if (scrollToKey == null || scrollToKey === "") {
+      // Deselect: forget the aligned key so reselecting the same file
+      // re-aligns.
+      alignedKeyRef.current = null;
+      return;
+    }
+    const index = items.findIndex(
+      (item, i) => getKey(item, i) === scrollToKey,
+    );
+    if (index < 0) {
+      // Key not in the list yet (async root load) or temporarily filtered
+      // out: forget the last alignment so its reappearance re-aligns.
+      alignedKeyRef.current = null;
+      return;
+    }
+    if (alignedKeyRef.current === scrollToKey) return;
 
     const root = rootRef.current;
     // Child layout runs before the parent reveal starts motion. Wait a
@@ -234,15 +247,15 @@ export function VirtualList<T>({
     if (root?.closest(".tree-reveal")) {
       queueMicrotask(() => {
         if (isTreeRevealMotionActive()) {
-          runAfterTreeRevealMotion(align);
+          runAfterTreeRevealMotion(() => settle(align()));
           return;
         }
-        align();
+        settle(align());
       });
       return;
     }
 
-    align();
+    settle(align());
     // scrollToKey-driven only (not every items identity change while scrolling).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrollToKey, count, rowHeight, gap]);
