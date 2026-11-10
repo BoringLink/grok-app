@@ -23,17 +23,6 @@
   <img src="https://img.shields.io/badge/note-unofficial-yellow" alt="Unofficial" />
 </p>
 
-<p align="center">
-  <a href="https://x.com/cgnot996"><img src="https://img.shields.io/badge/X-铁柱AGI%20%40cgnot996-black?logo=x&logoColor=white" alt="X 铁柱AGI" /></a>
-  <img src="https://img.shields.io/badge/WeChat-铁柱AGI-07C160?logo=wechat&logoColor=white" alt="WeChat 铁柱AGI" />
-</p>
-
-<p align="center">
-  <img src="assets/wechat/mp-search-scan.png" alt="WeChat Search 铁柱AGI — scan to follow" width="420" />
-  &nbsp;&nbsp;
-  <img src="assets/wechat/community-group-qr.png" alt="WeChat group QR — scan to join" width="200" />
-</p>
-
 ---
 
 > [!NOTE]
@@ -54,7 +43,7 @@
 - [💻 Building from Source & Development](#-building-from-source--development)
 - [🤝 Community & Contributing](#-community--contributing)
 - [👥 Contributors](#-contributors)
-- [📄 License & Author](#-license--author)
+- [📄 License](#-license)
 
 ---
 
@@ -378,17 +367,8 @@ Thanks to everyone who has contributed to Grok App. All human GitHub contributor
 
 ---
 
-## 📄 License & Author
+## 📄 License
 
 This project is licensed under the [MIT License](./LICENSE).
-
-### Connect with the Author & Community
-
-| Channel | Link |
-|:---|:---|
-| 𝕏 **X (Twitter)** | [@cgnot996 (铁柱AGI)](https://x.com/cgnot996) |
-| 📢 **WeChat Official Account** | Search **「铁柱AGI」** or scan top-left QR |
-| 💬 **WeChat Community** | Scan top-right QR code |
-| 🐧 **Linux.do Community** | [linux.do](https://linux.do/) — Learn AI on L-Station |
 
 ⭐ **If Grok App empowers your daily workflow, please consider starring the repository!**

@@ -23,17 +23,6 @@
   <img src="https://img.shields.io/badge/note-unofficial-yellow" alt="Unofficial" />
 </p>
 
-<p align="center">
-  <a href="https://x.com/cgnot996"><img src="https://img.shields.io/badge/X-铁柱AGI%20%40cgnot996-black?logo=x&logoColor=white" alt="X 铁柱AGI" /></a>
-  <img src="https://img.shields.io/badge/WeChat-铁柱AGI-07C160?logo=wechat&logoColor=white" alt="WeChat 铁柱AGI" />
-</p>
-
-<p align="center">
-  <img src="assets/wechat/mp-search-scan.png" alt="WeChat Search 铁柱AGI — отсканируйте, чтобы подписаться" width="420" />
-  &nbsp;&nbsp;
-  <img src="assets/wechat/community-group-qr.png" alt="QR-код группы WeChat — отсканируйте, чтобы присоединиться" width="200" />
-</p>
-
 ---
 
 > [!NOTE]
@@ -378,17 +367,8 @@ Windows (необязательно): дважды щёлкните [`install-la
 
 ---
 
-## 📄 Лицензия и автор
+## 📄 Лицензия
 
 Проект распространяется под лицензией [MIT License](./LICENSE).
-
-### Связь с автором и сообщество
-
-| Канал связи | Ссылка |
-|:---|:---|
-| 𝕏 **X (Twitter)** | [@cgnot996 (铁柱AGI)](https://x.com/cgnot996) |
-| 📢 **WeChat Official Account** | Поиск **「铁柱AGI」** или QR-код слева вверху |
-| 💬 **Группа WeChat** | QR-код сообщества справа вверху |
-| 🐧 **Сообщество Linux.do** | [linux.do](https://linux.do/) — Изучайте AI на L-Station |
 
 ⭐ **Если Grok App делает вашу разработку удобнее и быстрее, пожалуйста, поставьте звезду репозиторию на GitHub!**

@@ -23,17 +23,6 @@
   <img src="https://img.shields.io/badge/note-unofficial-yellow" alt="Unofficial" />
 </p>
 
-<p align="center">
-  <a href="https://x.com/cgnot996"><img src="https://img.shields.io/badge/X-铁柱AGI%20%40cgnot996-black?logo=x&logoColor=white" alt="X 铁柱AGI" /></a>
-  <img src="https://img.shields.io/badge/微信公众号-铁柱AGI-07C160?logo=wechat&logoColor=white" alt="微信公众号 铁柱AGI" />
-</p>
-
-<p align="center">
-  <img src="assets/wechat/mp-search-scan.png" alt="微信搜一搜 铁柱AGI · 扫码关注公众号" width="420" />
-  &nbsp;&nbsp;
-  <img src="assets/wechat/community-group-qr.png" alt="微信交流群二维码 · 扫码进群" width="200" />
-</p>
-
 ---
 
 > [!NOTE]
@@ -378,17 +367,8 @@ Windows（可选）：双击 [`install-latest.cmd`](./install-latest.cmd) 会把
 
 ---
 
-## 📄 开源协议与作者
+## 📄 开源协议
 
 本项目采用 [MIT License](./LICENSE) 开源协议。
-
-### 关注作者与社区
-
-| 渠道 | 入口链接 |
-|:---|:---|
-| 𝕏 **X (Twitter)** | [@cgnot996 (铁柱AGI)](https://x.com/cgnot996) |
-| 📢 **微信公众号** | 搜索 **「铁柱AGI」** 或扫描页顶左侧二维码 |
-| 💬 **微信交流群** | 扫描页顶右侧二维码进群交流 |
-| 🐧 **Linux.do 社区** | [linux.do](https://linux.do/) — 学 AI，上 L 站 |
 
 🌟 **如果 Grok App 对你的日常开发有所帮助，请在 GitHub 上为我们点亮一颗 Star！**
