@@ -76,4 +76,74 @@ describe("VirtualList inside OverlayScroll", () => {
 
     expect(screen.getByText("row-30")).toBeInTheDocument();
   });
+
+  it("does not re-align to scrollToKey when items count changes without a key change", () => {
+    // Expanding a directory changes the visible row count. Re-running the
+    // alignment pass then yanks the viewport back to the opened file (CLS
+    // jump on every directory toggle). Alignment must run once per key.
+    const { container, rerender } = render(
+      <OverlayScroll syncTreeReveal>
+        <VirtualList
+          items={items(60)}
+          getKey={(s) => s}
+          renderItem={(s) => <div>{s}</div>}
+          rowHeight={30}
+          scrollToKey="row-30"
+        />
+      </OverlayScroll>,
+    );
+    const viewport = container.querySelector(
+      ".overlay-scroll__viewport",
+    ) as HTMLElement;
+    const root = container.querySelector(".virtual-list") as HTMLElement;
+    Object.defineProperty(viewport, "clientHeight", {
+      configurable: true,
+      value: 300,
+    });
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue({
+      top: 0,
+      bottom: 60 * 30,
+      left: 0,
+      right: 0,
+      width: 200,
+      height: 60 * 30,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    // First alignment pass moves the viewport to the target row.
+    expect(viewport.scrollTop).toBeGreaterThan(0);
+    const alignedTop = viewport.scrollTop;
+
+    // User scrolled elsewhere after the reveal (simulated), then toggles a
+    // directory: count grows, same scrollToKey — the viewport must stay.
+    viewport.scrollTop = 0;
+    rerender(
+      <OverlayScroll syncTreeReveal>
+        <VirtualList
+          items={items(80)}
+          getKey={(s) => s}
+          renderItem={(s) => <div>{s}</div>}
+          rowHeight={30}
+          scrollToKey="row-30"
+        />
+      </OverlayScroll>,
+    );
+    expect(viewport.scrollTop).toBe(0);
+
+    // A key change still aligns (row-50 sits lower than row-30).
+    rerender(
+      <OverlayScroll syncTreeReveal>
+        <VirtualList
+          items={items(80)}
+          getKey={(s) => s}
+          renderItem={(s) => <div>{s}</div>}
+          rowHeight={30}
+          scrollToKey="row-50"
+        />
+      </OverlayScroll>,
+    );
+    expect(viewport.scrollTop).toBeGreaterThan(alignedTop);
+  });
 });

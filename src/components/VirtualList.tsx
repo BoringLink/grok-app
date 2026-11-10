@@ -125,6 +125,8 @@ export function VirtualList<T>({
   const [win, setWin] = useState<VirtualWindow>(() =>
     initialWindow(count, shouldVirtualize, overscan),
   );
+  /** Last scrollToKey that triggered an alignment pass. */
+  const alignedKeyRef = useRef<string | null>(null);
 
   const recompute = useCallback(() => {
     const root = rootRef.current;
@@ -192,10 +194,17 @@ export function VirtualList<T>({
   // Keep the active/scroll target row in view when its key changes.
   useLayoutEffect(() => {
     if (scrollToKey == null || scrollToKey === "") return;
+    // Expand/collapse changes `count` and re-runs this effect; re-aligning
+    // then would yank the viewport back to the target row on every toggle
+    // (CLS jump to the opened file). Align only when the key changes or
+    // when this key becomes present in `items` for the first time (async
+    // root load) — not on every row-count change.
+    if (alignedKeyRef.current === scrollToKey) return;
     const index = items.findIndex(
       (item, i) => getKey(item, i) === scrollToKey,
     );
     if (index < 0) return;
+    alignedKeyRef.current = scrollToKey;
 
     const align = () => {
       const el = rootRef.current;
