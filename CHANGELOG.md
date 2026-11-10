@@ -13,6 +13,16 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.51] - 2026-11-10
+
+> **Highlight:** Auto-generated session titles no longer hit the wrong Grok home, so custom providers stop failing with 401.
+>
+> **中文 · 亮点：** 自动会话标题不再走错 Grok home，自定义供应商不再误报 401。
+
+### Fixed
+- Auto-generated session titles run against the Grok home that matches your session data mode, so custom providers stop returning 401.
+- 会话标题自动生成改用与会话数据模式一致的 Grok home，修复自定义供应商误报 401 鉴权错误。
+
 ## [0.2.50] - 2026-10-28
 
 > **Highlight:** Every model of a custom provider is selectable again, and the chosen one is the one used.
