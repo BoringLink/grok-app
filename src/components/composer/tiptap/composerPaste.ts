@@ -19,7 +19,6 @@ import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
-import { closeHistory } from "@tiptap/pm/history";
 import { looksLikeMarkdownBlockSource } from "@/lib/markdownLineStart";
 
 /** `doc.body` 内不携带语义的标签。 */
@@ -54,6 +53,11 @@ const BLOCK_TAGS = new Set([
   "TD",
   "TH",
 ]);
+
+/**
+ * 行首的块级记号由 `@/lib/markdownLineStart` 统一维护：粘贴判定和序列化防歧义
+ * 必须用同一份规则，否则会像 setext `===` / 表格 `|` 那样漂移。
+ */
 
 /** 比较用文本：忽略一切空白差异。 */
 function comparableText(text: string): string {
@@ -222,7 +226,7 @@ function isFullyMarked(container: HTMLElement): boolean {
 function insertPlainText(editor: Editor, text: string): boolean {
   const { from, to } = editor.state.selection;
   editor.view.dispatch(
-    closeHistory(editor.state.tr.replaceWith(from, to, editor.schema.text(text))),
+    editor.state.tr.replaceWith(from, to, editor.schema.text(text)),
   );
   return true;
 }
@@ -252,16 +256,8 @@ function insertInlineMarkdown(editor: Editor, markdown: string): boolean {
     { preserveWhitespace: true, context: $from },
   );
   if (!slice.content.size) return false;
-  editor.view.dispatch(closeHistory(editor.state.tr.replaceSelection(slice)));
+  editor.view.dispatch(editor.state.tr.replaceSelection(slice));
   return true;
-}
-
-/** ProseMirror 的 preferPlain 状态；Shift+Insert 继续走普通粘贴。 */
-function isShiftPaste(view: EditorView): boolean {
-  const input = (view as unknown as {
-    input?: { shiftKey?: boolean; lastKeyCode?: number };
-  }).input;
-  return input?.shiftKey === true && input.lastKeyCode !== 45;
 }
 
 /** 剪贴板粘贴：按来源决定解析粒度；所有纯文本粘贴先归一化。 */
@@ -279,20 +275,10 @@ export const ComposerMarkdownPaste = Extension.create({
           return trailingMarksReset(newState);
         },
         props: {
-          transformPastedText(text: string, _plain: boolean, view: EditorView) {
-            // 此钩子早于 handlePaste，代码块回退也会经过这里；保留其原始空白。
-            const { selection } = view.state;
-            if (
-              selection.$from.parent.type.spec.code ||
-              selection.$to.parent.type.spec.code
-            ) {
-              return text;
-            }
+          transformPastedText(text: string) {
             return normalizePastedMarkdown(text);
           },
           handlePaste(view: EditorView, event: ClipboardEvent) {
-            // Shift+粘贴保持库原有的 preferPlain 管线。
-            if (isShiftPaste(view)) return false;
             const { selection } = view.state;
             if (
               selection.$from.parent.type.spec.code ||
@@ -312,17 +298,10 @@ export const ComposerMarkdownPaste = Extension.create({
             if (!parser?.parse) return false;
             const inserted =
               plan === "block"
-                ? editor
-                    .chain()
-                    .command(({ tr }) => {
-                      closeHistory(tr);
-                      return true;
-                    })
-                    .insertContentAt(
-                      { from: selection.from, to: selection.to },
-                      markdown,
-                    )
-                    .run()
+                ? editor.commands.insertContentAt(
+                    { from: selection.from, to: selection.to },
+                    markdown,
+                  )
                 : insertInlineMarkdown(editor, markdown);
             if (!inserted) return false;
 

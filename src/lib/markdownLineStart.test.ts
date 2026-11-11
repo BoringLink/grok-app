@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  escapeMarkdownLineStart,
   looksLikeMarkdownBlockSource,
 } from "./markdownLineStart";
 
@@ -27,3 +28,33 @@ describe("looksLikeMarkdownBlockSource", () => {
   });
 });
 
+describe("escapeMarkdownLineStart", () => {
+  it("转义行首块级记号", () => {
+    expect(escapeMarkdownLineStart("# 标题")).toBe("\\# 标题");
+    expect(escapeMarkdownLineStart("```js")).toBe("\\```js");
+    expect(escapeMarkdownLineStart("> 引用")).toBe("\\> 引用");
+    expect(escapeMarkdownLineStart("- 一项")).toBe("\\- 一项");
+    expect(escapeMarkdownLineStart("+ 一项")).toBe("\\+ 一项");
+    expect(escapeMarkdownLineStart("| a | b |")).toBe("\\| a | b |");
+    expect(escapeMarkdownLineStart("---")).toBe("\\---");
+    expect(escapeMarkdownLineStart("===")).toBe("\\===");
+    expect(escapeMarkdownLineStart("***")).toBe("\\*\\*\\*");
+    expect(escapeMarkdownLineStart("_ _ _")).toBe("\\_ \\_ \\_");
+  });
+
+  it("有序列表转义分隔符", () => {
+    expect(escapeMarkdownLineStart("1. 一项")).toBe("1\\. 一项");
+    expect(escapeMarkdownLineStart("12) 一项")).toBe("12\\) 一项");
+  });
+
+  it("保留行首缩进", () => {
+    expect(escapeMarkdownLineStart("  - 一项")).toBe("  \\- 一项");
+  });
+
+  it("普通文字、小数与已转义的行保持不变", () => {
+    expect(escapeMarkdownLineStart("普通文字")).toBe("普通文字");
+    expect(escapeMarkdownLineStart("1.5 倍")).toBe("1.5 倍");
+    expect(escapeMarkdownLineStart("+5 元")).toBe("+5 元");
+    expect(escapeMarkdownLineStart("\\# 已转义")).toBe("\\# 已转义");
+  });
+});

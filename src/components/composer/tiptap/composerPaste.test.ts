@@ -9,21 +9,13 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { Editor } from "@tiptap/react";
-import type { Content } from "@tiptap/react";
+import { Slice } from "@tiptap/pm/model";
+import { buildComposerExtensions } from "@/components/composer/tiptap/composerExtensions";
 import { normalizeSerializedMarkdown } from "@/lib/composerMarkdown";
 import {
   normalizePastedMarkdown,
   planPastedMarkdown,
 } from "@/components/composer/tiptap/composerPaste";
-import {
-  blockTypes,
-  createComposerEditor,
-  dispatchPaste,
-  dispatchRealPaste,
-  hasHardBreak,
-  markdownOf,
-  setShiftPaste,
-} from "@/components/composer/tiptap/composerPasteTestUtils";
 
 let editor: Editor | null = null;
 let host: HTMLDivElement | null = null;
@@ -35,10 +27,65 @@ afterEach(() => {
   host = null;
 });
 
-function makeEditor(content: Content = ""): Editor {
-  const created = createComposerEditor({ content });
-  host = created.host;
-  return created.editor;
+function makeEditor(content = ""): Editor {
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  return new Editor({
+    element: host,
+    extensions: buildComposerExtensions({ showPlaceholderWhenEditable: false }),
+    content,
+    editable: true,
+  });
+}
+
+/** 最小剪贴板事件：只实现粘贴路径实际读取的两个 MIME。 */
+function pasteEvent(plain: string, html?: string): ClipboardEvent {
+  // jsdom 没有 ClipboardEvent；粘贴路径只读取 clipboardData，用 Event 承载即可。
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", {
+    value: {
+      getData: (type: string) => {
+        if (type === "text/plain") return plain;
+        if (type === "text/html") return html ?? "";
+        return "";
+      },
+    },
+  });
+  return event as unknown as ClipboardEvent;
+}
+
+function dispatchPaste(ed: Editor, plain: string, html?: string): boolean {
+  const event = pasteEvent(plain, html);
+  const handled = ed.view.someProp("handlePaste", (f) =>
+    f(ed.view, event, Slice.empty),
+  );
+  return !!handled;
+}
+
+/** 走 ProseMirror 的完整粘贴管线：HTML 分支、库的 clipboardTextParser 都会被覆盖。 */
+function dispatchRealPaste(ed: Editor, plain: string, html?: string): void {
+  ed.view.dom.dispatchEvent(pasteEvent(plain, html));
+}
+
+function blockTypes(ed: Editor): string[] {
+  const names: string[] = [];
+  ed.state.doc.forEach((node) => names.push(node.type.name));
+  return names;
+}
+
+function markdownOf(ed: Editor): string {
+  const raw = (ed.storage as { markdown?: { getMarkdown?: () => unknown } })
+    .markdown?.getMarkdown?.();
+  return typeof raw === "string" ? raw : "";
+}
+
+function hasHardBreak(ed: Editor): boolean {
+  let found = false;
+  ed.state.doc.descendants((node) => {
+    if (node.type.name === "hardBreak") found = true;
+    return !found;
+  });
+  return found;
 }
 
 describe("normalizePastedMarkdown", () => {
@@ -243,8 +290,10 @@ describe("粘贴行为", () => {
     // Assert
     expect(editor.state.doc.textContent).toBe("a _b_ c");
     expect(editor.state.doc.firstChild?.firstChild?.marks).toEqual([]);
-    // 发送继续沿用既有纯文本契约，不给用户原文额外添加反斜杠。
-    expect(normalizeSerializedMarkdown(markdownOf(editor))).toBe("a _b_ c");
+    // 序列化器保留防御性转义，气泡渲染时才不会把字面量当成斜体。
+    expect(normalizeSerializedMarkdown(markdownOf(editor))).toBe(
+      "a \\_b\\_ c",
+    );
   });
 
   it("纯文本包壳的围栏代码按 Markdown 解析", () => {
@@ -537,63 +586,4 @@ describe("transformPastedText", () => {
     // Assert
     expect(text).toBe("`code`");
   });
-});
-
-
-
-describe("粘贴的编辑器边界", () => {
-  it("块级粘贴独立撤销，不删除刚输入的文本", () => {
-    editor = makeEditor("hello");
-    editor.commands.setTextSelection(6);
-    editor.view.dispatch(editor.state.tr.insertText(" world"));
-    const before = editor.state.doc;
-    dispatchRealPaste(editor, "## **标题**", "<code>## **标题**</code>");
-    expect(blockTypes(editor)).toContain("heading");
-    editor.commands.undo();
-    expect(editor.state.doc.eq(before)).toBe(true);
-  });
-
-  it("行内粗体粘贴独立撤销，不删除刚输入的文本", () => {
-    editor = makeEditor("hello");
-    editor.commands.setTextSelection(6);
-    editor.view.dispatch(editor.state.tr.insertText(" world"));
-    const before = editor.state.doc;
-    dispatchRealPaste(editor, "**测试**", "<div>**测试**</div>");
-    expect(markdownOf(editor)).toContain("**测试**");
-    editor.commands.undo();
-    expect(editor.state.doc.eq(before)).toBe(true);
-  });
-
-  it("Shift粘贴保留ProseMirror原有纯文本语义", () => {
-    editor = makeEditor();
-    setShiftPaste(editor);
-    dispatchRealPaste(editor, "## 标题\n\n正文", "<div>## 标题<br><br>正文</div>");
-    expect(blockTypes(editor)).not.toContain("heading");
-    expect(editor.state.doc.textContent).toContain("## 标题");
-  });
-
-  it("Shift+Insert保留普通Markdown源码粘贴", () => {
-    editor = makeEditor();
-    setShiftPaste(editor);
-    (editor.view as unknown as { input: { lastKeyCode: number } }).input.lastKeyCode = 45;
-    dispatchRealPaste(editor, "## 标题", "<code>## 标题</code>");
-    expect(blockTypes(editor)).toContain("heading");
-  });
-});
-
-
-describe("编辑器原生剪贴板往返", () => {
-  it.each(["- first\n- second", "```js\nconst a = 1;\n```"])(
-    "保留自身 slice 的列表或代码结构：%s",
-    (source) => {
-      editor = makeEditor(source);
-      editor.commands.selectAll();
-      const before = editor.state.doc;
-      const clipboard = editor.view.serializeForClipboard(editor.state.selection.content());
-      expect(clipboard.dom.querySelector("[data-pm-slice]")).not.toBeNull();
-      editor.commands.setContent("");
-      dispatchRealPaste(editor, clipboard.text, clipboard.dom.innerHTML);
-      expect(editor.state.doc.eq(before)).toBe(true);
-    },
-  );
 });
