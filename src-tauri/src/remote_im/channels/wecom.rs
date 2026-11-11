@@ -134,6 +134,8 @@ fn parse_ws_msg(inst: &ChannelInstance, v: &Value) -> Option<IncomingMessage> {
         .unwrap_or(&sender)
         .to_string();
     Some(IncomingMessage {
+        staged_attachments: Vec::new(),
+        attachment_note: None,
         channel: inst.channel.clone(),
         instance_id: inst.id.clone(),
         message_id: v.get("msgid").and_then(|x| x.as_str()).unwrap_or("").into(),
@@ -466,7 +468,8 @@ async fn run_webhook(
                             .unwrap_or("");
                         if !text.is_empty() {
                             let _ = tx.send(IncomingMessage {
-                                channel: inst.channel.clone(),
+                                staged_attachments: Vec::new(),
+                                attachment_note: None,                                channel: inst.channel.clone(),
                                 instance_id: inst.id.clone(),
                                 message_id: v.get("MsgId").and_then(|x| x.as_str()).unwrap_or("").into(),
                                 chat_id: user.into(),

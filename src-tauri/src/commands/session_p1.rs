@@ -105,7 +105,9 @@ pub async fn session_rewind_drop_last_user(
     mgr: State<'_, Arc<SessionManager>>,
     session_id: Option<String>,
 ) -> Result<SessionSnapshot, String> {
-    mgr.rewind_drop_last_user_turn(app, session_id).await
+    let result = mgr.rewind_drop_last_user_turn(app, session_id).await?;
+    crate::attachments::schedule_gc();
+    Ok(result)
 }
 
 /// List rewind points (one per user prompt) for a session journal.
@@ -128,13 +130,16 @@ pub async fn session_rewind_execute(
     restore_files: Option<bool>,
     session_id: Option<String>,
 ) -> Result<crate::session_manager::RewindExecuteResult, String> {
-    mgr.rewind_to_prompt_index(
-        app,
-        target_prompt_index,
-        restore_files.unwrap_or(false),
-        session_id,
-    )
-    .await
+    let result = mgr
+        .rewind_to_prompt_index(
+            app,
+            target_prompt_index,
+            restore_files.unwrap_or(false),
+            session_id,
+        )
+        .await?;
+    crate::attachments::schedule_gc();
+    Ok(result)
 }
 
 /// Fork a session into a new chat (same project, messages up to optional cut).
@@ -940,6 +945,8 @@ pub async fn session_delete(
     }
 
     store::delete_session(&id)?;
+    // A deleted chat must not be resumed by the next IM turn.
+    let _ = crate::remote_im::forget_app_session_bindings(&id);
     Ok(())
 }
 

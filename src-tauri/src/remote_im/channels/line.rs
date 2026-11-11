@@ -119,7 +119,8 @@ pub async fn run(
                                 let reply_token = ev.get("replyToken").and_then(|x| x.as_str()).unwrap_or("");
                                 // store reply token as message_id for outbound
                                 let _ = tx.send(IncomingMessage {
-                                    channel: inst.channel.clone(),
+                                    staged_attachments: Vec::new(),
+                                    attachment_note: None,                                    channel: inst.channel.clone(),
                                     instance_id: inst.id.clone(),
                                     message_id: reply_token.into(),
                                     chat_id: user.into(),

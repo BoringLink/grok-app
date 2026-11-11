@@ -98,6 +98,25 @@ export async function pathsClassify(paths: string[]) {
 }
 
 /** Open with OS default app. */
+export interface AttachmentsGcReport {
+  sessionsScanned: number;
+  attachmentsMarked: number;
+  attachmentsDeleted: number;
+  blobsDeleted: number;
+  orphanFilesDeleted: number;
+  bytesFreed: number;
+  skippedYoung: number;
+  errors: string[];
+}
+
+export async function attachmentsGc(): Promise<AttachmentsGcReport> {
+  return invoke<AttachmentsGcReport>("attachments_gc");
+}
+
+export async function attachmentOpen(id: string) {
+  return invoke<void>("attachment_open", { id });
+}
+
 export async function pathOpen(path: string) {
   return invoke<void>("path_open", { path });
 }
