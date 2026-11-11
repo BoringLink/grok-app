@@ -207,6 +207,7 @@
 /* In-conversation find bar (Cmd/Ctrl+F) */
 .chat-find {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
   margin: 8px var(--space-5) 0;

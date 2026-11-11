@@ -13,6 +13,9 @@ use std::time::Duration;
 use serde::Serialize;
 
 use crate::process_util;
+use crate::project_walk::{
+    add_rg_base_excludes, file_mtime_ms, mtime_ms, relative_to_root, ProjectWalk, WalkEntry,
+};
 
 /// Default hit cap returned to the UI.
 pub const CODEBASE_SEARCH_DEFAULT_LIMIT: usize = 50;
@@ -116,42 +119,6 @@ fn empty_result(
         search_kind: "keyword".into(),
         soft_fail: soft_fail.map(|s| s.to_string()),
     }
-}
-
-fn file_mtime_ms(path: &Path) -> u64 {
-    fs::metadata(path)
-        .ok()
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
-fn skip_dir_name(name: &str) -> bool {
-    matches!(
-        name,
-        "node_modules"
-            | ".git"
-            | "target"
-            | "dist"
-            | "build"
-            | ".next"
-            | "vendor"
-            | ".cache"
-            | "repos"
-            | ".venv"
-            | "venv"
-            | "__pycache__"
-            | ".turbo"
-            | "coverage"
-            | "out"
-            | ".pnpm-store"
-            | ".yarn"
-            | "Pods"
-            | ".idea"
-            | ".vscode"
-            | "DerivedData"
-    )
 }
 
 fn is_likely_binary_name(name: &str) -> bool {
@@ -284,12 +251,6 @@ fn ceil_char_boundary(s: &str, i: usize) -> usize {
     i
 }
 
-fn relative_to_root(root: &Path, path: &Path) -> String {
-    path.strip_prefix(root)
-        .map(|p| p.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|_| path.to_string_lossy().replace('\\', "/"))
-}
-
 fn hit_from_path(
     root: &Path,
     path: &Path,
@@ -369,22 +330,9 @@ fn try_rg_content(
         .arg("--max-count")
         .arg("1")
         .arg("--max-filesize")
-        .arg(format!("{CODEBASE_SEARCH_MAX_FILE_BYTES}"))
-        .arg("--glob")
-        .arg("!node_modules/**")
-        .arg("--glob")
-        .arg("!.git/**")
-        .arg("--glob")
-        .arg("!target/**")
-        .arg("--glob")
-        .arg("!dist/**")
-        .arg("--glob")
-        .arg("!build/**")
-        .arg("--glob")
-        .arg("!.next/**")
-        .arg("--glob")
-        .arg("!vendor/**")
-        .arg("--glob")
+        .arg(format!("{CODEBASE_SEARCH_MAX_FILE_BYTES}"));
+    add_rg_base_excludes(&mut cmd);
+    cmd.arg("--glob")
         .arg("!*.png")
         .arg("--glob")
         .arg("!*.jpg")
@@ -520,50 +468,19 @@ fn walk_search(
     want_name: bool,
     include_dirs: bool,
 ) -> (Vec<CodebaseSearchHit>, bool, usize) {
-    use std::collections::VecDeque;
-
     let q_lower = query.to_ascii_lowercase();
     let q_len = query.chars().count().max(1);
     let mut hits: Vec<CodebaseSearchHit> = Vec::new();
     let mut truncated = false;
-    let mut visited = 0usize;
 
-    let mut queue: VecDeque<PathBuf> = VecDeque::new();
-    queue.push_back(root.to_path_buf());
-
-    while let Some(dir) = queue.pop_front() {
+    let mut walk = ProjectWalk::new(root, Some(CODEBASE_SEARCH_MAX_FILES_WALK));
+    for entry in walk.by_ref() {
         if hits.len() >= limit {
             truncated = true;
             break;
         }
-        if visited >= CODEBASE_SEARCH_MAX_FILES_WALK {
-            truncated = true;
-            break;
-        }
-        let Ok(rd) = fs::read_dir(&dir) else {
-            continue;
-        };
-        for ent in rd.flatten() {
-            if hits.len() >= limit {
-                truncated = true;
-                break;
-            }
-            if visited >= CODEBASE_SEARCH_MAX_FILES_WALK {
-                truncated = true;
-                break;
-            }
-            let name = ent.file_name().to_string_lossy().to_string();
-            if name == ".DS_Store" || name == "Thumbs.db" {
-                continue;
-            }
-            let path = ent.path();
-            let Ok(meta) = ent.metadata() else {
-                continue;
-            };
-            if meta.is_dir() {
-                if skip_dir_name(&name) || name.starts_with('.') {
-                    continue;
-                }
+        match entry {
+            WalkEntry::Dir { name, path, .. } => {
                 // Report the directory as a hit too when the caller asks, so the
                 // composer can reference it. An empty query stays files-only.
                 if include_dirs && want_name && !q_lower.is_empty() {
@@ -571,7 +488,7 @@ fn walk_search(
                     if codebase_name_matches(&name, &rel, &q_lower) {
                         hits.push(CodebaseSearchHit {
                             path: path.to_string_lossy().to_string(),
-                            name: name.clone(),
+                            name,
                             relative_path: rel,
                             is_dir: true,
                             size: 0,
@@ -582,50 +499,47 @@ fn walk_search(
                         });
                     }
                 }
-                queue.push_back(path);
-                continue;
             }
-            if !meta.is_file() {
-                continue;
-            }
-            visited += 1;
+            WalkEntry::File { name, path, meta } => {
+                let rel = relative_to_root(root, &path);
+                let name_hit = want_name && codebase_name_matches(&name, &rel, &q_lower);
+                let mut content_match = false;
+                let mut snippet = String::new();
+                let mut line = None;
 
-            let rel = relative_to_root(root, &path);
-            let name_hit = want_name && codebase_name_matches(&name, &rel, &q_lower);
-            let mut content_match = false;
-            let mut snippet = String::new();
-            let mut line = None;
-
-            if want_content && !is_likely_binary_name(&name) {
-                if let Some((snip, ln)) = search_file_content(&path, &q_lower, q_len) {
-                    content_match = true;
-                    snippet = snip;
-                    line = Some(ln);
+                if want_content && !is_likely_binary_name(&name) {
+                    if let Some((snip, ln)) = search_file_content(&path, &q_lower, q_len) {
+                        content_match = true;
+                        snippet = snip;
+                        line = Some(ln);
+                    }
                 }
-            }
 
-            // mode filters
-            let keep = match mode {
-                "name" => name_hit,
-                "content" => content_match,
-                _ => name_hit || content_match,
-            };
-            if !keep {
-                continue;
-            }
+                let keep = match mode {
+                    "name" => name_hit,
+                    "content" => content_match,
+                    _ => name_hit || content_match,
+                };
+                if !keep {
+                    continue;
+                }
 
-            hits.push(CodebaseSearchHit {
-                path: path.to_string_lossy().to_string(),
-                name,
-                relative_path: rel,
-                is_dir: false,
-                size: meta.len(),
-                mtime_ms: file_mtime_ms(&path),
-                snippet,
-                content_match,
-                line,
-            });
+                hits.push(CodebaseSearchHit {
+                    path: path.to_string_lossy().to_string(),
+                    name,
+                    relative_path: rel,
+                    is_dir: false,
+                    size: meta.len(),
+                    mtime_ms: mtime_ms(&meta),
+                    snippet,
+                    content_match,
+                    line,
+                });
+            }
         }
+    }
+    if walk.truncated() {
+        truncated = true;
     }
 
     // Prefer content matches first, then name-only; stable by relative path.
@@ -640,7 +554,7 @@ fn walk_search(
         hits.truncate(limit);
         truncated = true;
     }
-    (hits, truncated, visited)
+    (hits, truncated, walk.files_seen())
 }
 
 /// Search project files for `query` (name/path and/or content), path-scoped.

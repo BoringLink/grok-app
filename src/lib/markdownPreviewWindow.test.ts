@@ -4,6 +4,7 @@ import {
   MARKDOWN_SECTION_MAX_LINES,
   computeMarkdownSectionWindow,
   countMarkdownLines,
+  markdownSectionIndexForLine,
   markdownSectionLayout,
   shouldWindowMarkdownPreview,
   splitMarkdownSections,
@@ -52,6 +53,26 @@ describe("splitMarkdownSections", () => {
     const s = splitMarkdownSections(lines.join("\n"));
     expect(s.length).toBeGreaterThan(1);
     expect(s[0]?.lineCount).toBe(MARKDOWN_SECTION_MAX_LINES);
+  });
+});
+
+describe("markdownSectionIndexForLine", () => {
+  const sections = [
+    { startLine: 1, lineCount: 10 },
+    { startLine: 11, lineCount: 5 },
+    { startLine: 16, lineCount: 20 },
+  ];
+
+  it("maps a source line to its section", () => {
+    expect(markdownSectionIndexForLine(sections, 1)).toBe(0);
+    expect(markdownSectionIndexForLine(sections, 10)).toBe(0);
+    expect(markdownSectionIndexForLine(sections, 11)).toBe(1);
+    expect(markdownSectionIndexForLine(sections, 16)).toBe(2);
+  });
+
+  it("returns -1 for lines outside the document", () => {
+    expect(markdownSectionIndexForLine(sections, 0)).toBe(-1);
+    expect(markdownSectionIndexForLine(sections, 99)).toBe(-1);
   });
 });
 

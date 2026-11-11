@@ -136,7 +136,8 @@ export function computeVirtualWindow(input: VirtualWindowInput): VirtualWindow {
 
 /**
  * Clamp scrollTop so item `index` is fully visible in a viewport of
- * `viewportHeight`, with optional margin.
+ * `viewportHeight`, with optional margin. `align: "center"` puts the row in
+ * the middle instead, which keeps a find hit clear of the top/bottom edges.
  */
 export function scrollTopForIndex(
   index: number,
@@ -149,6 +150,7 @@ export function scrollTopForIndex(
     /** List top offset within the scroll content. */
     listOffsetTop: number;
     margin?: number;
+    align?: "nearest" | "center";
   },
 ): number {
   const {
@@ -159,12 +161,19 @@ export function scrollTopForIndex(
     currentScrollTop,
     listOffsetTop,
     margin = 4,
+    align = "nearest",
   } = opts;
   if (itemCount <= 0 || index < 0 || index >= itemCount) {
     return currentScrollTop;
   }
 
   const itemTop = listOffsetTop + itemOffset(index, rowHeight, gap);
+  if (align === "center") {
+    const total = totalListHeight(itemCount, rowHeight, gap);
+    const maxTop = Math.max(0, total - viewportHeight);
+    const centered = itemTop - (viewportHeight - rowHeight) / 2;
+    return Math.min(maxTop, Math.max(0, centered));
+  }
   const itemBottom = itemTop + rowHeight;
   const viewTop = currentScrollTop;
   const viewBottom = currentScrollTop + viewportHeight;
