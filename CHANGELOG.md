@@ -22,6 +22,8 @@ See `docs/llm-wiki/release.md`.
 ### Fixed
 - Auto-generated session titles run against the Grok home that matches your session data mode, so custom providers stop returning 401.
 - 会话标题自动生成改用与会话数据模式一致的 Grok home，修复自定义供应商误报 401 鉴权错误。
+- Feishu remote control downloads the images and files you send, so the agent can read them.
+- 飞书远程控制会下载你发送的图片和文件，agent 能真正读到内容。
 
 ## [0.2.50] - 2026-10-28
 
