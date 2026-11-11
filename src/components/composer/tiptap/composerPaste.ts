@@ -15,10 +15,24 @@
 
 import { Extension } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
-import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
+import {
+  DOMParser as ProseMirrorDOMParser,
+  Fragment,
+} from "@tiptap/pm/model";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { AllSelection, TextSelection } from "@tiptap/pm/state";
 import type { EditorState, Transaction } from "@tiptap/pm/state";
+import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView } from "@tiptap/pm/view";
+import { detectAppPlatform } from "@/lib/appPlatform";
+import type { AppPlatform } from "@/lib/appPlatform";
+import { clipboardReadText } from "@/lib/api/fs";
+import {
+  hugePlainTextFileName,
+  hugePlainTextToFile,
+  shouldSpillHugePlainText,
+} from "@/lib/longAssistantSpill";
 import { looksLikeMarkdownBlockSource } from "@/lib/markdownLineStart";
 
 /** `doc.body` 内不携带语义的标签。 */
@@ -260,12 +274,158 @@ function insertInlineMarkdown(editor: Editor, markdown: string): boolean {
   return true;
 }
 
+/** 纯文本粘贴的扩展选项。 */
+export type ComposerPasteOptions = {
+  /** 当前平台：决定和弦；缺省按 UA 探测。 */
+  platform?: AppPlatform;
+  /** 读取剪贴板纯文本；默认走 Tauri 的 `clipboard_read_text`。 */
+  readClipboardText?: () => Promise<string>;
+  /** Windows 超大文本的附件出口；缺省时按普通文本插入。 */
+  spillPlainText?: (file: File) => void;
+};
+
+/**
+ * 这次 keydown 是否为纯文本粘贴。
+ *
+ * macOS 用系统的「粘贴并匹配样式」键 `⌥⇧⌘V`；其他平台用 `Ctrl+Alt+V`。
+ * `⇧⌘V` 不能复用：它属于 Live Voice，且 WebKit 不为它派发 `paste` 事件。
+ * AltGr 布局上 Ctrl+Alt 会产出字符，这种组合必须放行。
+ */
+export function isPlainTextPasteKey(
+  event: KeyboardEvent,
+  platform: AppPlatform,
+): boolean {
+  // 物理按键优先：非拉丁布局下 `key` 不是 "v"，macOS 的 Option 还会把它映射成 "√"。
+  const isVKey = event.code === "KeyV" || event.key.toLowerCase() === "v";
+  if (!isVKey) return false;
+  if (!event.altKey) return false;
+  if (event.getModifierState?.("AltGraph")) return false;
+  if (platform === "mac") {
+    return event.metaKey && event.shiftKey && !event.ctrlKey;
+  }
+  return event.ctrlKey && !event.metaKey;
+}
+
+/** 逐行节点：行间用硬换行，空行保留为连续硬换行。 */
+function literalInlineNodes(
+  schema: EditorState["schema"],
+  text: string,
+): ProseMirrorNode[] {
+  return text.split("\n").flatMap((line, index) => {
+    const nodes: ProseMirrorNode[] =
+      index > 0 ? [schema.nodes.hardBreak.create()] : [];
+    if (line) nodes.push(schema.text(line));
+    return nodes;
+  });
+}
+
+/**
+ * 按字面量替换给定范围（缺省为当前选区）。
+ *
+ * 只插入无标记文本：不解析 Markdown、不生成 URL chip。替换、插入与清空
+ * `storedMarks` 在同一个 transaction 里完成，并用 `closeHistory` 与上一段输入
+ * 分开，撤销一步即可回到粘贴前。
+ *
+ * 粘贴落点所在的块是代码块时，插入含 `\n` 的单个文本节点——代码块没有
+ * `hardBreak` 槽位，而 `whitespace: "pre"` 会原样渲染换行。选区跨进 / 跨出
+ * 代码块时没有统一的换行形态，放弃这次落笔。
+ */
+function insertLiteralText(
+  editor: Editor,
+  raw: string,
+  range?: { from: number; to: number },
+): boolean {
+  const text = normalizePastedMarkdown(raw);
+  if (!text) return false;
+  const { doc, schema, selection } = editor.state;
+  // 节点选择（整块被选中）没有可落笔的文本位置；选区与全选都按行内替换处理。
+  if (
+    !(selection instanceof TextSelection) &&
+    !(selection instanceof AllSelection)
+  ) {
+    return false;
+  }
+  const target = range ?? selection;
+  const $from = doc.resolve(target.from);
+  const $to = doc.resolve(target.to);
+  const startsInCode = $from.parent.type.spec.code;
+  const endsInCode = $to.parent.type.spec.code;
+  if ((startsInCode || endsInCode) && !(startsInCode && endsInCode && $from.parent === $to.parent)) {
+    return false;
+  }
+  const nodes = startsInCode
+    ? [schema.text(text)]
+    : literalInlineNodes(schema, text);
+  const tr = closeHistory(
+    editor.state.tr.replaceWith(
+      target.from,
+      target.to,
+      Fragment.fromArray(nodes),
+    ),
+  );
+  if (tr.selection.$from.parent.isTextblock) tr.setStoredMarks([]);
+  editor.view.dispatch(tr.scrollIntoView());
+  return true;
+}
+
+/** 读剪贴板后按字面量粘贴；Windows 超大文本交给附件出口。 */
+function handlePlainTextPaste(
+  editor: Editor,
+  options: ComposerPasteOptions,
+): void {
+  const { doc, selection } = editor.state;
+  const range = { from: selection.from, to: selection.to };
+  const platform = options.platform ?? detectAppPlatform();
+  const read = options.readClipboardText ?? clipboardReadText;
+  void read()
+    .then((text) => {
+      if (!text || editor.isDestroyed) return;
+      if (
+        options.spillPlainText &&
+        shouldSpillHugePlainText(text.length, platform)
+      ) {
+        options.spillPlainText(
+          hugePlainTextToFile(text, hugePlainTextFileName(text)),
+        );
+        return;
+      }
+      // 剪贴板走 IPC：身份比较能挡住“内容相同的另一份草稿”替换了文档的情况。
+      if (editor.state.doc !== doc) return;
+      // 等待期间光标被移动时，落到当前选区，而不是 keydown 时的旧位置。
+      const current = editor.state.selection;
+      const target = current.eq(selection)
+        ? range
+        : { from: current.from, to: current.to };
+      insertLiteralText(editor, text, target);
+    })
+    .catch((error: unknown) => {
+      // 不记录剪贴板内容；只留定位信息。
+      console.warn("[composer] plain-text paste failed", error);
+    });
+}
+
+/**
+ * ProseMirror 把 Shift 状态记在内部 `input` 上（`ClipboardEvent` 没有修饰键），
+ * 自己处理粘贴时也用它判断 `preferPlain`；`lastKeyCode` 45 是 Insert 键。
+ * 与 prosemirror-view 1.42.3 的 `editHandlers.paste` 一致；类型没有公开这个字段，
+ * 按结构读取，升级时对照 `view.input` 的实现。
+ */
+function isShiftPaste(view: EditorView): boolean {
+  const input = (
+    view as unknown as {
+      input?: { shiftKey?: boolean; lastKeyCode?: number };
+    }
+  ).input;
+  return input?.shiftKey === true && input.lastKeyCode !== 45;
+}
+
 /** 剪贴板粘贴：按来源决定解析粒度；所有纯文本粘贴先归一化。 */
-export const ComposerMarkdownPaste = Extension.create({
+export const ComposerMarkdownPaste = Extension.create<ComposerPasteOptions>({
   name: "composerMarkdownPaste",
 
   addProseMirrorPlugins() {
     const editor = this.editor;
+    const options = this.options;
     return [
       new Plugin({
         key: new PluginKey("composerMarkdownPaste"),
@@ -275,10 +435,22 @@ export const ComposerMarkdownPaste = Extension.create({
           return trailingMarksReset(newState);
         },
         props: {
+          handleKeyDown(_view: EditorView, event: KeyboardEvent) {
+            // 长按会重复触发；只认第一次。
+            if (event.repeat) return false;
+            const platform = options.platform ?? detectAppPlatform();
+            if (!isPlainTextPasteKey(event, platform)) return false;
+            event.preventDefault();
+            handlePlainTextPaste(editor, options);
+            return true;
+          },
           transformPastedText(text: string) {
             return normalizePastedMarkdown(text);
           },
           handlePaste(view: EditorView, event: ClipboardEvent) {
+            // Shift+粘贴是 ProseMirror 的“纯文本粘贴”（`preferPlain`）：不接管，
+            // 让库的 `clipboardTextParser` 返回 null 后走默认纯文本解析。
+            if (isShiftPaste(view)) return false;
             const { selection } = view.state;
             if (
               selection.$from.parent.type.spec.code ||
