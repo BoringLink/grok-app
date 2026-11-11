@@ -639,7 +639,7 @@ describe("session projection", () => {
       {
         id: "a1",
         role: "assistant",
-        content: "也对应「铁柱 + 鲸鱼 +",
+        content: "也对应「星空 + 鲸鱼 +",
         streaming: false,
       },
     ];
@@ -648,12 +648,12 @@ describe("session projection", () => {
       {
         id: "a1",
         role: "assistant",
-        content: "也对应「铁柱 + 鲸鱼 + 像素」的主题。",
+        content: "也对应「星空 + 鲸鱼 + 像素」的主题。",
       },
     ];
     const out = upgradeMessagesFromJournal(ui, journal);
     expect(out.find((m) => m.id === "a1")?.content).toBe(
-      "也对应「铁柱 + 鲸鱼 + 像素」的主题。",
+      "也对应「星空 + 鲸鱼 + 像素」的主题。",
     );
     // Idempotent when UI already has full body
     expect(upgradeMessagesFromJournal(out, journal)).toBe(out);

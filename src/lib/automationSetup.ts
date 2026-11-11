@@ -10,7 +10,7 @@ export const AUTOMATION_FENCE_LANG = "grok-automation";
 
 /** Visible composer seed — natural language only. */
 export function aiCreateSeedPrompt(_productName = "Grok"): string {
-  return "用一两句话说：要定期做什么、多久跑一次（例如「每天早上 9 点查 @cgnot996 的最新动态」或「3 分钟后做一次…」）。";
+  return "用一两句话说：要定期做什么、多久跑一次（例如「每天早上 9 点查关注的博客更新」或「3 分钟后做一次…」）。";
 }
 
 /**

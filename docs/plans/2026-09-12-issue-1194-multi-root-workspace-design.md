@@ -2,7 +2,7 @@
 
 ## 拍板记录（2026-09-12）
 
-- **选定方案：B**（主项目 + 附加可读/可写根，CLI capability 硬门槛）。Codex CLI 设计；铁柱确认。
+- **选定方案：B**（主项目 + 附加可读/可写根，CLI capability 硬门槛）。Codex CLI 设计；维护者确认。
 - 开放问题按**偏安全默认**落定（未逐项另选时）：
   1. shared 可写 profile → **C**：v1 shared 永远只读/引用用户配置；先只在 **independent** 开放 App 管理的可写 profile。
   2. extra root 默认能力 → **A**：加入即只读；写须逐根打开并通过 smoke test。

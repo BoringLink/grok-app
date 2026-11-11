@@ -2,7 +2,7 @@
 
 Date: 2026-09-18  
 Issues: #1232 (project multi-root), #1235 (chat column width), #1234 (split chats)  
-Status: **scheme only** — do not implement until 铁柱拍板.
+Status: **scheme only** — do not implement until maintainer approval.
 
 Related: [2026-09-12-issue-1194-multi-root-workspace-design.md](./2026-09-12-issue-1194-multi-root-workspace-design.md), PR #1237.
 

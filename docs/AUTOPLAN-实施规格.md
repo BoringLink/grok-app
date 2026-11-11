@@ -34,7 +34,7 @@
 | **agent-connect** | IM 桥；**本产品不做** |
 | **Grok Build CLI** | 真正干活的运行时；App 通过 ACP 驱动，**不内嵌** |
 
-品牌：MIT · **非 xAI 官方** · 姐妹项目 grok-go · 作者 X cgnot996。
+品牌：MIT · **非 xAI 官方** · 姐妹项目 grok-go。
 
 ---
 

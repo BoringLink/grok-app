@@ -29,8 +29,8 @@ Examples of unacceptable behavior:
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainer via X [@cgnot996](https://x.com/cgnot996)
-or GitHub.
+reported via [GitHub Issues](https://github.com/RongleCat/grok-app/issues) or
+by email to boringlink@outlook.com.
 
 All complaints will be reviewed and investigated promptly and fairly.
 
