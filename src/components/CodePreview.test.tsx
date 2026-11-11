@@ -20,6 +20,19 @@ describe("CodePreview", () => {
     );
   });
 
+  it("marks every find-query occurrence in source lines", () => {
+    render(
+      <CodePreview
+        code={"const beta = 1;\nconst gamma = 2;\nbeta();\n"}
+        fileName="a.ts"
+        findQuery="beta"
+      />,
+    );
+    const hits = document.querySelectorAll(".rp-code__hit");
+    expect(hits).toHaveLength(2);
+    expect(hits[0]?.textContent).toBe("beta");
+  });
+
   it("does not mount every row of a 5000-line file", () => {
     const code = Array.from(
       { length: 5000 },

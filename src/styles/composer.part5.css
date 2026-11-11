@@ -519,7 +519,8 @@
   background: var(--bg-hover);
 }
 
-.rp-tree__row.is-active {
+.rp-tree__row.is-active,
+.rp-tree__row.is-selected {
   background: color-mix(in srgb, var(--accent, #6c8cff) 14%, transparent);
   color: var(--text-primary);
 }
@@ -542,6 +543,28 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Host-wide search results: file name first, project-relative path after it. */
+.rp-tree__row--search .rp-tree__name {
+  flex: 0 1 auto;
+  max-width: 60%;
+}
+
+.rp-tree__search-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+.rp-tree__search-note {
+  padding: 6px 10px;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
 }
 
 .rp-tree__kids {

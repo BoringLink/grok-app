@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ChatFindBar, type ChatFindBarLabels } from "@/components/ChatFindBar";
 import {
   findChatMatches,
-  stepChatFindIndex,
+  stepFindIndex,
   type ChatFindMessage,
 } from "@/lib/chatFind";
 import {
@@ -89,10 +89,10 @@ export function ChatFindLive({
         setIndex(0);
       }}
       onPrev={() =>
-        setIndex((i) => stepChatFindIndex(i, matches.length, -1))
+        setIndex((i) => stepFindIndex(i, matches.length, -1))
       }
       onNext={() =>
-        setIndex((i) => stepChatFindIndex(i, matches.length, 1))
+        setIndex((i) => stepFindIndex(i, matches.length, 1))
       }
       onClose={onClose}
     />

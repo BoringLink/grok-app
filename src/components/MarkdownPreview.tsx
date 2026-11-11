@@ -18,6 +18,7 @@ import {
   countMarkdownLines,
   initialMarkdownSectionWindow,
   markdownSectionLayout,
+  markdownSectionIndexForLine,
   shouldWindowMarkdownPreview,
   splitMarkdownSections,
   type MarkdownSectionWindow,
@@ -52,9 +53,12 @@ function windowsEqual(a: MarkdownSectionWindow, b: MarkdownSectionWindow): boole
 export function MarkdownPreview({
   children,
   locale = "en",
+  focusLine = null,
 }: {
   children: string;
   locale?: Locale;
+  /** 1-based source line; windowed previews scroll its section into view. */
+  focusLine?: number | null;
 }) {
   const text = children || "";
   const lineCount = useMemo(() => countMarkdownLines(text), [text]);
@@ -128,6 +132,30 @@ export function MarkdownPreview({
       ro.disconnect();
     };
   }, [recompute, windowed, sections.length]);
+
+  // Find navigation: park the section that owns the active source line in the
+  // middle of the viewport so its rendered hits mount and stay visible.
+  useLayoutEffect(() => {
+    if (!windowed || !layout || !focusLine) return;
+    const index = markdownSectionIndexForLine(sections, focusLine);
+    if (index < 0) return;
+    const root = rootRef.current;
+    if (!root) return;
+    const parent = scrollParentRef.current ?? findScrollParent(root);
+    if (!parent) return;
+    scrollParentRef.current = parent;
+    const rootRect = root.getBoundingClientRect();
+    const parentRect = parent.getBoundingClientRect();
+    const listOffsetTop =
+      rootRect.top - parentRect.top + parent.scrollTop;
+    const height = layout.heights[index] ?? 0;
+    const target =
+      listOffsetTop +
+      (layout.offsets[index] ?? 0) -
+      Math.max(0, (parent.clientHeight - height) / 2);
+    parent.scrollTop = Math.max(0, target);
+    recompute();
+  }, [focusLine, windowed, layout, sections, recompute]);
 
   if (!windowed) {
     return <MarkdownBody locale={locale}>{text}</MarkdownBody>;

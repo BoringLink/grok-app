@@ -560,6 +560,24 @@ pub async fn project_codebase_search(
     .map_err(|e| format!("project codebase search task failed: {e}"))?
 }
 
+/// Fuzzy quick-open over a cached per-project file index (Files pane).
+#[tauri::command]
+pub async fn project_file_index_search(
+    project_path: String,
+    query: String,
+    limit: Option<usize>,
+) -> Result<crate::project_file_index::FileIndexSearchResult, String> {
+    tokio::task::spawn_blocking(move || {
+        Ok(crate::project_file_index::search_project_files(
+            &project_path,
+            &query,
+            limit,
+        ))
+    })
+    .await
+    .map_err(|e| format!("project file index search task failed: {e}"))?
+}
+
 #[tauri::command]
 pub async fn fs_read_file(
     project_path: String,

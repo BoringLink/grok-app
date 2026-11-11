@@ -12,8 +12,8 @@ import {
   resolveMediaLoadError,
 } from "@/lib/mediaLoadPro";
 import { HtmlBrowser } from "@/components/HtmlBrowser";
-import { MarkdownPreview } from "@/components/MarkdownPreview";
-import { OverlayScroll } from "@/components/OverlayScroll";
+import { MarkdownFindPreview } from "./MarkdownFindPreview";
+import { findBarLabelsFromT } from "@/components/ChatFindBar";
 import { ImageUi } from "@/components/ImageUi";
 import { revealInOsLabel } from "@/lib/appPlatform";
 import {
@@ -65,6 +65,35 @@ const CodeFileEditor = lazy(async () => {
   return { default: m.CodeFileEditor };
 });
 
+/** Read-only source view used while the file find bar is active. */
+function FindSourcePreview({
+  code,
+  name,
+  focusLine,
+  footer,
+  findQuery,
+}: {
+  code: string;
+  name: string;
+  focusLine: number | null;
+  footer: string | null;
+  findQuery: string;
+}) {
+  return (
+    <div className="rp-editor__code-preview">
+      <Suspense fallback={null}>
+        <CodePreview
+          code={code}
+          fileName={name}
+          focusLine={focusLine}
+          footer={footer}
+          findQuery={findQuery}
+        />
+      </Suspense>
+    </div>
+  );
+}
+
 export type ResourcePreviewBodyProps = {
   tr: (key: MessageKey, vars?: Record<string, string>) => string;
   locale: Locale;
@@ -113,6 +142,22 @@ export type ResourcePreviewBodyProps = {
   requestBatchRejectHunks: () => void;
   /** Host already shows Edit/Save (files toolbar). Skip the in-preview row. */
   hideToolbar?: boolean;
+  /**
+   * Active in-file find match line. Falls back to `activeTab.focusLine`
+   * (path:line open) when null.
+   */
+  findFocusLine?: number | null;
+  /**
+   * The Files pane find bar is searching. Markdown renders its source so the
+   * active match line can be scrolled to and highlighted.
+   */
+  findMode?: boolean;
+  /** Current find query; source previews mark every occurrence. */
+  findQuery?: string;
+  /** Active match index within the find query (0-based). */
+  findActive?: number;
+  /** Bumped when the pane wants the mounted editor to open its find bar. */
+  findRequest?: number;
 };
 
 export function ResourcePreviewBody({
@@ -151,6 +196,11 @@ export function ResourcePreviewBody({
   requestBatchAcceptHunks,
   requestBatchRejectHunks,
   hideToolbar = false,
+  findFocusLine = null,
+  findMode = false,
+  findQuery = "",
+  findActive = -1,
+  findRequest = 0,
 }: ResourcePreviewBodyProps): ReactNode {
   // Session / workspace change diff takes over the preview in Changes mode.
   if (sideMode === "changes" && diffView) {
@@ -661,6 +711,8 @@ export function ResourcePreviewBody({
                     name: preview.name,
                   }),
                 }}
+                findLabels={findBarLabelsFromT(tr)}
+                findRequest={findRequest}
               />
             </Suspense>
           ) : (
@@ -674,23 +726,38 @@ export function ResourcePreviewBody({
                 onSave={() => void saveActiveFile()}
                 disabled={!!activeTab.saving}
                 ariaLabel={tr("resources.editorAria", { name: preview.name })}
+                findLabels={findBarLabelsFromT(tr)}
+                findRequest={findRequest}
               />
             </Suspense>
           )
         ) : isMarkdown ? (
-          <OverlayScroll className="rp-editor__preview-scroll">
-            <div className="rp-editor__preview-body rp-preview__md">
-              <MarkdownPreview locale={locale}>
-                {draftText || preview.text || ""}
-              </MarkdownPreview>
-            </div>
-          </OverlayScroll>
-        ) : isHtml ? (
-          <HtmlBrowser
-            title={preview.name}
-            absolutePath={preview.absolutePath || null}
-            html={draftText || preview.text}
+          // Rendered markdown stays mounted during find so closing the bar
+          // keeps the reading position.
+          <MarkdownFindPreview
+            text={draftText || preview.text || ""}
+            locale={locale}
+            findQuery={findQuery}
+            findActive={findActive}
+            findLine={findFocusLine}
+            footer={preview.truncated ? tr("resources.truncated") : null}
           />
+        ) : isHtml ? (
+          findMode ? (
+            <FindSourcePreview
+              code={draftText || preview.text || ""}
+              name={preview.name}
+              focusLine={findFocusLine}
+              footer={preview.truncated ? tr("resources.truncated") : null}
+              findQuery={findQuery}
+            />
+          ) : (
+            <HtmlBrowser
+              title={preview.name}
+              absolutePath={preview.absolutePath || null}
+              html={draftText || preview.text}
+            />
+          )
         ) : (
           <div className="rp-editor__code-preview">
             <Suspense fallback={null}>
@@ -698,10 +765,11 @@ export function ResourcePreviewBody({
                 code={codePreviewBody}
                 fileName={preview.name}
                 language={preview.kind === "json" ? "json" : undefined}
-                focusLine={activeTab.focusLine}
+                focusLine={findFocusLine ?? activeTab.focusLine}
                 footer={
                   preview.truncated ? tr("resources.truncated") : null
                 }
+                findQuery={findQuery}
               />
             </Suspense>
           </div>
@@ -792,16 +860,27 @@ export function ResourcePreviewBody({
       );
     case "markdown":
       return (
-        <div className="rp-preview__md">
-          <MarkdownPreview locale={locale}>
-            {activeTab?.draftText ?? preview.text ?? ""}
-          </MarkdownPreview>
-        </div>
+        <MarkdownFindPreview
+          text={activeTab?.draftText ?? preview.text ?? ""}
+          locale={locale}
+          findQuery={findQuery}
+          findActive={findActive}
+          findLine={findFocusLine}
+          footer={preview.truncated ? tr("resources.truncated") : null}
+        />
       );
     case "html":
       // Do not use file:// in iframe — WKWebView/Tauri blocks it (blank page).
       // HtmlBrowser uses srcDoc (host text) or asset fetch; scripts work, full-bleed.
-      return (
+      return findMode ? (
+        <FindSourcePreview
+          code={preview.text ?? ""}
+          name={preview.name}
+          focusLine={findFocusLine}
+          footer={preview.truncated ? tr("resources.truncated") : null}
+          findQuery={findQuery}
+        />
+      ) : (
         <HtmlBrowser
           title={preview.name}
           absolutePath={preview.absolutePath || null}
@@ -821,10 +900,11 @@ export function ResourcePreviewBody({
           code={body}
           fileName={preview.name.endsWith(".json") ? preview.name : "data.json"}
           language="json"
-          focusLine={activeTab?.focusLine}
+          focusLine={findFocusLine ?? activeTab?.focusLine}
           footer={
           preview.truncated ? tr("resources.truncated") : null
           }
+          findQuery={findQuery}
           />        </Suspense>
       );
     }
@@ -835,10 +915,11 @@ export function ResourcePreviewBody({
             <CodePreview
             code={preview.text}
             fileName={preview.name}
-            focusLine={activeTab?.focusLine}
+            focusLine={findFocusLine ?? activeTab?.focusLine}
             footer={
             preview.truncated ? tr("resources.truncated") : null
             }
+            findQuery={findQuery}
             />          </Suspense>
         );
       }

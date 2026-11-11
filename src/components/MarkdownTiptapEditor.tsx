@@ -11,11 +11,20 @@ import {
   type ReactNode,
 } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { TextSelection } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
+import { ChatFindBar, type ChatFindBarLabels } from "@/components/ChatFindBar";
 import { Tip } from "@/components/ui/tooltip";
+import { findPmTextMatches } from "@/lib/pmFind";
+import {
+  createPmFindHighlightPlugin,
+  pmFindHighlightKey,
+} from "@/lib/pmFindHighlight";
+import { useFindSession } from "@/hooks/useFindSession";
+import { matchGlobalShortcut } from "@/lib/shortcuts";
 import {
   IconBlockquote,
   IconBold,
@@ -56,6 +65,10 @@ export type MarkdownTiptapEditorProps = {
   onSave?: () => void;
   disabled?: boolean;
   labels: MarkdownTiptapLabels;
+  /** Enables in-editor Cmd/Ctrl+F; omit to leave find to the host. */
+  findLabels?: ChatFindBarLabels;
+  /** Bumped by the host to open the bar while focus is outside the editor. */
+  findRequest?: number;
   className?: string;
 };
 
@@ -86,12 +99,15 @@ export function MarkdownTiptapEditor({
   onSave,
   disabled = false,
   labels,
+  findLabels,
+  findRequest = 0,
   className = "",
 }: MarkdownTiptapEditorProps) {
   const lastEmitted = useRef(value);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const linkInputRef = useRef<HTMLInputElement | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -144,6 +160,104 @@ export function MarkdownTiptapEditor({
       onChange(md);
     },
   });
+
+  // Registered imperatively: @tiptap/core is the editor's peer, not a direct
+  // dependency of this app, so the plugin is not passed as an extension.
+  useEffect(() => {
+    if (!editor) return;
+    editor.registerPlugin(createPmFindHighlightPlugin());
+    return () => {
+      editor.unregisterPlugin(pmFindHighlightKey);
+    };
+  }, [editor]);
+
+  const findDoc = editor?.state.doc ?? null;
+  const findPmMatches = useCallback(
+    (query: string) => (findDoc ? findPmTextMatches(findDoc, query) : []),
+    [findDoc],
+  );
+  const {
+    open: findOpen,
+    query: findQuery,
+    matches: findMatches,
+    active: findActive,
+    nonce: findNonce,
+    setQuery: setFindQuery,
+    openFind,
+    close: resetFind,
+    step: stepFind,
+  } = useFindSession(findPmMatches);
+  const findOpenRef = useRef(false);
+  findOpenRef.current = findOpen;
+  const closeFind = useCallback(() => {
+    resetFind();
+    editor?.commands.focus();
+  }, [editor, resetFind]);
+
+  // Paint every match, then select + scroll the active one. The selection is
+  // set without focusing the editor so the find input keeps the caret; the
+  // decoration is what the user actually sees.
+  useEffect(() => {
+    if (!editor) return;
+    const meta = {
+      query: findOpen ? findQuery : "",
+      active: findOpen ? findActive : -1,
+    };
+    const match = findOpen ? findMatches[findActive] : undefined;
+    let tr = editor.state.tr.setMeta(pmFindHighlightKey, meta);
+    if (match) {
+      tr = tr.setSelection(
+        TextSelection.create(editor.state.doc, match.from, match.to),
+      );
+    }
+    editor.view.dispatch(tr);
+    if (!match) return;
+    // ProseMirror drops scrollIntoView when the DOM selection lives outside
+    // the editor (the find input owns focus). Scroll the match's block
+    // directly so off-screen hits still jump into view.
+    const at = editor.view.domAtPos(match.from);
+    const node =
+      at.node.nodeType === Node.ELEMENT_NODE
+        ? (at.node as Element)
+        : at.node.parentElement;
+    const block = node?.closest("p, li, h1, h2, h3, blockquote, pre") ?? node;
+    if (block && typeof block.scrollIntoView === "function") {
+      block.scrollIntoView({ block: "center", inline: "nearest" });
+    }
+  }, [editor, findActive, findMatches, findOpen, findQuery]);
+
+  useEffect(() => {
+    if (findRequest > 0 && findLabels) openFind();
+  }, [findRequest, findLabels, openFind]);
+
+  useEffect(() => {
+    if (!findLabels) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.isComposing) return;
+      const root = rootRef.current;
+      const target = e.target as Node | null;
+      if (!root || !target || !root.contains(target)) return;
+      if (e.key === "Escape" && findOpenRef.current) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeFind();
+        return;
+      }
+      const matched = matchGlobalShortcut({
+        key: e.key.toLowerCase(),
+        mod: e.metaKey || e.ctrlKey,
+        shift: e.shiftKey,
+        alt: e.altKey,
+        typing: false,
+      });
+      if (matched !== "findInChat") return;
+      e.preventDefault();
+      e.stopPropagation();
+      openFind();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [closeFind, findLabels, openFind]);
 
   useEffect(() => {
     if (!editor) return;
@@ -239,12 +353,29 @@ export function MarkdownTiptapEditor({
 
   return (
     <div
+      ref={rootRef}
       className={
         "rp-md-editor" +
         (disabled ? " is-disabled" : "") +
         (className ? ` ${className}` : "")
       }
     >
+      {findOpen && findLabels ? (
+        <div className="rp-find-overlay">
+          <ChatFindBar
+            query={findQuery}
+            activeIndex={findActive}
+            matchCount={findMatches.length}
+            focusNonce={findNonce}
+            testId="md-find-bar"
+            labels={findLabels}
+            onQueryChange={setFindQuery}
+            onPrev={() => stepFind(-1)}
+            onNext={() => stepFind(1)}
+            onClose={closeFind}
+          />
+        </div>
+      ) : null}
       <div
         className="rp-md-editor__fmt"
         role="toolbar"
