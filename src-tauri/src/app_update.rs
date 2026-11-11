@@ -18,10 +18,11 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::Value;
 
+// Personal build channel: update checks follow this fork's Releases.
 const DEFAULT_RELEASES_API_URL: &str =
-    "https://api.github.com/repos/RongleCat/grok-app/releases/latest";
-const DEFAULT_RELEASES_HTML_URL: &str = "https://github.com/RongleCat/grok-app/releases/latest";
-const DEFAULT_RELEASES_PAGE: &str = "https://github.com/RongleCat/grok-app/releases";
+    "https://api.github.com/repos/BoringLink/grok-app/releases/latest";
+const DEFAULT_RELEASES_HTML_URL: &str = "https://github.com/BoringLink/grok-app/releases/latest";
+const DEFAULT_RELEASES_PAGE: &str = "https://github.com/BoringLink/grok-app/releases";
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(12);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
@@ -364,7 +365,7 @@ async fn fetch_via_html_redirect(
     current_version: &str,
 ) -> Result<AppUpdateCheck, String> {
     let ua = format!(
-        "GrokApp/{current_version} (desktop; check-update; +https://github.com/RongleCat/grok-app)"
+        "GrokApp/{current_version} (desktop; check-update; +https://github.com/BoringLink/grok-app)"
     );
 
     // 1) Prefer Location header without downloading the HTML body.
@@ -404,7 +405,8 @@ async fn fetch_via_html_redirect(
                 } else {
                     format!("v{tag}")
                 };
-                let html = format!("https://github.com/RongleCat/grok-app/releases/tag/{tag_path}");
+                let html =
+                    format!("https://github.com/BoringLink/grok-app/releases/tag/{tag_path}");
                 return Ok(build_check_from_tag(current_version, &tag, &html));
             }
         }
@@ -443,7 +445,7 @@ pub async fn check_app_update() -> Result<AppUpdateCheck, String> {
     }
 
     let ua = format!(
-        "GrokApp/{current} (desktop; check-update; +https://github.com/RongleCat/grok-app)"
+        "GrokApp/{current} (desktop; check-update; +https://github.com/BoringLink/grok-app)"
     );
     let client = http_client(&ua)?;
 
