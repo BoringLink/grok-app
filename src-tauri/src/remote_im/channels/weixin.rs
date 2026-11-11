@@ -254,6 +254,8 @@ fn parse_msg(inst: &ChannelInstance, m: &Value) -> Option<IncomingMessage> {
         .unwrap_or_default();
 
     Some(IncomingMessage {
+        staged_attachments: Vec::new(),
+        attachment_note: None,
         channel: inst.channel.clone(),
         instance_id: inst.id.clone(),
         message_id: msg_id,

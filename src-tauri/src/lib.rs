@@ -9,6 +9,8 @@ mod acp_client;
 #[cfg(test)]
 mod acp_golden_test;
 
+mod attachments;
+
 mod agent_auto_wake;
 
 mod agent_codebase_indexing;
@@ -592,6 +594,12 @@ pub fn run() {
             agent_proc_home::sweep_orphans();
 
             crate::path_scope::refresh_from_store();
+            crate::attachments::cleanup_legacy_media();
+
+            tauri::async_runtime::spawn(async {
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                crate::attachments::gc_if_due().await;
+            });
 
             use tauri::Manager;
 
