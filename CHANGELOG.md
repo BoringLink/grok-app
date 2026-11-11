@@ -15,9 +15,11 @@ See `docs/llm-wiki/release.md`.
 
 ### Fixed
 - Feishu remote control downloads the images and files you send, so the agent can read them.
+- Editing long styled text in the chat composer no longer jumps the view to the bottom.
 
 **中文 · 修复**
 - 飞书远程控制会下载你发送的图片和文件，agent 能真正读到内容。
+- 聊天输入框内编辑长文本（如代码块）时，在上方修改不再让视窗被拽到底部；光标在末尾输入时仍正常跟随。
 
 ## [0.2.51] - 2026-11-14
 

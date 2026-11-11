@@ -22,6 +22,7 @@ import {
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { buildComposerExtensions } from "@/components/composer/tiptap/composerExtensions";
+import { composerCaretScrollDelta } from "@/components/ComposerEditor";
 import { matchPastedUrl } from "@/lib/composerRefToken";
 import {
   clipboardLooksLikeMedia,
@@ -197,10 +198,57 @@ export function removeComposerQueryRange(
 }
 
 /**
+ * 每次文档变更时的光标滚动决策输入。
+ *
+ * `rect` 惰性取值：必须在容器高度调整之后调用（与 `getBoundingClientRect`
+ * 同一布局帧），否则差值计算会使用过期几何。
+ */
+export type ComposerCaretSource = {
+  /** 光标视口几何；取不到（如 IME 组合态）时返回 null。 */
+  rect: () => { top: number; bottom: number } | null;
+  /** 光标是否塌缩且位于文档末尾。末尾输入保留原子钉底，防 WebKit 幽灵光标。 */
+  atEnd: boolean;
+};
+
+/**
+ * 溢出时把光标滚回滚动视口。
+ *
+ * 仅当光标塌缩在文档末尾时才原子钉底（`scrollTop = max`）；其余情况做最小
+ * 滚动让光标可见。禁止无条件钉底——长文本（如代码块）填满上限后，在上方
+ * 修改时任何输入都会把视窗瞬间拽到最底部，而光标仍留在编辑处。
+ */
+export function scrollComposerCaretAfterResize(
+  el: HTMLElement,
+  caret: ComposerCaretSource | undefined,
+): void {
+  if (el.scrollHeight <= el.clientHeight + 1) return;
+  const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+
+  if (caret?.atEnd) {
+    if (el.scrollTop !== maxScroll) el.scrollTop = maxScroll;
+    return;
+  }
+
+  const caretRect = caret?.rect();
+  // 光标几何未知时不滚动：把视窗拽到底部比不滚动更有破坏性。
+  if (!caretRect) return;
+
+  const box = el.getBoundingClientRect();
+  const delta = composerCaretScrollDelta(caretRect, box);
+  if (delta === 0) return;
+  el.scrollTop = Math.max(0, Math.min(maxScroll, el.scrollTop + delta));
+}
+
+/**
  * Keep the contenteditable caret inside the editor scrollport and auto-grow
  * the input up to max lines (same constraints as the previous editor).
+ *
+ * `caret` 缺省（非输入路径的旧调用）时不做光标跟随，只调整高度。
  */
-export function resizeComposerInput(el: HTMLElement): void {
+export function resizeComposerInput(
+  el: HTMLElement,
+  caret?: ComposerCaretSource,
+): void {
   const min = COMPOSER_LINE_PX;
   const max = COMPOSER_LINE_PX * COMPOSER_MAX_LINES;
   const prevScrollTop = el.scrollTop;
@@ -210,12 +258,12 @@ export function resizeComposerInput(el: HTMLElement): void {
   if (scrollH > clientH + 1 && clientH < max - 1) {
     const nextH = Math.min(Math.max(scrollH, min), max);
     el.style.height = `${nextH}px`;
-    if (scrollH > nextH) el.scrollTop = el.scrollHeight - el.clientHeight;
+    if (scrollH > nextH) scrollComposerCaretAfterResize(el, caret);
     return;
   }
   if (clientH >= max - 1 && scrollH > clientH + 1) {
     el.style.height = `${max}px`;
-    el.scrollTop = el.scrollHeight - el.clientHeight;
+    scrollComposerCaretAfterResize(el, caret);
     return;
   }
   el.style.height = "auto";
@@ -341,7 +389,21 @@ export const ComposerEditor = memo(function ComposerEditor({
       }
       emitSlash(ed);
       emitAt(ed);
-      resizeComposerInput(ed.view.dom);
+      // 光标塌缩在文档末尾时保留钉底（输入跟随）；其余位置做最小滚动，
+      // 避免长文本里在上方修改时视窗被拽到最底部。
+      const sel = ed.state.selection;
+      resizeComposerInput(ed.view.dom, {
+        atEnd: sel.empty && sel.to >= ed.state.doc.content.size,
+        rect: () => {
+          try {
+            const coords = ed.view.coordsAtPos(sel.head);
+            return { top: coords.top, bottom: coords.bottom };
+          } catch {
+            // 位置已失效（如组合输入期间文档被替换）→ 视作几何未知。
+            return null;
+          }
+        },
+      });
     },
     [emitSlash, emitAt],
   );
