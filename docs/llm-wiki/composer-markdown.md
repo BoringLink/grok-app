@@ -16,6 +16,18 @@
 | `src/lib/composerMarkdown.ts` | 序列化归一化（防御性转义、硬换行、caret 换算） |
 | `src/lib/markdownSource.ts` | 代码感知扫描、展示态还原、气泡硬换行 |
 
+## 粘贴手势
+
+| 手势 | 行为 |
+|------|------|
+| `⌘V` / `Ctrl+V` | 按下面的粒度表解析 |
+| `⌥⇧⌘V`（macOS）/ `Ctrl+Alt+V`（Windows / Linux） | 纯文本粘贴：按字面量插入，不解析 Markdown |
+| Shift+粘贴（WebView 派发 `paste` 时） | 交给 ProseMirror 的纯文本路径 |
+
+`⇧⌘V` / `Ctrl+Shift+V` 是实时语音（Live Voice）的全局快捷键，而且 WKWebView 不为它
+派发 `paste` 事件，因此纯文本粘贴用 `⌥⇧⌘V`（系统标准的"粘贴并匹配样式"键）与
+`Ctrl+Alt+V`。决策与依据见 ADR 0006。
+
 ## 粘贴判定
 
 剪贴板通常同时带 `text/html` 与 `text/plain`。ProseMirror 只要看到 `text/html`
@@ -50,6 +62,18 @@
 - 单行内容没有整段被行内记号覆盖（`a _b_ c`），说明是正文而不是 Markdown 源码。
 
 多行普通段落保留换行（`breaks: true` 下是软换行），不做块级提升。
+
+### 纯文本粘贴（字面量）
+
+`⌥⇧⌘V` / `Ctrl+Alt+V` 由 Markdown 档扩展处理，绕过上面的判定：读剪贴板纯文本后直接
+替换选区。多行按 `hardBreak` 逐行插入（与 Shift+Enter 同一模型），空行保留；粘贴落点
+所在的块是代码块时，改插含 `\n` 的单个文本节点——代码块没有 `hardBreak` 槽位。插入的
+文本不带标记，替换、插入与清空 `storedMarks` 在同一个事务里完成，并用 `closeHistory`
+与上一段输入分开，撤销一步回到粘贴前。
+
+剪贴板读取走 Tauri 的 `clipboard_read_text`（WebView 的剪贴板 API 在 Linux 上常为空）。
+首尾空行按 `normalizePastedMarkdown()` 去掉，纯空白粘贴不产生事务。Windows 上超过
+`shouldSpillHugePlainText()` 阈值的文本改挂 `.txt` 附件（与 `⌘V` 同一分支），不插入编辑器。
 
 ## 用户气泡的展示
 
@@ -101,9 +125,10 @@ draft 再解析回编辑器、气泡渲染 Markdown 时都靠它区分字面文�
 
 ## 例外
 
-- **代码块内**粘贴不接管（选区两端都在 `spec.code` 节点内）：正文按字面量交给
+- **代码块内**粘贴不接管（选区任一端在 `spec.code` 节点内）：正文按字面量交给
   ProseMirror 的 `inCode` 分支。`transformPastedText` 对所有文本粘贴生效，因此代码块
-  内的 CRLF 与首尾空行仍会被归一化。
+  内的 CRLF 与首尾空行仍会被归一化。纯文本手势只在**落点块**是代码块时改插含 `\n`
+  的文本节点。
 - 文件 / 图片 / 整段 URL 的粘贴由 `ComposerEditorTiptap` 的 `editorProps.handlePaste`
   先处理；插件按"view props 先于插件 props"的顺序只看剩余情况。
 - 语言代码块的语言栏是装饰器（`data-language`），不参与文档模型。
@@ -116,6 +141,8 @@ draft 再解析回编辑器、气泡渲染 Markdown 时都靠它区分字面文�
 | `block` 插入 | tiptap-markdown 重写的 `editor.commands.insertContentAt`（内部用库自己的 parser） |
 | `inline` 插入 | 库 parser 的 `{ inline: true }` + ProseMirror `DOMParser.parseSlice`（与库的 `clipboardTextParser` 同一套 API） |
 | 来源判定 | 本仓库策略（HTML 标签语义 + 文本一致 + 多行块级记号） |
+| 纯文本手势 | 插件 `handleKeyDown` + Tauri `clipboard_read_text`（不经 paste 管线） |
+| Shift+粘贴 | ProseMirror 的 `preferPlain`（`view.input.shiftKey`）与库 `clipboardTextParser` 返回 null |
 
 tiptap-markdown 0.9.0（当前最新）只有 `transformPastedText` 一个粘贴开关；
 `clipboardTextParser` 只在剪贴板**没有** `text/html` 时触发，且按行内解析。若以后版本
@@ -131,4 +158,6 @@ Markdown 源码当正文插进去。库升级若改掉这些 API，`composerPast
 `src/components/composer/tiptap/composerPaste.test.ts` 覆盖：`code` 包壳标题 / 围栏代码、
 多行块级源码、单行普通文字与 `a _b_ c` 保持字面量、编辑器自己的 `data-pm-slice` 粘回、
 语义 HTML 的链接与粗体、粘贴后标记状态、尾随换行、多行中间换行、行中粘贴不拆段、
-代码块内保持字面量。
+代码块内保持字面量、Shift+粘贴交回纯文本路径、纯文本手势（记号字面量、硬换行与空行、
+选区替换与一次撤销、代码块 `\n`、空剪贴板、长按去重、等待期间文档被替换、整段 URL、
+跨段选区、Windows 超大文本挂附件、草稿转义）。

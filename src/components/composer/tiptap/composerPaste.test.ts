@@ -9,13 +9,20 @@
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { Editor } from "@tiptap/react";
-import { Slice } from "@tiptap/pm/model";
-import { buildComposerExtensions } from "@/components/composer/tiptap/composerExtensions";
+import type { Content } from "@tiptap/react";
 import { normalizeSerializedMarkdown } from "@/lib/composerMarkdown";
 import {
   normalizePastedMarkdown,
   planPastedMarkdown,
 } from "@/components/composer/tiptap/composerPaste";
+import {
+  blockTypes,
+  createComposerEditor,
+  dispatchPaste,
+  dispatchRealPaste,
+  hasHardBreak,
+  markdownOf,
+} from "@/components/composer/tiptap/composerPasteTestUtils";
 
 let editor: Editor | null = null;
 let host: HTMLDivElement | null = null;
@@ -27,65 +34,10 @@ afterEach(() => {
   host = null;
 });
 
-function makeEditor(content = ""): Editor {
-  host = document.createElement("div");
-  document.body.appendChild(host);
-  return new Editor({
-    element: host,
-    extensions: buildComposerExtensions({ showPlaceholderWhenEditable: false }),
-    content,
-    editable: true,
-  });
-}
-
-/** 最小剪贴板事件：只实现粘贴路径实际读取的两个 MIME。 */
-function pasteEvent(plain: string, html?: string): ClipboardEvent {
-  // jsdom 没有 ClipboardEvent；粘贴路径只读取 clipboardData，用 Event 承载即可。
-  const event = new Event("paste", { bubbles: true, cancelable: true });
-  Object.defineProperty(event, "clipboardData", {
-    value: {
-      getData: (type: string) => {
-        if (type === "text/plain") return plain;
-        if (type === "text/html") return html ?? "";
-        return "";
-      },
-    },
-  });
-  return event as unknown as ClipboardEvent;
-}
-
-function dispatchPaste(ed: Editor, plain: string, html?: string): boolean {
-  const event = pasteEvent(plain, html);
-  const handled = ed.view.someProp("handlePaste", (f) =>
-    f(ed.view, event, Slice.empty),
-  );
-  return !!handled;
-}
-
-/** 走 ProseMirror 的完整粘贴管线：HTML 分支、库的 clipboardTextParser 都会被覆盖。 */
-function dispatchRealPaste(ed: Editor, plain: string, html?: string): void {
-  ed.view.dom.dispatchEvent(pasteEvent(plain, html));
-}
-
-function blockTypes(ed: Editor): string[] {
-  const names: string[] = [];
-  ed.state.doc.forEach((node) => names.push(node.type.name));
-  return names;
-}
-
-function markdownOf(ed: Editor): string {
-  const raw = (ed.storage as { markdown?: { getMarkdown?: () => unknown } })
-    .markdown?.getMarkdown?.();
-  return typeof raw === "string" ? raw : "";
-}
-
-function hasHardBreak(ed: Editor): boolean {
-  let found = false;
-  ed.state.doc.descendants((node) => {
-    if (node.type.name === "hardBreak") found = true;
-    return !found;
-  });
-  return found;
+function makeEditor(content: Content = ""): Editor {
+  const created = createComposerEditor({ content });
+  host = created.host;
+  return created.editor;
 }
 
 describe("normalizePastedMarkdown", () => {
@@ -587,3 +539,4 @@ describe("transformPastedText", () => {
     expect(text).toBe("`code`");
   });
 });
+
