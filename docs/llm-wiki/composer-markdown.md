@@ -63,8 +63,6 @@
 
 多行普通段落保留换行（`breaks: true` 下是软换行），不做块级提升。
 
-## 用户气泡的展示
-
 ### 纯文本粘贴（字面量）
 
 `⌥⇧⌘V` / `Ctrl+Alt+V` 由 Markdown 档扩展处理，绕过上面的判定：读剪贴板纯文本后直接
@@ -77,7 +75,7 @@
 首尾空行按 `normalizePastedMarkdown()` 去掉，纯空白粘贴不产生事务。Windows 上超过
 `shouldSpillHugePlainText()` 阈值的文本改挂 `.txt` 附件（与 `⌘V` 同一分支），不插入编辑器。
 
-## 草稿与存储态
+## 用户气泡的展示
 
 存储态与提示词保留 Markdown 源码：字面文本会被序列化器转义（`\*` / `\#` / `1\.`），
 `<` `>` 写成 `&gt;` / `&lt;`。`normalizeSerializedMarkdown()` **保留**这些转义：

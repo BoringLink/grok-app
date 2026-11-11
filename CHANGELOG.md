@@ -11,23 +11,80 @@ See `docs/llm-wiki/release.md`.
 
 **What's New popup:** each bullet's **first sentence** is what users see. Keep that sentence to one short line (added / fixed / improved — no paths, no implementation, no issue piles). A second short sentence is allowed for GitHub / this file only. Do **not** rewrite already-shipped `## [X.Y.Z]` sections.
 
-## [Unreleased]
+## [0.2.53] - 2026-11-10
+
+> **Highlight:** Auto-generated session titles no longer hit the wrong Grok home, so custom providers stop failing with 401.
+>
+> **中文 · 亮点：** 自动会话标题不再走错 Grok home，自定义供应商不再误报 401。
 
 ### Added
 - Remote-control attachments now use a deduplicated, size-limited store. Unreferenced files are cleaned up automatically.
 - Remote control can send agent-created files back as native attachments.
 
+### Fixed
+- The file panel no longer jumps back to the opened file when you expand or collapse a folder.
+- Auto-generated session titles run against the Grok home that matches your session data mode, so custom providers stop returning 401.
+
 **中文 · 新增**
 - 远程控制附件改为去重、限额的附件文件系统，无引用文件会自动清理。
 - 远程控制可以把 agent 生成的文件作为原生附件发回 IM。
 
+### Added
+- Files open from fuzzy project-wide search, including unexpanded folders.
+- Find in file with Cmd/Ctrl+F in previews and both editors.
+- Paste clipboard text literally with ⌥⇧⌘V / Ctrl+Alt+V.
+- MCP server rows show their vendor icon.
+
+**中文 · 新增**
+- 文件面板支持全项目模糊搜索，未展开的目录也能直接打开。
+- 预览和编辑器支持 Cmd/Ctrl+F 文件内查找。
+- ⌥⇧⌘V / Ctrl+Alt+V 按纯文本粘贴。
+- MCP 服务器行显示所属厂商图标。
+
 ### Fixed
-- Feishu remote control downloads the images and files you send, so the agent can read them.
-- Editing long styled text in the chat composer no longer jumps the view to the bottom.
+- Chat user bubbles render Markdown like the composer.
+- Pasting Markdown source keeps headings, lists, and fences.
+- The file panel no longer jumps back to the opened file when you expand or collapse a folder.
 
 **中文 · 修复**
-- 飞书远程控制会下载你发送的图片和文件，agent 能真正读到内容。
-- 聊天输入框内编辑长文本（如代码块）时，在上方修改不再让视窗被拽到底部；光标在末尾输入时仍正常跟随。
+- 聊天气泡按编辑器的 Markdown 渲染。
+- 粘贴 Markdown 源码时保留标题、列表和代码块。
+- 修复展开或折叠任意目录时，文件树视图会跳回已打开文件导致的闪烁。
+- 会话标题自动生成改用与会话数据模式一致的 Grok home，修复自定义供应商误报 401 鉴权错误。
+
+## [0.2.53] - 2026-11-10
+
+> **Highlight:** Auto-generated session titles no longer hit the wrong Grok home, so custom providers stop failing with 401.
+>
+> **中文 · 亮点：** 自动会话标题不再走错 Grok home，自定义供应商不再误报 401。
+
+### Added
+- Remote-control attachments now use a deduplicated, size-limited store. Unreferenced files are cleaned up automatically.
+- Remote control can send agent-created files back as native attachments.
+
+### Fixed
+- The file panel no longer jumps back to the opened file when you expand or collapse a folder.
+- Auto-generated session titles run against the Grok home that matches your session data mode, so custom providers stop returning 401.
+
+**中文 · 新增**
+- 远程控制附件改为去重、限额的附件文件系统，无引用文件会自动清理。
+- 远程控制可以把 agent 生成的文件作为原生附件发回 IM。
+
+**中文 · 修复**
+- 修复展开或折叠任意目录时，文件树视图会跳回已打开文件导致的闪烁。
+- 会话标题自动生成改用与会话数据模式一致的 Grok home，修复自定义供应商误报 401 鉴权错误。
+
+## [0.2.52] - 2026-11-09
+
+> **Highlight:** Update checks now follow this fork's Releases.
+>
+> **中文 · 亮点：** 版本更新检查改为跟随本 fork 的 Releases。
+
+### Changed
+- Update checks use the fork release channel.
+
+**中文 · 变更**
+- 版本更新检查改用 fork 的 Release 通道。
 
 ## [0.2.51] - 2026-11-14
 
@@ -41,7 +98,6 @@ See `docs/llm-wiki/release.md`.
 - Official model menus use the newest available catalog.
 - CLI bulk import counts eligible sessions and reports complete import failures.
 - Markdown paste keeps block structure and stops formatting the next text.
-- Auto-generated session titles run against the Grok home that matches your session data mode, so custom providers stop returning 401.
 
 **中文 · 修复**
 
