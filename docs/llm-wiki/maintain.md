@@ -116,7 +116,7 @@ When reviewing a batch of open PRs:
    - Which **pages / surfaces** change (e.g. Settings → Appearance, Composer, session sidebar, What’s New, website landing)
    - What the user would notice after merge (before → after in plain language; screenshots or `gh pr diff` path summary when helpful)
    - Risk notes (regression surface, i18n, dialogs.md / AppWorkbench freeze)
-4. Maintainer (铁柱) **拍板** which held PRs to merge; agent merges only after explicit yes.
+4. Maintainer **拍板** which held PRs to merge; agent merges only after explicit yes.
 
 **Style bug vs UI change:** fixing “menu is transparent / clipped / wrong z-index” is a style bug → merge. “Make the menu look like glass / restyle spacing / new visual language” is UI → hold.
 

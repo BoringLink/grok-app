@@ -12,7 +12,7 @@ If you discover a security issue in Grok App (for example token leakage, unsafe
 agent process spawning, or local secrets exposure), please report it privately:
 
 - Open a GitHub Security Advisory on [RongleCat/grok-app](https://github.com/RongleCat/grok-app), or
-- Contact the maintainer on X: [@cgnot996](https://x.com/cgnot996)
+- Email the maintainer at boringlink@outlook.com
 
 Please include:
 - A clear description of the issue

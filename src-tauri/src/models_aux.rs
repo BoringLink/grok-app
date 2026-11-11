@@ -1759,7 +1759,7 @@ A red button.
 
     #[test]
     fn strip_preserves_chinese_utf8() {
-        let s = "在 x 上搜索 cgnot996 这个账号的信息";
+        let s = "在 x 上搜索 someuser 这个账号的信息";
         let (body, found) = strip_image_at_paths(s);
         assert!(found.is_empty());
         assert_eq!(body, s, "must not corrupt multi-byte UTF-8");

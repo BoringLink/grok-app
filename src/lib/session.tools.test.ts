@@ -162,14 +162,14 @@ describe("tool activity", () => {
         title: "搜索 X 信息",
         toolKind: "search",
         status: "completed",
-        detail: "## X 用户搜索\n| Handle | @cgnot996 |",
+        detail: "## X 用户搜索\n| Handle | @someuser |",
         streaming: false,
       },
       { kind: "thought", text: "ok" },
     ]);
     const tools = segs.filter((s) => s.kind === "tool");
     expect(tools).toHaveLength(1);
-    expect(tools[0]?.detail).toContain("@cgnot996");
+    expect(tools[0]?.detail).toContain("@someuser");
   });
 
   it("parseToolStepContent keeps multiline Host X body", () => {
@@ -177,16 +177,16 @@ describe("tool activity", () => {
       "tool_step|completed|search|搜索 X 信息",
       "The user wants me to search…",
       "",
-      "## X 用户搜索：`cgnot996`",
+      "## X 用户搜索：`someuser`",
       "",
-      "| Handle | @cgnot996 |",
-      "| Profile | https://x.com/cgnot996 |",
+      "| Handle | @someuser |",
+      "| Profile | https://x.com/someuser |",
     ].join("\n");
     const p = parseToolStepContent(body);
     expect(p?.title).toBe("搜索 X 信息");
     expect(p?.kind).toBe("search");
-    expect(p?.detail).toContain("@cgnot996");
-    expect(p?.detail).toContain("https://x.com/cgnot996");
+    expect(p?.detail).toContain("@someuser");
+    expect(p?.detail).toContain("https://x.com/someuser");
     expect(p?.detail?.split("\n").length).toBeGreaterThan(2);
   });
 
@@ -275,12 +275,12 @@ describe("tool activity", () => {
     const toolBody = [
       "tool_step|completed|search|搜索 X 信息",
       "preamble junk",
-      "## X 用户搜索：`cgnot996`",
-      "| **Handle** | `@cgnot996` |",
+      "## X 用户搜索：`someuser`",
+      "| **Handle** | `@someuser` |",
     ].join("\n");
     const parsed = parseToolStepContent(toolBody)!;
     const rows: ChatMessage[] = [
-      { id: "u1", role: "user", content: "搜索@cgnot996这个账号" },
+      { id: "u1", role: "user", content: "搜索@someuser这个账号" },
       {
         id: "tool-host-x-56464134-1102-46dc-9d80-53e0d6363d86",
         role: "tool",
@@ -310,7 +310,7 @@ describe("tool activity", () => {
     const tools = (asst.segments || []).filter((s) => s.kind === "tool");
     expect(tools).toHaveLength(1);
     expect(tools[0]).toMatchObject({ title: "搜索 X 信息" });
-    expect((tools[0] as { detail?: string }).detail).toContain("@cgnot996");
+    expect((tools[0] as { detail?: string }).detail).toContain("@someuser");
     const filtered = filterTranscriptMessages(woven);
     expect(filtered.some((m) => m.role === "tool")).toBe(false);
   });

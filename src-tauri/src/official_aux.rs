@@ -2335,9 +2335,9 @@ mod tests {
 
     #[test]
     fn detect_x_user_handle_chinese() {
-        let intent = detect_x_search_intent("在 x 上搜索 cgnot996 这个账号的信息");
+        let intent = detect_x_search_intent("在 x 上搜索 someuser 这个账号的信息");
         match intent {
-            Some(XSearchIntent::User { query }) => assert_eq!(query, "cgnot996"),
+            Some(XSearchIntent::User { query }) => assert_eq!(query, "someuser"),
             other => panic!("expected User, got {other:?}"),
         }
     }

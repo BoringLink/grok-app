@@ -62,8 +62,8 @@ Default is the real **Grok Build** CLI (`grok agent stdio`).
 
 ## 交流 / Contact
 
-- X: [@cgnot996](https://x.com/cgnot996)
 - GitHub Issues: https://github.com/RongleCat/grok-app/issues
+- Email: boringlink@outlook.com
 
 ## Releases
 
