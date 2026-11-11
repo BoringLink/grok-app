@@ -23,7 +23,7 @@ CHANGELOG = ROOT / "CHANGELOG.md"
 FOOTER = """
 ---
 
-Assets are attached below. Install help (macOS `xattr` / Gatekeeper, Windows SmartScreen, Linux packages, CLI): [README](https://github.com/RongleCat/grok-app#install--first-run) · [README 中文](https://github.com/RongleCat/grok-app/blob/main/README.md#%E5%AE%89%E8%A3%85%E4%B8%8E%E4%BD%BF%E7%94%A8) · Full history: [CHANGELOG.md](https://github.com/RongleCat/grok-app/blob/main/CHANGELOG.md)
+Assets are attached below. Install help (macOS `xattr` / Gatekeeper, Windows SmartScreen, Linux packages, CLI): [README](https://github.com/BoringLink/grok-app#install--first-run) · [README 中文](https://github.com/BoringLink/grok-app/blob/main/README.md#%E5%AE%89%E8%A3%85%E4%B8%8E%E4%BD%BF%E7%94%A8) · Full history: [CHANGELOG.md](https://github.com/BoringLink/grok-app/blob/main/CHANGELOG.md)
 """
 
 

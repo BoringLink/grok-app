@@ -10,7 +10,7 @@ publishes unchanging aliases:
 
 Usage (CI, after versioned assets are on the tag):
   python3 scripts/publish-website-downloads.py \\
-    --dir /tmp/release-assets --tag v0.2.20 --repo RongleCat/grok-app --write-aliases
+    --dir /tmp/release-assets --tag v0.2.20 --repo BoringLink/grok-app --write-aliases
 
   python3 scripts/publish-website-downloads.py --self-test
 """
@@ -238,7 +238,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dir", type=Path, help="Directory of downloaded release assets")
     parser.add_argument("--tag", help="Release tag, e.g. v0.2.20")
-    parser.add_argument("--repo", default="RongleCat/grok-app", help="owner/name")
+    parser.add_argument("--repo", default="BoringLink/grok-app", help="owner/name")
     parser.add_argument(
         "--write-aliases",
         action="store_true",
@@ -303,21 +303,21 @@ class WebsiteDownloadsTests(unittest.TestCase):
             payload = build_manifest(
                 root,
                 tag="v0.2.20",
-                repo="RongleCat/grok-app",
+                repo="BoringLink/grok-app",
                 write_aliases=True,
             )
             installers = payload["manifest"]["installers"]
             self.assertEqual(
                 installers["mac-x64"]["url"],
-                "https://github.com/RongleCat/grok-app/releases/latest/download/Grok_mac_x64.dmg",
+                "https://github.com/BoringLink/grok-app/releases/latest/download/Grok_mac_x64.dmg",
             )
             self.assertEqual(
                 installers["windows-x64"]["url"],
-                "https://github.com/RongleCat/grok-app/releases/latest/download/Grok_windows_x64-setup.exe",
+                "https://github.com/BoringLink/grok-app/releases/latest/download/Grok_windows_x64-setup.exe",
             )
             self.assertEqual(
                 installers["mac-x64"]["versionedUrl"],
-                "https://github.com/RongleCat/grok-app/releases/download/v0.2.20/Grok_0.2.20_x64.dmg",
+                "https://github.com/BoringLink/grok-app/releases/download/v0.2.20/Grok_0.2.20_x64.dmg",
             )
             self.assertEqual(installers["mac-x64"]["sha256"], hashlib.sha256(b"intel-dmg").hexdigest())
             self.assertEqual((root / "Grok_mac_x64.dmg").read_bytes(), b"intel-dmg")
@@ -346,7 +346,7 @@ class WebsiteDownloadsTests(unittest.TestCase):
                 build_manifest(
                     root,
                     tag="v0.2.20",
-                    repo="RongleCat/grok-app",
+                    repo="BoringLink/grok-app",
                     write_aliases=False,
                 )
             self.assertIn("mac-x64", str(ctx.exception))

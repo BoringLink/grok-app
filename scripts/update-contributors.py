@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Refresh circular-avatar contributor galleries in README files.
 
-Source of truth: GitHub Contributors API for RongleCat/grok-app.
+Source of truth: GitHub Contributors API for BoringLink/grok-app.
 Replaces the block between <!-- CONTRIBUTORS:START --> and <!-- CONTRIBUTORS:END -->
 in README.md / README_EN.md / README_ZH.md / README_RU.md.
 
@@ -28,7 +28,7 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-REPO = "RongleCat/grok-app"
+REPO = "BoringLink/grok-app"
 API = f"https://api.github.com/repos/{REPO}/contributors?per_page=100"
 MARKER_START = "<!-- CONTRIBUTORS:START -->"
 MARKER_END = "<!-- CONTRIBUTORS:END -->"

@@ -5,7 +5,7 @@
 #
 # Usage:
 #   bash scripts/assert-release-assets.sh v0.2.33
-#   bash scripts/assert-release-assets.sh v0.2.33 --repo RongleCat/grok-app
+#   bash scripts/assert-release-assets.sh v0.2.33 --repo BoringLink/grok-app
 set -euo pipefail
 
 TAG="${1:-}"
