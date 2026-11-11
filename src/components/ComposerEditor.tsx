@@ -1041,8 +1041,8 @@ export function scrollComposerCaretIntoView(el: HTMLElement): void {
 
   const rect = getComposerCaretRect(el);
   if (!rect) {
-    // Unknown caret geometry — pin bottom as a safe default for newlines.
-    el.scrollTop = maxScroll;
+    // 光标几何未知时不滚动：无条件钉底会在长文本（如代码块）里把视窗
+    // 瞬间拽到最底部，而光标仍留在用户编辑处——比不滚动破坏性更大。
     return;
   }
 
