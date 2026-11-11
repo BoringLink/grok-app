@@ -13,6 +13,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+- Editing long styled text in the chat composer no longer jumps the view to the bottom.
+- 聊天输入框内编辑长文本（如代码块）时，在上方修改不再让视窗被拽到底部；光标在末尾输入时仍正常跟随。
+
 ## [0.2.51] - 2026-11-14
 
 > **Highlight:** Rewound chats keep their new replies, and model menus use a fresh catalog.
