@@ -11,6 +11,16 @@ See `docs/llm-wiki/release.md`.
 
 **What's New popup:** each bullet's **first sentence** is what users see. Keep that sentence to one short line (added / fixed / improved — no paths, no implementation, no issue piles). A second short sentence is allowed for GitHub / this file only. Do **not** rewrite already-shipped `## [X.Y.Z]` sections.
 
+## [0.2.54] - 2026-11-11
+
+> **Highlight:** Editing long styled text in the composer no longer yanks the view to the bottom.
+>
+> **中文 · 亮点：** 在输入框内编辑长文本不再把视窗拽到底部。
+
+### Fixed
+- Editing long styled text in the chat composer no longer jumps the view to the bottom.
+- 聊天输入框内编辑长文本（如代码块）时，在上方修改不再让视窗被拽到底部；光标在末尾输入时仍正常跟随。
+
 ## [0.2.53] - 2026-11-10
 
 > **Highlight:** Auto-generated session titles no longer hit the wrong Grok home, so custom providers stop failing with 401.
