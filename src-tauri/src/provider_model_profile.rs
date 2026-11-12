@@ -5,16 +5,19 @@
 //! fields may change without changing which upstream request id is sent.
 //!
 //! Compatibility rules:
-//! - Field missing, blank, or non-array JSON → legacy provider. Its channel
-//!   `model` is the only selectable row (providers written before `app_models`).
+//! - Field missing or blank → legacy provider. Its channel `model` is the only
+//!   selectable row (providers written before `app_models`).
 //! - A well-formed JSON array is authoritative. An explicit empty array means
 //!   the user cleared the catalog; it must not be re-seeded from `model`.
 //! - Rows are normalized: trimmed ids, blank names fall back to the id,
 //!   duplicates keep the first row, and `0` context windows are empty values.
-//! - Invalid JSON, or a non-empty array whose rows all normalize away, is
-//!   reported as [`ModelCatalogRead::Corrupt`]. Read paths still fall back to
-//!   the legacy row, but writes must keep the original text instead of
-//!   replacing it with `[]`.
+//! - Anything else with content — `null`, object, string, number, invalid JSON,
+//!   or a non-empty array whose rows all normalize away — is
+//!   [`ModelCatalogRead::Corrupt`]. The only writer of this field is
+//!   [`encode_model_catalog`], which always emits an array, so a non-array value
+//!   never means a legacy provider. Read paths still fall back to the legacy
+//!   row, but writes must keep the original text instead of replacing it with
+//!   `[]` or a guessed row.
 
 use crate::providers::{normalize_provider_models, ProviderModelEntry};
 
@@ -70,7 +73,10 @@ pub fn read_model_catalog(raw: Option<&str>) -> ModelCatalogRead {
                 }),
             }
         }
-        Ok(_) => ModelCatalogRead::LegacyChannel,
+        Ok(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
+            raw: value.to_string(),
+            detail: "expected a JSON array of model rows".into(),
+        }),
     }
 }
 
@@ -138,9 +144,39 @@ mod tests {
     }
 
     #[test]
-    fn missing_or_non_array_payload_is_read_as_a_legacy_provider() {
-        for raw in [None, Some(""), Some("null"), Some("{}"), Some("\"m1\"")] {
+    fn only_a_missing_or_blank_field_is_read_as_a_legacy_provider() {
+        for raw in [None, Some(""), Some("   "), Some("\n\t")] {
             assert_eq!(read_model_catalog(raw), ModelCatalogRead::LegacyChannel);
+        }
+    }
+
+    #[test]
+    fn a_json_array_is_read_as_a_stored_catalog() {
+        assert_eq!(
+            read_model_catalog(Some(r#"[{"id":" m1 ","name":"M1"}]"#)),
+            ModelCatalogRead::Stored(vec![ProviderModelEntry::named("m1", "M1")])
+        );
+    }
+
+    #[test]
+    fn non_array_json_is_corrupt_not_a_legacy_provider() {
+        for raw in [
+            "null",
+            "true",
+            "1",
+            "1.5",
+            "\"m1\"",
+            "{}",
+            r#"{"id":"m1"}"#,
+            "[{\"id\":\"m1\"}] junk",
+        ] {
+            match read_model_catalog(Some(raw)) {
+                ModelCatalogRead::Corrupt(defect) => {
+                    assert_eq!(defect.raw, raw);
+                    assert!(!defect.detail.is_empty(), "diagnostic context for {raw}");
+                }
+                other => panic!("expected corrupt read for {raw}: {other:?}"),
+            }
         }
     }
 
@@ -183,6 +219,10 @@ mod tests {
         );
         assert_eq!(
             resolve_model_catalog(Some(r#"[{"id":""}]"#), "relay-model", "Relay"),
+            vec![ProviderModelEntry::named("relay-model", "Relay")]
+        );
+        assert_eq!(
+            resolve_model_catalog(Some("null"), "relay-model", "Relay"),
             vec![ProviderModelEntry::named("relay-model", "Relay")]
         );
     }

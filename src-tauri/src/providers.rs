@@ -4422,7 +4422,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
     }
 
     #[test]
-    fn missing_or_unusable_app_models_falls_back_to_the_channel_model_for_reads() {
+    fn missing_or_corrupt_app_models_falls_back_to_the_channel_model_for_reads() {
         for raw in [
             None,
             Some(""),
@@ -4436,7 +4436,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
             assert_eq!(
                 decoded,
                 vec![ProviderModelEntry::named("channel-model", "Channel")],
-                "legacy fallback for {raw:?}"
+                "channel fallback for {raw:?}"
             );
         }
     }
@@ -5372,7 +5372,14 @@ context_window = 128000
             ensure_app_dirs().map_err(|e| e.to_string())?;
             let path = agent_config_toml();
             let mut captured = Vec::new();
-            for bad in ["not-json", r#"[{"id":"   "}]"#] {
+            for bad in [
+                "not-json",
+                r#"[{"id":"   "}]"#,
+                "null",
+                "{}",
+                "\"m1\"",
+                "1",
+            ] {
                 write_text(
                     &path,
                     &format!(
@@ -5441,6 +5448,10 @@ app_models = {}
                 .iter()
                 .find(|p| p.id == "relay")
                 .expect("relay provider after keep");
+            assert!(
+                kept_relay.model_catalog_corrupt,
+                "a non-array or unreadable value is not a legacy provider: {bad}"
+            );
             assert_eq!(
                 kept_relay.models,
                 vec![ProviderModelEntry::named("m1", "m1")],
@@ -6200,7 +6211,15 @@ context_window = "1000000"
 
     #[test]
     fn corrupt_catalog_leaves_existing_child_sections_untouched() {
-        for bad in ["not-json", r#"[{"id":"   "}]"#, r#"[{"id":"m1""#] {
+        for bad in [
+            "not-json",
+            r#"[{"id":"   "}]"#,
+            r#"[{"id":"m1""#,
+            "null",
+            "{}",
+            "\"m1\"",
+            "1",
+        ] {
             let before = format!(
                 r#"[models]
 default = "relay"

@@ -51,12 +51,14 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 
 | On-disk state | Read result |
 |---------------|-------------|
-| Missing / blank / `null` / non-array JSON (object, string, number) | Legacy provider: one row from the channel `model` (display name = same id) |
+| Missing / blank | Legacy provider: one row from the channel `model` (display name = same id) |
 | Valid JSON array, including `[]` | Exactly those rows; `[]` is an explicit clear and is never re-seeded from `model` |
 | Row without `name` | Display name falls back to the request `id` |
 | Blank or duplicate `id` | `id` is trimmed; blank rows are dropped and the first duplicate wins |
 | Empty optional value (`contextWindow` `0` / `null` / missing, empty `efforts`) | Row stores no value; the existing channel fallback still applies |
-| Invalid JSON syntax, or a non-empty array whose rows all normalize away | Reads as the legacy row and reports `modelCatalogCorrupt: true`; an edit that omits `models` keeps the original text and logs a warning; only an explicit `models: []` clears it |
+| `null`, JSON object / string / number, invalid JSON syntax, or a non-empty array whose rows all normalize away | Not a catalog: reads as the legacy row and reports `modelCatalogCorrupt: true`; an edit that omits `models` keeps the original text and logs a warning; only an explicit `models: []` clears it |
+
+Only a missing or blank field is a legacy provider. The App is the only writer of `app_models` and always encodes a JSON array, so a non-array value is a damaged or foreign value, not an older format: generic child-section sync is skipped for it, and a plain save that omits `models` keeps it byte-for-byte.
 
 Identity is `(provider id, model id)`. Renaming a row or changing channel defaults never changes the request id. Writes keep row order and omit empty optional fields, so save → reopen is stable. The legacy display fallback also names the generic child `[model.<providerId>__<slug>]` section, so Settings, the composer, and post-migration sections show the same label.
 
