@@ -4,6 +4,7 @@ import {
   findProviderModel,
   materializeActiveModelChannel,
   mergeRemoteModelCaps,
+  modelsForContextWindow,
   resolveProviderContextWindow,
   resolveProviderEfforts,
   resolveProviderSupportsVideo,
@@ -186,5 +187,35 @@ describe("withModelContextWindow", () => {
     );
     expect(next.find((m) => m.id === "b")?.contextWindow).toBe(32000);
     expect(next.find((m) => m.id === "a")?.contextWindow).toBeUndefined();
+  });
+});
+
+describe("modelsForContextWindow", () => {
+  it("updates the active row for a readable catalog", () => {
+    const next = modelsForContextWindow(
+      {
+        model: "b",
+        models: [{ id: "a", name: "A" }, { id: "b", name: "B" }],
+      },
+      32000,
+    );
+    expect(next).toEqual([
+      { id: "a", name: "A" },
+      { id: "b", name: "B", contextWindow: 32000 },
+    ]);
+  });
+
+  it("omits the catalog when the stored value is unreadable", () => {
+    // `models` is only the legacy read fallback. Sending it would write the
+    // fallback row over the original `app_models` text.
+    const next = modelsForContextWindow(
+      {
+        model: "m1",
+        models: [{ id: "m1", name: "m1" }],
+        modelCatalogCorrupt: true,
+      },
+      32000,
+    );
+    expect(next).toBeUndefined();
   });
 });

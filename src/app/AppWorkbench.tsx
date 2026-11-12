@@ -268,8 +268,8 @@ import {
 } from "@/lib/grokCatalog";
 import {
   materializeActiveModelChannel,
+  modelsForContextWindow,
   resolveProviderEfforts,
-  withModelContextWindow,
 } from "@/lib/providerModelConfig";
 import {
   mapPermissionButtons,
@@ -9271,11 +9271,7 @@ export function AppWorkbench() {
             baseUrl: activeCustomProvider.baseUrl,
             name: activeCustomProvider.name,
             apiBackend: activeCustomProvider.apiBackend,
-            models: withModelContextWindow(
-              activeCustomProvider.models,
-              activeCustomProvider.model,
-              tokens,
-            ),
+            models: modelsForContextWindow(activeCustomProvider, tokens),
             efforts: activeCustomProvider.efforts,
             setAsDefault: false,
             contextWindow: tokens,
