@@ -149,12 +149,29 @@ function sameCatalog(
 }
 
 /**
+ * Row-level identity (id, name, order). Per-model metadata is excluded because
+ * a corrupt read only supplies fallback rows with no stored metadata; a change
+ * there is not a catalog repair.
+ */
+function sameCatalogRows(
+  a: api.ProviderModelEntry[],
+  b: api.ProviderModelEntry[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((row, i) => row.id === b[i]?.id && row.name === b[i]?.name)
+  );
+}
+
+/**
  * `models` to send on save. `undefined` leaves the stored `app_models` alone,
  * which is the only safe choice when the stored value is unreadable and the
  * user changed another field: re-sending the read fallback row would overwrite
- * it. A create that collides with an existing id is an update, so it follows
- * the same comparison. Without a stored provider there is no baseline to
- * compare against, so the rows (including `[]`) are sent as-is.
+ * it. Metadata-only changes (context window, caps, efforts) also stay out of a
+ * corrupt provider's payload for the same reason. A create that collides with
+ * an existing id is an update, so it follows the same comparison. Without a
+ * stored provider there is no baseline to compare against, so the rows
+ * (including `[]`) are sent as-is.
  */
 export function modelsForProviderSave(opts: {
   formModels: FormModel[];
@@ -163,7 +180,30 @@ export function modelsForProviderSave(opts: {
   const next = formModelsPayload(opts.formModels);
   if (!opts.stored) return next;
   const storedCatalog = formModelsPayload(modelsFromProvider(opts.stored));
-  return sameCatalog(next, storedCatalog) ? undefined : next;
+  const unchanged =
+    opts.stored.modelCatalogCorrupt === true
+      ? sameCatalogRows(next, storedCatalog)
+      : sameCatalog(next, storedCatalog);
+  return unchanged ? undefined : next;
+}
+
+/**
+ * Per-model settings stay off until a corrupt provider's catalog is explicitly
+ * replaced in the model list; the read fallback row carries none of the
+ * original catalog. A create collision stays locked until the save makes the
+ * stored catalog readable again.
+ */
+export function isModelCatalogLocked(opts: {
+  stored: api.CustomProvider | undefined;
+  isCreate: boolean;
+  formModels: FormModel[];
+}): boolean {
+  if (opts.stored?.modelCatalogCorrupt !== true) return false;
+  if (opts.isCreate) return true;
+  return sameCatalogRows(
+    formModelsPayload(opts.formModels),
+    formModelsPayload(modelsFromProvider(opts.stored)),
+  );
 }
 
 export function effortsFromProvider(p: api.CustomProvider): FormEffort[] {

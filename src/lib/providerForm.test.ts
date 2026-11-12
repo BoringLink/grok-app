@@ -7,6 +7,7 @@ import {
   formFromPreset,
   formModelsPayload,
   hostOf,
+  isModelCatalogLocked,
   modelsForProviderSave,
   modelsFromProvider,
   toFormEfforts,
@@ -189,6 +190,112 @@ describe("modelsForProviderSave", () => {
       stored: corruptProvider,
     });
     expect(out).toEqual([]);
+  });
+
+  it("omits models when only per-model metadata changed on a corrupt catalog", () => {
+    // Gear edits seed from the read fallback, not from the unreadable original.
+    const out = modelsForProviderSave({
+      formModels: modelsFromProvider(corruptProvider).map((m) => ({
+        ...m,
+        contextWindow: 128000,
+        supportsVision: true,
+        efforts: [{ id: "high", name: "High", isDefault: true }],
+      })),
+      stored: corruptProvider,
+    });
+    expect(out).toBeUndefined();
+  });
+
+  it("sends per-model metadata edits for a readable catalog", () => {
+    const healthy = { ...corruptProvider, modelCatalogCorrupt: false };
+    const out = modelsForProviderSave({
+      formModels: modelsFromProvider(healthy).map((m) => ({
+        ...m,
+        contextWindow: 128000,
+      })),
+      stored: healthy,
+    });
+    expect(out?.[0]?.contextWindow).toBe(128000);
+  });
+});
+
+describe("isModelCatalogLocked", () => {
+  const corruptProvider = {
+    id: "relay",
+    model: "m1",
+    baseUrl: "https://relay.example/v1",
+    name: "Relay",
+    hasApiKey: true,
+    apiBackend: "chat_completions",
+    providerMode: "generic",
+    isDefault: false,
+    models: [{ id: "m1", name: "m1" }],
+    modelCatalogCorrupt: true,
+  } as CustomProvider;
+
+  it("locks per-model settings while a corrupt catalog is untouched", () => {
+    const locked = isModelCatalogLocked({
+      stored: corruptProvider,
+      isCreate: false,
+      formModels: modelsFromProvider(corruptProvider),
+    });
+    expect(locked).toBe(true);
+  });
+
+  it("stays locked when only per-model metadata changes", () => {
+    const locked = isModelCatalogLocked({
+      stored: corruptProvider,
+      isCreate: false,
+      formModels: modelsFromProvider(corruptProvider).map((m) => ({
+        ...m,
+        contextWindow: 128000,
+        supportsVision: true,
+      })),
+    });
+    expect(locked).toBe(true);
+  });
+
+  it("unlocks after the catalog rows are explicitly edited", () => {
+    expect(
+      isModelCatalogLocked({
+        stored: corruptProvider,
+        isCreate: false,
+        formModels: [{ id: "m2", name: "M2" }],
+      }),
+    ).toBe(false);
+    expect(
+      isModelCatalogLocked({
+        stored: corruptProvider,
+        isCreate: false,
+        formModels: [{ id: "m1", name: "Renamed" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("locks a create collision with a corrupt provider", () => {
+    const locked = isModelCatalogLocked({
+      stored: corruptProvider,
+      isCreate: true,
+      formModels: [{ id: "preset-model", name: "Preset model" }],
+    });
+    expect(locked).toBe(true);
+  });
+
+  it("allows settings for readable or new providers", () => {
+    expect(
+      isModelCatalogLocked({
+        stored: { ...corruptProvider, modelCatalogCorrupt: false },
+        isCreate: false,
+        formModels: modelsFromProvider(corruptProvider),
+      }),
+    ).toBe(false);
+    expect(
+      isModelCatalogLocked({
+        stored: undefined,
+        isCreate: true,
+        formModels: [{ id: "m1", name: "M1" }],
+      }),
+    ).toBe(false);
   });
 });
 

@@ -21,6 +21,7 @@ import {
   formFromPreset,
   formModelsPayload,
   hostOf,
+  isModelCatalogLocked,
   modelsForProviderSave,
   modelsFromProvider,
   type FormState,
@@ -275,10 +276,18 @@ export function ProvidersPanel({
   }, [reload]);
 
   const providers = list?.providers ?? [];
-  const editingProvider =
-    rightMode === "edit" && editingId
-      ? providers.find((p) => p.id === editingId)
-      : undefined;
+  const isCreate = rightMode === "create" || !editingId;
+  const targetProviderId =
+    editingId ?? slugifyProviderId(form.id || form.name || form.baseUrl);
+  const targetProvider = targetProviderId
+    ? providers.find((p) => p.id === targetProviderId)
+    : undefined;
+  const modelCatalogCorrupt = !!targetProvider?.modelCatalogCorrupt;
+  const modelSettingsLocked = isModelCatalogLocked({
+    stored: targetProvider,
+    isCreate,
+    formModels: form.models,
+  });
   const activeSource = list?.activeSource ?? "official";
   const activeProviderId = list?.activeProviderId ?? null;
   const officialActive = activeSource === "official";
@@ -588,7 +597,6 @@ export function ProvidersPanel({
       setHintTone("err");
       return;
     }
-    const isCreate = rightMode === "create" || !editingId;
     const id =
       editingId ??
       (slugifyProviderId(form.id || form.name || form.baseUrl) ||
@@ -1719,7 +1727,7 @@ export function ProvidersPanel({
                     </button>
                   </span>
 
-                  {editingProvider?.modelCatalogCorrupt ? (
+                  {modelCatalogCorrupt ? (
                     <p className="prov-field__hint">
                       {tr("prov.modelsCorrupt")}
                     </p>
@@ -1914,7 +1922,7 @@ export function ProvidersPanel({
                               onClick={() => setModelSettingsIndex(index)}
                               aria-label={tr("prov.modelSettings")}
                               title={tr("prov.modelSettings")}
-                              disabled={busy}
+                              disabled={busy || modelSettingsLocked}
                             >
                               <IconSettings size={15} />
                             </button>
@@ -2234,7 +2242,11 @@ export function ProvidersPanel({
       </GlassModal>
 
       <ProviderModelSettingsModal
-        open={modelSettingsIndex != null && !!form.models[modelSettingsIndex]}
+        open={
+          !modelSettingsLocked &&
+          modelSettingsIndex != null &&
+          !!form.models[modelSettingsIndex]
+        }
         locale={locale}
         model={
           modelSettingsIndex != null
@@ -2251,7 +2263,7 @@ export function ProvidersPanel({
         onClose={() => setModelSettingsIndex(null)}
         onSave={(next) => {
           const index = modelSettingsIndex;
-          if (index == null) return;
+          if (index == null || modelSettingsLocked) return;
           setForm((f) => ({
             ...f,
             models: f.models.map((row, i) =>
