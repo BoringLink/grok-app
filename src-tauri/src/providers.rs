@@ -1290,6 +1290,64 @@ fn refresh_child_channel_fields(text: &str, parent: &Section, parent_id: &str) -
     text
 }
 
+/// Give every row recovered from a partially invalid `app_models` the child
+/// section that `--model` and `session/set_model` resolve.
+///
+/// `providers_list` exposes those rows, so a row without a section made the
+/// picker's model fall back to the channel section and send the wrong upstream
+/// model. Existing children keep their id, `model`, `name`, `context_window`,
+/// and unknown keys; only channel route fields follow the parent. Children the
+/// corrupt text does not name stay for older chats. Never rewrites the
+/// catalog: `app_models` remains the original corrupt text.
+fn ensure_recovered_child_sections(
+    text: &str,
+    parent: &Section,
+    parent_id: &str,
+    recovered_rows: &[ProviderModelEntry],
+) -> String {
+    let mut text = refresh_child_channel_fields(text, parent, parent_id);
+    let sections = parse_model_sections(&text);
+    let children: Vec<Section> = sections
+        .iter()
+        .filter(|s| {
+            s.fields
+                .get(APP_PARENT_PROVIDER_KEY)
+                .is_some_and(|p| p == parent_id)
+        })
+        .cloned()
+        .collect();
+    let foreign_ids: std::collections::HashSet<String> = sections
+        .iter()
+        .filter(|s| {
+            !s.fields
+                .get(APP_PARENT_PROVIDER_KEY)
+                .is_some_and(|p| p == parent_id)
+        })
+        .map(|s| s.id.clone())
+        .collect();
+    let mut existing_by_model = std::collections::HashMap::new();
+    for child in &children {
+        if let Some(model_id) = child.fields.get("model").filter(|s| !s.is_empty()) {
+            existing_by_model
+                .entry(model_id.clone())
+                .or_insert_with(|| child.id.clone());
+        }
+    }
+    let assigned =
+        assign_generic_sections(parent_id, recovered_rows, &foreign_ids, &existing_by_model);
+    for binding in &assigned {
+        let Some(model) = recovered_rows.iter().find(|m| m.id == binding.model_id) else {
+            continue;
+        };
+        let fields = match children.iter().find(|c| c.id == binding.section_id) {
+            Some(child) => refreshed_child_fields(parent, child, parent_id),
+            None => generic_child_fields(parent, model, parent_id),
+        };
+        text = replace_or_append_section(&text, &binding.section_id, &fields);
+    }
+    text
+}
+
 fn sync_parent_children(text: &str, parent_id: &str) -> String {
     let sections = parse_model_sections(text);
     let Some(parent) = sections.iter().find(|s| s.id == parent_id).cloned() else {
@@ -1301,9 +1359,21 @@ fn sync_parent_children(text: &str, parent_id: &str) -> String {
     let models = match read_model_catalog(parent.fields.get(APP_MODELS_KEY).map(|s| s.as_str())) {
         ModelCatalogRead::Stored(rows) => rows,
         ModelCatalogRead::LegacyChannel => legacy_model_catalog(&model_fallback, &model_fallback),
+        // A partially valid array still names selectable rows in
+        // `providers_list`, so each recovered row needs a section the CLI can
+        // route. The stored text stays untouched, and children it does not name
+        // stay for older chats.
+        ModelCatalogRead::Corrupt(corruption) if !corruption.recovered_rows.is_empty() => {
+            return ensure_recovered_child_sections(
+                text,
+                &parent,
+                parent_id,
+                &corruption.recovered_rows,
+            )
+        }
         // Unreadable: the legacy row is only a display guess, not the stored
-        // catalog. Rewriting children from it would drop sections that a
-        // partially valid value, or an older session, still references.
+        // catalog. Rewriting children from it would drop sections that an older
+        // session still references.
         ModelCatalogRead::Corrupt(_) => {
             return refresh_child_channel_fields(text, &parent, parent_id)
         }
@@ -6444,6 +6514,222 @@ app_parent_provider = "relay"
                 sync_generic_model_sections_in_text(&before),
                 before,
                 "an unreadable catalog must not be replaced by a legacy guess: {bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn recovered_catalog_rows_get_routable_child_sections() {
+        let raw = r#"[{"id":"m1","name":"M1"},{"id":"m2","name":"M2","contextWindow":"big"},null]"#;
+        let before = format!(
+            r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m3"
+base_url = "https://new.example/v1"
+api_key = "sk-new"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = {}
+
+[model.relay__m1]
+model = "m1"
+base_url = "https://old.example/v1"
+name = "M1 saved"
+api_key = "sk-old"
+api_backend = "responses"
+context_window = 64000
+app_note = "keep-me"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+
+[model.relay__hidden]
+model = "hidden"
+base_url = "https://old.example/v1"
+name = "Hidden"
+api_key = "sk-old"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+"#,
+            quote(raw)
+        );
+
+        let once = sync_generic_model_sections_in_text(&before);
+        let twice = sync_generic_model_sections_in_text(&once);
+        assert_eq!(
+            once, twice,
+            "recovered-row sync must be idempotent:\n{twice}"
+        );
+        assert_eq!(
+            field_of(&once, "relay", APP_MODELS_KEY).as_deref(),
+            Some(raw),
+            "the corrupt catalog text is authoritative and must stay byte-identical"
+        );
+
+        for (key, expected) in [
+            ("model", "m2"),
+            ("name", "M2"),
+            ("base_url", "https://new.example/v1"),
+            ("api_key", "sk-new"),
+            ("api_backend", "chat_completions"),
+            (APP_PROVIDER_MODE_KEY, PROVIDER_MODE_GENERIC),
+            (APP_PARENT_PROVIDER_KEY, "relay"),
+        ] {
+            assert_eq!(
+                field_of(&once, "relay__m2", key).as_deref(),
+                Some(expected),
+                "relay__m2 `{key}` must carry the recovered row and current channel route"
+            );
+        }
+        assert_eq!(field_of(&once, "relay__m1", "model").as_deref(), Some("m1"));
+        assert_eq!(
+            field_of(&once, "relay__m1", "name").as_deref(),
+            Some("M1 saved"),
+            "an existing child keeps its display name"
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "context_window").as_deref(),
+            Some("64000")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "app_note").as_deref(),
+            Some("keep-me"),
+            "unknown child fields survive the sync"
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "base_url").as_deref(),
+            Some("https://new.example/v1")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "api_key").as_deref(),
+            Some("sk-new")
+        );
+        assert_eq!(
+            field_of(&once, "relay__hidden", "model").as_deref(),
+            Some("hidden"),
+            "children the corrupt text does not name are kept for older chats"
+        );
+
+        let listed = build_list_result(std::path::PathBuf::new(), std::path::PathBuf::new(), &once);
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(relay.model_catalog_corrupt);
+        let model_ids: Vec<String> = relay.models.iter().map(|m| m.id.clone()).collect();
+        assert_eq!(model_ids, ["m1", "m2"]);
+        let sections: Vec<GenericSectionBinding> = parse_model_sections(&once)
+            .into_iter()
+            .filter(|s| {
+                s.fields
+                    .get(APP_PARENT_PROVIDER_KEY)
+                    .is_some_and(|p| p == "relay")
+            })
+            .filter_map(|s| {
+                let model_id = s.fields.get("model")?.trim();
+                if model_id.is_empty() {
+                    return None;
+                }
+                Some(GenericSectionBinding {
+                    section_id: s.id,
+                    model_id: model_id.to_string(),
+                })
+            })
+            .collect();
+        for model in &relay.models {
+            let section_id = resolve_session_set_model_id(
+                Some("relay"),
+                &model.id,
+                &model_ids,
+                false,
+                &sections,
+            );
+            assert_eq!(
+                field_of(&once, &section_id, "model").as_deref(),
+                Some(model.id.as_str()),
+                "listed row `{}` must resolve to a real child section, got `{section_id}`",
+                model.id
+            );
+        }
+    }
+
+    #[test]
+    fn recovered_catalog_rows_spawn_and_set_model_with_the_same_section() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-recovered-sections-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = std::fs::create_dir_all(home.join("agent-home"));
+        let raw = r#"[{"id":"m1","name":"M1"},{"id":"m2","name":"M2"},{"id":null}]"#;
+        std::fs::write(
+            agent_config_toml(),
+            format!(
+                r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = {}
+"#,
+                quote(raw)
+            ),
+        )
+        .expect("seed");
+
+        assert_eq!(spawn_model_for_provider("relay", "m2"), "relay__m2");
+        assert_eq!(session_set_model_id_for("relay", "m2"), "relay__m2");
+        assert_eq!(spawn_model_for_provider("relay", "m1"), "relay__m1");
+        assert_eq!(session_set_model_id_for("relay", "m1"), "relay__m1");
+        let text = std::fs::read_to_string(agent_config_toml()).expect("read synced config");
+        assert_eq!(field_of(&text, "relay__m2", "model").as_deref(), Some("m2"));
+        assert_eq!(
+            field_of(&text, "relay", APP_MODELS_KEY).as_deref(),
+            Some(raw)
+        );
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn corrupt_catalog_without_recovered_rows_creates_no_child_sections() {
+        for bad in [r#"[{"id":""},{"name":"no-id"}]"#, r#"[{"id":null}]"#, "[]"] {
+            let before = format!(
+                r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = {}
+"#,
+                quote(bad)
+            );
+            let once = sync_generic_model_sections_in_text(&before);
+            assert_eq!(
+                once, before,
+                "a catalog with no recovered row must not guess a child: {bad}"
             );
         }
     }
