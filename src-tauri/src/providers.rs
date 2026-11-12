@@ -5526,8 +5526,10 @@ context_window = 128000
             let mut captured = Vec::new();
             for bad in [
                 "not-json",
+                "  not-json  ",
                 r#"[{"id":"   "}]"#,
                 "null",
+                "\t{}\n",
                 "{}",
                 "\"m1\"",
                 "1",

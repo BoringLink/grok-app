@@ -62,8 +62,9 @@ pub enum ModelCatalogRead {
     LegacyChannel,
     /// A parsed catalog, including an explicitly empty one.
     Stored(Vec<ProviderModelEntry>),
-    /// Non-blank JSON that is not a usable catalog. Keeping `raw` lets an edit
-    /// that omits `models` preserve whatever is on disk.
+    /// Non-blank JSON that is not a usable catalog. Keeping `raw` verbatim,
+    /// including any surrounding whitespace, lets an edit that omits `models`
+    /// preserve whatever is on disk.
     Corrupt(ModelCatalogCorruption),
 }
 
@@ -88,12 +89,13 @@ impl std::fmt::Debug for ModelCatalogCorruption {
 
 /// Read `app_models` without deciding how legacy providers are materialized.
 pub fn read_model_catalog(raw: Option<&str>) -> ModelCatalogRead {
-    let Some(value) = raw.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(original) = raw.filter(|value| !value.trim().is_empty()) else {
         return ModelCatalogRead::LegacyChannel;
     };
+    let value = original.trim();
     match serde_json::from_str::<serde_json::Value>(value) {
         Err(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
-            raw: value.to_string(),
+            raw: original.to_string(),
             kind: ModelCatalogDefectKind::MalformedJson,
         }),
         Ok(serde_json::Value::Array(items)) => {
@@ -106,7 +108,7 @@ pub fn read_model_catalog(raw: Option<&str>) -> ModelCatalogRead {
                     let rows = normalize_provider_models(&rows);
                     if rows.is_empty() {
                         ModelCatalogRead::Corrupt(ModelCatalogCorruption {
-                            raw: value.to_string(),
+                            raw: original.to_string(),
                             kind: ModelCatalogDefectKind::NoUsableRows,
                         })
                     } else {
@@ -114,13 +116,13 @@ pub fn read_model_catalog(raw: Option<&str>) -> ModelCatalogRead {
                     }
                 }
                 Err(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
-                    raw: value.to_string(),
+                    raw: original.to_string(),
                     kind: ModelCatalogDefectKind::InvalidRowShape,
                 }),
             }
         }
         Ok(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
-            raw: value.to_string(),
+            raw: original.to_string(),
             kind: ModelCatalogDefectKind::UnsupportedJsonType,
         }),
     }
@@ -202,6 +204,42 @@ mod tests {
             read_model_catalog(Some(r#"[{"id":" m1 ","name":"M1"}]"#)),
             ModelCatalogRead::Stored(vec![ProviderModelEntry::named("m1", "M1")])
         );
+    }
+
+    #[test]
+    fn surrounding_whitespace_does_not_change_a_valid_catalog() {
+        assert_eq!(
+            read_model_catalog(Some("\n  []\t")),
+            ModelCatalogRead::Stored(Vec::new())
+        );
+        assert_eq!(
+            read_model_catalog(Some("  [{\"id\":\" m1 \"}]  ")),
+            ModelCatalogRead::Stored(vec![ProviderModelEntry::named("m1", "m1")])
+        );
+    }
+
+    #[test]
+    fn corrupt_catalog_keeps_the_original_text_including_surrounding_whitespace() {
+        for (raw, expected) in [
+            ("  not json\n", ModelCatalogDefectKind::MalformedJson),
+            ("\t{}\t", ModelCatalogDefectKind::UnsupportedJsonType),
+            (
+                "  [{\"id\":\"m1\",\"contextWindow\":\"big\"}]  ",
+                ModelCatalogDefectKind::InvalidRowShape,
+            ),
+            (
+                "\n[{\"id\":\"   \"}]\n",
+                ModelCatalogDefectKind::NoUsableRows,
+            ),
+        ] {
+            match read_model_catalog(Some(raw)) {
+                ModelCatalogRead::Corrupt(defect) => {
+                    assert_eq!(defect.raw, raw, "raw must keep surrounding whitespace");
+                    assert_eq!(defect.kind, expected, "category for {raw:?}");
+                }
+                other => panic!("expected corrupt read for {raw:?}: {other:?}"),
+            }
+        }
     }
 
     #[test]
