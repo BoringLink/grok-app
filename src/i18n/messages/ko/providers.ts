@@ -74,6 +74,7 @@ export const koProviders = {
   "prov.modelDisplayNamePh": "예: DeepSeek V4 Flash",
   "prov.modelsHint": "요청 모델을 하나 이상 추가하세요. 표시 이름은 작성기 칩에 나타납니다.",
   "prov.modelsEmpty": "아직 모델이 없습니다 — 직접 추가하거나 아래에서 가져와 고르세요.",
+  "prov.modelsCorrupt": "저장된 모델 카탈로그를 읽을 수 없습니다. 모델을 편집하면 교체되고, 다른 항목만 저장하면 원래 값이 유지됩니다.",
   "prov.addModel": "모델 추가",
   "prov.removeModel": "모델 제거",
   "prov.remoteModels": "가져온 목록에서",

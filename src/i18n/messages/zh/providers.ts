@@ -76,6 +76,7 @@ export const zhProviders = {
   "prov.modelDisplayNamePh": "例如 DeepSeek V4 Flash",
   "prov.modelsHint": "可添加多个请求模型。展示名称用于输入框模型芯片。",
   "prov.modelsEmpty": "暂无模型 — 可手动添加，或拉取后从列表选择。",
+  "prov.modelsCorrupt": "已保存的模型目录无法读取。编辑模型会替换它；仅保存其他字段会保留原值。",
   "prov.addModel": "添加模型",
   "prov.removeModel": "移除模型",
   "prov.remoteModels": "从拉取列表选择",

@@ -76,6 +76,7 @@ export const enProviders = {
   "prov.modelDisplayNamePh": "e.g. DeepSeek V4 Flash",
   "prov.modelsHint": "Add one or more request models. Display name appears on the composer chip.",
   "prov.modelsEmpty": "No models yet — add manually or fetch and pick below.",
+  "prov.modelsCorrupt": "The saved model catalog can't be read. Editing models replaces it; saving other fields keeps the original value.",
   "prov.addModel": "Add model",
   "prov.removeModel": "Remove model",
   "prov.remoteModels": "From fetched list",

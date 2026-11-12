@@ -74,6 +74,7 @@ export const itProviders = {
   "prov.modelDisplayNamePh": "es. DeepSeek V4 Flash",
   "prov.modelsHint": "Aggiungi uno o più modelli di richiesta. Il nome visualizzato compare sul chip del composer.",
   "prov.modelsEmpty": "Ancora nessun modello — aggiungi manualmente o recupera e scegli sotto.",
+  "prov.modelsCorrupt": "Impossibile leggere il catalogo modelli salvato. Modificare i modelli lo sostituisce; salvare altri campi mantiene il valore originale.",
   "prov.addModel": "Aggiungi modello",
   "prov.removeModel": "Rimuovi modello",
   "prov.remoteModels": "Dall’elenco recuperato",

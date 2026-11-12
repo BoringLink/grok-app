@@ -74,6 +74,7 @@ export const idProviders = {
   "prov.modelDisplayNamePh": "mis. DeepSeek V4 Flash",
   "prov.modelsHint": "Tambah satu atau lebih model permintaan. Nama tampilan muncul di chip composer.",
   "prov.modelsEmpty": "Belum ada model — tambah secara manual atau ambil dan pilih di bawah.",
+  "prov.modelsCorrupt": "Katalog model tersimpan tidak dapat dibaca. Mengedit model akan menggantinya; menyimpan kolom lain mempertahankan nilai aslinya.",
   "prov.addModel": "Tambah model",
   "prov.removeModel": "Hapus model",
   "prov.remoteModels": "Dari daftar yang diambil",

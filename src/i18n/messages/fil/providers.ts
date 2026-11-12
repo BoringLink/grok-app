@@ -74,6 +74,7 @@ export const filProviders = {
   "prov.modelDisplayNamePh": "hal. DeepSeek V4 Flash",
   "prov.modelsHint": "Magdagdag ng isa o higit pang request model. Lalabas ang pangalan sa display sa chip ng composer.",
   "prov.modelsEmpty": "Wala pang modelo — magdagdag nang mano-mano o kunin at piliin sa ibaba.",
+  "prov.modelsCorrupt": "Hindi mabasa ang naka-save na catalog ng modelo. Pinapalitan ito kapag in-edit ang mga modelo; pinapanatili ang orihinal na halaga kapag ibang field ang sine-save.",
   "prov.addModel": "Magdagdag ng modelo",
   "prov.removeModel": "Alisin ang modelo",
   "prov.remoteModels": "Mula sa nakuha na listahan",

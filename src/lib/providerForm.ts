@@ -120,6 +120,52 @@ export function modelsFromProvider(p: api.CustomProvider): FormModel[] {
   return [{ id, name: id }];
 }
 
+/** Canonical `providers_upsert` catalog rows for the current form values. */
+export function formModelsPayload(models: FormModel[]): api.ProviderModelEntry[] {
+  return models
+    .map((m) => ({
+      id: m.id.trim(),
+      name: m.name.trim() || m.id.trim(),
+      contextWindow: m.contextWindow ?? null,
+      supportsVision: m.supportsVision,
+      supportsVideo: m.supportsVideo,
+      efforts: (m.efforts ?? [])
+        .map((e) => ({
+          id: e.id.trim(),
+          name: e.name.trim() || e.id.trim(),
+          isDefault: !!e.isDefault,
+        }))
+        .filter((e) => e.id),
+    }))
+    .filter((m) => m.id);
+}
+
+/** Order-sensitive equality for canonical catalog rows. */
+function sameCatalog(
+  a: api.ProviderModelEntry[],
+  b: api.ProviderModelEntry[],
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * `models` to send on save. `undefined` leaves the stored `app_models` alone,
+ * which is the only safe choice when the stored value is unreadable and the
+ * user changed another field: re-sending the read fallback row would overwrite
+ * it. Editing, replacing, or clearing the catalog sends the new rows; `[]` is
+ * an explicit clear.
+ */
+export function modelsForProviderSave(opts: {
+  isCreate: boolean;
+  formModels: FormModel[];
+  stored: api.CustomProvider | undefined;
+}): api.ProviderModelEntry[] | undefined {
+  const next = formModelsPayload(opts.formModels);
+  if (opts.isCreate || !opts.stored) return next;
+  const storedCatalog = formModelsPayload(modelsFromProvider(opts.stored));
+  return sameCatalog(next, storedCatalog) ? undefined : next;
+}
+
 export function effortsFromProvider(p: api.CustomProvider): FormEffort[] {
   const aligned = alignGrokPresetEfforts({
     providerId: p.id,

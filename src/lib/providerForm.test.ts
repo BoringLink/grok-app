@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
+import type { CustomProvider } from "@/lib/api";
 import {
   asFormModel,
   ccSwitchStatusKey,
   emptyForm,
   formFromPreset,
+  formModelsPayload,
   hostOf,
+  modelsForProviderSave,
   modelsFromProvider,
   toFormEfforts,
 } from "./providerForm";
@@ -75,6 +78,88 @@ describe("modelsFromProvider", () => {
       typeof modelsFromProvider
     >[0]);
     expect(out).toEqual([]);
+  });
+});
+
+describe("formModelsPayload", () => {
+  it("trims ids, falls back names, and drops blank rows", () => {
+    const out = formModelsPayload([
+      { id: " m1 ", name: "  " },
+      { id: "   ", name: "Dropped" },
+    ] as Parameters<typeof formModelsPayload>[0]);
+    expect(out).toEqual([
+      {
+        id: "m1",
+        name: "m1",
+        contextWindow: null,
+        supportsVision: undefined,
+        supportsVideo: undefined,
+        efforts: [],
+      },
+    ]);
+  });
+});
+
+describe("modelsForProviderSave", () => {
+  const corruptProvider = {
+    id: "relay",
+    model: "m1",
+    baseUrl: "https://relay.example/v1",
+    name: "Relay",
+    hasApiKey: true,
+    apiBackend: "chat_completions",
+    providerMode: "generic",
+    isDefault: false,
+    models: [{ id: "m1", name: "m1" }],
+    modelCatalogCorrupt: true,
+  } as CustomProvider;
+
+  it("omits models when a corrupt catalog was not edited", () => {
+    // The rows the host returned are only the read fallback. Omission keeps
+    // the original `app_models` text on disk.
+    const out = modelsForProviderSave({
+      isCreate: false,
+      formModels: modelsFromProvider(corruptProvider),
+      stored: corruptProvider,
+    });
+    expect(out).toBeUndefined();
+  });
+
+  it("sends the edited rows when the user repairs the catalog", () => {
+    const out = modelsForProviderSave({
+      isCreate: false,
+      formModels: [{ id: "m2", name: "M2" }],
+      stored: corruptProvider,
+    });
+    expect(out?.map((m) => m.id)).toEqual(["m2"]);
+  });
+
+  it("sends [] when the user clears the stored catalog", () => {
+    const out = modelsForProviderSave({
+      isCreate: false,
+      formModels: [],
+      stored: corruptProvider,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("omits models for an untouched legacy provider", () => {
+    const legacy = { id: "p", model: "legacy-id" } as CustomProvider;
+    const out = modelsForProviderSave({
+      isCreate: false,
+      formModels: modelsFromProvider(legacy),
+      stored: legacy,
+    });
+    expect(out).toBeUndefined();
+  });
+
+  it("always sends the form catalog on create", () => {
+    const out = modelsForProviderSave({
+      isCreate: true,
+      formModels: modelsFromProvider(corruptProvider),
+      stored: corruptProvider,
+    });
+    expect(out?.map((m) => m.id)).toEqual(["m1"]);
   });
 });
 

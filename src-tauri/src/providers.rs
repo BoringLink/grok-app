@@ -84,6 +84,12 @@ pub struct CustomProvider {
     /// Legacy providers without `app_models` read as one row from `model`.
     #[serde(default)]
     pub models: Vec<ProviderModelEntry>,
+    /// True when `app_models` on disk cannot be read. `models` still carries
+    /// the legacy fallback row so the channel stays usable, but Settings must
+    /// not resend that row as a catalog: an edit that omits `models` keeps the
+    /// stored text. Deliberately opaque — no parse detail or raw value here.
+    #[serde(default)]
+    pub model_catalog_corrupt: bool,
     /// Reasoning efforts for this channel (App-managed). Empty → App falls back to Grok 3.
     #[serde(default)]
     pub efforts: Vec<ProviderEffortEntry>,
@@ -1181,11 +1187,14 @@ fn sync_parent_children(text: &str, parent_id: &str) -> String {
     let model_fallback = parent.fields.get("model").cloned().unwrap_or_default();
     // Missing / legacy rows display their request id, never the channel name;
     // `providers_list` and the child sections must show the same label.
-    let models = decode_app_models(
-        parent.fields.get(APP_MODELS_KEY).map(|s| s.as_str()),
-        &model_fallback,
-        &model_fallback,
-    );
+    let models = match read_model_catalog(parent.fields.get(APP_MODELS_KEY).map(|s| s.as_str())) {
+        ModelCatalogRead::Stored(rows) => rows,
+        ModelCatalogRead::LegacyChannel => legacy_model_catalog(&model_fallback, &model_fallback),
+        // Unreadable: the legacy row is only a display guess, not the stored
+        // catalog. Rewriting children from it would drop sections that a
+        // partially valid value, or an older session, still references.
+        ModelCatalogRead::Corrupt(_) => return text.to_string(),
+    };
     if models.is_empty() {
         // `app_models = "[]"` is an explicit clear. Keep existing child sections:
         // old chats still reference those section ids, and re-seeding rows from
@@ -1875,11 +1884,10 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
         let is_default = def.as_deref() == Some(s.id.as_str());
         // Prefer model display names from catalog; fall back to request id (not
         // channel name) so multi-model rows stay distinct from the provider card.
-        let models = decode_app_models(
-            s.fields.get(APP_MODELS_KEY).map(|x| x.as_str()),
-            &model,
-            &model,
-        );
+        let raw_models = s.fields.get(APP_MODELS_KEY).map(String::as_str);
+        let model_catalog_corrupt =
+            matches!(read_model_catalog(raw_models), ModelCatalogRead::Corrupt(_));
+        let models = decode_app_models(raw_models, &model, &model);
         let efforts = decode_app_efforts(s.fields.get(APP_EFFORTS_KEY).map(|x| x.as_str()));
         let context_window = s
             .fields
@@ -1902,6 +1910,7 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             provider_mode,
             is_default,
             models,
+            model_catalog_corrupt,
             efforts,
             context_window,
             base_url_full_path,
@@ -2566,6 +2575,31 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     let mut text = read_text(&path);
     let sections = parse_model_sections(&text);
     let existing = sections.iter().find(|s| s.id == id);
+    let prev_app_models = existing.and_then(|s| s.fields.get(APP_MODELS_KEY)).cloned();
+    let catalog_read = read_model_catalog(prev_app_models.as_deref());
+    let models = match (&input.models, &catalog_read) {
+        (Some(list), _) => {
+            let normalized = normalize_provider_models(list);
+            // A non-empty list that normalizes away is a malformed catalog, not
+            // a clear: writing `[]` would silently discard the user's intent.
+            if !list.is_empty() && normalized.is_empty() {
+                return Err("models must contain at least one row with a non-empty id".into());
+            }
+            normalized
+        }
+        (None, ModelCatalogRead::Stored(rows)) => rows.clone(),
+        (None, ModelCatalogRead::LegacyChannel) => legacy_model_catalog(&model, &model),
+        (None, ModelCatalogRead::Corrupt(defect)) => {
+            tracing::warn!(
+                target: "providers",
+                provider = %id,
+                detail = %defect.detail,
+                "app_models is unusable; keeping the stored value because this edit omits `models`"
+            );
+            legacy_model_catalog(&model, &model)
+        }
+    };
+    let model = resolve_active_model(&models, &model);
     let provider_mode = match input.provider_mode.as_deref() {
         Some(raw) => normalize_provider_mode(Some(raw)),
         None => normalize_provider_mode(
@@ -2635,23 +2669,6 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         .unwrap_or(id.as_str())
         .to_string();
 
-    let prev_app_models = existing.and_then(|s| s.fields.get(APP_MODELS_KEY)).cloned();
-    let catalog_read = read_model_catalog(prev_app_models.as_deref());
-    let models = match (&input.models, &catalog_read) {
-        (Some(list), _) => normalize_provider_models(list),
-        (None, ModelCatalogRead::Stored(rows)) => rows.clone(),
-        (None, ModelCatalogRead::LegacyChannel) => legacy_model_catalog(&model, &model),
-        (None, ModelCatalogRead::Corrupt(defect)) => {
-            tracing::warn!(
-                target: "providers",
-                provider = %id,
-                detail = %defect.detail,
-                "app_models is unusable; keeping the stored value because this edit omits `models`"
-            );
-            legacy_model_catalog(&model, &model)
-        }
-    };
-    let model = resolve_active_model(&models, &model);
     let app_models_json = match (&input.models, &catalog_read) {
         // Do not persist a replacement catalog derived from an unreadable one:
         // only an explicit `models: []` may clear the field.
@@ -3908,6 +3925,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
             provider_mode: PROVIDER_MODE_GENERIC.into(),
             is_default: false,
             models: vec![],
+            model_catalog_corrupt: false,
             efforts: vec![],
             context_window: None,
             base_url_full_path: false,
@@ -4174,6 +4192,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
                 provider_mode: PROVIDER_MODE_GENERIC.into(),
                 is_default: true,
                 models: vec![ProviderModelEntry::named("m", "m")],
+                model_catalog_corrupt: false,
                 efforts: vec![],
                 context_window: None,
                 base_url_full_path: false,
@@ -4535,6 +4554,80 @@ app_parent_provider = \"relay\"
             relay.models.is_empty(),
             "app_models = [] stays an explicit clear: {:?}",
             relay.models
+        );
+    }
+
+    #[test]
+    fn unusable_app_models_is_reported_as_an_opaque_state_without_the_raw_value() {
+        let text = r#"
+[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "Relay"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = "not-json"
+"#;
+        let listed = build_list_result(std::path::PathBuf::new(), std::path::PathBuf::new(), text);
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(
+            relay.model_catalog_corrupt,
+            "Settings needs the unusable state"
+        );
+        assert_eq!(
+            relay.models,
+            vec![ProviderModelEntry::named("m1", "m1")],
+            "the channel row still stays selectable"
+        );
+        let wire = serde_json::to_string(&listed).expect("list result is serializable");
+        assert!(
+            !wire.contains("not-json") && !wire.contains("invalid JSON"),
+            "the IPC payload must not carry the stored value or parse detail: {wire}"
+        );
+
+        let healthy = build_list_result(
+            std::path::PathBuf::new(),
+            std::path::PathBuf::new(),
+            r#"
+[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "Relay"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = "[{\"id\":\"m1\",\"name\":\"M1\"}]"
+"#,
+        );
+        assert!(
+            !healthy.providers[0].model_catalog_corrupt,
+            "a stored catalog is safe to rewrite"
+        );
+        let legacy = build_list_result(
+            std::path::PathBuf::new(),
+            std::path::PathBuf::new(),
+            r#"
+[model.legacy]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "Legacy"
+api_key = "sk-test"
+"#,
+        );
+        assert!(
+            !legacy.providers[0].model_catalog_corrupt,
+            "a missing app_models field is a legacy provider, not a corrupt one"
         );
     }
 
@@ -5363,6 +5456,134 @@ app_models = {}
     }
 
     #[test]
+    fn malformed_model_lists_are_rejected_while_explicit_clear_and_repair_write() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-malformed-catalog-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<(String, String, String, String, String), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let bad = "not-json";
+            write_text(
+                &path,
+                &format!(
+                    "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+app_models = {}
+",
+                    quote(bad)
+                ),
+            )?;
+            let input = |models: Option<Vec<ProviderModelEntry>>| UpsertProviderInput {
+                id: "relay".into(),
+                model: "m1".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            };
+            let rejected = upsert_custom_provider(input(Some(vec![
+                ProviderModelEntry::default(),
+                ProviderModelEntry::named("   ", "Blank"),
+                ProviderModelEntry::named("\t\n", ""),
+            ])))
+            .expect_err("a non-empty list without usable rows is not a clear");
+            let after_reject = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let repaired = upsert_custom_provider(input(Some(vec![
+                ProviderModelEntry::named("m2", "M2"),
+                ProviderModelEntry::named("m3", "M3"),
+            ])))?;
+            let after_repair = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let cleared = upsert_custom_provider(input(Some(Vec::new())))?;
+            let after_clear = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let repaired_ids = repaired
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .map(|p| {
+                    (
+                        p.model_catalog_corrupt,
+                        p.models
+                            .iter()
+                            .map(|m| m.id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(","),
+                    )
+                })
+                .unwrap_or_default();
+            Ok((
+                rejected,
+                after_reject,
+                after_repair,
+                after_clear,
+                format!("{}|{}", repaired_ids.0, repaired_ids.1),
+            ))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (rejected, after_reject, after_repair, after_clear, repaired_state) =
+            outcome.expect("malformed catalog handling should complete");
+        assert!(
+            rejected.contains("non-empty id"),
+            "the error must name the contract violation: {rejected}"
+        );
+        assert!(
+            !rejected.contains("sk-legacy-key"),
+            "validation errors must not echo credentials: {rejected}"
+        );
+        assert_eq!(
+            field_of(&after_reject, "relay", APP_MODELS_KEY).as_deref(),
+            Some("not-json"),
+            "a rejected catalog write must leave disk untouched:\n{after_reject}"
+        );
+        assert_eq!(
+            field_of(&after_repair, "relay", APP_MODELS_KEY).as_deref(),
+            Some(r#"[{"id":"m2","name":"M2"},{"id":"m3","name":"M3"}]"#),
+            "an explicit replacement repairs the catalog:\n{after_repair}"
+        );
+        assert_eq!(
+            repaired_state, "false|m2,m3",
+            "repair clears the corrupt flag and keeps row order"
+        );
+        assert_eq!(
+            field_of(&after_clear, "relay", APP_MODELS_KEY).as_deref(),
+            Some("[]"),
+            "an explicit empty list is still a clear, not an error:\n{after_clear}"
+        );
+    }
+
+    #[test]
     fn model_profiles_roundtrip_through_config_toml() {
         let _lock = crate::paths::APP_HOME_ENV_LOCK
             .lock()
@@ -5975,6 +6196,41 @@ context_window = "1000000"
         let slug = slug_model_id(&long);
         assert!(slug.len() <= 48, "{slug}");
         assert!(slug.starts_with("aaaa"));
+    }
+
+    #[test]
+    fn corrupt_catalog_leaves_existing_child_sections_untouched() {
+        for bad in ["not-json", r#"[{"id":"   "}]"#, r#"[{"id":"m1""#] {
+            let before = format!(
+                r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m2"
+base_url = "https://relay.example/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = {}
+
+[model.relay__m1]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "m1"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+"#,
+                quote(bad)
+            );
+            assert_eq!(
+                sync_generic_model_sections_in_text(&before),
+                before,
+                "an unreadable catalog must not be replaced by a legacy guess: {bad}"
+            );
+        }
     }
 
     #[test]

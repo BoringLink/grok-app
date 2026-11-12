@@ -69,6 +69,7 @@ export const trProviders = {
   "prov.modelDisplayNamePh": "ör. DeepSeek V4 Flash",
   "prov.modelsHint": "Bir ya da daha fazla istek modeli ekleyin. Görünen ad yazma kutusu etiketinde görünür.",
   "prov.modelsEmpty": "Henüz model yok; elle ekleyin ya da aşağıdan getirip seçin.",
+  "prov.modelsCorrupt": "Kayıtlı model kataloğu okunamıyor. Modelleri düzenlemek onu değiştirir; diğer alanları kaydetmek özgün değeri korur.",
   "prov.addModel": "Model ekle",
   "prov.removeModel": "Modeli kaldır",
   "prov.remoteModels": "Getirilen listeden",

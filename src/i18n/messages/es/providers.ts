@@ -74,6 +74,7 @@ export const esProviders = {
   "prov.modelDisplayNamePh": "p. ej. DeepSeek V4 Flash",
   "prov.modelsHint": "Añade uno o más modelos de solicitud. El nombre visible aparece en el chip del cuadro de mensaje.",
   "prov.modelsEmpty": "Aún no hay modelos — añádelos a mano o obtén y elige abajo.",
+  "prov.modelsCorrupt": "No se puede leer el catálogo de modelos guardado. Editar los modelos lo reemplaza; guardar otros campos conserva el valor original.",
   "prov.addModel": "Añadir modelo",
   "prov.removeModel": "Quitar modelo",
   "prov.remoteModels": "De la lista obtenida",

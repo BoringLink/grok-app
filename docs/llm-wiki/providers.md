@@ -56,11 +56,15 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 | Row without `name` | Display name falls back to the request `id` |
 | Blank or duplicate `id` | `id` is trimmed; blank rows are dropped and the first duplicate wins |
 | Empty optional value (`contextWindow` `0` / `null` / missing, empty `efforts`) | Row stores no value; the existing channel fallback still applies |
-| Invalid JSON syntax, or a non-empty array whose rows all normalize away | Reads as the legacy row, but an edit that omits `models` keeps the original text and logs a warning; only an explicit `models: []` clears it |
+| Invalid JSON syntax, or a non-empty array whose rows all normalize away | Reads as the legacy row and reports `modelCatalogCorrupt: true`; an edit that omits `models` keeps the original text and logs a warning; only an explicit `models: []` clears it |
 
 Identity is `(provider id, model id)`. Renaming a row or changing channel defaults never changes the request id. Writes keep row order and omit empty optional fields, so save → reopen is stable. The legacy display fallback also names the generic child `[model.<providerId>__<slug>]` section, so Settings, the composer, and post-migration sections show the same label.
 
-An explicit channel clear removes the previous key instead of copying the legacy value back: `models: []`, `efforts: []`, `contextWindow: 0`, `supportsVision: false`, empty `appendPrompt`, `extraHeaders: []`, `baseUrlFullPath: false`. Omitting a field on edit keeps the stored value, so old TOML, `api_key`, and existing child `[model.*]` sections stay usable. `models: []` keeps the existing child sections (older sessions still reference their section ids) while the catalog itself stays empty. An unreadable `app_models` value is kept verbatim until the user saves the catalog explicitly.
+`modelCatalogCorrupt` is deliberately opaque: it never carries the raw value or the parse detail, only whether the stored catalog can be rewritten. Settings shows a warning and sends `models` only when the user actually changes the catalog; an edit to the provider name, key, or another field leaves the stored `app_models` byte-for-byte intact. Editing or replacing rows repairs the value; removing every row is the explicit clear.
+
+A non-empty `models` list that normalizes to no usable rows (blank / whitespace ids) is rejected with a validation error instead of being written as `[]`, because `[]` means "clear". Send an empty list to clear.
+
+An explicit channel clear removes the previous key instead of copying the legacy value back: `models: []`, `efforts: []`, `contextWindow: 0`, `supportsVision: false`, empty `appendPrompt`, `extraHeaders: []`, `baseUrlFullPath: false`. Omitting a field on edit keeps the stored value, so old TOML, `api_key`, and existing child `[model.*]` sections stay usable. `models: []` keeps the existing child sections (older sessions still reference their section ids) while the catalog itself stays empty. An unreadable `app_models` value is kept verbatim until the user saves the catalog explicitly, and generic child-section sync is skipped for it so no section is deleted from a guessed legacy row.
 
 ### Presets (add provider)
 

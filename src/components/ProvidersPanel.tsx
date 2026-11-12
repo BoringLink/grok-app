@@ -19,7 +19,9 @@ import {
   emptyForm,
   effortsFromProvider,
   formFromPreset,
+  formModelsPayload,
   hostOf,
+  modelsForProviderSave,
   modelsFromProvider,
   type FormState,
   type RightMode,
@@ -273,6 +275,10 @@ export function ProvidersPanel({
   }, [reload]);
 
   const providers = list?.providers ?? [];
+  const editingProvider =
+    rightMode === "edit" && editingId
+      ? providers.find((p) => p.id === editingId)
+      : undefined;
   const activeSource = list?.activeSource ?? "official";
   const activeProviderId = list?.activeProviderId ?? null;
   const officialActive = activeSource === "official";
@@ -582,27 +588,28 @@ export function ProvidersPanel({
       setHintTone("err");
       return;
     }
-    const models = form.models
-      .map((m) => ({
-        id: m.id.trim(),
-        name: m.name.trim() || m.id.trim(),
-        contextWindow: m.contextWindow ?? null,
-        supportsVision: m.supportsVision,
-        supportsVideo: m.supportsVideo,
-        efforts: (m.efforts ?? [])
-          .map((e) => ({
-            id: e.id.trim(),
-            name: e.name.trim() || e.id.trim(),
-            isDefault: !!e.isDefault,
-          }))
-          .filter((e) => e.id),
-      }))
-      .filter((m) => m.id);
-    if (models.length === 0) {
+    const isCreate = rightMode === "create" || !editingId;
+    const id =
+      editingId ??
+      (slugifyProviderId(form.id || form.name || form.baseUrl) ||
+        `provider-${Date.now().toString(36)}`);
+    // Create flow: always use the form catalog (first model). Never reuse a
+    // ghost list entry's active model after delete+re-add with the same id.
+    const existing = list?.providers.find((p) => p.id === id);
+    const models = formModelsPayload(form.models);
+    if (models.length === 0 && isCreate) {
       setHint(tr("prov.err.needModel"));
       setHintTone("err");
       return;
     }
+    // Omit `models` unless the catalog changed: for an unreadable stored value
+    // the rows above are only the read fallback, and resending them would
+    // overwrite the original `app_models` text.
+    const modelsToSave = modelsForProviderSave({
+      isCreate,
+      formModels: form.models,
+      stored: existing,
+    });
     let fallbackEfforts = form.efforts
       .map((e) => ({
         id: e.id.trim(),
@@ -625,20 +632,12 @@ export function ProvidersPanel({
     setBusy(true);
     setHint(tr("prov.saving"));
     setHintTone("muted");
-    const isCreate = rightMode === "create" || !editingId;
-    const id =
-      editingId ??
-      (slugifyProviderId(form.id || form.name || form.baseUrl) ||
-        `provider-${Date.now().toString(36)}`);
-    // Create flow: always use the form catalog (first model). Never reuse a
-    // ghost list entry's active model after delete+re-add with the same id.
-    const existing = list?.providers.find((p) => p.id === id);
     const preferred =
       !isCreate &&
       existing?.model &&
       models.some((m) => m.id === existing.model)
         ? existing.model
-        : models[0].id;
+        : models[0]?.id || existing?.model?.trim() || id;
     const applied = materializeActiveModelChannel({
       provider: {
         id,
@@ -666,7 +665,7 @@ export function ProvidersPanel({
       apiBackend: form.apiBackend,
       providerMode: form.providerMode,
       setAsDefault: false as boolean,
-      models,
+      models: modelsToSave,
       efforts: applied.efforts ?? fallbackEfforts,
       baseUrlFullPath: form.baseUrlFullPath,
       // Always sent: "" clears the channel rules, so an emptied box sticks.
@@ -1719,6 +1718,12 @@ export function ProvidersPanel({
                         : tr("prov.fetchModels")}
                     </button>
                   </span>
+
+                  {editingProvider?.modelCatalogCorrupt ? (
+                    <p className="prov-field__hint">
+                      {tr("prov.modelsCorrupt")}
+                    </p>
+                  ) : null}
 
                   {remoteModels.length > 0 ? (
                     <div className="prov-models__remote">

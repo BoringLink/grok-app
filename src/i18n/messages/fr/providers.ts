@@ -74,6 +74,7 @@ export const frProviders = {
   "prov.modelDisplayNamePh": "ex. DeepSeek V4 Flash",
   "prov.modelsHint": "Ajoutez un ou plusieurs modèles de requête. Le nom d’affichage apparaît sur la puce de la zone de saisie.",
   "prov.modelsEmpty": "Aucun modèle pour l’instant — ajoutez manuellement ou récupérez et choisissez ci-dessous.",
+  "prov.modelsCorrupt": "Le catalogue de modèles enregistré est illisible. Modifier les modèles le remplace ; enregistrer d’autres champs conserve la valeur d’origine.",
   "prov.addModel": "Ajouter un modèle",
   "prov.removeModel": "Retirer le modèle",
   "prov.remoteModels": "Depuis la liste récupérée",

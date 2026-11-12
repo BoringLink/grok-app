@@ -74,6 +74,7 @@ export const deProviders = {
   "prov.modelDisplayNamePh": "z. B. DeepSeek V4 Flash",
   "prov.modelsHint": "Ein oder mehrere Request-Modelle hinzufügen. Anzeigename erscheint auf dem Composer-Chip.",
   "prov.modelsEmpty": "Noch keine Modelle — manuell hinzufügen oder unten holen und wählen.",
+  "prov.modelsCorrupt": "Der gespeicherte Modellkatalog ist unlesbar. Modelländerungen ersetzen ihn; andere Felder zu speichern behält den ursprünglichen Wert.",
   "prov.addModel": "Modell hinzufügen",
   "prov.removeModel": "Modell entfernen",
   "prov.remoteModels": "Aus geholter Liste",

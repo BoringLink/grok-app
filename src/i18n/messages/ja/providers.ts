@@ -74,6 +74,7 @@ export const jaProviders = {
   "prov.modelDisplayNamePh": "例: DeepSeek V4 Flash",
   "prov.modelsHint": "リクエストモデルを 1 つ以上追加できます。表示名はコンポーザーのモデルチップに使われます。",
   "prov.modelsEmpty": "モデルはまだありません — 手動で追加するか、取得して下のリストから選んでください。",
+  "prov.modelsCorrupt": "保存されたモデルカタログを読み取れません。モデルを編集すると置き換わり、他の項目だけを保存した場合は元の値が残ります。",
   "prov.addModel": "モデルを追加",
   "prov.removeModel": "モデルを削除",
   "prov.remoteModels": "取得リストから選択",

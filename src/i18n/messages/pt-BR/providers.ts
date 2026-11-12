@@ -74,6 +74,7 @@ export const ptBRProviders = {
   "prov.modelDisplayNamePh": "ex.: DeepSeek V4 Flash",
   "prov.modelsHint": "Adicione um ou mais modelos de requisição. O nome de exibição aparece no chip do compositor.",
   "prov.modelsEmpty": "Ainda não há modelos — adicione manualmente ou busque e escolha abaixo.",
+  "prov.modelsCorrupt": "Não foi possível ler o catálogo de modelos salvo. Editar os modelos o substitui; salvar outros campos mantém o valor original.",
   "prov.addModel": "Adicionar modelo",
   "prov.removeModel": "Remover modelo",
   "prov.remoteModels": "Da lista buscada",

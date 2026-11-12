@@ -76,6 +76,7 @@ export const zhTWProviders = {
   "prov.modelDisplayNamePh": "例如 DeepSeek V4 Flash",
   "prov.modelsHint": "可新增多個請求模型。顯示名稱用於輸入框模型晶片。",
   "prov.modelsEmpty": "尚無模型 — 可手動新增，或擷取後從列表選擇。",
+  "prov.modelsCorrupt": "已儲存的模型目錄無法讀取。編輯模型會取代它；僅儲存其他欄位會保留原值。",
   "prov.addModel": "新增模型",
   "prov.removeModel": "移除模型",
   "prov.remoteModels": "從擷取列表選擇",
