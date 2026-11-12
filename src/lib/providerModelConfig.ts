@@ -152,12 +152,17 @@ export function mergeRemoteModelCaps(
  * unreadable, `models` only carries the legacy read fallback, and sending it
  * would replace the original text with a repaired catalog. The channel
  * `contextWindow` still lands, which is what the composer chip edits.
+ *
+ * An empty (but readable) catalog stays empty. Only a missing catalog falls
+ * back to the channel model, so a user who cleared `app_models` never gets a
+ * model row back from a context-window edit.
  */
 export function modelsForContextWindow(
   provider: Pick<CustomProvider, "models" | "model" | "modelCatalogCorrupt">,
   tokens: number,
 ): ProviderModelEntry[] | undefined {
   if (provider.modelCatalogCorrupt === true) return undefined;
+  if (provider.models?.length === 0) return [];
   return withModelContextWindow(provider.models, provider.model, tokens);
 }
 

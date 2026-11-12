@@ -205,6 +205,16 @@ describe("modelsForContextWindow", () => {
     ]);
   });
 
+  it("keeps an explicitly empty catalog empty", () => {
+    // An empty `app_models` list is a real user choice; re-adding the channel
+    // model would revive a catalog the user deliberately cleared.
+    const next = modelsForContextWindow(
+      { model: "m1", models: [] },
+      32000,
+    );
+    expect(next).toEqual([]);
+  });
+
   it("omits the catalog when the stored value is unreadable", () => {
     // `models` is only the legacy read fallback. Sending it would write the
     // fallback row over the original `app_models` text.
