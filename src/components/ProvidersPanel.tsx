@@ -604,9 +604,9 @@ export function ProvidersPanel({
     }
     // Omit `models` unless the catalog changed: for an unreadable stored value
     // the rows above are only the read fallback, and resending them would
-    // overwrite the original `app_models` text.
+    // overwrite the original `app_models` text. A create collision re-adds an
+    // existing id, so it only overwrites the catalog when the preset differs.
     const modelsToSave = modelsForProviderSave({
-      isCreate,
       formModels: form.models,
       stored: existing,
     });

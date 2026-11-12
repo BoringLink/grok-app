@@ -152,16 +152,16 @@ function sameCatalog(
  * `models` to send on save. `undefined` leaves the stored `app_models` alone,
  * which is the only safe choice when the stored value is unreadable and the
  * user changed another field: re-sending the read fallback row would overwrite
- * it. Editing, replacing, or clearing the catalog sends the new rows; `[]` is
- * an explicit clear.
+ * it. A create that collides with an existing id is an update, so it follows
+ * the same comparison. Without a stored provider there is no baseline to
+ * compare against, so the rows (including `[]`) are sent as-is.
  */
 export function modelsForProviderSave(opts: {
-  isCreate: boolean;
   formModels: FormModel[];
   stored: api.CustomProvider | undefined;
 }): api.ProviderModelEntry[] | undefined {
   const next = formModelsPayload(opts.formModels);
-  if (opts.isCreate || !opts.stored) return next;
+  if (!opts.stored) return next;
   const storedCatalog = formModelsPayload(modelsFromProvider(opts.stored));
   return sameCatalog(next, storedCatalog) ? undefined : next;
 }

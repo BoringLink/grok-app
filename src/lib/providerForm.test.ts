@@ -118,7 +118,6 @@ describe("modelsForProviderSave", () => {
     // The rows the host returned are only the read fallback. Omission keeps
     // the original `app_models` text on disk.
     const out = modelsForProviderSave({
-      isCreate: false,
       formModels: modelsFromProvider(corruptProvider),
       stored: corruptProvider,
     });
@@ -127,7 +126,6 @@ describe("modelsForProviderSave", () => {
 
   it("sends the edited rows when the user repairs the catalog", () => {
     const out = modelsForProviderSave({
-      isCreate: false,
       formModels: [{ id: "m2", name: "M2" }],
       stored: corruptProvider,
     });
@@ -136,7 +134,6 @@ describe("modelsForProviderSave", () => {
 
   it("sends [] when the user clears the stored catalog", () => {
     const out = modelsForProviderSave({
-      isCreate: false,
       formModels: [],
       stored: corruptProvider,
     });
@@ -146,20 +143,52 @@ describe("modelsForProviderSave", () => {
   it("omits models for an untouched legacy provider", () => {
     const legacy = { id: "p", model: "legacy-id" } as CustomProvider;
     const out = modelsForProviderSave({
-      isCreate: false,
       formModels: modelsFromProvider(legacy),
       stored: legacy,
     });
     expect(out).toBeUndefined();
   });
 
-  it("always sends the form catalog on create", () => {
+  it("always sends the form catalog for a new provider", () => {
     const out = modelsForProviderSave({
-      isCreate: true,
+      formModels: [{ id: "preset-a", name: "Preset A" }],
+      stored: undefined,
+    });
+    expect(out?.map((m) => m.id)).toEqual(["preset-a"]);
+  });
+
+  it("sends [] for a new provider with no catalog rows", () => {
+    const out = modelsForProviderSave({ formModels: [], stored: undefined });
+    expect(out).toEqual([]);
+  });
+
+  it("omits the fallback on a create collision that left the catalog alone", () => {
+    // Re-adding a preset hits `already exists` and turns into an update; the
+    // untouched corrupt `app_models` must survive that overwrite.
+    const out = modelsForProviderSave({
       formModels: modelsFromProvider(corruptProvider),
       stored: corruptProvider,
     });
-    expect(out?.map((m) => m.id)).toEqual(["m1"]);
+    expect(out).toBeUndefined();
+  });
+
+  it("sends the preset catalog on a create collision that changes it", () => {
+    const out = modelsForProviderSave({
+      formModels: [
+        { id: "m1", name: "m1" },
+        { id: "m3", name: "M3" },
+      ],
+      stored: corruptProvider,
+    });
+    expect(out?.map((m) => m.id)).toEqual(["m1", "m3"]);
+  });
+
+  it("sends [] on a create collision that explicitly clears the catalog", () => {
+    const out = modelsForProviderSave({
+      formModels: [],
+      stored: corruptProvider,
+    });
+    expect(out).toEqual([]);
   });
 });
 
