@@ -46,7 +46,7 @@ export interface CustomProvider {
   /** Explicit relay semantics. Host never infers this from the URL. */
   providerMode: "generic" | "grok_build_proxy" | string;
   isDefault: boolean;
-  /** Selectable models for this channel (App-managed catalog). */
+  /** Selectable models for this channel (App-managed catalog). An empty array is an explicit clear. */
   models?: ProviderModelEntry[];
   /** Reasoning efforts for this channel (App-managed). Empty → Grok 3-tier fallback. */
   efforts?: ProviderEffortEntry[];

@@ -99,7 +99,9 @@ export const emptyForm = (): FormState => ({
 });
 
 export function modelsFromProvider(p: api.CustomProvider): FormModel[] {
-  if (p.models?.length) {
+  // The host always emits the App catalog, including an explicit empty clear
+  // (`[]`). Only a missing array means a legacy single-model provider.
+  if (Array.isArray(p.models)) {
     return p.models.map((m) => ({
       id: m.id,
       name: m.name?.trim() || m.id,

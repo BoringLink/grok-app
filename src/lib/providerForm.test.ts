@@ -61,6 +61,15 @@ describe("modelsFromProvider", () => {
     expect(out).toEqual([{ id: "legacy-id", name: "legacy-id" }]);
   });
 
+  it("keeps an explicitly cleared catalog empty", () => {
+    const out = modelsFromProvider({
+      id: "p",
+      model: "legacy-id",
+      models: [],
+    } as unknown as Parameters<typeof modelsFromProvider>[0]);
+    expect(out).toEqual([]);
+  });
+
   it("returns empty when the provider has no model at all", () => {
     const out = modelsFromProvider({ id: "p" } as Parameters<
       typeof modelsFromProvider

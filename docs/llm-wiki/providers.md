@@ -45,6 +45,22 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 
 **Integer TOML fields:** Host writes `context_window = 1000000` (CLI-compatible). On `providers_list`, legacy quoted string forms are repaired in place. Other model edits must not drop or re-quote this field.
 
+### Model catalog read/write contract
+
+`app_models` is the App-owned catalog; Grok Build ignores it. Settings, Composer, and session model resolution read it through one contract:
+
+| On-disk state | Read result |
+|---------------|-------------|
+| Missing / blank / not a JSON array | Legacy provider: one row from the channel `model` (display name = same id) |
+| Valid JSON array, including `[]` | Exactly those rows; `[]` is an explicit clear and is never re-seeded from `model` |
+| Row without `name` | Display name falls back to the request `id` |
+| Blank or duplicate `id` | `id` is trimmed; blank rows are dropped and the first duplicate wins |
+| Empty optional value (`contextWindow` `0` / `null` / missing, empty `efforts`) | Row stores no value; the existing channel fallback still applies |
+
+Identity is `(provider id, model id)`. Renaming a row or changing channel defaults never changes the request id. Writes keep row order and omit empty optional fields, so save → reopen is stable.
+
+An explicit channel clear removes the previous key instead of copying the legacy value back: `models: []`, `efforts: []`, `contextWindow: 0`, `supportsVision: false`, empty `appendPrompt`, `extraHeaders: []`, `baseUrlFullPath: false`. Omitting a field on edit keeps the stored value, so old TOML, `api_key`, and existing child `[model.*]` sections stay usable.
+
 ### Presets (add provider)
 
 Add flow opens a **preset gallery** (`providerPresets.ts`):

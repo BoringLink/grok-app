@@ -11,6 +11,7 @@ use crate::paths::{agent_config_toml, agent_home_dir, ensure_app_dirs};
 use crate::provider_headers::{
     decode_extra_headers, encode_extra_headers_toml, normalize_extra_headers, EXTRA_HEADERS_KEY,
 };
+use crate::provider_model_profile::{encode_model_catalog, resolve_model_catalog};
 
 pub use crate::provider_headers::ProviderHeaderEntry;
 
@@ -20,7 +21,8 @@ pub use crate::provider_headers::ProviderHeaderEntry;
 pub struct ProviderModelEntry {
     /// Upstream request body model id.
     pub id: String,
-    /// Composer chip / menu display label.
+    /// Composer chip / menu display label. Missing → the id.
+    #[serde(default)]
     pub name: String,
     /// Per-model context window (tokens). Missing → channel `context_window`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -76,6 +78,7 @@ pub struct CustomProvider {
     pub provider_mode: String,
     pub is_default: bool,
     /// Catalog of selectable models for this channel (App-managed).
+    /// Legacy providers without `app_models` read as one row from `model`.
     #[serde(default)]
     pub models: Vec<ProviderModelEntry>,
     /// Reasoning efforts for this channel (App-managed). Empty → App falls back to Grok 3.
@@ -1318,7 +1321,7 @@ fn is_custom(fields: &std::collections::HashMap<String, String>) -> bool {
 }
 
 fn encode_app_models(models: &[ProviderModelEntry]) -> String {
-    serde_json::to_string(models).unwrap_or_else(|_| "[]".into())
+    encode_model_catalog(models)
 }
 
 /// Normalize a models catalog; drop empty ids; default blank names to id.
@@ -1352,23 +1355,7 @@ fn decode_app_models(
     fallback_model: &str,
     fallback_display: &str,
 ) -> Vec<ProviderModelEntry> {
-    if let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) {
-        if let Ok(list) = serde_json::from_str::<Vec<ProviderModelEntry>>(s) {
-            let cleaned = normalize_provider_models(&list);
-            if !cleaned.is_empty() {
-                return cleaned;
-            }
-        }
-    }
-    let id = fallback_model.trim();
-    if id.is_empty() {
-        return Vec::new();
-    }
-    let name = fallback_display.trim();
-    vec![ProviderModelEntry::named(
-        id,
-        if name.is_empty() { id } else { name },
-    )]
+    resolve_model_catalog(raw, fallback_model, fallback_display)
 }
 
 /// Ensure `active_model` is in `models`; pick first when missing.
@@ -2647,17 +2634,22 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
 
     let prev_app_models = existing.and_then(|s| s.fields.get(APP_MODELS_KEY)).cloned();
     let models = if let Some(ref list) = input.models {
-        let mut cleaned = normalize_provider_models(list);
-        if cleaned.is_empty() {
-            cleaned = decode_app_models(None, &model, &model);
-        }
-        cleaned
+        normalize_provider_models(list)
     } else {
         decode_app_models(prev_app_models.as_deref(), &model, &model)
     };
     let model = resolve_active_model(&models, &model);
     let app_models_json = encode_app_models(&models);
     let active_model = models.iter().find(|m| m.id == model);
+
+    // Fields the caller explicitly cleared (`Some(0)` / `Some(false)` /
+    // `Some([])` / `Some("")`) must not be copied back from the previous
+    // section during the merge below.
+    let context_window_explicit = input.context_window.is_some();
+    let supports_vision_explicit =
+        input.supports_vision.is_some() || active_model.and_then(|m| m.supports_vision).is_some();
+    let efforts_explicit = input.efforts.is_some();
+    let base_url_full_path_explicit = input.base_url_full_path.is_some();
 
     let prev_app_efforts = existing
         .and_then(|s| s.fields.get(APP_EFFORTS_KEY))
@@ -2785,6 +2777,19 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         // Omitted (`None`) stays out of `known` so the kept value is copied.
         if append_prompt_explicit {
             known.insert(APP_APPEND_PROMPT_KEY.into());
+        }
+        // Omitted fields keep their previous value; explicit clears drop it.
+        if context_window_explicit {
+            known.insert("context_window".into());
+        }
+        if supports_vision_explicit {
+            known.insert(APP_SUPPORTS_VISION_KEY.into());
+        }
+        if efforts_explicit {
+            known.insert(APP_EFFORTS_KEY.into());
+        }
+        if base_url_full_path_explicit {
+            known.insert(APP_BASE_URL_FULL_PATH_KEY.into());
         }
         for (k, v) in &ex.fields {
             if !known.contains(k) {
@@ -4368,6 +4373,58 @@ base_url = \"http://127.0.0.1:8080/v1\"
     }
 
     #[test]
+    fn explicit_empty_app_models_is_not_resurrected_from_channel_model() {
+        // `app_models = "[]"` is a deliberate clear, not a legacy single-model
+        // provider. Re-synthesizing the channel `model` would undo the clear.
+        let decoded = decode_app_models(Some("[]"), "channel-model", "Channel");
+        assert!(
+            decoded.is_empty(),
+            "explicit empty catalog must stay empty: {decoded:?}"
+        );
+    }
+
+    #[test]
+    fn missing_or_malformed_app_models_reads_legacy_channel_model() {
+        for raw in [None, Some(""), Some("   "), Some("not-json"), Some("null")] {
+            let decoded = decode_app_models(raw, "channel-model", "Channel");
+            assert_eq!(
+                decoded,
+                vec![ProviderModelEntry::named("channel-model", "Channel")],
+                "legacy fallback for {raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn app_models_accepts_legacy_rows_and_keeps_request_id_identity() {
+        let raw = r#"[
+            {"id":" m1 "},
+            {"id":"m1","name":"Duplicate"},
+            {"id":"m2","name":"M2","contextWindow":null,"supportsVision":null,"supportsVideo":null},
+            {"id":"m3","name":"M3","contextWindow":0,"efforts":[]}
+        ]"#;
+        let decoded = decode_app_models(Some(raw), "fallback", "Fallback");
+        assert_eq!(
+            decoded.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["m1", "m2", "m3"],
+            "identity is the trimmed request id, first row wins"
+        );
+        assert_eq!(decoded[0].name, "m1", "missing name falls back to id");
+        assert_eq!(decoded[1].context_window, None);
+        assert_eq!(decoded[1].supports_vision, None);
+        assert_eq!(decoded[1].supports_video, None);
+        assert_eq!(decoded[2].context_window, None, "0 is an empty value");
+        assert!(decoded[2].efforts.is_empty());
+
+        let json = encode_app_models(&decoded);
+        assert_eq!(
+            decode_app_models(Some(&json), "fallback", "Fallback"),
+            decoded,
+            "serialize → read must be stable"
+        );
+    }
+
+    #[test]
     fn parse_remote_models_reads_openrouter_caps() {
         let body = r#"{
             "data": [
@@ -4888,6 +4945,333 @@ app_efforts = "[{\"id\":\"xhigh\",\"name\":\"Extra high\",\"isDefault\":true}]"
             config.contains("supports_reasoning_effort = true"),
             "existing App providers must be migrated without a manual re-save:\n{config}"
         );
+    }
+
+    #[test]
+    fn explicit_clears_survive_reload_without_legacy_resurrection() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-explicit-clear-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<(ProvidersListResult, String), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let models = encode_app_models(&[
+                ProviderModelEntry::named("m1", "M1"),
+                ProviderModelEntry::named("m2", "M2"),
+            ]);
+            let efforts = encode_app_efforts(&[ProviderEffortEntry {
+                id: "high".into(),
+                name: "High".into(),
+                is_default: true,
+            }]);
+            write_text(
+                &path,
+                &format!(
+                    "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+app_models = {}
+app_efforts = {}
+app_supports_vision = \"true\"
+app_base_url_full_path = true
+context_window = 128000
+",
+                    quote(&models),
+                    quote(&efforts)
+                ),
+            )?;
+            let listed = upsert_custom_provider(UpsertProviderInput {
+                id: "relay".into(),
+                model: "m1".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models: Some(Vec::new()),
+                efforts: Some(Vec::new()),
+                context_window: Some(0),
+                base_url_full_path: Some(false),
+                append_prompt: Some(String::new()),
+                supports_vision: Some(false),
+                extra_headers: None,
+            })?;
+            let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            Ok((listed, raw))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (listed, raw) = outcome.expect("explicit clears should be written");
+        let provider = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(provider.models.is_empty(), "catalog clear must stick");
+        assert!(provider.efforts.is_empty(), "effort clear must stick");
+        assert_eq!(provider.context_window, None, "window clear must stick");
+        assert!(!provider.supports_vision, "vision clear must stick");
+        assert_eq!(provider.model, "m1", "active request model is preserved");
+        assert!(
+            raw.contains("app_models = \"[]\""),
+            "an explicit empty catalog is stored as `[]`:\n{raw}"
+        );
+        assert!(!raw.contains("context_window ="), "{raw}");
+        assert!(!raw.contains("app_efforts"), "{raw}");
+        assert!(!raw.contains("app_supports_vision"), "{raw}");
+        assert!(
+            !raw.contains("app_base_url_full_path"),
+            "full-path clear must stick:\n{raw}"
+        );
+        assert!(raw.contains("supports_reasoning_effort = false"), "{raw}");
+        assert!(raw.contains("api_key = \"sk-legacy-key\""), "auth kept");
+    }
+
+    #[test]
+    fn legacy_config_edit_without_new_fields_keeps_channel_values() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-legacy-edit-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<(ProvidersListResult, String), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let efforts = encode_app_efforts(&[ProviderEffortEntry {
+                id: "high".into(),
+                name: "High".into(),
+                is_default: true,
+            }]);
+            write_text(
+                &path,
+                &format!(
+                    "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+app_efforts = {}
+app_supports_vision = \"true\"
+context_window = 128000
+",
+                    quote(&efforts)
+                ),
+            )?;
+            let listed = upsert_custom_provider(UpsertProviderInput {
+                id: "relay".into(),
+                model: "m1".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models: None,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            })?;
+            let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            Ok((listed, raw))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (listed, raw) = outcome.expect("legacy config edit should succeed");
+        let provider = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert_eq!(
+            provider.models,
+            vec![ProviderModelEntry::named("m1", "m1")],
+            "legacy channel model becomes the single catalog row"
+        );
+        assert_eq!(provider.context_window, Some(128_000));
+        assert_eq!(provider.efforts.len(), 1);
+        assert_eq!(provider.efforts[0].id, "high");
+        assert!(provider.efforts[0].is_default, "empty-value defaults kept");
+        assert!(provider.supports_vision);
+        assert!(
+            raw.contains("context_window = 128000"),
+            "integer window stays bare:\n{raw}"
+        );
+        assert!(raw.contains("api_key = \"sk-legacy-key\""), "{raw}");
+    }
+
+    #[test]
+    fn model_profiles_roundtrip_through_config_toml() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-model-roundtrip-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<(ProvidersListResult, ProvidersListResult), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let models = vec![
+                ProviderModelEntry {
+                    id: "vision".into(),
+                    name: "Vision".into(),
+                    context_window: Some(1_048_576),
+                    supports_vision: Some(true),
+                    supports_video: Some(true),
+                    efforts: vec![
+                        ProviderEffortEntry {
+                            id: "low".into(),
+                            name: "Low".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "max".into(),
+                            name: "Max".into(),
+                            is_default: true,
+                        },
+                    ],
+                },
+                ProviderModelEntry {
+                    id: "text".into(),
+                    name: "Text".into(),
+                    context_window: None,
+                    supports_vision: Some(false),
+                    supports_video: None,
+                    efforts: Vec::new(),
+                },
+            ];
+            upsert_custom_provider(UpsertProviderInput {
+                id: "relay".into(),
+                model: "vision".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: Some("sk-test-key".into()),
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(true),
+                models: Some(models.clone()),
+                efforts: Some(vec![ProviderEffortEntry {
+                    id: "medium".into(),
+                    name: "Medium".into(),
+                    is_default: true,
+                }]),
+                context_window: None,
+                base_url_full_path: Some(false),
+                append_prompt: None,
+                supports_vision: Some(false),
+                extra_headers: None,
+            })?;
+            let first = list_custom_providers()?;
+            // Re-open and save without touching the catalog.
+            let second = upsert_custom_provider(UpsertProviderInput {
+                id: "relay".into(),
+                model: "text".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay renamed".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models: None,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            })?;
+            Ok((first, second))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (first, second) = outcome.expect("model profiles should round-trip");
+        let first_provider = first
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert_eq!(first_provider.models.len(), 2);
+        assert_eq!(first_provider.models[0].id, "vision");
+        assert_eq!(first_provider.models[0].name, "Vision");
+        assert_eq!(first_provider.models[0].context_window, Some(1_048_576));
+        assert_eq!(first_provider.models[0].supports_vision, Some(true));
+        assert_eq!(first_provider.models[0].supports_video, Some(true));
+        assert_eq!(
+            first_provider.models[0]
+                .efforts
+                .iter()
+                .map(|e| (e.id.as_str(), e.is_default))
+                .collect::<Vec<_>>(),
+            [("low", false), ("max", true)]
+        );
+        assert_eq!(first_provider.models[1].id, "text");
+        assert_eq!(first_provider.models[1].context_window, None);
+
+        let second_provider = second
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider after reopen");
+        assert_eq!(second_provider.name, "Relay renamed");
+        assert_eq!(
+            second_provider.models, first_provider.models,
+            "an edit that omits `models` must keep every row"
+        );
+        assert_eq!(
+            second_provider.context_window,
+            first_provider.context_window
+        );
+        assert_eq!(second_provider.efforts, first_provider.efforts);
+        assert_eq!(second_provider.model, "text");
     }
 
     #[test]
