@@ -11,7 +11,10 @@ use crate::paths::{agent_config_toml, agent_home_dir, ensure_app_dirs};
 use crate::provider_headers::{
     decode_extra_headers, encode_extra_headers_toml, normalize_extra_headers, EXTRA_HEADERS_KEY,
 };
-use crate::provider_model_profile::{encode_model_catalog, resolve_model_catalog};
+use crate::provider_model_profile::{
+    encode_model_catalog, legacy_model_catalog, read_model_catalog, resolve_model_catalog,
+    ModelCatalogRead,
+};
 
 pub use crate::provider_headers::ProviderHeaderEntry;
 
@@ -1176,17 +1179,17 @@ fn sync_parent_children(text: &str, parent_id: &str) -> String {
         return text.to_string();
     };
     let model_fallback = parent.fields.get("model").cloned().unwrap_or_default();
-    let name_fallback = parent
-        .fields
-        .get("name")
-        .cloned()
-        .unwrap_or_else(|| parent_id.to_string());
+    // Missing / legacy rows display their request id, never the channel name;
+    // `providers_list` and the child sections must show the same label.
     let models = decode_app_models(
         parent.fields.get(APP_MODELS_KEY).map(|s| s.as_str()),
         &model_fallback,
-        &name_fallback,
+        &model_fallback,
     );
     if models.is_empty() {
+        // `app_models = "[]"` is an explicit clear. Keep existing child sections:
+        // old chats still reference those section ids, and re-seeding rows from
+        // the channel `model` would undo the clear.
         return text.to_string();
     }
     let children: Vec<Section> = sections
@@ -1320,8 +1323,8 @@ fn is_custom(fields: &std::collections::HashMap<String, String>) -> bool {
         .unwrap_or(false)
 }
 
-fn encode_app_models(models: &[ProviderModelEntry]) -> String {
-    encode_model_catalog(models)
+fn encode_app_models(models: &[ProviderModelEntry]) -> Result<String, String> {
+    encode_model_catalog(models).map_err(|error| format!("failed to encode app_models: {error}"))
 }
 
 /// Normalize a models catalog; drop empty ids; default blank names to id.
@@ -2633,13 +2636,28 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         .to_string();
 
     let prev_app_models = existing.and_then(|s| s.fields.get(APP_MODELS_KEY)).cloned();
-    let models = if let Some(ref list) = input.models {
-        normalize_provider_models(list)
-    } else {
-        decode_app_models(prev_app_models.as_deref(), &model, &model)
+    let catalog_read = read_model_catalog(prev_app_models.as_deref());
+    let models = match (&input.models, &catalog_read) {
+        (Some(list), _) => normalize_provider_models(list),
+        (None, ModelCatalogRead::Stored(rows)) => rows.clone(),
+        (None, ModelCatalogRead::LegacyChannel) => legacy_model_catalog(&model, &model),
+        (None, ModelCatalogRead::Corrupt(defect)) => {
+            tracing::warn!(
+                target: "providers",
+                provider = %id,
+                detail = %defect.detail,
+                "app_models is unusable; keeping the stored value because this edit omits `models`"
+            );
+            legacy_model_catalog(&model, &model)
+        }
     };
     let model = resolve_active_model(&models, &model);
-    let app_models_json = encode_app_models(&models);
+    let app_models_json = match (&input.models, &catalog_read) {
+        // Do not persist a replacement catalog derived from an unreadable one:
+        // only an explicit `models: []` may clear the field.
+        (None, ModelCatalogRead::Corrupt(defect)) => defect.raw.clone(),
+        _ => encode_app_models(&models)?,
+    };
     let active_model = models.iter().find(|m| m.id == model);
 
     // Fields the caller explicitly cleared (`Some(0)` / `Some(false)` /
@@ -4100,7 +4118,8 @@ base_url = \"http://127.0.0.1:8080/v1\"
         let models = encode_app_models(&[
             ProviderModelEntry::named("grok-4.6", "Grok 4.6"),
             ProviderModelEntry::named("grok-4.5", "Grok 4.5"),
-        ]);
+        ])
+        .expect("encode app models");
         let text = set_models_default(
             &append_section(
                 "",
@@ -4334,7 +4353,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
                 ProviderModelEntry::named("other", "other"),
             ]
         );
-        let json = encode_app_models(&list);
+        let json = encode_app_models(&list).expect("encode app models");
         let decoded = decode_app_models(Some(&json), "fallback", "Fallback");
         assert_eq!(decoded, list);
         assert_eq!(resolve_active_model(&list, "other"), "other");
@@ -4359,7 +4378,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
         assert_eq!(list[0].supports_vision, Some(true));
         assert_eq!(list[0].supports_video, Some(true));
         assert_eq!(list[0].efforts[0].id, "high");
-        let json = encode_app_models(&list);
+        let json = encode_app_models(&list).expect("encode app models");
         let decoded = decode_app_models(Some(&json), "fallback", "Fallback");
         assert_eq!(decoded, list);
         let legacy = decode_app_models(
@@ -4384,8 +4403,16 @@ base_url = \"http://127.0.0.1:8080/v1\"
     }
 
     #[test]
-    fn missing_or_malformed_app_models_reads_legacy_channel_model() {
-        for raw in [None, Some(""), Some("   "), Some("not-json"), Some("null")] {
+    fn missing_or_unusable_app_models_falls_back_to_the_channel_model_for_reads() {
+        for raw in [
+            None,
+            Some(""),
+            Some("   "),
+            Some("null"),
+            Some("{}"),
+            Some("not-json"),
+            Some(r#"[{"id":""}]"#),
+        ] {
             let decoded = decode_app_models(raw, "channel-model", "Channel");
             assert_eq!(
                 decoded,
@@ -4416,11 +4443,98 @@ base_url = \"http://127.0.0.1:8080/v1\"
         assert_eq!(decoded[2].context_window, None, "0 is an empty value");
         assert!(decoded[2].efforts.is_empty());
 
-        let json = encode_app_models(&decoded);
+        let json = encode_app_models(&decoded).expect("encode app models");
         assert_eq!(
             decode_app_models(Some(&json), "fallback", "Fallback"),
             decoded,
             "serialize → read must be stable"
+        );
+    }
+
+    #[test]
+    fn legacy_catalog_display_name_is_the_model_id_in_list_and_child_sections() {
+        let before = "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+api_key = \"sk-test\"
+name = \"Relay display\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+";
+        let synced = sync_generic_model_sections_in_text(before);
+        assert_eq!(
+            field_of(&synced, "relay__m1", "name").as_deref(),
+            Some("m1"),
+            "legacy row display falls back to the request id, not the channel name"
+        );
+        let listed = build_list_result(
+            std::path::PathBuf::new(),
+            std::path::PathBuf::new(),
+            &synced,
+        );
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert_eq!(
+            relay.models,
+            vec![ProviderModelEntry::named("m1", "m1")],
+            "providers_list and child sections must agree on the fallback name"
+        );
+        assert_eq!(
+            Some(relay.models[0].name.clone()),
+            field_of(&synced, "relay__m1", "name")
+        );
+    }
+
+    #[test]
+    fn explicit_empty_catalog_keeps_legacy_child_sections_but_lists_no_models() {
+        let before = "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+api_key = \"sk-test\"
+name = \"Relay\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+app_models = \"[]\"
+
+[model.relay__m1]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"m1\"
+api_key = \"sk-test\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+app_parent_provider = \"relay\"
+";
+        let synced = sync_generic_model_sections_in_text(before);
+        assert_eq!(
+            synced, before,
+            "old chats still reference these child section ids"
+        );
+        let listed = build_list_result(
+            std::path::PathBuf::new(),
+            std::path::PathBuf::new(),
+            &synced,
+        );
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(
+            relay.models.is_empty(),
+            "app_models = [] stays an explicit clear: {:?}",
+            relay.models
         );
     }
 
@@ -4485,7 +4599,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
                 is_default: false,
             },
         ];
-        let models_json = encode_app_models(&models);
+        let models_json = encode_app_models(&models).expect("encode app models");
         let efforts_json = encode_app_efforts(&efforts);
         // Simulate TOML field write + read (quote → line value → unquote).
         let models_field = format!("app_models = {}", quote(&models_json));
@@ -4965,7 +5079,8 @@ app_efforts = "[{\"id\":\"xhigh\",\"name\":\"Extra high\",\"isDefault\":true}]"
             let models = encode_app_models(&[
                 ProviderModelEntry::named("m1", "M1"),
                 ProviderModelEntry::named("m2", "M2"),
-            ]);
+            ])
+            .expect("encode app models");
             let efforts = encode_app_efforts(&[ProviderEffortEntry {
                 id: "high".into(),
                 name: "High".into(),
@@ -5137,6 +5252,114 @@ context_window = 128000
             "integer window stays bare:\n{raw}"
         );
         assert!(raw.contains("api_key = \"sk-legacy-key\""), "{raw}");
+    }
+
+    #[test]
+    fn omitting_models_keeps_an_unusable_app_models_value_until_an_explicit_clear() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-corrupt-catalog-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<
+            Vec<(
+                String,
+                String,
+                String,
+                ProvidersListResult,
+                ProvidersListResult,
+            )>,
+            String,
+        > {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let mut captured = Vec::new();
+            for bad in ["not-json", r#"[{"id":"   "}]"#] {
+                write_text(
+                    &path,
+                    &format!(
+                        "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+app_models = {}
+",
+                        quote(bad)
+                    ),
+                )?;
+                let input = |models: Option<Vec<ProviderModelEntry>>| UpsertProviderInput {
+                    id: "relay".into(),
+                    model: "m1".into(),
+                    base_url: "https://relay.example/v1".into(),
+                    name: Some("Relay".into()),
+                    api_key: None,
+                    api_backend: Some("chat_completions".into()),
+                    provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                    set_as_default: Some(false),
+                    create_only: Some(false),
+                    models,
+                    efforts: None,
+                    context_window: None,
+                    base_url_full_path: None,
+                    append_prompt: None,
+                    supports_vision: None,
+                    extra_headers: None,
+                };
+                let kept = upsert_custom_provider(input(None))?;
+                let after_keep = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                let cleared = upsert_custom_provider(input(Some(Vec::new())))?;
+                let after_clear = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                captured.push((bad.to_string(), after_keep, after_clear, kept, cleared));
+            }
+            Ok(captured)
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let captured = outcome.expect("unusable catalog edits should succeed");
+        for (bad, after_keep, after_clear, kept, cleared) in captured {
+            assert_eq!(
+                field_of(&after_keep, "relay", APP_MODELS_KEY).as_deref(),
+                Some(bad.as_str()),
+                "an edit that omits `models` must keep the unusable value:\n{after_keep}"
+            );
+            assert_eq!(
+                field_of(&after_clear, "relay", APP_MODELS_KEY).as_deref(),
+                Some("[]"),
+                "only an explicit `models: []` clears the catalog:\n{after_clear}"
+            );
+            let kept_relay = kept
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .expect("relay provider after keep");
+            assert_eq!(
+                kept_relay.models,
+                vec![ProviderModelEntry::named("m1", "m1")],
+                "unusable rows still read as the legacy channel model"
+            );
+            let cleared_relay = cleared
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .expect("relay provider after clear");
+            assert!(cleared_relay.models.is_empty());
+        }
     }
 
     #[test]
@@ -5722,7 +5945,10 @@ context_window = "1000000"
             .iter()
             .map(|(id, name)| ProviderModelEntry::named(*id, *name))
             .collect();
-        format_toml_field_value(APP_MODELS_KEY, &encode_app_models(&models))
+        format_toml_field_value(
+            APP_MODELS_KEY,
+            &encode_app_models(&models).expect("encode app models"),
+        )
     }
 
     fn field_of(text: &str, section_id: &str, key: &str) -> Option<String> {

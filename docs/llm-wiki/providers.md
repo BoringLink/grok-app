@@ -51,15 +51,16 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 
 | On-disk state | Read result |
 |---------------|-------------|
-| Missing / blank / not a JSON array | Legacy provider: one row from the channel `model` (display name = same id) |
+| Missing / blank / `null` / non-array JSON (object, string, number) | Legacy provider: one row from the channel `model` (display name = same id) |
 | Valid JSON array, including `[]` | Exactly those rows; `[]` is an explicit clear and is never re-seeded from `model` |
 | Row without `name` | Display name falls back to the request `id` |
 | Blank or duplicate `id` | `id` is trimmed; blank rows are dropped and the first duplicate wins |
 | Empty optional value (`contextWindow` `0` / `null` / missing, empty `efforts`) | Row stores no value; the existing channel fallback still applies |
+| Invalid JSON syntax, or a non-empty array whose rows all normalize away | Reads as the legacy row, but an edit that omits `models` keeps the original text and logs a warning; only an explicit `models: []` clears it |
 
-Identity is `(provider id, model id)`. Renaming a row or changing channel defaults never changes the request id. Writes keep row order and omit empty optional fields, so save → reopen is stable.
+Identity is `(provider id, model id)`. Renaming a row or changing channel defaults never changes the request id. Writes keep row order and omit empty optional fields, so save → reopen is stable. The legacy display fallback also names the generic child `[model.<providerId>__<slug>]` section, so Settings, the composer, and post-migration sections show the same label.
 
-An explicit channel clear removes the previous key instead of copying the legacy value back: `models: []`, `efforts: []`, `contextWindow: 0`, `supportsVision: false`, empty `appendPrompt`, `extraHeaders: []`, `baseUrlFullPath: false`. Omitting a field on edit keeps the stored value, so old TOML, `api_key`, and existing child `[model.*]` sections stay usable.
+An explicit channel clear removes the previous key instead of copying the legacy value back: `models: []`, `efforts: []`, `contextWindow: 0`, `supportsVision: false`, empty `appendPrompt`, `extraHeaders: []`, `baseUrlFullPath: false`. Omitting a field on edit keeps the stored value, so old TOML, `api_key`, and existing child `[model.*]` sections stay usable. `models: []` keeps the existing child sections (older sessions still reference their section ids) while the catalog itself stays empty. An unreadable `app_models` value is kept verbatim until the user saves the catalog explicitly.
 
 ### Presets (add provider)
 
