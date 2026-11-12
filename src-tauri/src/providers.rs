@@ -84,9 +84,10 @@ pub struct CustomProvider {
     /// Legacy providers without `app_models` read as one row from `model`.
     #[serde(default)]
     pub models: Vec<ProviderModelEntry>,
-    /// True when `app_models` on disk cannot be read. `models` still carries
-    /// the legacy fallback row so the channel stays usable, but Settings must
-    /// not resend that row as a catalog: an edit that omits `models` keeps the
+    /// True when `app_models` on disk cannot be read. `models` carries the
+    /// legacy fallback row, or the rows recovered from a partially invalid
+    /// array, so the channel stays usable, but Settings must not resend that
+    /// read-only view as a catalog: an edit that omits `models` keeps the
     /// stored text. Deliberately opaque — no parse detail or raw value here.
     #[serde(default)]
     pub model_catalog_corrupt: bool,
@@ -4551,6 +4552,47 @@ base_url = \"http://127.0.0.1:8080/v1\"
                 "channel fallback for {raw:?}"
             );
         }
+    }
+
+    #[test]
+    fn partially_invalid_app_models_lists_recoverable_rows_and_stays_corrupt() {
+        let text = r#"
+[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "Relay"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = "[{\"id\":\"m1\",\"name\":\"M1\"},{\"id\":\"m2\",\"name\":\"M2\",\"contextWindow\":\"big\"},null]"
+"#;
+        let listed = build_list_result(std::path::PathBuf::new(), std::path::PathBuf::new(), text);
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(
+            relay.model_catalog_corrupt,
+            "one invalid row still makes the stored catalog unrecoverable"
+        );
+        assert_eq!(
+            relay
+                .models
+                .iter()
+                .map(|m| (m.id.as_str(), m.name.as_str()))
+                .collect::<Vec<_>>(),
+            [("m1", "M1"), ("m2", "M2")],
+            "readable row identities stay selectable instead of collapsing to the channel model"
+        );
+        let wire = serde_json::to_string(&listed).expect("list result is serializable");
+        assert!(
+            !wire.contains(r#""big""#) && !wire.contains("invalid type"),
+            "the IPC payload must not carry the stored value or parse detail: {wire}"
+        );
     }
 
     #[test]

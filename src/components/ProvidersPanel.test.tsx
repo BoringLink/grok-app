@@ -111,6 +111,36 @@ describe("ProvidersPanel corrupt catalog", () => {
     ).toBeEnabled();
   });
 
+  it("lists readable rows from a partially invalid catalog and keeps the warning", async () => {
+    mocks.providersList.mockResolvedValue({
+      ...listResult,
+      providers: [
+        {
+          ...corruptProvider,
+          models: [
+            { id: "m1", name: "M1" },
+            { id: "m2", name: "M2" },
+          ],
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: /Relay/ }));
+
+    expect(screen.getByDisplayValue("m1")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("m2")).toBeInTheDocument();
+    expect(
+      screen.getByText(/The saved model catalog can't be read/),
+    ).toBeInTheDocument();
+    const gears = screen.getAllByRole("button", { name: "Model settings" });
+    expect(gears).toHaveLength(2);
+    expect(gears.every((gear) => (gear as HTMLButtonElement).disabled)).toBe(
+      true,
+    );
+  });
+
   it("disables model settings for a create that collides with a corrupt id", async () => {
     const user = userEvent.setup();
     renderPanel();

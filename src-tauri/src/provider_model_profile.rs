@@ -18,8 +18,12 @@
 //!   never means a legacy provider. Read paths still fall back to the legacy
 //!   row, but writes must keep the original text instead of replacing it with
 //!   `[]` or a guessed row.
+//! - An array with at least one row that does not match the row shape stays
+//!   corrupt, but its other rows remain readable: their bounded identity and
+//!   metadata fields are recovered row by row for display. Recovered rows are
+//!   never written back; only an explicit catalog edit replaces the raw text.
 
-use crate::providers::{normalize_provider_models, ProviderModelEntry};
+use crate::providers::{normalize_provider_models, ProviderEffortEntry, ProviderModelEntry};
 
 /// Fixed reason category for an unreadable `app_models` value.
 ///
@@ -64,7 +68,8 @@ pub enum ModelCatalogRead {
     Stored(Vec<ProviderModelEntry>),
     /// Non-blank JSON that is not a usable catalog. Keeping `raw` verbatim,
     /// including any surrounding whitespace, lets an edit that omits `models`
-    /// preserve whatever is on disk.
+    /// preserve whatever is on disk. An array may still expose its readable
+    /// rows in `recovered_rows` for display.
     Corrupt(ModelCatalogCorruption),
 }
 
@@ -76,6 +81,10 @@ pub enum ModelCatalogRead {
 pub struct ModelCatalogCorruption {
     pub(crate) raw: String,
     pub kind: ModelCatalogDefectKind,
+    /// Rows whose identity and bounded metadata were still readable in an
+    /// otherwise invalid array. Display-only: `raw` stays authoritative until
+    /// the user explicitly edits the catalog.
+    pub(crate) recovered_rows: Vec<ProviderModelEntry>,
 }
 
 impl std::fmt::Debug for ModelCatalogCorruption {
@@ -87,6 +96,60 @@ impl std::fmt::Debug for ModelCatalogCorruption {
     }
 }
 
+impl ModelCatalogCorruption {
+    fn new(raw: &str, kind: ModelCatalogDefectKind) -> Self {
+        Self {
+            raw: raw.to_string(),
+            kind,
+            recovered_rows: Vec::new(),
+        }
+    }
+}
+
+/// Read the bounded identity and metadata of rows that survive an array whose
+/// full [`ProviderModelEntry`] shape does not.
+///
+/// Each row is inspected through [`serde_json::Value::get`], which returns
+/// `None` for missing keys and non-object values instead of panicking. Unknown
+/// fields and values of the wrong type are ignored rather than repaired; the
+/// corrupt read still writes `raw` back verbatim.
+fn recover_catalog_rows(items: &[serde_json::Value]) -> Vec<ProviderModelEntry> {
+    let rows: Vec<ProviderModelEntry> = items
+        .iter()
+        .filter_map(|item| {
+            let id = item.get("id")?.as_str()?.trim();
+            if id.is_empty() {
+                return None;
+            }
+            Some(ProviderModelEntry {
+                id: id.to_string(),
+                name: item
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                context_window: item
+                    .get("contextWindow")
+                    .and_then(serde_json::Value::as_u64)
+                    .filter(|tokens| *tokens > 0),
+                supports_vision: item
+                    .get("supportsVision")
+                    .and_then(serde_json::Value::as_bool),
+                supports_video: item
+                    .get("supportsVideo")
+                    .and_then(serde_json::Value::as_bool),
+                efforts: item
+                    .get("efforts")
+                    .and_then(|value| {
+                        serde_json::from_value::<Vec<ProviderEffortEntry>>(value.clone()).ok()
+                    })
+                    .unwrap_or_default(),
+            })
+        })
+        .collect();
+    normalize_provider_models(&rows)
+}
+
 /// Read `app_models` without deciding how legacy providers are materialized.
 pub fn read_model_catalog(raw: Option<&str>) -> ModelCatalogRead {
     let Some(original) = raw.filter(|value| !value.trim().is_empty()) else {
@@ -94,41 +157,45 @@ pub fn read_model_catalog(raw: Option<&str>) -> ModelCatalogRead {
     };
     let value = original.trim();
     match serde_json::from_str::<serde_json::Value>(value) {
-        Err(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
-            raw: original.to_string(),
-            kind: ModelCatalogDefectKind::MalformedJson,
-        }),
+        Err(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption::new(
+            original,
+            ModelCatalogDefectKind::MalformedJson,
+        )),
         Ok(serde_json::Value::Array(items)) => {
             if items.is_empty() {
                 return ModelCatalogRead::Stored(Vec::new());
             }
-            match serde_json::from_value::<Vec<ProviderModelEntry>>(serde_json::Value::Array(items))
-            {
+            match serde_json::from_value::<Vec<ProviderModelEntry>>(serde_json::Value::Array(
+                items.clone(),
+            )) {
                 Ok(rows) => {
                     let rows = normalize_provider_models(&rows);
                     if rows.is_empty() {
-                        ModelCatalogRead::Corrupt(ModelCatalogCorruption {
-                            raw: original.to_string(),
-                            kind: ModelCatalogDefectKind::NoUsableRows,
-                        })
+                        ModelCatalogRead::Corrupt(ModelCatalogCorruption::new(
+                            original,
+                            ModelCatalogDefectKind::NoUsableRows,
+                        ))
                     } else {
                         ModelCatalogRead::Stored(rows)
                     }
                 }
                 Err(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
-                    raw: original.to_string(),
-                    kind: ModelCatalogDefectKind::InvalidRowShape,
+                    recovered_rows: recover_catalog_rows(&items),
+                    ..ModelCatalogCorruption::new(original, ModelCatalogDefectKind::InvalidRowShape)
                 }),
             }
         }
-        Ok(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
-            raw: original.to_string(),
-            kind: ModelCatalogDefectKind::UnsupportedJsonType,
-        }),
+        Ok(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption::new(
+            original,
+            ModelCatalogDefectKind::UnsupportedJsonType,
+        )),
     }
 }
 
 /// Selectable rows for one provider, preserving explicit empty catalogs.
+///
+/// A corrupt array still exposes its recoverable rows; only a value with no
+/// readable row identity falls back to the legacy channel row.
 pub fn resolve_model_catalog(
     raw: Option<&str>,
     fallback_model: &str,
@@ -136,6 +203,9 @@ pub fn resolve_model_catalog(
 ) -> Vec<ProviderModelEntry> {
     match read_model_catalog(raw) {
         ModelCatalogRead::Stored(rows) => rows,
+        ModelCatalogRead::Corrupt(defect) if !defect.recovered_rows.is_empty() => {
+            defect.recovered_rows
+        }
         ModelCatalogRead::LegacyChannel | ModelCatalogRead::Corrupt(_) => {
             legacy_model_catalog(fallback_model, fallback_display)
         }
@@ -171,7 +241,6 @@ pub fn encode_model_catalog(models: &[ProviderModelEntry]) -> Result<String, ser
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::providers::ProviderEffortEntry;
 
     #[test]
     fn missing_field_falls_back_to_the_channel_model() {
@@ -352,6 +421,90 @@ mod tests {
                 }
                 other => panic!("expected corrupt read for {raw}: {other:?}"),
             }
+        }
+    }
+
+    #[test]
+    fn partially_invalid_array_keeps_readable_rows_and_stays_corrupt() {
+        let raw = "  [\
+            {\"id\":\" m1 \",\"name\":\"M1\",\"contextWindow\":128000,\
+             \"supportsVision\":true,\"supportsVideo\":false,\
+             \"efforts\":[{\"id\":\"high\",\"name\":\"High\",\"isDefault\":true}]},\
+            {\"id\":\"m2\",\"name\":\"M2\",\"contextWindow\":\"big\"}\
+        ]  ";
+        let expected = vec![
+            ProviderModelEntry {
+                id: "m1".into(),
+                name: "M1".into(),
+                context_window: Some(128_000),
+                supports_vision: Some(true),
+                supports_video: Some(false),
+                efforts: vec![ProviderEffortEntry {
+                    id: "high".into(),
+                    name: "High".into(),
+                    is_default: true,
+                }],
+            },
+            ProviderModelEntry::named("m2", "M2"),
+        ];
+        match read_model_catalog(Some(raw)) {
+            ModelCatalogRead::Corrupt(defect) => {
+                assert_eq!(defect.raw, raw, "the original text stays authoritative");
+                assert_eq!(defect.kind, ModelCatalogDefectKind::InvalidRowShape);
+                assert_eq!(
+                    defect.recovered_rows, expected,
+                    "a bad sibling row must not hide readable identities"
+                );
+            }
+            other => panic!("expected corrupt read: {other:?}"),
+        }
+        assert_eq!(
+            resolve_model_catalog(Some(raw), "channel-model", "Channel"),
+            expected,
+            "recovered rows replace the channel fallback for reads"
+        );
+    }
+
+    #[test]
+    fn recovered_rows_ignore_wrong_typed_values_instead_of_failing() {
+        let raw = r#"[{"id":"m1","name":7,"contextWindow":-1,"supportsVision":"yes","supportsVideo":true,"efforts":[{"id":"high"},{"name":"no id"}]}]"#;
+        match read_model_catalog(Some(raw)) {
+            ModelCatalogRead::Corrupt(defect) => {
+                assert_eq!(defect.kind, ModelCatalogDefectKind::InvalidRowShape);
+                assert_eq!(
+                    defect.recovered_rows,
+                    vec![ProviderModelEntry {
+                        id: "m1".into(),
+                        name: "m1".into(),
+                        context_window: None,
+                        supports_vision: None,
+                        supports_video: Some(true),
+                        efforts: Vec::new(),
+                    }],
+                    "only correctly typed fields survive, and a ladder that does not deserialize is dropped"
+                );
+            }
+            other => panic!("expected corrupt read: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn arrays_without_a_readable_row_identity_keep_the_channel_fallback() {
+        for raw in [
+            "[5]",
+            "[null]",
+            "[\"m1\"]",
+            "[true]",
+            "[{}]",
+            "[{\"id\":7}]",
+            "[{\"id\":\"   \"}]",
+            "[{\"name\":\"M2\"}]",
+        ] {
+            assert_eq!(
+                resolve_model_catalog(Some(raw), "channel-model", "Channel"),
+                vec![ProviderModelEntry::named("channel-model", "Channel")],
+                "no readable row identity for {raw}"
+            );
         }
     }
 

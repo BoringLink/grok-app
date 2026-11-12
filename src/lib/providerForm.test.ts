@@ -133,6 +133,23 @@ describe("modelsForProviderSave", () => {
     expect(out?.map((m) => m.id)).toEqual(["m2"]);
   });
 
+  it("omits models when recovered rows from a partially invalid catalog are untouched", () => {
+    // The host returns readable rows from a partially invalid array, but the
+    // stored value is still unreadable: an unchanged form is not a repair.
+    const partial = {
+      ...corruptProvider,
+      models: [
+        { id: "m1", name: "M1" },
+        { id: "m2", name: "M2" },
+      ],
+    } as CustomProvider;
+    const out = modelsForProviderSave({
+      formModels: modelsFromProvider(partial),
+      stored: partial,
+    });
+    expect(out).toBeUndefined();
+  });
+
   it("sends [] when the user clears the stored catalog", () => {
     const out = modelsForProviderSave({
       formModels: [],
