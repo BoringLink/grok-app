@@ -2593,7 +2593,7 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
             tracing::warn!(
                 target: "providers",
                 provider = %id,
-                detail = %defect.detail,
+                category = %defect.kind,
                 "app_models is unusable; keeping the stored value because this edit omits `models`"
             );
             legacy_model_catalog(&model, &model)
@@ -4628,6 +4628,46 @@ api_key = "sk-test"
         assert!(
             !legacy.providers[0].model_catalog_corrupt,
             "a missing app_models field is a legacy provider, not a corrupt one"
+        );
+    }
+
+    #[test]
+    fn unusable_app_models_payload_and_debug_never_carry_the_stored_text() {
+        const MARKER: &str = "sk-CANARY-LEAK-7f3a";
+        let text = format!(
+            r#"
+[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "Relay"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = "not-json {MARKER}"
+"#
+        );
+        let listed = build_list_result(std::path::PathBuf::new(), std::path::PathBuf::new(), &text);
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(relay.model_catalog_corrupt);
+        let wire = serde_json::to_string(&listed).expect("list result is serializable");
+        assert!(
+            !wire.contains(MARKER),
+            "IPC payload leaked the stored value: {wire}"
+        );
+        let debug = format!(
+            "{:?}",
+            crate::provider_model_profile::read_model_catalog(Some(&format!("not-json {MARKER}")))
+        );
+        assert!(
+            !debug.contains(MARKER),
+            "debug output leaked the stored value: {debug}"
         );
     }
 

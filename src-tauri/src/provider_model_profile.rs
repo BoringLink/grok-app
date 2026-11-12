@@ -21,6 +21,40 @@
 
 use crate::providers::{normalize_provider_models, ProviderModelEntry};
 
+/// Fixed reason category for an unreadable `app_models` value.
+///
+/// Logs and diagnostics may show this label; they must never show the stored
+/// text or a `serde_json::Error`, whose `Display` can quote input values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelCatalogDefectKind {
+    /// The field is not valid JSON.
+    MalformedJson,
+    /// JSON array whose rows do not match the row shape.
+    InvalidRowShape,
+    /// Valid JSON that is not an array (`null`, object, string, number, bool).
+    UnsupportedJsonType,
+    /// Non-empty array whose rows all normalize away (blank ids).
+    NoUsableRows,
+}
+
+impl ModelCatalogDefectKind {
+    /// Stable, value-free category label safe for logs and diagnostics.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::MalformedJson => "malformed JSON",
+            Self::InvalidRowShape => "invalid row shape",
+            Self::UnsupportedJsonType => "unsupported JSON type",
+            Self::NoUsableRows => "no usable rows",
+        }
+    }
+}
+
+impl std::fmt::Display for ModelCatalogDefectKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
 /// Result of reading one provider's `app_models` field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelCatalogRead {
@@ -33,11 +67,23 @@ pub enum ModelCatalogRead {
     Corrupt(ModelCatalogCorruption),
 }
 
-/// Why `app_models` could not be read, plus the original text for diagnostics.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Why `app_models` could not be read, plus the original text for persistence.
+///
+/// `raw` is host-internal: it is written back verbatim when an edit omits the
+/// catalog. It must not reach logs, diagnostics, IPC payloads, or `Debug`.
+#[derive(Clone, PartialEq, Eq)]
 pub struct ModelCatalogCorruption {
-    pub raw: String,
-    pub detail: String,
+    pub(crate) raw: String,
+    pub kind: ModelCatalogDefectKind,
+}
+
+impl std::fmt::Debug for ModelCatalogCorruption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModelCatalogCorruption")
+            .field("raw", &"<redacted>")
+            .field("kind", &self.kind)
+            .finish()
+    }
 }
 
 /// Read `app_models` without deciding how legacy providers are materialized.
@@ -46,9 +92,9 @@ pub fn read_model_catalog(raw: Option<&str>) -> ModelCatalogRead {
         return ModelCatalogRead::LegacyChannel;
     };
     match serde_json::from_str::<serde_json::Value>(value) {
-        Err(error) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
+        Err(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
             raw: value.to_string(),
-            detail: format!("invalid JSON: {error}"),
+            kind: ModelCatalogDefectKind::MalformedJson,
         }),
         Ok(serde_json::Value::Array(items)) => {
             if items.is_empty() {
@@ -61,21 +107,21 @@ pub fn read_model_catalog(raw: Option<&str>) -> ModelCatalogRead {
                     if rows.is_empty() {
                         ModelCatalogRead::Corrupt(ModelCatalogCorruption {
                             raw: value.to_string(),
-                            detail: "array has no usable model rows".into(),
+                            kind: ModelCatalogDefectKind::NoUsableRows,
                         })
                     } else {
                         ModelCatalogRead::Stored(rows)
                     }
                 }
-                Err(error) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
+                Err(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
                     raw: value.to_string(),
-                    detail: format!("invalid model rows: {error}"),
+                    kind: ModelCatalogDefectKind::InvalidRowShape,
                 }),
             }
         }
         Ok(_) => ModelCatalogRead::Corrupt(ModelCatalogCorruption {
             raw: value.to_string(),
-            detail: "expected a JSON array of model rows".into(),
+            kind: ModelCatalogDefectKind::UnsupportedJsonType,
         }),
     }
 }
@@ -160,20 +206,26 @@ mod tests {
 
     #[test]
     fn non_array_json_is_corrupt_not_a_legacy_provider() {
-        for raw in [
-            "null",
-            "true",
-            "1",
-            "1.5",
-            "\"m1\"",
-            "{}",
-            r#"{"id":"m1"}"#,
-            "[{\"id\":\"m1\"}] junk",
+        for (raw, expected) in [
+            ("null", ModelCatalogDefectKind::UnsupportedJsonType),
+            ("true", ModelCatalogDefectKind::UnsupportedJsonType),
+            ("1", ModelCatalogDefectKind::UnsupportedJsonType),
+            ("1.5", ModelCatalogDefectKind::UnsupportedJsonType),
+            ("\"m1\"", ModelCatalogDefectKind::UnsupportedJsonType),
+            ("{}", ModelCatalogDefectKind::UnsupportedJsonType),
+            (
+                r#"{"id":"m1"}"#,
+                ModelCatalogDefectKind::UnsupportedJsonType,
+            ),
+            (
+                "[{\"id\":\"m1\"}] junk",
+                ModelCatalogDefectKind::MalformedJson,
+            ),
         ] {
             match read_model_catalog(Some(raw)) {
                 ModelCatalogRead::Corrupt(defect) => {
                     assert_eq!(defect.raw, raw);
-                    assert!(!defect.detail.is_empty(), "diagnostic context for {raw}");
+                    assert_eq!(defect.kind, expected, "category for {raw}");
                 }
                 other => panic!("expected corrupt read for {raw}: {other:?}"),
             }
@@ -186,7 +238,7 @@ mod tests {
             match read_model_catalog(Some(raw)) {
                 ModelCatalogRead::Corrupt(defect) => {
                     assert_eq!(defect.raw, raw);
-                    assert!(!defect.detail.is_empty(), "diagnostic context for {raw}");
+                    assert_eq!(defect.kind, ModelCatalogDefectKind::MalformedJson);
                 }
                 other => panic!("expected corrupt read for {raw}: {other:?}"),
             }
@@ -195,11 +247,16 @@ mod tests {
 
     #[test]
     fn non_empty_array_without_usable_rows_is_corrupt() {
-        for raw in [r#"[{"id":""}]"#, r#"[{"id":"   "}]"#, r#"[{}]"#, "[null]"] {
+        for (raw, expected) in [
+            (r#"[{"id":""}]"#, ModelCatalogDefectKind::NoUsableRows),
+            (r#"[{"id":"   "}]"#, ModelCatalogDefectKind::NoUsableRows),
+            (r#"[{}]"#, ModelCatalogDefectKind::InvalidRowShape),
+            ("[null]", ModelCatalogDefectKind::InvalidRowShape),
+        ] {
             match read_model_catalog(Some(raw)) {
                 ModelCatalogRead::Corrupt(defect) => {
                     assert_eq!(defect.raw, raw);
-                    assert!(!defect.detail.is_empty(), "diagnostic context for {raw}");
+                    assert_eq!(defect.kind, expected, "category for {raw}");
                 }
                 other => panic!("expected corrupt read for {raw}: {other:?}"),
             }
@@ -209,6 +266,55 @@ mod tests {
             ModelCatalogRead::Stored(Vec::new()),
             "only a literal empty array is an explicit clear"
         );
+    }
+
+    #[test]
+    fn corrupt_catalog_debug_redacts_stored_text_and_category_is_fixed() {
+        const MARKER: &str = "sk-CANARY-LEAK-7f3a";
+        for (raw, expected) in [
+            (
+                format!("not json {MARKER}"),
+                ModelCatalogDefectKind::MalformedJson,
+            ),
+            (
+                format!("{{\"id\":\"{MARKER}\""),
+                ModelCatalogDefectKind::MalformedJson,
+            ),
+            (
+                format!("\"{MARKER}\""),
+                ModelCatalogDefectKind::UnsupportedJsonType,
+            ),
+            (
+                format!(r#"[{{"id":"m1","contextWindow":"{MARKER}"}}]"#),
+                ModelCatalogDefectKind::InvalidRowShape,
+            ),
+            (
+                format!(r#"[{{"id":"  ","name":"{MARKER}"}}]"#),
+                ModelCatalogDefectKind::NoUsableRows,
+            ),
+        ] {
+            let read = read_model_catalog(Some(&raw));
+            let debug = format!("{read:?}");
+            assert!(
+                !debug.contains(MARKER),
+                "debug leaked the stored value: {debug}"
+            );
+            assert!(
+                !debug.contains("invalid type"),
+                "debug leaked a serde error: {debug}"
+            );
+            assert!(
+                debug.contains("<redacted>"),
+                "debug must mark the redaction: {debug}"
+            );
+            match read {
+                ModelCatalogRead::Corrupt(defect) => {
+                    assert_eq!(defect.kind, expected, "category for {raw}");
+                    assert!(!defect.kind.label().contains(MARKER));
+                }
+                other => panic!("expected corrupt read for {raw}: {other:?}"),
+            }
+        }
     }
 
     #[test]
