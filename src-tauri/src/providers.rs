@@ -1179,6 +1179,116 @@ fn generic_child_fields(
     fields
 }
 
+/// Channel route fields a generic child mirrors from its parent.
+///
+/// A parent value that is missing or blank drops the child's copy: those keys
+/// belong to the channel, so keeping a stale endpoint or key there would make
+/// old sessions talk to the previous upstream.
+const CHILD_CHANNEL_KEYS: &[&str] = &[
+    "base_url",
+    "api_key",
+    "api_backend",
+    EXTRA_HEADERS_KEY,
+    SUPPORTS_REASONING_EFFORT_KEY,
+];
+
+/// Rebuild one existing child's fields: channel route fields follow the parent,
+/// while the section keeps its own `model` / `name` / `context_window` and any
+/// model-only or unknown key.
+fn refreshed_child_fields(
+    parent: &Section,
+    child: &Section,
+    parent_id: &str,
+) -> Vec<(String, String)> {
+    let own = |key: &str| {
+        child
+            .fields
+            .get(key)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    let channel = |key: &str| {
+        parent
+            .fields
+            .get(key)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    // Same order as `generic_child_fields`, so an already synced child keeps its
+    // bytes and a second pass writes nothing.
+    let mut fields: Vec<(String, String)> = Vec::new();
+    if let Some(v) = own("model") {
+        fields.push(("model".into(), v));
+    }
+    if let Some(v) = channel("base_url") {
+        fields.push(("base_url".into(), v));
+    }
+    if let Some(v) = own("name") {
+        fields.push(("name".into(), v));
+    }
+    if let Some(v) = channel("api_key") {
+        fields.push(("api_key".into(), v));
+    }
+    fields.push((
+        "api_backend".into(),
+        channel("api_backend").unwrap_or_else(|| "chat_completions".into()),
+    ));
+    if let Some(v) = own("context_window") {
+        fields.push(("context_window".into(), v));
+    }
+    for key in [EXTRA_HEADERS_KEY, SUPPORTS_REASONING_EFFORT_KEY] {
+        if let Some(v) = channel(key) {
+            fields.push((key.into(), v));
+        }
+    }
+    fields.push((APP_PROVIDER_MODE_KEY.into(), PROVIDER_MODE_GENERIC.into()));
+    fields.push((APP_PARENT_PROVIDER_KEY.into(), parent_id.to_string()));
+
+    let mut handled: std::collections::HashSet<&str> = CHILD_CHANNEL_KEYS.iter().copied().collect();
+    handled.extend([
+        "model",
+        "name",
+        "context_window",
+        APP_PROVIDER_MODE_KEY,
+        APP_PARENT_PROVIDER_KEY,
+    ]);
+    let mut rest: Vec<(String, String)> = child
+        .fields
+        .iter()
+        .filter(|(k, v)| !v.is_empty() && !handled.contains(k.as_str()))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    rest.sort_by(|a, b| a.0.cmp(&b.0));
+    fields.extend(rest);
+    fields
+}
+
+/// Refresh channel route fields on the children that already exist.
+///
+/// Used when the parent has no readable model rows (corrupt `app_models` or an
+/// explicit `app_models = "[]"`): the sections stay because older chats select
+/// those ids, but their key / endpoint / backend must not lag behind the
+/// channel. No child is created or removed here, and the channel `model` row is
+/// never used to guess a catalog.
+fn refresh_child_channel_fields(text: &str, parent: &Section, parent_id: &str) -> String {
+    let children: Vec<Section> = parse_model_sections(text)
+        .into_iter()
+        .filter(|s| {
+            s.fields
+                .get(APP_PARENT_PROVIDER_KEY)
+                .is_some_and(|p| p == parent_id)
+        })
+        .collect();
+    let mut text = text.to_string();
+    for child in children {
+        let fields = refreshed_child_fields(parent, &child, parent_id);
+        text = replace_or_append_section(&text, &child.id, &fields);
+    }
+    text
+}
+
 fn sync_parent_children(text: &str, parent_id: &str) -> String {
     let sections = parse_model_sections(text);
     let Some(parent) = sections.iter().find(|s| s.id == parent_id).cloned() else {
@@ -1193,13 +1303,15 @@ fn sync_parent_children(text: &str, parent_id: &str) -> String {
         // Unreadable: the legacy row is only a display guess, not the stored
         // catalog. Rewriting children from it would drop sections that a
         // partially valid value, or an older session, still references.
-        ModelCatalogRead::Corrupt(_) => return text.to_string(),
+        ModelCatalogRead::Corrupt(_) => {
+            return refresh_child_channel_fields(text, &parent, parent_id)
+        }
     };
     if models.is_empty() {
         // `app_models = "[]"` is an explicit clear. Keep existing child sections:
         // old chats still reference those section ids, and re-seeding rows from
         // the channel `model` would undo the clear.
-        return text.to_string();
+        return refresh_child_channel_fields(text, &parent, parent_id);
     }
     let children: Vec<Section> = sections
         .iter()
@@ -6290,6 +6402,198 @@ app_parent_provider = "relay"
                 "an unreadable catalog must not be replaced by a legacy guess: {bad}"
             );
         }
+    }
+
+    #[test]
+    fn corrupt_catalog_refreshes_channel_route_fields_on_existing_children() {
+        let before = r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://new.example/v1"
+api_key = "sk-test-new"
+name = "Relay"
+api_backend = "responses"
+app_provider_mode = "generic"
+app_models = "not-json"
+extra_headers = { "X-New" = "2" }
+supports_reasoning_effort = true
+
+[model.relay__m1]
+model = "m1"
+base_url = "https://old.example/v1"
+name = "Old One"
+api_key = "sk-test-old"
+api_backend = "chat_completions"
+context_window = 64000
+extra_headers = { "X-Old" = "1" }
+supports_reasoning_effort = false
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+app_note = "keep-me"
+
+[model.relay__m2]
+model = "m2"
+base_url = "https://old.example/v1"
+name = "Old Two"
+api_key = "sk-test-old"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+"#;
+        let once = sync_generic_model_sections_in_text(before);
+        let twice = sync_generic_model_sections_in_text(&once);
+        assert_eq!(once, twice, "route refresh must be idempotent:\n{twice}");
+
+        let ids: Vec<String> = parse_model_sections(&once)
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["relay", "relay__m1", "relay__m2"],
+            "channels without a readable catalog must not create or drop children"
+        );
+        for id in ["relay__m1", "relay__m2"] {
+            assert_eq!(
+                field_of(&once, id, "base_url").as_deref(),
+                Some("https://new.example/v1")
+            );
+            assert_eq!(
+                field_of(&once, id, "api_key").as_deref(),
+                Some("sk-test-new")
+            );
+            assert_eq!(
+                field_of(&once, id, "api_backend").as_deref(),
+                Some("responses")
+            );
+            assert_eq!(
+                field_of(&once, id, EXTRA_HEADERS_KEY).as_deref(),
+                Some(r#"{ "X-New" = "2" }"#)
+            );
+            assert_eq!(
+                field_of(&once, id, SUPPORTS_REASONING_EFFORT_KEY).as_deref(),
+                Some("true")
+            );
+            assert_eq!(
+                field_of(&once, id, APP_PROVIDER_MODE_KEY).as_deref(),
+                Some(PROVIDER_MODE_GENERIC)
+            );
+            assert_eq!(
+                field_of(&once, id, APP_PARENT_PROVIDER_KEY).as_deref(),
+                Some("relay")
+            );
+        }
+        assert_eq!(field_of(&once, "relay__m1", "model").as_deref(), Some("m1"));
+        assert_eq!(
+            field_of(&once, "relay__m1", "name").as_deref(),
+            Some("Old One")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "context_window").as_deref(),
+            Some("64000")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "app_note").as_deref(),
+            Some("keep-me")
+        );
+        assert_eq!(field_of(&once, "relay__m2", "model").as_deref(), Some("m2"));
+        assert_eq!(
+            field_of(&once, "relay__m2", "name").as_deref(),
+            Some("Old Two")
+        );
+        assert!(field_of(&once, "relay__m2", "context_window").is_none());
+        assert_eq!(get_models_default(&once).as_deref(), Some("relay"));
+    }
+
+    #[test]
+    fn explicit_empty_catalog_refreshes_children_and_drops_removed_channel_fields() {
+        let before = r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://new.example/v1"
+api_key = "sk-test-new"
+name = "Relay"
+app_provider_mode = "generic"
+app_models = "[]"
+
+[model.relay__m1]
+model = "m1"
+base_url = "https://old.example/v1"
+name = "Old One"
+api_key = "sk-test-old"
+api_backend = "responses"
+context_window = 64000
+extra_headers = { "X-Old" = "1" }
+supports_reasoning_effort = true
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+
+[model.relay__m2]
+model = "m2"
+base_url = "https://old.example/v1"
+name = "Old Two"
+api_key = "sk-test-old"
+api_backend = "responses"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+"#;
+        let once = sync_generic_model_sections_in_text(before);
+        let twice = sync_generic_model_sections_in_text(&once);
+        assert_eq!(once, twice, "route refresh must be idempotent:\n{twice}");
+
+        let ids: Vec<String> = parse_model_sections(&once)
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(ids, vec!["relay", "relay__m1", "relay__m2"]);
+        for id in ["relay__m1", "relay__m2"] {
+            assert_eq!(
+                field_of(&once, id, "base_url").as_deref(),
+                Some("https://new.example/v1")
+            );
+            assert_eq!(
+                field_of(&once, id, "api_key").as_deref(),
+                Some("sk-test-new")
+            );
+            assert_eq!(
+                field_of(&once, id, "api_backend").as_deref(),
+                Some("chat_completions"),
+                "a missing channel backend falls back to the default"
+            );
+            assert!(
+                field_of(&once, id, EXTRA_HEADERS_KEY).is_none(),
+                "a channel-level field removed from the parent must not linger on the child"
+            );
+            assert!(field_of(&once, id, SUPPORTS_REASONING_EFFORT_KEY).is_none());
+        }
+        assert_eq!(field_of(&once, "relay__m1", "model").as_deref(), Some("m1"));
+        assert_eq!(
+            field_of(&once, "relay__m1", "name").as_deref(),
+            Some("Old One")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "context_window").as_deref(),
+            Some("64000")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m2", "name").as_deref(),
+            Some("Old Two")
+        );
+
+        let listed = build_list_result(std::path::PathBuf::new(), std::path::PathBuf::new(), &once);
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(
+            relay.models.is_empty(),
+            "app_models = [] stays an explicit clear"
+        );
     }
 
     #[test]
