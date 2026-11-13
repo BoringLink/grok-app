@@ -1191,6 +1191,7 @@ const CHILD_CHANNEL_KEYS: &[&str] = &[
     "api_backend",
     EXTRA_HEADERS_KEY,
     SUPPORTS_REASONING_EFFORT_KEY,
+    crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY,
 ];
 
 /// Rebuild one existing child's fields: channel route fields follow the parent,
@@ -1246,6 +1247,12 @@ fn refreshed_child_fields(
     }
     fields.push((APP_PROVIDER_MODE_KEY.into(), PROVIDER_MODE_GENERIC.into()));
     fields.push((APP_PARENT_PROVIDER_KEY.into(), parent_id.to_string()));
+    if let Some(v) = channel(crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY) {
+        fields.push((
+            crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY.into(),
+            v,
+        ));
+    }
 
     let mut handled: std::collections::HashSet<&str> = CHILD_CHANNEL_KEYS.iter().copied().collect();
     handled.extend([
@@ -5611,6 +5618,14 @@ context_window = 128000
         assert!(raw.contains("api_key = \"sk-legacy-key\""), "{raw}");
     }
 
+    struct CatalogEditSnapshot {
+        bad_value: String,
+        after_keep: String,
+        after_clear: String,
+        kept: ProvidersListResult,
+        cleared: ProvidersListResult,
+    }
+
     #[test]
     fn omitting_models_keeps_an_unusable_app_models_value_until_an_explicit_clear() {
         let _lock = crate::paths::APP_HOME_ENV_LOCK
@@ -5623,16 +5638,7 @@ context_window = 128000
         let previous_home = std::env::var("GROK_APP_HOME").ok();
         std::env::set_var("GROK_APP_HOME", &home);
 
-        let outcome = (|| -> Result<
-            Vec<(
-                String,
-                String,
-                String,
-                ProvidersListResult,
-                ProvidersListResult,
-            )>,
-            String,
-        > {
+        let outcome = (|| -> Result<Vec<CatalogEditSnapshot>, String> {
             ensure_app_dirs().map_err(|e| e.to_string())?;
             let path = agent_config_toml();
             let mut captured = Vec::new();
@@ -5686,7 +5692,13 @@ app_models = {}
                 let after_keep = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
                 let cleared = upsert_custom_provider(input(Some(Vec::new())))?;
                 let after_clear = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-                captured.push((bad.to_string(), after_keep, after_clear, kept, cleared));
+                captured.push(CatalogEditSnapshot {
+                    bad_value: bad.to_string(),
+                    after_keep,
+                    after_clear,
+                    kept,
+                    cleared,
+                });
             }
             Ok(captured)
         })();
@@ -5698,32 +5710,37 @@ app_models = {}
         let _ = std::fs::remove_dir_all(&home);
 
         let captured = outcome.expect("unusable catalog edits should succeed");
-        for (bad, after_keep, after_clear, kept, cleared) in captured {
+        for snapshot in captured {
             assert_eq!(
-                field_of(&after_keep, "relay", APP_MODELS_KEY).as_deref(),
-                Some(bad.as_str()),
-                "an edit that omits `models` must keep the unusable value:\n{after_keep}"
+                field_of(&snapshot.after_keep, "relay", APP_MODELS_KEY).as_deref(),
+                Some(snapshot.bad_value.as_str()),
+                "an edit that omits `models` must keep the unusable value:\n{}",
+                snapshot.after_keep
             );
             assert_eq!(
-                field_of(&after_clear, "relay", APP_MODELS_KEY).as_deref(),
+                field_of(&snapshot.after_clear, "relay", APP_MODELS_KEY).as_deref(),
                 Some("[]"),
-                "only an explicit `models: []` clears the catalog:\n{after_clear}"
+                "only an explicit `models: []` clears the catalog:\n{}",
+                snapshot.after_clear
             );
-            let kept_relay = kept
+            let kept_relay = snapshot
+                .kept
                 .providers
                 .iter()
                 .find(|p| p.id == "relay")
                 .expect("relay provider after keep");
             assert!(
                 kept_relay.model_catalog_corrupt,
-                "a non-array or unreadable value is not a legacy provider: {bad}"
+                "a non-array or unreadable value is not a legacy provider: {}",
+                snapshot.bad_value
             );
             assert_eq!(
                 kept_relay.models,
                 vec![ProviderModelEntry::named("m1", "m1")],
                 "unusable rows still read as the legacy channel model"
             );
-            let cleared_relay = cleared
+            let cleared_relay = snapshot
+                .cleared
                 .providers
                 .iter()
                 .find(|p| p.id == "relay")
@@ -5798,6 +5815,14 @@ app_models = {}
             ])))?;
             let after_repair = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
             let cleared = upsert_custom_provider(input(Some(Vec::new())))?;
+            assert!(
+                cleared
+                    .providers
+                    .iter()
+                    .find(|p| p.id == "relay")
+                    .is_some_and(|p| p.models.is_empty() && !p.model_catalog_corrupt),
+                "an explicit clear should be reflected in the provider list"
+            );
             let after_clear = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
             let repaired_ids = repaired
                 .providers
@@ -6742,6 +6767,7 @@ default = "relay"
 [model.relay]
 model = "m1"
 base_url = "https://new.example/v1"
+app_upstream_base_url = "https://new-upstream.example/v1"
 api_key = "sk-test-new"
 name = "Relay"
 api_backend = "responses"
@@ -6753,6 +6779,7 @@ supports_reasoning_effort = true
 [model.relay__m1]
 model = "m1"
 base_url = "https://old.example/v1"
+app_upstream_base_url = "https://old-upstream.example/v1"
 name = "Old One"
 api_key = "sk-test-old"
 api_backend = "chat_completions"
@@ -6789,6 +6816,15 @@ app_parent_provider = "relay"
             assert_eq!(
                 field_of(&once, id, "base_url").as_deref(),
                 Some("https://new.example/v1")
+            );
+            assert_eq!(
+                field_of(
+                    &once,
+                    id,
+                    crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                )
+                .as_deref(),
+                Some("https://new-upstream.example/v1")
             );
             assert_eq!(
                 field_of(&once, id, "api_key").as_deref(),
@@ -6857,6 +6893,7 @@ name = "Old One"
 api_key = "sk-test-old"
 api_backend = "responses"
 context_window = 64000
+app_upstream_base_url = "https://old-upstream.example/v1"
 extra_headers = { "X-Old" = "1" }
 supports_reasoning_effort = true
 app_provider_mode = "generic"
@@ -6893,6 +6930,15 @@ app_parent_provider = "relay"
                 field_of(&once, id, "api_backend").as_deref(),
                 Some("chat_completions"),
                 "a missing channel backend falls back to the default"
+            );
+            assert!(
+                field_of(
+                    &once,
+                    id,
+                    crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                )
+                .is_none(),
+                "a channel-level upstream removed from the parent must not linger on the child"
             );
             assert!(
                 field_of(&once, id, EXTRA_HEADERS_KEY).is_none(),
