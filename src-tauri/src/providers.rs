@@ -12,8 +12,8 @@ use crate::provider_headers::{
     decode_extra_headers, encode_extra_headers_toml, normalize_extra_headers, EXTRA_HEADERS_KEY,
 };
 use crate::provider_model_profile::{
-    encode_model_catalog, legacy_model_catalog, read_model_catalog, resolve_model_catalog,
-    ModelCatalogRead,
+    encode_model_catalog, legacy_model_catalog, read_model_catalog, resolve_catalog_rows,
+    resolve_model_catalog, ModelCatalogRead,
 };
 
 pub use crate::provider_headers::ProviderHeaderEntry;
@@ -289,6 +289,36 @@ pub struct GrokBuildProxySpawn {
     pub models_url: String,
     pub api_key: String,
     pub model: String,
+}
+
+/// Whether an upsert must re-check its model rows against the live `/models`.
+///
+/// `models: None` keeps whatever catalog is on disk. When that catalog is
+/// unreadable or explicitly empty it fixes no rows, so the channel `model` is
+/// only a display guess: re-checking it would reject an unrelated name / key
+/// edit even though the catalog did not change. An explicit catalog edit
+/// (`Some`, including `Some([])`) and a create always hit the live gate.
+pub fn grok_build_proxy_upsert_needs_live_models(
+    models: Option<&[ProviderModelEntry]>,
+    stored_catalog: Option<&ModelCatalogRead>,
+) -> bool {
+    if models.is_some() {
+        return true;
+    }
+    match stored_catalog {
+        Some(catalog) => !catalog_fixes_no_model_rows(catalog),
+        None => true,
+    }
+}
+
+/// A stored catalog that fixes no rows: unreadable text, or an explicit clear.
+/// Consumers must not substitute the channel `model` for it.
+fn catalog_fixes_no_model_rows(catalog: &ModelCatalogRead) -> bool {
+    match catalog {
+        ModelCatalogRead::Stored(rows) => rows.is_empty(),
+        ModelCatalogRead::Corrupt(_) => true,
+        ModelCatalogRead::LegacyChannel => false,
+    }
 }
 
 pub fn validate_grok_build_proxy_models(
@@ -2219,6 +2249,22 @@ pub fn provider_base_url_full_path_for_id(id: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Read one provider's stored `app_models` exactly as it sits on disk.
+///
+/// Read-only: no migration, normalization, or write. `None` means no such
+/// provider section exists (create path). Editing another field must decide
+/// from this value, not from a re-encoded catalog.
+pub fn stored_provider_model_catalog(provider_id: &str) -> Option<ModelCatalogRead> {
+    // Match the section id `upsert_custom_provider` resolves the edit to.
+    let id = sanitize_id(provider_id).ok()?;
+    let text = read_text(&agent_config_toml());
+    let sections = parse_model_sections(&text);
+    let section = sections.iter().find(|s| s.id == id)?;
+    Some(read_model_catalog(
+        section.fields.get(APP_MODELS_KEY).map(String::as_str),
+    ))
+}
+
 /// Extra system-prompt rules configured on the active custom channel.
 ///
 /// Relays vary in what they need spelled out (tool syntax, language, refusal
@@ -2566,16 +2612,22 @@ fn grok_build_proxy_spawn_from_section(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .unwrap_or(section.id.as_str());
-    let models = decode_app_models(
-        section.fields.get(APP_MODELS_KEY).map(|s| s.as_str()),
-        configured_model,
-        configured_model,
-    );
+    let catalog = read_model_catalog(section.fields.get(APP_MODELS_KEY).map(|s| s.as_str()));
     let requested = composer_model.trim();
-    let model = if !requested.is_empty() && models.iter().any(|m| m.id == requested) {
+    // The section id is a route name, never an upstream model to send.
+    let requested_model = !requested.is_empty() && requested != section.id;
+    let model = if requested_model && catalog_fixes_no_model_rows(&catalog) {
+        // The catalog cannot confirm the id, but this chat was stored on it.
+        // Falling back to the first row would silently retarget the upstream
+        // request; only an explicit model from the chat is passed here.
         requested.to_string()
     } else {
-        resolve_active_model(&models, configured_model)
+        let models = resolve_catalog_rows(&catalog, configured_model, configured_model);
+        if !requested.is_empty() && models.iter().any(|m| m.id == requested) {
+            requested.to_string()
+        } else {
+            resolve_active_model(&models, configured_model)
+        }
     };
     let models_url = models_list_endpoint(&base_url).ok()?;
     Some(GrokBuildProxySpawn {
@@ -4350,6 +4402,46 @@ base_url = \"http://127.0.0.1:8080/v1\"
     }
 
     #[test]
+    fn native_proxy_upsert_live_gate_skips_a_catalog_it_cannot_recheck() {
+        let readable = ModelCatalogRead::Stored(vec![ProviderModelEntry::named("m1", "M1")]);
+        let corrupt = read_model_catalog(Some("{not json"));
+        let cleared = ModelCatalogRead::Stored(Vec::new());
+
+        // `models: None` keeps the stored catalog: an unreadable or explicitly
+        // cleared one has no row the channel `model` may stand in for.
+        assert!(!grok_build_proxy_upsert_needs_live_models(
+            None,
+            Some(&corrupt)
+        ));
+        assert!(!grok_build_proxy_upsert_needs_live_models(
+            None,
+            Some(&cleared)
+        ));
+        // Create, legacy, and readable catalogs are still checked live.
+        assert!(grok_build_proxy_upsert_needs_live_models(None, None));
+        assert!(grok_build_proxy_upsert_needs_live_models(
+            None,
+            Some(&ModelCatalogRead::LegacyChannel)
+        ));
+        assert!(grok_build_proxy_upsert_needs_live_models(
+            None,
+            Some(&readable)
+        ));
+
+        // An explicit edit claims capabilities, including the `Some([])` clear.
+        let edited = vec![ProviderModelEntry::named("m2", "M2")];
+        let no_rows: Vec<ProviderModelEntry> = Vec::new();
+        assert!(grok_build_proxy_upsert_needs_live_models(
+            Some(&edited),
+            Some(&corrupt)
+        ));
+        assert!(grok_build_proxy_upsert_needs_live_models(
+            Some(&no_rows),
+            Some(&cleared)
+        ));
+    }
+
+    #[test]
     fn native_proxy_spawn_uses_real_model_and_process_only_binding() {
         let models = encode_app_models(&[
             ProviderModelEntry::named("grok-4.6", "Grok 4.6"),
@@ -4395,6 +4487,119 @@ base_url = \"http://127.0.0.1:8080/v1\"
         assert_eq!(spawned.model, "grok-4.5");
         assert!(grok_build_proxy_spawn_for_provider_text(&text, "official", "grok-4.5").is_none());
         assert!(grok_build_proxy_spawn_from_text(&other_default, "grok-4.5").is_none());
+    }
+
+    fn grok_build_proxy_text(app_models: Option<&str>) -> String {
+        let mut fields = vec![
+            ("model".into(), "m1".into()),
+            ("base_url".into(), "https://relay.example/v1".into()),
+            ("api_key".into(), "dummy-relay-key".into()),
+            ("api_backend".into(), "responses".into()),
+            (
+                APP_PROVIDER_MODE_KEY.into(),
+                PROVIDER_MODE_GROK_BUILD_PROXY.into(),
+            ),
+        ];
+        if let Some(raw) = app_models {
+            fields.push((APP_MODELS_KEY.into(), raw.to_string()));
+        }
+        set_models_default(&append_section("", "beef-relay", &fields), "beef-relay")
+    }
+
+    #[test]
+    fn native_proxy_spawn_keeps_a_stored_model_the_catalog_cannot_confirm() {
+        // m2 still reads as a row, but the array is corrupt. A chat stored on m3
+        // must keep m3 instead of retargeting to the first row.
+        let corrupt = grok_build_proxy_text(Some(r#"[{"id":"m2","name":"M2"},"oops"]"#));
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&corrupt, "m3")
+                .expect("spawn")
+                .model,
+            "m3"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&corrupt, "m2")
+                .expect("spawn")
+                .model,
+            "m2"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&corrupt, "")
+                .expect("spawn")
+                .model,
+            "m2",
+            "no requested model keeps the readable-row fallback"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&corrupt, "beef-relay")
+                .expect("spawn")
+                .model,
+            "m2",
+            "the provider section alias is not a stored upstream model"
+        );
+
+        // Nothing readable in the value at all: the channel row is the fallback.
+        let unreadable = grok_build_proxy_text(Some(r#"{"id":"m2"}"#));
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&unreadable, "m3")
+                .expect("spawn")
+                .model,
+            "m3"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&unreadable, "")
+                .expect("spawn")
+                .model,
+            "m1"
+        );
+
+        // An explicitly cleared catalog behaves the same way, and keeps the
+        // same fallback when the chat stored no model.
+        let cleared = grok_build_proxy_text(Some("[]"));
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&cleared, "m2")
+                .expect("spawn")
+                .model,
+            "m2"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&cleared, "")
+                .expect("spawn")
+                .model,
+            "m1"
+        );
+    }
+
+    #[test]
+    fn native_proxy_spawn_validates_a_readable_catalog_and_legacy_channel() {
+        let models = encode_app_models(&[
+            ProviderModelEntry::named("m1", "M1"),
+            ProviderModelEntry::named("m2", "M2"),
+        ])
+        .expect("encode app models");
+        let readable = grok_build_proxy_text(Some(&models));
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&readable, "m2")
+                .expect("spawn")
+                .model,
+            "m2"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&readable, "m3")
+                .expect("spawn")
+                .model,
+            "m1",
+            "an id outside a readable catalog keeps the active-row fallback"
+        );
+
+        // A legacy provider has no stored catalog; its channel row is the catalog.
+        let legacy = grok_build_proxy_text(None);
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&legacy, "m3")
+                .expect("spawn")
+                .model,
+            "m1"
+        );
     }
 
     #[test]
@@ -7077,6 +7282,113 @@ context_window = "1000000"
         let slug = slug_model_id(&long);
         assert!(slug.len() <= 48, "{slug}");
         assert!(slug.starts_with("aaaa"));
+    }
+
+    struct StoredCatalogSnapshot {
+        corrupt: Option<ModelCatalogRead>,
+        cleared: Option<ModelCatalogRead>,
+        readable: Option<ModelCatalogRead>,
+        legacy: Option<ModelCatalogRead>,
+        absent: Option<ModelCatalogRead>,
+        raw_after: String,
+    }
+
+    #[test]
+    fn stored_provider_catalog_reports_disk_state_without_editing_it() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home =
+            std::env::temp_dir().join(format!("grok-app-stored-catalog-{}", uuid::Uuid::new_v4()));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<StoredCatalogSnapshot, String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let readable = encode_app_models(&[ProviderModelEntry::named("m3", "M3")])?;
+            let text = format!(
+                "\
+[models]
+default = \"readable\"
+
+[model.corrupt]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Corrupt\"
+api_key = \"dummy-relay-key\"
+api_backend = \"responses\"
+app_provider_mode = \"grok_build_proxy\"
+app_models = {}
+
+[model.cleared]
+model = \"m2\"
+base_url = \"https://relay.example/v1\"
+name = \"Cleared\"
+api_key = \"dummy-relay-key\"
+api_backend = \"responses\"
+app_provider_mode = \"grok_build_proxy\"
+app_models = {}
+
+[model.readable]
+model = \"m3\"
+base_url = \"https://relay.example/v1\"
+name = \"Readable\"
+api_key = \"dummy-relay-key\"
+api_backend = \"responses\"
+app_provider_mode = \"grok_build_proxy\"
+app_models = {}
+
+[model.legacy]
+model = \"m4\"
+base_url = \"https://relay.example/v1\"
+name = \"Legacy\"
+api_key = \"dummy-relay-key\"
+api_backend = \"responses\"
+app_provider_mode = \"grok_build_proxy\"
+",
+                quote("{\"id\":\"m2\"}"),
+                quote("[]"),
+                quote(&readable),
+            );
+            write_text(&path, &text)?;
+            let snapshot = StoredCatalogSnapshot {
+                corrupt: stored_provider_model_catalog("corrupt"),
+                cleared: stored_provider_model_catalog("cleared"),
+                readable: stored_provider_model_catalog("readable"),
+                legacy: stored_provider_model_catalog("legacy"),
+                absent: stored_provider_model_catalog("absent"),
+                raw_after: std::fs::read_to_string(&path).map_err(|e| e.to_string())?,
+            };
+            Ok(snapshot)
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let snapshot = outcome.expect("stored catalog reads should succeed");
+        assert!(matches!(
+            snapshot.corrupt,
+            Some(ModelCatalogRead::Corrupt(_))
+        ));
+        assert_eq!(snapshot.cleared, Some(ModelCatalogRead::Stored(Vec::new())));
+        assert_eq!(
+            snapshot.readable,
+            Some(ModelCatalogRead::Stored(vec![ProviderModelEntry::named(
+                "m3", "M3"
+            )]))
+        );
+        assert_eq!(snapshot.legacy, Some(ModelCatalogRead::LegacyChannel));
+        assert_eq!(snapshot.absent, None);
+        assert!(
+            snapshot
+                .raw_after
+                .contains("app_models = \"{\\\"id\\\":\\\"m2\\\"}\""),
+            "reading the state must not rewrite the config"
+        );
     }
 
     #[test]

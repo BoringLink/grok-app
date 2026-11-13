@@ -201,10 +201,20 @@ pub fn resolve_model_catalog(
     fallback_model: &str,
     fallback_display: &str,
 ) -> Vec<ProviderModelEntry> {
-    match read_model_catalog(raw) {
-        ModelCatalogRead::Stored(rows) => rows,
+    resolve_catalog_rows(&read_model_catalog(raw), fallback_model, fallback_display)
+}
+
+/// Selectable rows for an already-read catalog; same rules as
+/// [`resolve_model_catalog`].
+pub fn resolve_catalog_rows(
+    catalog: &ModelCatalogRead,
+    fallback_model: &str,
+    fallback_display: &str,
+) -> Vec<ProviderModelEntry> {
+    match catalog {
+        ModelCatalogRead::Stored(rows) => rows.clone(),
         ModelCatalogRead::Corrupt(defect) if !defect.recovered_rows.is_empty() => {
-            defect.recovered_rows
+            defect.recovered_rows.clone()
         }
         ModelCatalogRead::LegacyChannel | ModelCatalogRead::Corrupt(_) => {
             legacy_model_catalog(fallback_model, fallback_display)

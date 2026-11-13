@@ -151,26 +151,44 @@ pub async fn providers_upsert(
         if crate::providers::normalize_backend(api_backend.as_deref()) != "responses" {
             return Err("grok_build_proxy requires api_backend=responses".into());
         }
-        let normalized_base = crate::providers::normalize_openai_base_url(
-            &base_url,
-            "responses",
-            base_url_full_path.unwrap_or_else(|| {
-                crate::providers::provider_base_url_full_path_for_id(&id)
-            }),
-        );
-        let remote = crate::providers::list_remote_models(
-            normalized_base,
-            api_key.clone(),
-            Some(id.clone()),
-        )
-        .await?;
-        let selected = models.clone().unwrap_or_else(|| {
-            vec![crate::providers::ProviderModelEntry::named(
-                model.clone(),
-                model.clone(),
-            )]
-        });
-        crate::providers::validate_grok_build_proxy_models(&remote.models, &selected)?;
+        // `models: None` keeps the stored catalog, so an unreadable or cleared
+        // one is not re-checked through a row synthesized from the channel
+        // model; saving a name / key edit must not fail on it.
+        let stored_catalog = if models.is_none() {
+            let provider_id = id.clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                crate::providers::stored_provider_model_catalog(&provider_id)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+        } else {
+            None
+        };
+        if crate::providers::grok_build_proxy_upsert_needs_live_models(
+            models.as_deref(),
+            stored_catalog.as_ref(),
+        ) {
+            let normalized_base = crate::providers::normalize_openai_base_url(
+                &base_url,
+                "responses",
+                base_url_full_path.unwrap_or_else(|| {
+                    crate::providers::provider_base_url_full_path_for_id(&id)
+                }),
+            );
+            let remote = crate::providers::list_remote_models(
+                normalized_base,
+                api_key.clone(),
+                Some(id.clone()),
+            )
+            .await?;
+            let selected = models.clone().unwrap_or_else(|| {
+                vec![crate::providers::ProviderModelEntry::named(
+                    model.clone(),
+                    model.clone(),
+                )]
+            });
+            crate::providers::validate_grok_build_proxy_models(&remote.models, &selected)?;
+        }
     }
     let set_default_flag = set_as_default.unwrap_or(false);
     let mutated_id = id.clone();
