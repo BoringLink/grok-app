@@ -133,6 +133,7 @@ export const zhProviders = {
   "prov.err.needBase": "请填写 Base URL。",
   "prov.err.needKey": "请填写 API Key。",
   "prov.err.needModel": "请至少添加一个请求模型。",
+  "prov.err.modelIdRequired": "每个请求模型行都需要填写模型 ID。请填写 ID 或删除该行。",
   "prov.err.nativeCapability": "无法开启 Grok Build 原生兼容模式。实时 /models 必须包含每个所选模型，并明确返回 supports_backend_search=true。请选择通用模式，或修正中转模型目录。",
   "prov.err.unknownProvider": "未找到该提供商。",
   "prov.officialName": "官方 Grok",

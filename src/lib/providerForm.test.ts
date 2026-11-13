@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { CustomProvider } from "@/lib/api";
 import {
   asFormModel,
+  blankModelIdIndex,
   ccSwitchStatusKey,
   emptyForm,
   formFromPreset,
@@ -83,11 +84,36 @@ describe("modelsFromProvider", () => {
   });
 });
 
+describe("blankModelIdIndex", () => {
+  it("returns -1 when every row has a usable id", () => {
+    expect(
+      blankModelIdIndex([
+        { id: "m1", name: "M1" },
+        { id: " m2 ", name: "" },
+      ]),
+    ).toBe(-1);
+  });
+
+  it("reports the first row whose id is blank after trimming", () => {
+    expect(
+      blankModelIdIndex([
+        { id: "m1", name: "M1" },
+        { id: "   ", name: "Blank" },
+        { id: "", name: "" },
+      ]),
+    ).toBe(1);
+  });
+
+  it("treats an empty catalog as valid (explicit clear)", () => {
+    expect(blankModelIdIndex([])).toBe(-1);
+  });
+});
+
 describe("formModelsPayload", () => {
-  it("trims ids, falls back names, and drops blank rows", () => {
+  it("trims ids, falls back names, and keeps every valid row", () => {
     const out = formModelsPayload([
       { id: " m1 ", name: "  " },
-      { id: "   ", name: "Dropped" },
+      { id: "m2", name: "M2" },
     ] as Parameters<typeof formModelsPayload>[0]);
     expect(out).toEqual([
       {
@@ -98,7 +124,32 @@ describe("formModelsPayload", () => {
         supportsVideo: undefined,
         efforts: [],
       },
+      {
+        id: "m2",
+        name: "M2",
+        contextWindow: null,
+        supportsVision: undefined,
+        supportsVideo: undefined,
+        efforts: [],
+      },
     ]);
+  });
+
+  it("refuses a blank row instead of shrinking the catalog", () => {
+    expect(() =>
+      formModelsPayload([
+        { id: "m1", name: "M1" },
+        { id: "   ", name: "Dropped" },
+      ]),
+    ).toThrow(/non-empty id/);
+    // A single blank row must not normalize into the explicit-clear path.
+    expect(() => formModelsPayload([{ id: "", name: "" }])).toThrow(
+      /non-empty id/,
+    );
+  });
+
+  it("keeps [] as the explicit clear", () => {
+    expect(formModelsPayload([])).toEqual([]);
   });
 });
 
@@ -157,6 +208,29 @@ describe("modelsForProviderSave", () => {
       stored: corruptProvider,
     });
     expect(out).toEqual([]);
+  });
+
+  it("refuses a blank row instead of dropping it from the payload", () => {
+    expect(() =>
+      modelsForProviderSave({
+        formModels: [
+          { id: "m1", name: "m1" },
+          { id: "   ", name: "Half-typed" },
+        ],
+        stored: corruptProvider,
+      }),
+    ).toThrow(/non-empty id/);
+  });
+
+  it("sends every valid row of a mixed catalog", () => {
+    const out = modelsForProviderSave({
+      formModels: [
+        { id: "m1", name: "m1" },
+        { id: " m2 ", name: "" },
+      ],
+      stored: undefined,
+    });
+    expect(out?.map((m) => m.id)).toEqual(["m1", "m2"]);
   });
 
   it("omits models for an untouched legacy provider", () => {

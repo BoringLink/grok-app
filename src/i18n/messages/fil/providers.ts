@@ -131,6 +131,7 @@ export const filProviders = {
   "prov.err.needBase": "Kailangan ang Base URL.",
   "prov.err.needKey": "Kailangan ang API key.",
   "prov.err.needModel": "Magdagdag ng kahit isang request model.",
+  "prov.err.modelIdRequired": "Bawat request model row ay kailangan ng model id. Maglagay ng id o alisin ang row.",
   "prov.err.nativeCapability": "Hindi ma-enable ang Grok Build-compatible mode. Dapat isama ng live /models ang bawat napiling modelo at hayagang ibalik ang supports_backend_search=true. Pumili ng Generic o ayusin ang catalog ng relay.",
   "prov.err.unknownProvider": "Hindi nahanap ang provider.",
   "prov.officialName": "Opisyal na Grok",

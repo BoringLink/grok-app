@@ -131,6 +131,7 @@ export const idProviders = {
   "prov.err.needBase": "URL dasar wajib diisi.",
   "prov.err.needKey": "Kunci API wajib diisi.",
   "prov.err.needModel": "Tambah setidaknya satu model permintaan.",
+  "prov.err.modelIdRequired": "Setiap baris model permintaan memerlukan id model. Masukkan id atau hapus baris.",
   "prov.err.nativeCapability": "Mode kompatibel Grok Build tidak dapat diaktifkan. /models langsung harus mencakup setiap model yang dipilih dan secara eksplisit mengembalikan supports_backend_search=true. Pilih Generik atau perbaiki katalog relai.",
   "prov.err.unknownProvider": "Penyedia tidak ditemukan.",
   "prov.officialName": "Grok resmi",

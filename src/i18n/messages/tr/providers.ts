@@ -126,6 +126,7 @@ export const trProviders = {
   "prov.err.needBase": "Temel adres gerekli.",
   "prov.err.needKey": "API anahtarı gerekli.",
   "prov.err.needModel": "En az bir istek modeli ekleyin.",
+  "prov.err.modelIdRequired": "Her istek modeli satırı için model kimliği gerekir. Bir kimlik girin veya satırı kaldırın.",
   "prov.err.nativeCapability": "Grok Build uyumlu mod açılamadı. Canlı /models, seçilen her modeli içermeli ve açıkça supports_backend_search=true döndürmeli. Genel'i seçin ya da aktarıcı kataloğunu düzeltin.",
   "prov.err.unknownProvider": "Sağlayıcı bulunamadı.",
   "prov.officialName": "Resmî Grok",

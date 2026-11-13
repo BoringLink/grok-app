@@ -120,24 +120,42 @@ export function modelsFromProvider(p: api.CustomProvider): FormModel[] {
   return [{ id, name: id }];
 }
 
-/** Canonical `providers_upsert` catalog rows for the current form values. */
+/**
+ * Index of the first model row whose id is blank after trimming, or `-1`.
+ *
+ * An empty catalog is only valid when the user removed every row; a blank id
+ * is a half-finished edit and must block the save instead of shrinking or
+ * clearing the stored catalog.
+ */
+export function blankModelIdIndex(models: FormModel[]): number {
+  return models.findIndex((m) => !m.id.trim());
+}
+
+/**
+ * Canonical `providers_upsert` catalog rows for the current form values.
+ *
+ * Throws on a blank row: callers must reject it first via
+ * {@link blankModelIdIndex}. Normalizing it away would produce a smaller
+ * catalog, or `[]`, which the host reads as an explicit clear.
+ */
 export function formModelsPayload(models: FormModel[]): api.ProviderModelEntry[] {
-  return models
-    .map((m) => ({
-      id: m.id.trim(),
-      name: m.name.trim() || m.id.trim(),
-      contextWindow: m.contextWindow ?? null,
-      supportsVision: m.supportsVision,
-      supportsVideo: m.supportsVideo,
-      efforts: (m.efforts ?? [])
-        .map((e) => ({
-          id: e.id.trim(),
-          name: e.name.trim() || e.id.trim(),
-          isDefault: !!e.isDefault,
-        }))
-        .filter((e) => e.id),
-    }))
-    .filter((m) => m.id);
+  if (blankModelIdIndex(models) >= 0) {
+    throw new Error("model rows require a non-empty id");
+  }
+  return models.map((m) => ({
+    id: m.id.trim(),
+    name: m.name.trim() || m.id.trim(),
+    contextWindow: m.contextWindow ?? null,
+    supportsVision: m.supportsVision,
+    supportsVideo: m.supportsVideo,
+    efforts: (m.efforts ?? [])
+      .map((e) => ({
+        id: e.id.trim(),
+        name: e.name.trim() || e.id.trim(),
+        isDefault: !!e.isDefault,
+      }))
+      .filter((e) => e.id),
+  }));
 }
 
 /** Order-sensitive equality for canonical catalog rows. */
@@ -217,6 +235,9 @@ export function isModelCatalogLocked(opts: {
 }): boolean {
   if (opts.stored?.modelCatalogCorrupt !== true) return false;
   if (opts.isCreate) return true;
+  // A blank row cannot be saved and already differs from the stored fallback,
+  // so keep per-model controls usable while the user fixes or removes it.
+  if (blankModelIdIndex(opts.formModels) >= 0) return false;
   return sameCatalogRows(
     formModelsPayload(opts.formModels),
     formModelsPayload(modelsFromProvider(opts.stored)),

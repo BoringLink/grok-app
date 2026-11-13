@@ -131,6 +131,7 @@ export const itProviders = {
   "prov.err.needBase": "Il base URL è obbligatorio.",
   "prov.err.needKey": "La chiave API è obbligatoria.",
   "prov.err.needModel": "Aggiungi almeno un modello di richiesta.",
+  "prov.err.modelIdRequired": "Ogni riga del modello di richiesta richiede un id modello. Inserisci un id o rimuovi la riga.",
   "prov.err.nativeCapability": "Impossibile abilitare la modalità compatibile Grok Build. /models live deve includere ogni modello selezionato e restituire esplicitamente supports_backend_search=true. Scegli Generic o sistema il catalogo del relay.",
   "prov.err.unknownProvider": "Provider non trovato.",
   "prov.officialName": "Grok ufficiale",

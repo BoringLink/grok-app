@@ -131,6 +131,7 @@ export const frProviders = {
   "prov.err.needBase": "L’URL de base est obligatoire.",
   "prov.err.needKey": "La clé API est obligatoire.",
   "prov.err.needModel": "Ajoutez au moins un modèle de requête.",
+  "prov.err.modelIdRequired": "Chaque ligne de modèle de requête doit avoir un id de modèle. Saisissez un id ou supprimez la ligne.",
   "prov.err.nativeCapability": "Impossible d’activer le mode compatible Grok Build. /models en direct doit inclure chaque modèle sélectionné et renvoyer explicitement supports_backend_search=true. Choisissez Générique ou corrigez le catalogue du relais.",
   "prov.err.unknownProvider": "Fournisseur introuvable.",
   "prov.officialName": "Grok officiel",

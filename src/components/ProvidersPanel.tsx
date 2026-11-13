@@ -14,6 +14,7 @@ import {
 import * as api from "@/lib/api";
 import {
   asFormModel,
+  blankModelIdIndex,
   toFormEfforts,
   ccSwitchStatusKey,
   emptyForm,
@@ -595,6 +596,11 @@ export function ProvidersPanel({
     }
     if (!editingId && !form.apiKey.trim()) {
       setHint(tr("prov.err.needKey"));
+      setHintTone("err");
+      return;
+    }
+    if (blankModelIdIndex(form.models) >= 0) {
+      setHint(tr("prov.err.modelIdRequired"));
       setHintTone("err");
       return;
     }

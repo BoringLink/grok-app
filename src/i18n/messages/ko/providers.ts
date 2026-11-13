@@ -131,6 +131,7 @@ export const koProviders = {
   "prov.err.needBase": "Base URL이 필요합니다.",
   "prov.err.needKey": "API 키가 필요합니다.",
   "prov.err.needModel": "요청 모델을 하나 이상 추가하세요.",
+  "prov.err.modelIdRequired": "각 요청 모델 행에 모델 ID가 필요합니다. ID를 입력하거나 행을 삭제하세요.",
   "prov.err.nativeCapability": "Grok Build 호환 모드를 켤 수 없습니다. 실시간 /models에 선택한 모든 모델이 포함되고 supports_backend_search=true를 명시적으로 반환해야 합니다. 일반을 선택하거나 릴레이 카탈로그를 고치세요.",
   "prov.err.unknownProvider": "공급자를 찾을 수 없습니다.",
   "prov.officialName": "공식 Grok",

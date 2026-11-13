@@ -2782,13 +2782,13 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     };
     let models = match (&input.models, &catalog_read) {
         (Some(list), _) => {
-            let normalized = normalize_provider_models(list);
-            // A non-empty list that normalizes away is a malformed catalog, not
-            // a clear: writing `[]` would silently discard the user's intent.
-            if !list.is_empty() && normalized.is_empty() {
-                return Err("models must contain at least one row with a non-empty id".into());
+            // A blank row is a half-finished form edit, not a clear. Reject it
+            // before normalization can drop it and quietly shrink the catalog
+            // (or turn a single blank row into the explicit-clear path).
+            if list.iter().any(|m| m.id.trim().is_empty()) {
+                return Err("each models row must have a non-empty id".into());
             }
-            normalized
+            normalize_provider_models(list)
         }
         (None, ModelCatalogRead::Stored(rows)) => rows.clone(),
         (None, ModelCatalogRead::LegacyChannel) => legacy_model_catalog(&model, &model),
@@ -6071,6 +6071,126 @@ app_models = {}
             field_of(&after_clear, "relay", APP_MODELS_KEY).as_deref(),
             Some("[]"),
             "an explicit empty list is still a clear, not an error:\n{after_clear}"
+        );
+    }
+
+    #[test]
+    fn blank_model_rows_are_rejected_before_normalization() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-blank-model-row-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        struct Outcome {
+            saved_ids: Vec<String>,
+            rejected: String,
+            after_save: String,
+            after_reject: String,
+            cleared_ids: Vec<String>,
+            after_clear: String,
+        }
+
+        let outcome = (|| -> Result<Outcome, String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let input = |models: Option<Vec<ProviderModelEntry>>| UpsertProviderInput {
+                id: "relay".into(),
+                model: String::new(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: Some("sk-relay-key".into()),
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            };
+            let saved = upsert_custom_provider(input(Some(vec![
+                ProviderModelEntry::named("m1", "M1"),
+                ProviderModelEntry::named(" m2 ", ""),
+            ])))?;
+            let saved_ids = saved
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .map(|p| p.models.iter().map(|m| m.id.clone()).collect())
+                .unwrap_or_default();
+            let after_save = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let rejected = upsert_custom_provider(input(Some(vec![
+                ProviderModelEntry::named("m1", "M1"),
+                ProviderModelEntry::named("  ", "Half-typed"),
+            ])))
+            .expect_err("a blank row is rejected even when other rows are valid");
+            let after_reject = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let cleared = upsert_custom_provider(input(Some(Vec::new())))?;
+            let cleared_ids = cleared
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .filter(|p| !p.model_catalog_corrupt)
+                .map(|p| p.models.iter().map(|m| m.id.clone()).collect())
+                .unwrap_or_default();
+            let after_clear = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            Ok(Outcome {
+                saved_ids,
+                rejected,
+                after_save,
+                after_reject,
+                cleared_ids,
+                after_clear,
+            })
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let Outcome {
+            saved_ids,
+            rejected,
+            after_save,
+            after_reject,
+            cleared_ids,
+            after_clear,
+        } = outcome.expect("blank-row handling should complete");
+        assert_eq!(
+            saved_ids,
+            vec!["m1".to_string(), "m2".to_string()],
+            "every valid row persists, trimmed, in order"
+        );
+        assert!(
+            rejected.contains("non-empty id"),
+            "the error must name the contract violation: {rejected}"
+        );
+        assert!(
+            !rejected.contains("Half-typed") && !rejected.contains("sk-relay-key"),
+            "validation errors must not echo user input: {rejected}"
+        );
+        assert_eq!(
+            after_reject, after_save,
+            "a rejected catalog write must leave disk untouched"
+        );
+        assert!(
+            cleared_ids.is_empty(),
+            "an explicit empty list still clears the catalog: {cleared_ids:?}"
+        );
+        assert_eq!(
+            field_of(&after_clear, "relay", APP_MODELS_KEY).as_deref(),
+            Some("[]"),
+            "explicit clear writes [] instead of a guessed catalog:\n{after_clear}"
         );
     }
 

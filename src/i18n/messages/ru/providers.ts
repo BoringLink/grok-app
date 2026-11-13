@@ -131,6 +131,7 @@ export const ruProviders = {
   "prov.err.needBase": "Укажите Base URL.",
   "prov.err.needKey": "Укажите API-ключ.",
   "prov.err.needModel": "Добавьте хотя бы одну модель.",
+  "prov.err.modelIdRequired": "Каждой строке модели запроса нужен id модели. Введите id или удалите строку.",
   "prov.err.nativeCapability": "Не удалось включить режим совместимости с Grok Build. Live /models должен содержать каждую выбранную модель и явно возвращать supports_backend_search=true.",
   "prov.err.unknownProvider": "Провайдер не найден.",
   "prov.officialName": "Официальный Grok",

@@ -133,6 +133,7 @@ export const enProviders = {
   "prov.err.needBase": "Base URL is required.",
   "prov.err.needKey": "API key is required.",
   "prov.err.needModel": "Add at least one request model.",
+  "prov.err.modelIdRequired": "Every request model row needs a model id. Enter an id or remove the row.",
   "prov.err.nativeCapability": "Could not enable Grok Build-compatible mode. Live /models must include every selected model and explicitly return supports_backend_search=true. Choose Generic or fix the relay catalog.",
   "prov.err.unknownProvider": "Provider not found.",
   "prov.officialName": "Official Grok",

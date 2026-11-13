@@ -131,6 +131,7 @@ export const ptBRProviders = {
   "prov.err.needBase": "A base URL é obrigatória.",
   "prov.err.needKey": "A chave de API é obrigatória.",
   "prov.err.needModel": "Adicione pelo menos um modelo de requisição.",
+  "prov.err.modelIdRequired": "Cada linha de modelo de requisição precisa de um id de modelo. Informe um id ou remova a linha.",
   "prov.err.nativeCapability": "Não foi possível ativar o modo compatível com Grok Build. O /models ao vivo deve incluir todos os modelos selecionados e retornar explicitamente supports_backend_search=true. Escolha Genérico ou corrija o catálogo do relay.",
   "prov.err.unknownProvider": "Provedor não encontrado.",
   "prov.officialName": "Grok oficial",

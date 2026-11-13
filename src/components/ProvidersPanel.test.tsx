@@ -160,6 +160,25 @@ describe("ProvidersPanel corrupt catalog", () => {
     expect(screen.getByRole("button", { name: "Model settings" })).toBeDisabled();
   });
 
+  it("blocks a save that leaves a model row without an id", async () => {
+    mocks.providersUpsert.mockResolvedValue(listResult);
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(
+      await screen.findByRole("button", { name: /Good relay/ }),
+    );
+    await user.clear(screen.getAllByLabelText("Model id")[0]!);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText(
+        "Every request model row needs a model id. Enter an id or remove the row.",
+      ),
+    ).toBeInTheDocument();
+    expect(mocks.providersUpsert).not.toHaveBeenCalled();
+  });
+
   it("keeps the stored channel model and metadata on an unrelated save", async () => {
     // Only `m2` survives the corrupt read; the channel still runs `m1` with its
     // own window / vision / efforts. A name-and-key save must not promote the

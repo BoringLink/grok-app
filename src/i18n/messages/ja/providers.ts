@@ -131,6 +131,7 @@ export const jaProviders = {
   "prov.err.needBase": "Base URL を入力してください。",
   "prov.err.needKey": "API キーを入力してください。",
   "prov.err.needModel": "リクエストモデルを少なくとも 1 つ追加してください。",
+  "prov.err.modelIdRequired": "各リクエストモデル行にモデル ID が必要です。ID を入力するか、行を削除してください。",
   "prov.err.nativeCapability": "Grok Build 互換モードを有効にできませんでした。ライブ /models に選択したすべてのモデルが含まれ、supports_backend_search=true を明示的に返す必要があります。汎用を選ぶか、リレーのカタログを直してください。",
   "prov.err.unknownProvider": "そのプロバイダーは見つかりません。",
   "prov.officialName": "公式 Grok",

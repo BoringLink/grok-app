@@ -131,6 +131,7 @@ export const deProviders = {
   "prov.err.needBase": "Basis-URL ist erforderlich.",
   "prov.err.needKey": "API-Schlüssel ist erforderlich.",
   "prov.err.needModel": "Mindestens ein Request-Modell hinzufügen.",
+  "prov.err.modelIdRequired": "Jede Request-Modellzeile braucht eine Modell-ID. ID eingeben oder Zeile entfernen.",
   "prov.err.nativeCapability": "Grok-Build-kompatibler Modus konnte nicht aktiviert werden. Live /models muss jedes gewählte Modell enthalten und supports_backend_search=true explizit zurückgeben. Generic wählen oder den Relay-Katalog korrigieren.",
   "prov.err.unknownProvider": "Anbieter nicht gefunden.",
   "prov.officialName": "Offizielles Grok",

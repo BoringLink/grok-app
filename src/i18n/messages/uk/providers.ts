@@ -131,6 +131,7 @@ export const ukProviders = {
   "prov.err.needBase": "Потрібен базовий URL.",
   "prov.err.needKey": "Потрібен ключ API.",
   "prov.err.needModel": "Додайте принаймні одну модель запиту.",
+  "prov.err.modelIdRequired": "Кожному рядку моделі запиту потрібен ідентифікатор моделі. Введіть ідентифікатор або видаліть рядок.",
   "prov.err.nativeCapability": "Не вдалося ввімкнути Grok Build-сумісний режим. Live /models має містити кожну вибрану модель і явно повертати supports_backend_search=true. Виберіть Generic або виправте каталог реле.",
   "prov.err.unknownProvider": "Провайдера не знайдено.",
   "prov.officialName": "Офіційний Grok",
