@@ -37,8 +37,13 @@ function isCustomProviderId(providerId: string | null | undefined): boolean {
   return id.length > 0 && id.toLowerCase() !== "official";
 }
 
+/**
+ * Selectable rows for one provider. A host that sends `models` owns the list,
+ * and `[]` is an explicit clear (BOR-152); only a missing catalog keeps the
+ * legacy channel `model` row.
+ */
 function providerModelList(provider: ComposerPrefsProvider) {
-  if (provider.models?.length) return provider.models;
+  if (provider.models != null) return provider.models;
   const configured = provider.model?.trim() ?? "";
   return configured ? [{ id: configured, name: configured }] : [];
 }
@@ -85,6 +90,10 @@ function resolvedCustomModel(
   storedModel: string,
 ): string {
   const selectable = providerModelList(provider);
+  // An explicitly cleared catalog keeps the child sections older sessions
+  // still route on, so a saved pick survives; a chat without one falls
+  // through to the official default instead of the cleared channel `model`.
+  if (provider.models?.length === 0) return storedModel;
   if (storedModel && selectable.some((m) => m.id === storedModel)) {
     return storedModel;
   }

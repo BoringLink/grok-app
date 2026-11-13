@@ -286,3 +286,57 @@ describe("resolveComposerPrefsSelection", () => {
     expect(fallback.effort).toBe("xhigh");
   });
 });
+
+describe("resolveComposerPrefsSelection with an explicitly cleared catalog", () => {
+  const cleared = {
+    id: "cleared",
+    model: "deepseek-chat",
+    baseUrl: "https://cleared.example/v1",
+    models: [],
+  };
+
+  it("does not seed the channel model for a chat without a model preference", () => {
+    // Arrange — the catalog was cleared, so the channel `model` is no row
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: null, effort: null, providerId: "cleared" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [cleared],
+    });
+
+    // Act / Assert — the official default, not the cleared channel model
+    expect(next).toEqual({ modelId: "grok-4.7", effort: "high" });
+  });
+
+  it("keeps a saved session's model even though its catalog was cleared", () => {
+    // Arrange — the session still routes on its preserved child section
+    const next = resolveComposerPrefsSelection({
+      prefs: {
+        modelId: "deepseek-reasoner",
+        effort: null,
+        providerId: "cleared",
+      },
+      catalog: GROK_BUILD_MODELS,
+      providers: [cleared],
+    });
+
+    // Act / Assert
+    expect(next).toEqual({ modelId: "deepseek-reasoner", effort: "high" });
+  });
+
+  it("still seeds the channel model for a legacy provider with no catalog", () => {
+    // Arrange — no catalog at all is the legacy read, not a clear
+    const legacy = {
+      id: "legacy",
+      model: "llama3",
+      baseUrl: "https://legacy.example/v1",
+    };
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: null, effort: null, providerId: "legacy" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [legacy],
+    });
+
+    // Act / Assert
+    expect(next).toEqual({ modelId: "llama3", effort: "high" });
+  });
+});

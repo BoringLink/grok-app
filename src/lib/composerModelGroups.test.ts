@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildComposerModelGroups,
+  composerMenuProviders,
   filterComposerModelGroups,
   isComposerModelEntryActive,
   type ComposerModelEntry,
@@ -148,6 +149,93 @@ describe("buildComposerModelGroups", () => {
       officialGroupTitle: "Official",
     });
     expect(groups).toEqual([]);
+  });
+
+  it("omits a provider whose catalog was explicitly cleared", () => {
+    const groups = buildComposerModelGroups({
+      officialModels: [],
+      providers: [
+        {
+          id: "cleared",
+          name: "Cleared",
+          model: "deepseek-chat",
+          providerMode: "generic",
+          models: [],
+        },
+      ],
+      officialGroupTitle: "Official",
+    });
+    expect(groups).toEqual([]);
+  });
+
+  it("keeps the sibling providers of a cleared one listed", () => {
+    const groups = buildComposerModelGroups({
+      officialModels: official,
+      providers: [
+        { id: "cleared", name: "Cleared", model: "deepseek-chat", models: [] },
+        {
+          id: "kept",
+          name: "Kept",
+          model: "kept-default",
+          models: [{ id: "gemini-3.5-flash", name: "Gemini 3.5 Flash" }],
+        },
+      ],
+      officialGroupTitle: "Official",
+    });
+    expect(groups.map((g) => g.key)).toEqual(["official", "provider:kept"]);
+    expect(groups[1].entries.map((e) => e.pick)).toEqual([
+      { kind: "custom", providerId: "kept", modelId: "gemini-3.5-flash" },
+    ]);
+  });
+
+  it("keeps the channel row for a host that sends no catalog", () => {
+    const groups = buildComposerModelGroups({
+      officialModels: [],
+      providers: [{ id: "legacy", name: "Legacy", model: "llama3" }],
+      officialGroupTitle: "Official",
+    });
+    expect(groups).toHaveLength(1);
+    expect(groups[0].entries.map((e) => e.pick)).toEqual([
+      { kind: "custom", providerId: "legacy", modelId: "llama3" },
+    ]);
+  });
+});
+
+describe("composerMenuProviders", () => {
+  it("passes an explicitly cleared catalog through as empty", () => {
+    const rows = composerMenuProviders([
+      { id: "cleared", name: "Cleared", model: "deepseek-chat", models: [] },
+    ]);
+    expect(rows).toEqual([
+      {
+        id: "cleared",
+        name: "Cleared",
+        model: "deepseek-chat",
+        providerMode: "generic",
+        models: [],
+      },
+    ]);
+  });
+
+  it("synthesizes the legacy row when no catalog is sent", () => {
+    const rows = composerMenuProviders([
+      { id: "legacy", name: "Legacy", model: "llama3" },
+    ]);
+    expect(rows[0].models).toEqual([{ id: "llama3", name: "llama3" }]);
+  });
+
+  it("keeps a non-empty catalog", () => {
+    const rows = composerMenuProviders([
+      {
+        id: "kiro",
+        name: "Kiro",
+        model: "auto",
+        models: [{ id: "gpt-5.6-luna", name: "GPT 5.6 Luna" }],
+      },
+    ]);
+    expect(rows[0].models).toEqual([
+      { id: "gpt-5.6-luna", name: "GPT 5.6 Luna" },
+    ]);
   });
 });
 
