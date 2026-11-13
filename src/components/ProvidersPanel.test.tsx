@@ -1,7 +1,13 @@
 /**
  * @vitest-environment jsdom
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
@@ -10,6 +16,7 @@ import type { ProvidersListResult } from "@/lib/api";
 const mocks = vi.hoisted(() => ({
   providersList: vi.fn(),
   providersUpsert: vi.fn(),
+  providersListModels: vi.fn(),
   secretsGetMasked: vi.fn(),
 }));
 
@@ -21,7 +28,7 @@ vi.mock("@/lib/api", () => ({
   providersBalance: vi.fn(),
   providersCcSwitchImport: vi.fn(),
   providersCcSwitchScan: vi.fn(),
-  providersListModels: vi.fn(),
+  providersListModels: mocks.providersListModels,
   providersRemove: vi.fn(),
   providersTestModel: vi.fn(),
   providersUpsert: mocks.providersUpsert,
@@ -229,5 +236,290 @@ describe("ProvidersPanel corrupt catalog", () => {
     expect(payload?.efforts?.map((e: { id: string }) => e.id)).toEqual([
       "high",
     ]);
+  });
+});
+
+describe("ProvidersPanel per-model metadata", () => {
+  function metadataProvider(overrides: Record<string, unknown> = {}) {
+    return {
+      ...healthyProvider,
+      contextWindow: 200_000,
+      efforts: [{ id: "high", name: "High", isDefault: true }],
+      models: [
+        {
+          id: "m1",
+          name: "M1",
+          contextWindow: 128_000,
+          supportsVision: true,
+          efforts: [{ id: "high", name: "High", isDefault: true }],
+        },
+        {
+          id: "m2",
+          name: "M2",
+          contextWindow: 512_000,
+          contextWindowSource: "remote",
+          effortsSource: "remote",
+          efforts: [{ id: "low", name: "Low", isDefault: true }],
+          supportsReasoningEffort: true,
+          supportsReasoningEffortSource: "remote",
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  it("updates API-sourced rows on refresh and keeps user overrides", async () => {
+    mocks.providersList.mockResolvedValue({
+      ...listResult,
+      providers: [metadataProvider()],
+    });
+    mocks.providersListModels.mockResolvedValue({
+      endpoint: "https://relay.example/v1/models",
+      models: [
+        {
+          id: "m1",
+          contextWindow: 1_048_576,
+          reasoningEfforts: [{ id: "low" }, { id: "medium" }],
+          supportsReasoningEffort: true,
+          supportsVision: true,
+        },
+        {
+          id: "m2",
+          contextWindow: 640_000,
+          reasoningEfforts: [{ id: "low" }, { id: "medium" }],
+          supportsReasoningEffort: false,
+          supportsVision: false,
+        },
+      ],
+    });
+    mocks.providersUpsert.mockResolvedValue(listResult);
+
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(
+      await screen.findByRole("button", { name: /Good relay/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Fetch models" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const payload = mocks.providersUpsert.mock.calls[0]?.[0];
+    const rows = payload?.models as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(2);
+
+    const userRow = rows.find((row) => row.id === "m1");
+    expect(userRow?.contextWindow).toBe(128_000);
+    expect(userRow?.contextWindowSource).toBe("user");
+    expect(userRow?.supportsVision).toBe(true);
+    expect(
+      (userRow?.efforts as Array<{ id: string }>).map((effort) => effort.id),
+    ).toEqual(["high"]);
+
+    const remoteRow = rows.find((row) => row.id === "m2");
+    expect(remoteRow?.contextWindow).toBe(640_000);
+    expect(remoteRow?.contextWindowSource).toBe("remote");
+    expect(remoteRow?.supportsReasoningEffort).toBe(false);
+    expect(remoteRow?.supportsReasoningEffortSource).toBe("remote");
+    expect(
+      (remoteRow?.efforts as Array<{ id: string; isDefault?: boolean }>).map(
+        (effort) => effort.id,
+      ),
+    ).toEqual(["low", "medium"]);
+    expect(
+      (remoteRow?.efforts as Array<{ id: string; isDefault?: boolean }>).find(
+        (effort) => effort.isDefault,
+      )?.id,
+    ).toBe("medium");
+  });
+
+  it("keeps user overrides across repeated refreshes and applies the newest remote value", async () => {
+    mocks.providersList.mockResolvedValue({
+      ...listResult,
+      providers: [metadataProvider()],
+    });
+    mocks.providersListModels
+      .mockResolvedValueOnce({
+        endpoint: "https://relay.example/v1/models",
+        models: [
+          {
+            id: "m1",
+            contextWindow: 1_048_576,
+            reasoningEfforts: [{ id: "low" }, { id: "high" }],
+          },
+          { id: "m2", contextWindow: 640_000 },
+        ],
+      })
+      .mockResolvedValueOnce({
+        endpoint: "https://relay.example/v1/models",
+        models: [
+          {
+            id: "m1",
+            contextWindow: 2_000_000,
+            reasoningEfforts: [{ id: "minimum" }, { id: "maximum" }],
+          },
+          { id: "m2", contextWindow: 700_000 },
+        ],
+      });
+    mocks.providersUpsert.mockResolvedValue(listResult);
+
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(
+      await screen.findByRole("button", { name: /Good relay/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Fetch models" }));
+    await waitFor(() =>
+      expect(mocks.providersListModels).toHaveBeenCalledTimes(1),
+    );
+    await user.click(screen.getByRole("button", { name: "Fetch models" }));
+    await waitFor(() =>
+      expect(mocks.providersListModels).toHaveBeenCalledTimes(2),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const payload = mocks.providersUpsert.mock.calls[0]?.[0];
+    const rows = payload?.models as Array<Record<string, unknown>>;
+    const userRow = rows.find((row) => row.id === "m1");
+    expect(userRow?.contextWindow).toBe(128_000);
+    expect(userRow?.contextWindowSource).toBe("user");
+    expect(
+      (userRow?.efforts as Array<{ id: string }>).map((effort) => effort.id),
+    ).toEqual(["high"]);
+
+    const remoteRow = rows.find((row) => row.id === "m2");
+    expect(remoteRow?.contextWindow).toBe(700_000);
+    expect(remoteRow?.contextWindowSource).toBe("remote");
+  });
+
+  it("seeds an added API model with the 1M / four-level fallbacks", async () => {
+    mocks.providersList.mockResolvedValue({
+      ...listResult,
+      providers: [metadataProvider({ id: "empty-relay", name: "Empty relay", models: [] })],
+    });
+    mocks.providersListModels.mockResolvedValue({
+      endpoint: "https://relay.example/v1/models",
+      models: [{ id: "plain-model" }],
+    });
+    mocks.providersUpsert.mockResolvedValue(listResult);
+
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(
+      await screen.findByRole("button", { name: /Empty relay/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Fetch models" }));
+    await user.click(screen.getByTitle("plain-model"));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const payload = mocks.providersUpsert.mock.calls[0]?.[0];
+    const rows = payload?.models as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.contextWindow).toBe(1_000_000);
+    expect(rows[0]?.contextWindowSource).toBe("fallback");
+    expect(
+      (rows[0]?.efforts as Array<{ id: string }>).map((effort) => effort.id),
+    ).toEqual(["low", "medium", "high", "xhigh"]);
+    expect(rows[0]?.supportsReasoningEffort).toBe(true);
+    expect(rows[0]?.supportsReasoningEffortSource).toBe("fallback");
+    expect(rows[0]?.supportsVision).toBeUndefined();
+    expect(rows[0]?.supportsVideo).toBeUndefined();
+  });
+
+  it("persists gear edits as user overrides", async () => {
+    mocks.providersList.mockResolvedValue({
+      ...listResult,
+      providers: [metadataProvider()],
+    });
+    mocks.providersUpsert.mockResolvedValue(listResult);
+
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(
+      await screen.findByRole("button", { name: /Good relay/ }),
+    );
+    await user.click(screen.getAllByRole("button", { name: "Model settings" })[0]!);
+    const contextWindow = screen.getByLabelText("Context window");
+    await user.clear(contextWindow);
+    await user.type(contextWindow, "256000");
+    await user.click(
+      screen.getByRole("checkbox", { name: "Reasoning supported" }),
+    );
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const payload = mocks.providersUpsert.mock.calls[0]?.[0];
+    const rows = payload?.models as Array<Record<string, unknown>>;
+    const edited = rows.find((row) => row.id === "m1");
+    expect(edited?.contextWindow).toBe(256000);
+    expect(edited?.contextWindowSource).toBe("user");
+    expect(edited?.supportsReasoningEffort).toBe(false);
+    expect(edited?.supportsReasoningEffortSource).toBe("user");
+    expect(edited?.supportsVision).toBe(true);
+    expect(payload?.contextWindow).toBe(256000);
+  });
+
+  it("keeps the catalog when the API returns an empty model list", async () => {
+    mocks.providersList.mockResolvedValue({
+      ...listResult,
+      providers: [metadataProvider()],
+    });
+    mocks.providersListModels.mockResolvedValue({
+      endpoint: "https://relay.example/v1/models",
+      models: [],
+    });
+    mocks.providersUpsert.mockResolvedValue(listResult);
+    const onToast = vi.fn();
+
+    const user = userEvent.setup();
+    render(<ProvidersPanel locale="en" onToast={onToast} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /Good relay/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Fetch models" }));
+
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith("No models returned", 2800),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const payload = mocks.providersUpsert.mock.calls[0]?.[0];
+    expect(payload?.models).toBeUndefined();
+  });
+
+  it("keeps the catalog when fetching models fails", async () => {
+    mocks.providersList.mockResolvedValue({
+      ...listResult,
+      providers: [metadataProvider()],
+    });
+    mocks.providersListModels.mockRejectedValue(
+      new Error("request timed out after 10s"),
+    );
+    mocks.providersUpsert.mockResolvedValue(listResult);
+    const onToast = vi.fn();
+
+    const user = userEvent.setup();
+    render(<ProvidersPanel locale="en" onToast={onToast} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /Good relay/ }),
+    );
+    await user.click(screen.getByRole("button", { name: "Fetch models" }));
+
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith(
+        "Probe timed out. Check base URL and network, then retry.",
+        4000,
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const payload = mocks.providersUpsert.mock.calls[0]?.[0];
+    expect(payload?.models).toBeUndefined();
   });
 });

@@ -1,26 +1,37 @@
 /**
- * Per-model extras for a custom provider: context window, image/video caps,
- * reasoning ladder. Channel-level TOML still receives the active model's
- * values on save so Grok Build spawn is unchanged.
+ * Per-model metadata for a custom provider: context window, reasoning levels,
+ * and whether the model supports reasoning at all. Legacy image/video flags
+ * stay on the stored row but are not editable here.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { GlassModal } from "@/components/GlassModal";
 import { UiCheck } from "@/components/settings/shared";
 import { IconHelp, IconPlus, IconTrash } from "@/components/icons";
 import { Tip } from "@/components/ui/tooltip";
 import { createT, type Locale } from "@/i18n";
-import type { ProviderEffortEntry, ProviderModelEntry } from "@/lib/api";
+import type {
+  ProviderEffortEntry,
+  ProviderModelFieldSource,
+} from "@/lib/api";
+import type { FormModel } from "@/lib/providerForm";
 import {
-  alignGrokPresetEfforts,
-  defaultCustomChannelEfforts,
-} from "@/lib/providerPresets";
+  DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW,
+  defaultProviderModelEfforts,
+  effectiveModelContextWindow,
+  effectiveModelEfforts,
+  effectiveModelSupportsReasoningEffort,
+  normalizeModelEfforts,
+  type RemoteModelMetadata,
+} from "@/lib/providerModelConfig";
 
 export type ProviderModelSettingsValue = {
-  contextWindow: number | null;
-  supportsVision: boolean;
-  supportsVideo: boolean;
+  contextWindow: number;
+  contextWindowSource: ProviderModelFieldSource;
   efforts: ProviderEffortEntry[];
+  effortsSource: ProviderModelFieldSource;
+  supportsReasoningEffort: boolean;
+  supportsReasoningEffortSource: ProviderModelFieldSource;
 };
 
 type DraftEffort = { id: string; name: string; isDefault: boolean };
@@ -46,70 +57,89 @@ function FieldHelp({ label, tip }: { label: string; tip: string }) {
   );
 }
 
+/** Strict positive integer: separators are friendly, decimals are not. */
 function parseWindow(raw: string): number | null {
-  const n = Number(raw.replace(/[_\s,]/g, ""));
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return Math.floor(n);
+  const normalized = raw.replace(/[_\s,]/g, "");
+  if (!/^\d+$/.test(normalized)) return null;
+  const n = Number(normalized);
+  if (!Number.isSafeInteger(n) || n <= 0) return null;
+  return n;
+}
+
+function toDraftEfforts(list: ProviderEffortEntry[]): DraftEffort[] {
+  return normalizeModelEfforts(list).map((effort) => ({
+    id: effort.id,
+    name: effort.name?.trim() || effort.id,
+    isDefault: !!effort.isDefault,
+  }));
+}
+
+function resetEffortsFor(
+  remote: RemoteModelMetadata | null | undefined,
+): { efforts: ProviderEffortEntry[]; source: ProviderModelFieldSource } {
+  const remoteEfforts = normalizeModelEfforts(remote?.reasoningEfforts);
+  return remoteEfforts.length > 0
+    ? { efforts: remoteEfforts, source: "remote" }
+    : { efforts: defaultProviderModelEfforts(), source: "fallback" };
 }
 
 export function ProviderModelSettingsModal({
   open,
   locale,
   model,
-  providerId,
-  baseUrl,
-  fallbackEfforts,
+  remote,
   onClose,
   onSave,
 }: {
   open: boolean;
   locale: Locale;
-  model: ProviderModelEntry | null;
-  providerId: string;
-  baseUrl: string;
-  fallbackEfforts: ProviderEffortEntry[];
+  model: FormModel | null;
+  remote?: RemoteModelMetadata | null;
   onClose: () => void;
   onSave: (next: ProviderModelSettingsValue) => void;
 }) {
   const tr = useMemo(() => createT(locale), [locale]);
+  const windowInputRef = useRef<HTMLInputElement>(null);
   const [windowDraft, setWindowDraft] = useState("");
-  const [supportsVision, setSupportsVision] = useState(false);
-  const [supportsVideo, setSupportsVideo] = useState(false);
+  const [windowSource, setWindowSource] =
+    useState<ProviderModelFieldSource>("fallback");
+  const [windowDirty, setWindowDirty] = useState(false);
+  const [windowInvalid, setWindowInvalid] = useState(false);
   const [efforts, setEfforts] = useState<DraftEffort[]>([]);
+  const [effortsSource, setEffortsSource] =
+    useState<ProviderModelFieldSource>("fallback");
+  const [effortsDirty, setEffortsDirty] = useState(false);
+  const [supportsReasoning, setSupportsReasoning] = useState(true);
+  const [supportsReasoningSource, setSupportsReasoningSource] =
+    useState<ProviderModelFieldSource>("fallback");
+  const [supportsReasoningDirty, setSupportsReasoningDirty] = useState(false);
   const [draftEffortId, setDraftEffortId] = useState("");
   const [draftEffortName, setDraftEffortName] = useState("");
 
   useEffect(() => {
     if (!open || !model) return;
-    const seed =
-      model.efforts && model.efforts.length > 0
-        ? model.efforts
-        : fallbackEfforts.length
-          ? fallbackEfforts
-          : defaultCustomChannelEfforts();
-    setWindowDraft(
-      model.contextWindow != null && model.contextWindow > 0
-        ? String(model.contextWindow)
-        : "",
-    );
-    setSupportsVision(!!model.supportsVision);
-    setSupportsVideo(!!model.supportsVideo);
-    setEfforts(
-      seed.map((e) => ({
-        id: e.id,
-        name: e.name?.trim() || e.id,
-        isDefault: !!e.isDefault,
-      })),
-    );
+    const window = effectiveModelContextWindow(model);
+    const modelEfforts = effectiveModelEfforts(model);
+    const reasoning = effectiveModelSupportsReasoningEffort(model);
+    setWindowDraft(String(window.value));
+    setWindowSource(window.source);
+    setWindowDirty(false);
+    setWindowInvalid(false);
+    setEfforts(toDraftEfforts(modelEfforts.value));
+    setEffortsSource(modelEfforts.source);
+    setEffortsDirty(false);
+    setSupportsReasoning(reasoning.value);
+    setSupportsReasoningSource(reasoning.source);
+    setSupportsReasoningDirty(false);
     setDraftEffortId("");
     setDraftEffortName("");
-  }, [open, model, fallbackEfforts]);
+  }, [open, model]);
 
   const addEffort = () => {
     const id = draftEffortId.trim();
     if (!id) return;
     setEfforts((list) => {
-      if (list.some((x) => x.id === id)) return list;
+      if (list.some((row) => row.id === id)) return list;
       return [
         ...list,
         {
@@ -119,48 +149,66 @@ export function ProviderModelSettingsModal({
         },
       ];
     });
+    setEffortsDirty(true);
     setDraftEffortId("");
     setDraftEffortName("");
   };
 
-  const resetGrok = () => {
-    const grok = alignGrokPresetEfforts({
-      providerId,
-      baseUrl,
-      efforts: [],
-    });
-    const reset = grok ?? defaultCustomChannelEfforts();
-    setEfforts(
-      reset.map((e) => ({
-        id: e.id,
-        name: e.name || e.id,
-        isDefault: !!e.isDefault,
-      })),
-    );
+  const resetEfforts = () => {
+    const reset = resetEffortsFor(remote);
+    setEfforts(toDraftEfforts(reset.efforts));
+    setEffortsSource(reset.source);
+    setEffortsDirty(false);
   };
 
   const save = () => {
-    let nextEfforts = efforts
-      .map((e) => ({
-        id: e.id.trim(),
-        name: e.name.trim() || e.id.trim(),
-        isDefault: !!e.isDefault,
-      }))
-      .filter((e) => e.id);
-    if (nextEfforts.length === 0) {
-      nextEfforts = defaultCustomChannelEfforts().map((e) => ({
-        id: e.id,
-        name: e.name || e.id,
-        isDefault: !!e.isDefault,
-      }));
-    } else if (!nextEfforts.some((e) => e.isDefault)) {
-      nextEfforts = nextEfforts.map((e, i) => ({ ...e, isDefault: i === 0 }));
+    const trimmed = windowDraft.trim();
+    let nextWindow: number;
+    let nextWindowSource: ProviderModelFieldSource;
+    if (!trimmed) {
+      const remoteWindow =
+        remote?.contextWindow != null && remote.contextWindow > 0
+          ? Math.floor(remote.contextWindow)
+          : null;
+      nextWindow = remoteWindow ?? DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW;
+      nextWindowSource = remoteWindow != null ? "remote" : "fallback";
+    } else {
+      const parsed = parseWindow(trimmed);
+      if (parsed == null) {
+        setWindowInvalid(true);
+        windowInputRef.current?.focus();
+        return;
+      }
+      nextWindow = parsed;
+      nextWindowSource = windowDirty ? "user" : windowSource;
     }
+
+    let nextEfforts: ProviderEffortEntry[] = efforts
+      .map((effort) => ({
+        id: effort.id.trim(),
+        name: effort.name.trim() || effort.id.trim(),
+        isDefault: !!effort.isDefault,
+      }))
+      .filter((effort) => effort.id);
+    let nextEffortsSource: ProviderModelFieldSource;
+    if (nextEfforts.length === 0) {
+      const reset = resetEffortsFor(remote);
+      nextEfforts = reset.efforts;
+      nextEffortsSource = reset.source;
+    } else {
+      nextEfforts = normalizeModelEfforts(nextEfforts);
+      nextEffortsSource = effortsDirty ? "user" : effortsSource;
+    }
+
     onSave({
-      contextWindow: parseWindow(windowDraft),
-      supportsVision,
-      supportsVideo,
+      contextWindow: nextWindow,
+      contextWindowSource: nextWindowSource,
       efforts: nextEfforts,
+      effortsSource: nextEffortsSource,
+      supportsReasoningEffort: supportsReasoning,
+      supportsReasoningEffortSource: supportsReasoningDirty
+        ? "user"
+        : supportsReasoningSource,
     });
   };
 
@@ -188,37 +236,55 @@ export function ProviderModelSettingsModal({
       }
     >
       <div className="prov-model-settings">
-        <label className="prov-field">
+        <div className="prov-field">
           <FieldHelp
             label={tr("prov.modelContextWindow")}
             tip={tr("prov.modelContextWindowHint")}
           />
           <input
+            ref={windowInputRef}
             className="settings-input"
             inputMode="numeric"
             value={windowDraft}
-            onChange={(e) => setWindowDraft(e.target.value)}
+            onChange={(e) => {
+              setWindowDraft(e.target.value);
+              setWindowDirty(true);
+              setWindowInvalid(false);
+            }}
             placeholder={tr("prov.modelContextWindowPh")}
+            aria-label={tr("prov.modelContextWindow")}
+            aria-invalid={windowInvalid}
+            aria-describedby={
+              windowInvalid ? "prov-model-context-window-error" : undefined
+            }
             autoComplete="off"
             spellCheck={false}
+            maxLength={16}
           />
-        </label>
+          {windowInvalid ? (
+            <p
+              className="prov-field__hint prov-field__hint--error"
+              id="prov-model-context-window-error"
+              role="alert"
+            >
+              {tr("prov.modelContextWindowInvalid")}
+            </p>
+          ) : null}
+        </div>
 
         <div className="prov-field">
           <FieldHelp
-            label={tr("prov.modelCaps")}
-            tip={tr("prov.modelCapsHint")}
+            label={tr("prov.modelSupportsReasoning")}
+            tip={tr("prov.modelSupportsReasoningHint")}
           />
           <div className="prov-model-settings__caps">
             <UiCheck
-              checked={supportsVision}
-              onChange={setSupportsVision}
-              label={tr("prov.modelCapImages")}
-            />
-            <UiCheck
-              checked={supportsVideo}
-              onChange={setSupportsVideo}
-              label={tr("prov.modelCapVideo")}
+              checked={supportsReasoning}
+              onChange={(checked) => {
+                setSupportsReasoning(checked);
+                setSupportsReasoningDirty(true);
+              }}
+              label={tr("prov.modelSupportsReasoningOn")}
             />
           </div>
         </div>
@@ -232,9 +298,9 @@ export function ProviderModelSettingsModal({
             <button
               type="button"
               className="btn btn--ghost btn--sm"
-              onClick={resetGrok}
+              onClick={resetEfforts}
             >
-              {tr("prov.effortsResetGrok")}
+              {tr("prov.modelUseApiDefault")}
             </button>
           </span>
           <div
@@ -250,11 +316,11 @@ export function ProviderModelSettingsModal({
             {efforts.length === 0 ? (
               <p className="prov-models__empty">{tr("prov.effortsEmpty")}</p>
             ) : (
-              efforts.map((e, index) => (
+              efforts.map((effort, index) => (
                 <div key={index} className="prov-models__row">
                   <input
                     className="settings-input"
-                    value={e.name}
+                    value={effort.name}
                     onChange={(ev) => {
                       const name = ev.target.value;
                       setEfforts((list) =>
@@ -262,14 +328,16 @@ export function ProviderModelSettingsModal({
                           i === index ? { ...row, name } : row,
                         ),
                       );
+                      setEffortsDirty(true);
                     }}
                     placeholder={tr("prov.effortDisplayNamePh")}
                     aria-label={tr("prov.effortDisplayName")}
                     autoComplete="off"
+                    maxLength={80}
                   />
                   <input
                     className="settings-input"
-                    value={e.id}
+                    value={effort.id}
                     onChange={(ev) => {
                       const next = ev.target.value;
                       setEfforts((list) =>
@@ -286,18 +354,23 @@ export function ProviderModelSettingsModal({
                             : row,
                         ),
                       );
+                      setEffortsDirty(true);
                     }}
                     placeholder={tr("prov.effortIdPh")}
                     aria-label={tr("prov.effortId")}
                     autoComplete="off"
                     spellCheck={false}
+                    maxLength={64}
                   />
                   <button
                     type="button"
                     className="icon-btn prov-models__remove"
-                    onClick={() =>
-                      setEfforts((list) => list.filter((_, i) => i !== index))
-                    }
+                    onClick={() => {
+                      setEfforts((list) =>
+                        list.filter((_, i) => i !== index),
+                      );
+                      setEffortsDirty(true);
+                    }}
                     aria-label={tr("prov.removeEffort")}
                   >
                     <IconTrash size={15} />
@@ -313,6 +386,7 @@ export function ProviderModelSettingsModal({
                 placeholder={tr("prov.effortDisplayNamePh")}
                 aria-label={tr("prov.effortDisplayName")}
                 autoComplete="off"
+                maxLength={80}
               />
               <input
                 className="settings-input"
@@ -328,6 +402,7 @@ export function ProviderModelSettingsModal({
                 aria-label={tr("prov.effortId")}
                 autoComplete="off"
                 spellCheck={false}
+                maxLength={64}
                 onKeyDown={(ev) => {
                   if (ev.key === "Enter") {
                     ev.preventDefault();

@@ -132,6 +132,11 @@ fn recover_catalog_rows(items: &[serde_json::Value]) -> Vec<ProviderModelEntry> 
                     .get("contextWindow")
                     .and_then(serde_json::Value::as_u64)
                     .filter(|tokens| *tokens > 0),
+                context_window_source: item
+                    .get("contextWindowSource")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .map(str::to_string),
                 supports_vision: item
                     .get("supportsVision")
                     .and_then(serde_json::Value::as_bool),
@@ -144,6 +149,19 @@ fn recover_catalog_rows(items: &[serde_json::Value]) -> Vec<ProviderModelEntry> 
                         serde_json::from_value::<Vec<ProviderEffortEntry>>(value.clone()).ok()
                     })
                     .unwrap_or_default(),
+                efforts_source: item
+                    .get("effortsSource")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .map(str::to_string),
+                supports_reasoning_effort: item
+                    .get("supportsReasoningEffort")
+                    .and_then(serde_json::Value::as_bool),
+                supports_reasoning_effort_source: item
+                    .get("supportsReasoningEffortSource")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|value| !value.trim().is_empty())
+                    .map(str::to_string),
             })
         })
         .collect();
@@ -447,6 +465,7 @@ mod tests {
                 id: "m1".into(),
                 name: "M1".into(),
                 context_window: Some(128_000),
+                context_window_source: Some("user".into()),
                 supports_vision: Some(true),
                 supports_video: Some(false),
                 efforts: vec![ProviderEffortEntry {
@@ -454,6 +473,8 @@ mod tests {
                     name: "High".into(),
                     is_default: true,
                 }],
+                efforts_source: Some("user".into()),
+                ..Default::default()
             },
             ProviderModelEntry::named("m2", "M2"),
         ];
@@ -490,6 +511,7 @@ mod tests {
                         supports_vision: None,
                         supports_video: Some(true),
                         efforts: Vec::new(),
+                        ..Default::default()
                     }],
                     "only correctly typed fields survive, and a ladder that does not deserialize is dropped"
                 );
@@ -548,6 +570,7 @@ mod tests {
                     name: "Max".into(),
                     is_default: true,
                 }],
+                ..Default::default()
             },
             ProviderModelEntry::named("deepseek-v4-pro", "Duplicate"),
         ]);
