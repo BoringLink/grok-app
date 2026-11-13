@@ -296,18 +296,22 @@ pub struct GrokBuildProxySpawn {
 /// `models: None` keeps whatever catalog is on disk. When that catalog is
 /// unreadable or explicitly empty it fixes no rows, so the channel `model` is
 /// only a display guess: re-checking it would reject an unrelated name / key
-/// edit even though the catalog did not change. An explicit catalog edit
-/// (`Some`, including `Some([])`) and a create always hit the live gate.
+/// edit even though the catalog did not change. `models: Some([])` is the
+/// explicit clear; on an existing section it also fixes no rows, so the Host
+/// writes the empty catalog without a request. A create has no section yet and
+/// must still select a model, so it always hits the live gate. A non-empty
+/// `Some(rows)` keeps the full capability check.
 pub fn grok_build_proxy_upsert_needs_live_models(
     models: Option<&[ProviderModelEntry]>,
     stored_catalog: Option<&ModelCatalogRead>,
 ) -> bool {
-    if models.is_some() {
-        return true;
-    }
-    match stored_catalog {
-        Some(catalog) => !catalog_fixes_no_model_rows(catalog),
-        None => true,
+    match models {
+        Some([]) => stored_catalog.is_none(),
+        Some(_) => true,
+        None => match stored_catalog {
+            Some(catalog) => !catalog_fixes_no_model_rows(catalog),
+            None => true,
+        },
     }
 }
 
@@ -4443,16 +4447,35 @@ base_url = \"http://127.0.0.1:8080/v1\"
             Some(&readable)
         ));
 
-        // An explicit edit claims capabilities, including the `Some([])` clear.
+        // A non-empty edit claims capabilities and is checked live.
         let edited = vec![ProviderModelEntry::named("m2", "M2")];
-        let no_rows: Vec<ProviderModelEntry> = Vec::new();
         assert!(grok_build_proxy_upsert_needs_live_models(
             Some(&edited),
             Some(&corrupt)
         ));
         assert!(grok_build_proxy_upsert_needs_live_models(
+            Some(&edited),
+            None
+        ));
+
+        // `Some([])` is the explicit clear: an existing section fixes no rows,
+        // so there is nothing to re-check. A create still has to select one.
+        let no_rows: Vec<ProviderModelEntry> = Vec::new();
+        assert!(!grok_build_proxy_upsert_needs_live_models(
             Some(&no_rows),
             Some(&cleared)
+        ));
+        assert!(!grok_build_proxy_upsert_needs_live_models(
+            Some(&no_rows),
+            Some(&corrupt)
+        ));
+        assert!(!grok_build_proxy_upsert_needs_live_models(
+            Some(&no_rows),
+            Some(&readable)
+        ));
+        assert!(grok_build_proxy_upsert_needs_live_models(
+            Some(&no_rows),
+            None
         ));
     }
 
