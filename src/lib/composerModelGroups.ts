@@ -36,6 +36,8 @@ export type ComposerProviderInput = {
   providerMode?: string | null;
   /** Catalog of selectable models; only a missing catalog falls back to `model`. */
   models?: ComposerProviderModelInput[];
+  /** True when the stored catalog is unreadable; `models` only has recovered rows. */
+  modelCatalogCorrupt?: boolean;
 };
 
 /**
@@ -85,6 +87,7 @@ export function composerMenuProviders(
     model: string;
     providerMode?: string | null;
     models?: ReadonlyArray<{ id: string; name?: string | null }> | null;
+    modelCatalogCorrupt?: boolean;
   }>,
 ): Array<
   ComposerProviderInput & {
@@ -97,6 +100,7 @@ export function composerMenuProviders(
     name: p.name,
     model: p.model,
     providerMode: p.providerMode ?? "generic",
+    modelCatalogCorrupt: p.modelCatalogCorrupt,
     models: (
       p.models ?? (p.model ? [{ id: p.model, name: p.model }] : [])
     ).map((m) => ({

@@ -106,6 +106,51 @@ describe("resolveCustomRouteDisplay with an explicitly cleared catalog", () => {
   });
 });
 
+describe("resolveCustomRouteDisplay with a corrupt catalog", () => {
+  const corrupt = {
+    name: "Corrupt",
+    model: "m1",
+    modelCatalogCorrupt: true,
+    models: [{ id: "m1", name: "M1" }],
+  };
+
+  it("shows the saved session id the recovered rows omit", () => {
+    // Act — the host kept the session's own child section
+    const shown = resolveCustomRouteDisplay(corrupt, "m2");
+
+    // Assert — the saved id, not the recovered channel row
+    expect(shown?.chip).toEqual({ name: "m2", model: "m2" });
+    expect(shown?.requestModel).toBe("m2");
+  });
+
+  it("labels a row the recovered rows still list", () => {
+    const shown = resolveCustomRouteDisplay(corrupt, "m1");
+
+    expect(shown?.chip).toEqual({ name: "M1", model: "m1" });
+    expect(shown?.requestModel).toBe("m1");
+  });
+
+  it("keeps the existing fallback for an unknown id on a readable catalog", () => {
+    // Arrange — the flag is what gates the saved id, not the missing row
+    const readable = { ...corrupt, modelCatalogCorrupt: false };
+
+    // Act / Assert
+    expect(resolveCustomRouteDisplay(readable, "m2")?.chip).toEqual({
+      name: "M1",
+      model: "m1",
+    });
+    expect(resolveCustomRouteDisplay(readable, "m2")?.requestModel).toBe("m1");
+  });
+
+  it("does not fabricate a session model when none is stored", () => {
+    const shown = resolveCustomRouteDisplay(corrupt, "");
+
+    // The recovered row is the actual channel fallback, not a saved pick
+    expect(shown?.chip).toEqual({ name: "M1", model: "m1" });
+    expect(shown?.requestModel).toBe("m1");
+  });
+});
+
 describe("composerModelChipLabel", () => {
   it("uses official label when no custom route", () => {
     expect(

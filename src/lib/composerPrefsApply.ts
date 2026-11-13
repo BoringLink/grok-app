@@ -26,7 +26,7 @@ export type ComposerPrefsSelectionInput = {
 
 export type ComposerPrefsProvider = Pick<
   CustomProvider,
-  "id" | "model" | "models" | "efforts" | "baseUrl"
+  "id" | "model" | "models" | "efforts" | "baseUrl" | "modelCatalogCorrupt"
 > & {
   /** Missing means generic. Every catalog id is selectable (#1394). */
   providerMode?: CustomProvider["providerMode"];
@@ -85,6 +85,19 @@ function draftModelIdIsKnown(
   return providerModelList(provider).some((m) => m.id === modelId);
 }
 
+/**
+ * A saved model id that a corrupt catalog's partial read no longer lists.
+ * The host keeps the session's generic child section, so the stored id is
+ * still routable and must not be replaced by the channel `model` (BOR-152).
+ */
+function keepsUnlistedModelOnCorrupt(
+  provider: ComposerPrefsProvider,
+  storedModel: string,
+): boolean {
+  if (provider.modelCatalogCorrupt !== true || !storedModel) return false;
+  return !providerModelList(provider).some((m) => m.id === storedModel);
+}
+
 function resolvedCustomModel(
   provider: ComposerPrefsProvider,
   storedModel: string,
@@ -97,6 +110,7 @@ function resolvedCustomModel(
   if (storedModel && selectable.some((m) => m.id === storedModel)) {
     return storedModel;
   }
+  if (keepsUnlistedModelOnCorrupt(provider, storedModel)) return storedModel;
   return provider.model?.trim() || selectable[0]?.id || "";
 }
 
@@ -109,7 +123,15 @@ function customSelection(
   if (!nextModelId) return null;
   const efforts = effortOptionsFromProvider(
     resolveProviderEfforts(
-      { ...provider, baseUrl: provider.baseUrl ?? "" },
+      {
+        ...provider,
+        baseUrl: provider.baseUrl ?? "",
+        // An id the partial read omits has no row of its own; keep the
+        // channel ladder instead of borrowing another row's efforts.
+        models: keepsUnlistedModelOnCorrupt(provider, storedModel)
+          ? []
+          : provider.models,
+      },
       nextModelId,
     ),
   );

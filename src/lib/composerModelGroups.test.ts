@@ -237,6 +237,19 @@ describe("composerMenuProviders", () => {
       { id: "gpt-5.6-luna", name: "GPT 5.6 Luna" },
     ]);
   });
+
+  it("passes the corrupt-catalog flag through to the composer", () => {
+    const rows = composerMenuProviders([
+      {
+        id: "corrupt",
+        name: "Corrupt",
+        model: "m1",
+        modelCatalogCorrupt: true,
+        models: [{ id: "m1", name: "M1" }],
+      },
+    ]);
+    expect(rows[0].modelCatalogCorrupt).toBe(true);
+  });
 });
 
 describe("filterComposerModelGroups", () => {

@@ -4,9 +4,11 @@
  * Shows the model this chat picked when that id is in the provider catalog.
  * An explicitly cleared catalog (`[]`) offers no row, so only the id the chat
  * already stored can be shown; the cleared channel `model` is not selectable
- * and resolves to nothing (BOR-152). A leftover official catalog id such as
- * Grok 4.5, which is not in the catalog, falls back to the channel `model`
- * (#1337, #1394).
+ * and resolves to nothing (BOR-152). A corrupt catalog exposes only its
+ * recovered rows, so a saved id those rows omit is shown and requested as-is,
+ * because the host keeps that session's child section. A leftover official
+ * catalog id such as Grok 4.5, which is not in the catalog, falls back to the
+ * channel `model` (#1337, #1394).
  */
 
 export function resolveCustomRouteDisplay(
@@ -16,6 +18,7 @@ export function resolveCustomRouteDisplay(
         model?: string | null;
         providerMode?: string | null;
         models?: ReadonlyArray<{ id: string; name?: string | null }> | null;
+        modelCatalogCorrupt?: boolean | null;
       }
     | null
     | undefined,
@@ -38,6 +41,12 @@ export function resolveCustomRouteDisplay(
   const sessionEntry = sessionId
     ? models.find((m) => m.id === sessionId)
     : undefined;
+  if (provider.modelCatalogCorrupt === true && sessionId && !sessionEntry) {
+    return {
+      chip: { name: sessionId, model: sessionId },
+      requestModel: sessionId,
+    };
+  }
   const configuredEntry = configured
     ? models.find((m) => m.id === configured)
     : undefined;
