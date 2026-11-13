@@ -8,6 +8,7 @@ import {
   formModelsPayload,
   hostOf,
   isModelCatalogLocked,
+  keepsStoredChannel,
   modelsForProviderSave,
   modelsFromProvider,
   toFormEfforts,
@@ -312,6 +313,51 @@ describe("isModelCatalogLocked", () => {
         isCreate: true,
         formModels: [{ id: "m1", name: "M1" }],
       }),
+    ).toBe(false);
+  });
+});
+
+describe("keepsStoredChannel", () => {
+  const recovered = {
+    id: "relay",
+    model: "m1",
+    baseUrl: "https://relay.example/v1",
+    name: "Relay",
+    hasApiKey: true,
+    apiBackend: "chat_completions",
+    providerMode: "generic",
+    isDefault: false,
+    models: [{ id: "m2", name: "M2" }],
+    modelCatalogCorrupt: true,
+  } as CustomProvider;
+
+  it("keeps the stored channel while an unreadable catalog stays on disk", () => {
+    expect(
+      keepsStoredChannel({ stored: recovered, modelsToSave: undefined }),
+    ).toBe(true);
+  });
+
+  it("derives the channel when the rows repair the catalog", () => {
+    expect(
+      keepsStoredChannel({
+        stored: recovered,
+        modelsToSave: [{ id: "m2", name: "M2" }],
+      }),
+    ).toBe(false);
+  });
+
+  it("derives the channel for a readable catalog", () => {
+    expect(
+      keepsStoredChannel({
+        stored: { ...recovered, modelCatalogCorrupt: false },
+        modelsToSave: undefined,
+      }),
+    ).toBe(false);
+  });
+
+  it("derives the channel for a new provider", () => {
+    expect(
+      keepsStoredChannel({ stored: undefined, modelsToSave: undefined }),
     ).toBe(false);
   });
 });

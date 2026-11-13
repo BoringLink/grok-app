@@ -2767,6 +2767,19 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     let existing = sections.iter().find(|s| s.id == id);
     let prev_app_models = existing.and_then(|s| s.fields.get(APP_MODELS_KEY)).cloned();
     let catalog_read = read_model_catalog(prev_app_models.as_deref());
+    // An edit that omits `models` does not repair an unreadable catalog, so the
+    // channel keeps the `model` already on disk. The caller only saw recovery
+    // rows then, and adopting the first of them would silently retarget the
+    // provider on an unrelated save.
+    let model = match (&input.models, &catalog_read) {
+        (None, ModelCatalogRead::Corrupt(_)) => existing
+            .and_then(|s| s.fields.get("model"))
+            .map(|m| m.trim())
+            .filter(|m| !m.is_empty())
+            .map(str::to_string)
+            .unwrap_or(model),
+        _ => model,
+    };
     let models = match (&input.models, &catalog_read) {
         (Some(list), _) => {
             let normalized = normalize_provider_models(list);
@@ -5747,6 +5760,182 @@ app_models = {}
                 .expect("relay provider after clear");
             assert!(cleared_relay.models.is_empty());
         }
+    }
+
+    #[test]
+    fn omitting_models_keeps_the_channel_model_of_a_partially_invalid_catalog() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-recovered-channel-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        // The channel runs `m1`; only `m2` survives the partial read, because
+        // the second row carries no readable id.
+        let raw = r#"[{"id":"m2","name":"M2","contextWindow":64000,"supportsVision":false,"efforts":[{"id":"low","name":"Low","isDefault":true}]},{"id":null,"name":"M1"}]"#;
+        let old_efforts = r#"[{"id":"high","name":"High","isDefault":true}]"#;
+
+        let outcome = (|| -> Result<(String, ProvidersListResult, String), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            write_text(
+                &path,
+                &format!(
+                    "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://old.example/v1\"
+name = \"Relay\"
+api_key = \"sk-old\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+context_window = 32000
+app_supports_vision = \"true\"
+app_efforts = {}
+app_models = {}
+
+[model.relay__m1]
+model = \"m1\"
+base_url = \"https://old.example/v1\"
+name = \"M1 saved\"
+api_key = \"sk-old\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+app_parent_provider = \"relay\"
+",
+                    quote(old_efforts),
+                    quote(raw)
+                ),
+            )?;
+            let listed = upsert_custom_provider(UpsertProviderInput {
+                id: "relay".into(),
+                // What a caller that only saw the recovery rows sends.
+                model: "m2".into(),
+                base_url: "https://new.example/v1".into(),
+                name: Some("Relay renamed".into()),
+                api_key: Some("sk-new".into()),
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models: None,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            })?;
+            let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let recovered_section = session_set_model_id_for("relay", "m2");
+            Ok((text, listed, recovered_section))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (after, listed, recovered_section) =
+            outcome.expect("an edit that omits `models` should succeed");
+        assert_eq!(
+            field_of(&after, "relay", APP_MODELS_KEY).as_deref(),
+            Some(raw),
+            "the unreadable catalog stays byte-identical:\n{after}"
+        );
+        assert_eq!(
+            field_of(&after, "relay", "model").as_deref(),
+            Some("m1"),
+            "the channel keeps its stored model instead of the recovered row:\n{after}"
+        );
+        assert_eq!(
+            field_of(&after, "relay", "context_window").as_deref(),
+            Some("32000"),
+            "the recovered row's window must not become the channel window:\n{after}"
+        );
+        assert_eq!(
+            field_of(&after, "relay", APP_SUPPORTS_VISION_KEY).as_deref(),
+            Some("true"),
+            "the recovered row's vision flag must not reach the channel:\n{after}"
+        );
+        assert_eq!(
+            field_of(&after, "relay", APP_EFFORTS_KEY).as_deref(),
+            Some(old_efforts),
+            "the recovered row's effort ladder must not reach the channel:\n{after}"
+        );
+        assert_eq!(
+            field_of(&after, "relay", "name").as_deref(),
+            Some("Relay renamed")
+        );
+        assert_eq!(
+            field_of(&after, "relay", "api_key").as_deref(),
+            Some("sk-new")
+        );
+
+        assert_eq!(
+            field_of(&after, "relay__m1", "model").as_deref(),
+            Some("m1")
+        );
+        assert_eq!(
+            field_of(&after, "relay__m1", "name").as_deref(),
+            Some("M1 saved"),
+            "an older child keeps its identity on this save"
+        );
+        assert_eq!(
+            field_of(&after, "relay__m1", "base_url").as_deref(),
+            Some("https://new.example/v1"),
+            "older children still follow the channel route"
+        );
+        assert_eq!(
+            field_of(&after, "relay__m1", "api_key").as_deref(),
+            Some("sk-new")
+        );
+
+        assert_eq!(recovered_section, "relay__m2");
+        assert_eq!(
+            field_of(&after, &recovered_section, "model").as_deref(),
+            Some("m2"),
+            "a recovered row keeps its own routable child"
+        );
+        assert_eq!(
+            field_of(&after, &recovered_section, "context_window").as_deref(),
+            Some("64000"),
+            "recovered metadata belongs to the row's child, not the channel"
+        );
+
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider after the edit");
+        assert_eq!(relay.model, "m1");
+        assert_eq!(relay.context_window, Some(32_000));
+        assert!(relay.supports_vision);
+        assert_eq!(
+            relay
+                .efforts
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
+            ["high"]
+        );
+        assert_eq!(
+            relay
+                .models
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            ["m2"]
+        );
+        assert!(relay.model_catalog_corrupt);
     }
 
     #[test]

@@ -188,6 +188,23 @@ export function modelsForProviderSave(opts: {
 }
 
 /**
+ * `true` when this save keeps an unreadable `app_models` value on disk.
+ *
+ * The visible rows are then only the read-recovery result, not the stored
+ * catalog. Deriving the channel model or its metadata (context window, vision,
+ * efforts) from them would retarget the provider on an unrelated name / key
+ * save, so the caller must keep the stored channel instead.
+ */
+export function keepsStoredChannel(opts: {
+  stored: api.CustomProvider | undefined;
+  modelsToSave: api.ProviderModelEntry[] | undefined;
+}): boolean {
+  return (
+    opts.stored?.modelCatalogCorrupt === true && opts.modelsToSave === undefined
+  );
+}
+
+/**
  * Per-model settings stay off until a corrupt provider's catalog is explicitly
  * replaced in the model list; the read fallback row carries none of the
  * original catalog. A create collision stays locked until the save makes the

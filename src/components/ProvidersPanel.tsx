@@ -22,6 +22,7 @@ import {
   formModelsPayload,
   hostOf,
   isModelCatalogLocked,
+  keepsStoredChannel,
   modelsForProviderSave,
   modelsFromProvider,
   type FormState,
@@ -640,30 +641,40 @@ export function ProvidersPanel({
     setBusy(true);
     setHint(tr("prov.saving"));
     setHintTone("muted");
-    const preferred =
-      !isCreate &&
-      existing?.model &&
-      models.some((m) => m.id === existing.model)
-        ? existing.model
-        : models[0]?.id || existing?.model?.trim() || id;
-    const applied = materializeActiveModelChannel({
-      provider: {
-        id,
-        model: preferred,
-        baseUrl: form.baseUrl.trim(),
-        name: form.name.trim() || id,
-        hasApiKey: true,
-        apiBackend: form.apiBackend,
-        providerMode: form.providerMode,
-        isDefault: false,
-        models,
-        efforts: fallbackEfforts,
-        contextWindow: form.contextWindow,
-        supportsVision: form.supportsVision,
-      },
-      modelId: preferred,
-      models,
+    // An unreadable catalog that this save leaves on disk: the visible rows are
+    // recovery results, so the channel keeps its stored model and metadata.
+    const keepStoredChannel = keepsStoredChannel({
+      stored: existing,
+      modelsToSave,
     });
+    const storedModel = existing?.model?.trim() ?? "";
+    const reuseStoredModel =
+      storedModel !== "" &&
+      (keepStoredChannel ||
+        (!isCreate && models.some((m) => m.id === storedModel)));
+    const preferred = reuseStoredModel
+      ? storedModel
+      : models[0]?.id || storedModel || id;
+    const applied = keepStoredChannel
+      ? null
+      : materializeActiveModelChannel({
+          provider: {
+            id,
+            model: preferred,
+            baseUrl: form.baseUrl.trim(),
+            name: form.name.trim() || id,
+            hasApiKey: true,
+            apiBackend: form.apiBackend,
+            providerMode: form.providerMode,
+            isDefault: false,
+            models,
+            efforts: fallbackEfforts,
+            contextWindow: form.contextWindow,
+            supportsVision: form.supportsVision,
+          },
+          modelId: preferred,
+          models,
+        });
     const payload = {
       id,
       model: preferred,
@@ -674,16 +685,16 @@ export function ProvidersPanel({
       providerMode: form.providerMode,
       setAsDefault: false as boolean,
       models: modelsToSave,
-      efforts: applied.efforts ?? fallbackEfforts,
+      efforts: applied?.efforts ?? fallbackEfforts,
       baseUrlFullPath: form.baseUrlFullPath,
       // Always sent: "" clears the channel rules, so an emptied box sticks.
       appendPrompt: form.appendPrompt.trim(),
-      supportsVision: applied.supportsVision,
+      supportsVision: applied?.supportsVision ?? form.supportsVision,
       extraHeaders: form.extraHeaders
         .map((h) => ({ name: h.name.trim(), value: h.value.trim() }))
         .filter((h) => h.name && h.value),
       contextWindow:
-        applied.contextWindow != null && applied.contextWindow > 0
+        applied?.contextWindow != null && applied.contextWindow > 0
           ? applied.contextWindow
           : !isCreate &&
               existing?.contextWindow != null &&

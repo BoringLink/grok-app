@@ -9,6 +9,7 @@ import type { ProvidersListResult } from "@/lib/api";
 
 const mocks = vi.hoisted(() => ({
   providersList: vi.fn(),
+  providersUpsert: vi.fn(),
   secretsGetMasked: vi.fn(),
 }));
 
@@ -23,7 +24,7 @@ vi.mock("@/lib/api", () => ({
   providersListModels: vi.fn(),
   providersRemove: vi.fn(),
   providersTestModel: vi.fn(),
-  providersUpsert: vi.fn(),
+  providersUpsert: mocks.providersUpsert,
   openExternalUrl: vi.fn(),
   secretsSet: vi.fn(),
 }));
@@ -157,5 +158,57 @@ describe("ProvidersPanel corrupt catalog", () => {
       screen.getByText(/The saved model catalog can't be read/),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Model settings" })).toBeDisabled();
+  });
+
+  it("keeps the stored channel model and metadata on an unrelated save", async () => {
+    // Only `m2` survives the corrupt read; the channel still runs `m1` with its
+    // own window / vision / efforts. A name-and-key save must not promote the
+    // recovered row onto the channel.
+    mocks.providersList.mockResolvedValue({
+      ...listResult,
+      providers: [
+        {
+          ...corruptProvider,
+          model: "m1",
+          contextWindow: 32000,
+          supportsVision: true,
+          efforts: [{ id: "high", name: "High", isDefault: true }],
+          models: [
+            {
+              id: "m2",
+              name: "M2",
+              contextWindow: 64000,
+              supportsVision: false,
+              efforts: [{ id: "low", name: "Low", isDefault: true }],
+            },
+          ],
+        },
+      ],
+    });
+    mocks.providersUpsert.mockResolvedValue(listResult);
+
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: /Relay/ }));
+    const name = screen.getByDisplayValue("Relay");
+    await user.clear(name);
+    await user.type(name, "Relay renamed");
+    await user.type(
+      screen.getByPlaceholderText("Leave blank to keep saved key"),
+      "sk-new",
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const payload = mocks.providersUpsert.mock.calls[0]?.[0];
+    expect(payload?.name).toBe("Relay renamed");
+    expect(payload?.apiKey).toBe("sk-new");
+    expect(payload?.model).toBe("m1");
+    expect(payload?.models).toBeUndefined();
+    expect(payload?.contextWindow).toBe(32000);
+    expect(payload?.supportsVision).toBe(true);
+    expect(payload?.efforts?.map((e: { id: string }) => e.id)).toEqual([
+      "high",
+    ]);
   });
 });
