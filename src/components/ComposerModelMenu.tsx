@@ -1,7 +1,7 @@
 /**
- * Composer chip menus (Codex combined model+effort + Claude neon slider):
+ * Composer chip menus (model + this model's reasoning variants):
  * - One trigger: model + effort
- * - Simple open: pixel-neon effort slider, Advanced for explicit lists
+ * - Simple open: raw reasoning variants in catalog order; Advanced for explicit lists
  * - Access: session mode + permission in one panel
  * Narrow composer widths compress triggers to icon (+ short label).
  */
@@ -21,11 +21,9 @@ import {
   PERMISSION_POLICIES,
   SESSION_MODES,
   effortDisplayLabel,
-  effortPickerStops,
   effortsForModel,
   findModel,
-  spawnIdToEffortUiSlot,
-  type EffortPickerStop,
+  type EffortOption,
   type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
@@ -363,6 +361,10 @@ export interface ComposerModelMenuProps {
     effortLow: string;
     effortXhigh?: string;
     effortMax?: string;
+    /** Off state, only when the model advertises `none`. */
+    effortNone?: string;
+    /** Shown in place of the ladder when the model rejects reasoning effort. */
+    effortUnavailable?: string;
     /** @deprecated Strongest stop shows the catalog spawn id (xhigh), not Extra. */
     effortExtra?: string;
     /** Search field placeholder in the model flyout list. */
@@ -378,11 +380,8 @@ export interface ComposerModelMenuProps {
     contextWindowPlaceholder: string;
     contextWindowSave: string;
     contextWindowOfficialHint: string;
-    /** Codex simple-view slider + Advanced toggle. */
+    /** Codex simple-view list + Advanced toggle. */
     advanced?: string;
-    effortHint?: string;
-    effortFaster?: string;
-    effortSmarter?: string;
   };
   /** Resolved UI locale — token window uses K/M (en) vs 万/千 (zh). */
   locale?: string;
@@ -396,10 +395,11 @@ export interface ComposerModelMenuProps {
   /** Save a custom token count, or pick an official advertised window. */
   onContextWindow?: (tokens: number) => void;
   /**
-   * When custom route is active, use channel-configured efforts
-   * (e.g. DeepSeek low/high/xhigh/max) instead of official catalog.
+   * Reasoning options for the exact model this chat is routed to. `undefined`
+   * falls back to the official model catalog; an empty array means the model
+   * exposes no selectable variant.
    */
-  channelEfforts?: import("@/lib/grokCatalog").EffortOption[] | null;
+  efforts?: EffortOption[] | null;
   /** Prefer over onModel when provided. */
   onModelPick?: (pick: ComposerModelPick) => void;
   onModel?: (id: string) => void;
@@ -421,141 +421,63 @@ function effortI18n(labels: ComposerModelMenuProps["labels"]) {
     low: labels.effortLow,
     xhigh: labels.effortXhigh,
     max: labels.effortMax ?? labels.effortXhigh,
+    none: labels.effortNone,
   };
 }
 
-/** Label for a spawn effort id via the canonical UI ladder (低/中/高/极高). */
-function resolveEffortLabel(
-  spawnId: string,
-  catalogEfforts: ReturnType<typeof effortsForModel> | null | undefined,
+function effortLabelFor(
+  option: EffortOption | string,
   labels: ComposerModelMenuProps["labels"],
 ): string {
-  const slot = spawnIdToEffortUiSlot(spawnId, catalogEfforts);
-  return effortDisplayLabel(slot ?? spawnId, effortI18n(labels));
+  return effortDisplayLabel(option, effortI18n(labels));
 }
 
-/** Claude desktop Effort picker: snap-to-stops, Faster ↔ Smarter. */
-function EffortStopPicker({
-  stops,
+/** Raw model reasoning variants in catalog order (no shared ladder remap). */
+function EffortOptionList({
+  options,
   value,
-  onChange,
-  tickLabels,
-  fasterLabel,
-  smarterLabel,
-  ariaLabel,
-  valueText,
+  labels,
+  onEffort,
 }: {
-  stops: EffortPickerStop[];
+  options: EffortOption[];
   value: string;
-  onChange: (spawnId: string) => void;
-  tickLabels: string[];
-  fasterLabel: string;
-  smarterLabel: string;
-  ariaLabel: string;
-  valueText: string;
+  labels: ComposerModelMenuProps["labels"];
+  onEffort: (id: string) => void;
 }) {
-  const railRef = useRef<HTMLDivElement>(null);
-  const n = stops.length;
-  const index = Math.max(
-    0,
-    stops.findIndex((s) => s.spawnId === value),
-  );
-  const t = n <= 1 ? 0 : index / (n - 1);
-
-  const applyFromClientX = (clientX: number) => {
-    const el = railRef.current;
-    if (!el || n === 0) return;
-    const rect = el.getBoundingClientRect();
-    const pad = 8;
-    const span = Math.max(1, rect.width - pad * 2);
-    const x = (clientX - rect.left - pad) / span;
-    const next = Math.round(Math.max(0, Math.min(1, x)) * (n - 1));
-    const pick = stops[next];
-    if (pick) onChange(pick.spawnId);
-  };
-
+  if (options.length === 0) {
+    return labels.effortUnavailable ? (
+      <div className="cmm__opt cmm__opt--muted" role="status">
+        <span className="cmm__opt-main">
+          <span className="cmm__opt-title">{labels.effortUnavailable}</span>
+        </span>
+      </div>
+    ) : null;
+  }
   return (
-    <div className="cmm__stops">
-      <div className="cmm__stops-axis">
-        <span>{fasterLabel}</span>
-        <span>{smarterLabel}</span>
-      </div>
-      <div
-        ref={railRef}
-        className={
-          "cmm__stops-rail" + (stops[index]?.accent === "ultra" ? " is-ultra" : "")
-        }
-        role="slider"
-        tabIndex={0}
-        aria-label={ariaLabel}
-        aria-valuemin={0}
-        aria-valuemax={Math.max(0, n - 1)}
-        aria-valuenow={index}
-        aria-valuetext={valueText}
-        style={{ ["--cmm-stop-t" as string]: String(t) }}
-        onPointerDown={(e) => {
-          e.preventDefault();
-          e.currentTarget.setPointerCapture(e.pointerId);
-          applyFromClientX(e.clientX);
-        }}
-        onPointerMove={(e) => {
-          if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-          applyFromClientX(e.clientX);
-        }}
-        onKeyDown={(e) => {
-          if (n === 0) return;
-          if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
-            e.preventDefault();
-            const next = stops[Math.max(0, index - 1)];
-            if (next) onChange(next.spawnId);
-          } else if (e.key === "ArrowRight" || e.key === "ArrowUp") {
-            e.preventDefault();
-            const next = stops[Math.min(n - 1, index + 1)];
-            if (next) onChange(next.spawnId);
-          } else if (e.key === "Home") {
-            e.preventDefault();
-            if (stops[0]) onChange(stops[0].spawnId);
-          } else if (e.key === "End") {
-            e.preventDefault();
-            const last = stops[n - 1];
-            if (last) onChange(last.spawnId);
-          }
-        }}
-      >
-        <div className="cmm__stops-dots" aria-hidden>
-          {stops.map((s, i) => (
-            <span
-              key={s.id}
-              className={
-                "cmm__stops-dot" +
-                (i === index ? " is-active" : "") +
-                (s.accent === "ultra" ? " is-ultra" : "")
-              }
-            />
-          ))}
-        </div>
-        <span
-          className={
-            "cmm__stops-thumb" +
-            (stops[index]?.accent === "ultra" ? " is-ultra" : "")
-          }
-          aria-hidden
-        />
-        {stops.map((s, i) => (
+    <div className="cmm__effort-list" role="group" aria-label={labels.effort}>
+      {options.map((option) => {
+        const active = option.id === value;
+        return (
           <button
-            key={s.id}
+            key={option.id}
             type="button"
-            className="cmm__stops-hit"
-            style={{
-              left: `calc((100% - 12px) * ${n <= 1 ? 0 : i / (n - 1)} + 6px)`,
-            }}
-            aria-label={tickLabels[i] ?? s.id}
-            aria-pressed={i === index}
-            tabIndex={-1}
-            onClick={() => onChange(s.spawnId)}
-          />
-        ))}
-      </div>
+            className={"cmm__opt" + (active ? " is-active" : "")}
+            aria-pressed={active}
+            onClick={() => onEffort(option.id)}
+          >
+            <span className="cmm__opt-main">
+              <span className="cmm__opt-title">
+                {effortLabelFor(option, labels)}
+              </span>
+            </span>
+            {active ? (
+              <span className="cmm__opt-check" aria-hidden>
+                <IconCheck size={16} />
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -567,7 +489,7 @@ export function ComposerModelMenu({
   providers = [],
   activeSource = "official",
   activeProviderId = null,
-  channelEfforts = null,
+  efforts,
   labels,
   onModelPick,
   onModel,
@@ -633,11 +555,8 @@ export function ComposerModelMenu({
   });
   const filteredGroups = filterComposerModelGroups(groups, modelQuery);
   const activeModel = findModel(modelId, modelList);
-  const effortCatalog =
-    activeSource === "custom" && channelEfforts && channelEfforts.length > 0
-      ? effortsForModel(null, channelEfforts)
-      : effortsForModel(activeModel);
-  const pickerStops = effortPickerStops(effortCatalog);
+  const effortOptions =
+    efforts != null ? efforts : effortsForModel(activeModel);
 
   const clearModelQuery = () => setModelQuery("");
 
@@ -772,29 +691,35 @@ export function ComposerModelMenu({
     officialLabel,
     activeCustom,
   });
-  const stopLabelFor = (stop: EffortPickerStop) =>
-    effortDisplayLabel(stop.id, effortI18n(labels));
-  const activeStop =
-    pickerStops.find((s) => s.spawnId === effort) ?? pickerStops[0] ?? null;
-  const eLabel = activeStop
-    ? stopLabelFor(activeStop)
-    : resolveEffortLabel(effort, effortCatalog, labels);
+  const stopLabelFor = (option: EffortOption) =>
+    effortLabelFor(option, labels);
+  const activeEffort =
+    effortOptions.find((option) => option.id === effort) ?? null;
+  const eLabel = activeEffort
+    ? stopLabelFor(activeEffort)
+    : effortDisplayLabel(effort, effortI18n(labels));
+  const strongestId =
+    effortOptions.length > 1
+      ? effortOptions[effortOptions.length - 1]?.id
+      : undefined;
+  const activeIsStrongest =
+    !!activeEffort && activeEffort.id === strongestId;
   const triggerText = `${modelLabel} ${eLabel}`;
   const advancedLabel = labels.advanced ?? "Advanced";
-  const tickLabels = pickerStops.map((s) => stopLabelFor(s));
-  const fasterLabel = labels.effortFaster ?? labels.effortLow;
-  const smarterLabel = labels.effortSmarter ?? labels.effortHigh;
   const widthCandidates = useMemo(() => {
-    const efforts = tickLabels.length > 0 ? tickLabels : [eLabel];
-    return [...new Set(efforts.map((label) => `${modelLabel} ${label}`))];
-  }, [modelLabel, tickLabels, eLabel]);
+    const labelsForOptions =
+      effortOptions.length > 0
+        ? effortOptions.map((option) => effortLabelFor(option, labels))
+        : [eLabel];
+    return [
+      ...new Set(labelsForOptions.map((label) => `${modelLabel} ${label}`)),
+    ];
+  }, [modelLabel, effortOptions, labels, eLabel]);
 
   return (
     <MenuShell
       menu={modelMenu}
-      className={
-        "cmm--model" + (activeStop?.accent === "ultra" ? " cmm--extra" : "")
-      }
+      className={"cmm--model" + (activeIsStrongest ? " cmm--extra" : "")}
       panelClassName={
         "cmm__pop--model" + (pane === "advanced" ? " cmm__pop--hub" : "")
       }
@@ -825,25 +750,18 @@ export function ComposerModelMenu({
             <div className="cmm__simple-head">
               <span
                 className={
-                  "cmm__simple-title" +
-                  (activeStop?.accent === "ultra" ? " is-ultra" : "")
+                  "cmm__simple-title" + (activeIsStrongest ? " is-ultra" : "")
                 }
               >
                 {labels.effort} {eLabel}
               </span>
             </div>
-            {pickerStops.length > 0 ? (
-              <EffortStopPicker
-                stops={pickerStops}
-                value={effort}
-                onChange={onEffort}
-                tickLabels={tickLabels}
-                fasterLabel={fasterLabel}
-                smarterLabel={smarterLabel}
-                ariaLabel={labels.effort}
-                valueText={eLabel}
-              />
-            ) : null}
+            <EffortOptionList
+              options={effortOptions}
+              value={effort}
+              labels={labels}
+              onEffort={onEffort}
+            />
           </div>
           <div
             className="cmm__hub-body cmm__hub"
@@ -885,7 +803,7 @@ export function ComposerModelMenu({
                 <span
                   className={
                     "cmm__row-val-text" +
-                    (activeStop?.accent === "ultra" ? " is-ultra" : "")
+                    (activeIsStrongest ? " is-ultra" : "")
                   }
                 >
                   {eLabel}
@@ -1049,33 +967,47 @@ export function ComposerModelMenu({
                   </div>
                 )
               ) : hubFlyout === "effort" ? (
-                pickerStops.map((s) => {
-                  const active = s.spawnId === effort;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className={"cmm__opt" + (active ? " is-active" : "")}
-                      onClick={() => onEffort(s.spawnId)}
-                    >
-                      <span className="cmm__opt-main">
-                        <span
-                          className={
-                            "cmm__opt-title" +
-                            (s.accent === "ultra" ? " is-ultra" : "")
-                          }
-                        >
-                          {stopLabelFor(s)}
+                effortOptions.length > 0 ? (
+                  effortOptions.map((option) => {
+                    const active = option.id === effort;
+                    const strongest =
+                      option.id ===
+                      effortOptions[effortOptions.length - 1]?.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={"cmm__opt" + (active ? " is-active" : "")}
+                        aria-pressed={active}
+                        onClick={() => onEffort(option.id)}
+                      >
+                        <span className="cmm__opt-main">
+                          <span
+                            className={
+                              "cmm__opt-title" +
+                              (strongest ? " is-ultra" : "")
+                            }
+                          >
+                            {stopLabelFor(option)}
+                          </span>
                         </span>
+                        {active ? (
+                          <span className="cmm__opt-check" aria-hidden>
+                            <IconCheck size={16} />
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                ) : labels.effortUnavailable ? (
+                  <div className="cmm__opt cmm__opt--muted" role="status">
+                    <span className="cmm__opt-main">
+                      <span className="cmm__opt-title">
+                        {labels.effortUnavailable}
                       </span>
-                      {active ? (
-                        <span className="cmm__opt-check" aria-hidden>
-                          <IconCheck size={16} />
-                        </span>
-                      ) : null}
-                    </button>
-                  );
-                })
+                    </span>
+                  </div>
+                ) : null
               ) : officialWindowChoices.length > 1 ? (
                 officialWindowChoices.map((n) => {
                   const active = contextWindow === n;

@@ -450,7 +450,7 @@ describe("composer chip portal pops", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("opens a combined model menu with an effort slider and Advanced", async () => {
+  it("opens a combined model menu with raw effort options and Advanced", async () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
@@ -481,7 +481,7 @@ describe("composer chip portal pops", () => {
     await user.click(screen.getByRole("button", { name: "Model" }));
     const pop = bodyPop();
     expect(pop).not.toBeNull();
-    expect(pop!.querySelector('[role="slider"]')).not.toBeNull();
+    expect(pop!.querySelector(".cmm__effort-list")).not.toBeNull();
     expect(pop!.textContent ?? "").toMatch(/Effort High/);
     expect(screen.getByRole("button", { name: "Advanced" })).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Advanced" }));
@@ -638,7 +638,7 @@ describe("composer chip portal pops", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: prev });
   });
 
-  it("reopens the effort slider after closing from Advanced", async () => {
+  it("reopens the effort options after closing from Advanced", async () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
@@ -674,7 +674,7 @@ describe("composer chip portal pops", () => {
     await user.click(trigger);
     const pop = bodyPop();
     expect(pop).not.toBeNull();
-    expect(pop!.querySelector('[role="slider"]')).not.toBeNull();
+    expect(pop!.querySelector(".cmm__effort-list")).not.toBeNull();
     expect(screen.queryByRole("searchbox", { name: "Search models" })).toBeNull();
   });
 
@@ -827,5 +827,160 @@ describe("composer chip portal pops", () => {
     expect(screen.queryByRole("searchbox", { name: "Search models" })).toBeNull();
     expect(pop!.textContent ?? "").toMatch(/Extra high/);
     expect(pop!.textContent ?? "").not.toMatch(/\bxhigh\b/);
+  });
+
+  it("lists raw model reasoning ids in catalog order and sends the exact id", async () => {
+    const user = userEvent.setup();
+    const onEffort = vi.fn();
+    render(
+      <ComposerModelMenu
+        modelId="m-raw"
+        effort="balanced"
+        efforts={[
+          { id: "minimal", label: "Minimal" },
+          { id: "balanced", label: "Balanced" },
+          { id: "ultra", label: "Ultra" },
+        ]}
+        labels={{
+          model: "Model",
+          effort: "Effort",
+          effortHigh: "High",
+          effortMedium: "Medium",
+          effortLow: "Low",
+          modelSearchPlaceholder: "Search models",
+          modelSearchEmpty: "No models",
+          modelGroupOfficial: "Official",
+          contextWindow: "Context window",
+          contextWindowOfficial: "official",
+          contextWindowCustom: "custom",
+          contextWindowPlaceholder: "tokens",
+          contextWindowSave: "Save",
+          contextWindowOfficialHint: "unknown",
+          advanced: "Advanced",
+        }}
+        onEffort={onEffort}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Model" }));
+    const pop = bodyPop();
+    expect(pop).not.toBeNull();
+    expect(pop!.querySelector('[role="slider"]')).toBeNull();
+    const titles = Array.from(
+      pop!.querySelectorAll(".cmm__effort-list .cmm__opt-title"),
+    ).map((el) => el.textContent);
+    expect(titles).toEqual(["Minimal", "Balanced", "Ultra"]);
+    expect(
+      screen
+        .getByRole("button", { name: "Balanced" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Ultra" }));
+    expect(onEffort).toHaveBeenCalledWith("ultra");
+  });
+
+  it("shows an Off row only when the model advertises none", async () => {
+    const user = userEvent.setup();
+    render(
+      <ComposerModelMenu
+        modelId="m-off"
+        effort="low"
+        efforts={[
+          { id: "low", label: "Low" },
+          { id: "none", label: "none" },
+        ]}
+        labels={{
+          model: "Model",
+          effort: "Effort",
+          effortHigh: "High",
+          effortMedium: "Medium",
+          effortLow: "Low",
+          effortNone: "Off",
+          modelSearchPlaceholder: "Search models",
+          modelSearchEmpty: "No models",
+          modelGroupOfficial: "Official",
+          contextWindow: "Context window",
+          contextWindowOfficial: "official",
+          contextWindowCustom: "custom",
+          contextWindowPlaceholder: "tokens",
+          contextWindowSave: "Save",
+          contextWindowOfficialHint: "unknown",
+          advanced: "Advanced",
+        }}
+        onEffort={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Model" }));
+    expect(screen.getByRole("button", { name: "Off" })).toBeTruthy();
+  });
+
+  it("hides Off when the model does not advertise it", async () => {
+    const user = userEvent.setup();
+    render(
+      <ComposerModelMenu
+        modelId="m-plain"
+        effort="low"
+        efforts={[
+          { id: "low", label: "Low" },
+          { id: "high", label: "High" },
+        ]}
+        labels={{
+          model: "Model",
+          effort: "Effort",
+          effortHigh: "High",
+          effortMedium: "Medium",
+          effortLow: "Low",
+          effortNone: "Off",
+          modelSearchPlaceholder: "Search models",
+          modelSearchEmpty: "No models",
+          modelGroupOfficial: "Official",
+          contextWindow: "Context window",
+          contextWindowOfficial: "official",
+          contextWindowCustom: "custom",
+          contextWindowPlaceholder: "tokens",
+          contextWindowSave: "Save",
+          contextWindowOfficialHint: "unknown",
+          advanced: "Advanced",
+        }}
+        onEffort={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Model" }));
+    expect(screen.queryByRole("button", { name: "Off" })).toBeNull();
+  });
+
+  it("shows the localized unavailable note when a model has no effort options", async () => {
+    const user = userEvent.setup();
+    render(
+      <ComposerModelMenu
+        modelId="m-nothink"
+        effort=""
+        efforts={[]}
+        labels={{
+          model: "Model",
+          effort: "Effort",
+          effortHigh: "High",
+          effortMedium: "Medium",
+          effortLow: "Low",
+          effortUnavailable: "No reasoning options",
+          modelSearchPlaceholder: "Search models",
+          modelSearchEmpty: "No models",
+          modelGroupOfficial: "Official",
+          contextWindow: "Context window",
+          contextWindowOfficial: "official",
+          contextWindowCustom: "custom",
+          contextWindowPlaceholder: "tokens",
+          contextWindowSave: "Save",
+          contextWindowOfficialHint: "unknown",
+          advanced: "Advanced",
+        }}
+        onEffort={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Model" }));
+    expect(bodyPop()!.textContent ?? "").toContain("No reasoning options");
   });
 });

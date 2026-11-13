@@ -35,32 +35,25 @@ Flags **必须在** `stdio` 之前。连接后 `session/set_model` 再对齐一�
 
 ## 推理强度（effort）
 
-CLI `models_cache.json` 每模型可带 `info.reasoning_efforts: [{id,value,label,description,default}]`。Host 经 `AvailableModel.reasoningEfforts`（`isDefault`）下发。
-
-Composer **UI 阶梯**统一为 4 档（低 → 高）：**低 / 中 / 高 / 极高**。  
-3 档模型（Grok 4.5）不展示「极高」；4 档官方模型（Grok 4.7、Grok 4.7 Fast、Grok 4.6）展示极高并 spawn `xhigh`。选中后映射为该模型真实 spawn / `reasoning_effort` 值。  
-自定义通道若只配了部分 id（如 `low` / `high` / `max`，没有 `medium`）：**按 id 对号入座，缺档不展示**。不要当成 DeepSeek（DeepSeek 才把 `high` 映射到「中」）。同一 spawn id 不得同时勾选两档。
-
-| UI 阶梯 | Grok 4.5 spawn | Grok 4.7 / Fast / 4.6 spawn | Grok 自定义(4档) | DeepSeek spawn |
-|---------|----------------|----------------|------------------|----------------|
-| 低 | `low` | `low` | `low` | `low` |
-| 中 | `medium` | `medium` | `medium` | `high` |
-| 高 | `high` | `high` | `high` | `xhigh` |
-| 极高 | —（不展示） | `xhigh` | `max` | `max` |
+Composer 按**当前会话解析出的 provider / model** 读取该模型自己的推理档位，直接展示模型提供的原始 id 与顺序；不同模型不再折叠映射到统一四级滑杆。
 
 解析顺序（真实可选值）：
 
-1. **当前会话路由到自定义 provider** → 该提供商的 `efforts`（`app_efforts`）
-2. 否则官方 catalog 的 `reasoningEfforts`（**以 CLI `models_cache` / `isDefault` 为准**）
-3. 再回退：`grok-4.7` / `grok-4.7-build-fast` / `grok-4.6` → `GROK_4_6_EFFORTS`（`low` · `medium` · `high` · `xhigh`，默认 **xhigh**）；其余 → `GROK_BUILD_EFFORTS`（`low` · `medium` · `high`，默认 **high**）
+1. **当前会话的官方模型** → CLI `models_cache.json` 的 `info.reasoning_efforts: [{id,value,label,description,default}]`（Host 经 `AvailableModel.reasoningEfforts` 下发，`isDefault` 标记默认档）。
+2. **当前会话的自定义 provider 模型行** → `models[].efforts`（`app_models`）。模型行没有档位时回退该提供商的通道 `efforts`（`app_efforts`）。
+3. 仍无档位时：自定义模型使用 `low` · `medium` · `high` · `xhigh`（默认 `medium`）；官方静态兜底见 `src/lib/grokCatalog.ts`。
 
-自定义通道默认档（`GROK_CHANNEL_EFFORTS`，空白自定义点「恢复 Grok 默认」得到）：`low` · `medium` · `high` · `max`——4 档，`max` 映射极高 UI 槽（catalog kind `tier4`）。
+选择与恢复：
 
-自定义提供商**模型级**默认档（`/models` 未提供 reasoning 元数据、用户未覆盖时）：`low` · `medium` · `high` · `xhigh`，默认 `medium`；按原始 id 保存，不做 DeepSeek 或官方阶梯映射。模型可关闭「支持推理」，Composer 在下游据此不展示该模型的推理档位。**Grok 中转预设**（Amux / 云驿 / AI98PRO）列出公开 API 的 `grok-4.7`、`grok-4.6`、`grok-4.5`（不含 Fast），思考档 `low` · `medium` · `high` · `xhigh`（默认 **xhigh**；显示名 Low / Medium / High / Extra high）。官方 `GROK_BUILD_EFFORTS` 仍为 3 档。
+- 有 `isDefault` → 用它；否则 `medium` 存在时用 `medium`；否则第一个。见 `src/lib/sessionEffort.ts` 的 `pickSessionEffort` / `src/lib/grokCatalog.ts` 的 `pickDefaultEffort`。
+- 切换模型 / provider / 会话时，新模型仍提供同一原始 id 就保留；否则落到新模型的默认档并写回该会话，避免下一条消息沿用失效 id。**不做**跨模型阶梯映射（不再把 DeepSeek `high` 映射成官方 `medium` 之类）。
+- 模型行 `supportsReasoningEffort = false` → Composer 不展示该模型的档位，并显示本地化的不可用说明；不借用通道或其它模型行。
+- `none` 表示关闭思考：只有该模型自己的 catalog 明确列出 `none`（官方 live cache，或自定义模型/通道档位）且模型支持推理时才展示、保存和下发。`supportsReasoningEffort = true` 不能推断所有模型都可关闭；`none` 也不会伪装成最低档。官方资料没有把 `none` 列为 ACP 默认可用值，因此未广告时不出现。
+- 展示标签：已知 id（`low` / `medium` / `high` / `xhigh` / `max` / `none`）走 i18n（`effort.*`）；其它 id 用 catalog 的 name/label，再回退原始 id。
 
-展示标签走 UI 阶梯 i18n（`effort.low|medium|high|xhigh`），不直接用上游 id 文案。
+Spawn / 应用：`--reasoning-effort <raw id>`。Host 透传 catalog / 模型 id（含 `max`、`none` 与自定义 id），不硬白名单仅 low/medium/high。当前 Host 没有 `session/set_effort` RPC；若以后接入 ACP `session/set_config_option`（`configId=reasoning_effort`），必须使用同一原始 id。Composer 菜单与手机工具面板共用同一档位列表。
 
-Spawn：`--reasoning-effort <spawnId>`。Host **透传** catalog / 通道 id（含 `max` 等），不硬白名单仅 low/medium/high。切换通道时按阶梯对齐（极高在 3 档上钳到「高」）。中途修改：soft-disconnect agent → 下一条消息重连。无 `session/set_effort` RPC。
+**Live 语义**：更改档位后，live agent 在**回合结束后** soft-respawn，正在运行的回合不会被中断；空闲会话写 prefs，下一条消息 / 下次连接生效。保存或 API 失败时 Composer 选中态保持不变，并按 `classifyModelEffortError` 分类显示本地化提示。
 
 **产品默认（4.7）：** 官方冷启动与未设 prefs 时 model = **grok-4.7**、effort = **xhigh**。`grok-4.7-build-fast`（Grok 4.7 Fast）在官方菜单里可选，价格约为标准 4.7 的两倍，不进中转预设。CLI cache 可能同时把 `xhigh` 和 `high` 标成 default，Host/前端归一为 **xhigh**。用户可在 Composer 降为 high/medium/low 以缩短 TTFT。旧安装若全局 model 仍为历史产品默认 `grok-4.5`，先一次性抬到 `grok-4.6`；若 CLI `models_cache` 已列出 `grok-4.7`，再把空值或 `grok-4.6` 抬到 `grok-4.7`（显式 `grok-4.5`、Fast、自定义 id 不动；缓存还没有 4.7 时不抬，下次启动再试）。官方路由上旧 effort `high` 一次性抬到 `xhigh`（显式 low/medium/max 不动）。**存量会话 / 项目行**在 `official_effort_xhigh_rows_migrated` 下把 `effort: high` 且 model 为空或 `grok-4.6` 的行抬到 `xhigh`；`grok-4.5` 与自定义 id 不动。切到无 xhigh 的 catalog 时 resolve 层钳到该模型最高档。旧 effort `medium` 仍一次性抬到 high（3 档兜底）。
 
@@ -69,7 +62,7 @@ Spawn：`--reasoning-effort <spawnId>`。Host **透传** catalog / 通道 id（�
 | 控制 | 无 live Agent | Live Agent |
 |------|---------------|------------|
 | 模型 | `next_message`（下条消息 spawn） | `session/set_model` → `immediate_rpc`；不支持则 `soft_respawn` |
-| 推理 | `next_message` | `soft_respawn`（无 set_effort） |
+| 推理 | `next_message` | `soft_respawn`（回合结束后；无 set_effort） |
 
 不得静默失败：prefs / set_model 错误经 `classifyModelEffortError` 分类 toast。
 

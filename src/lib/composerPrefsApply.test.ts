@@ -380,7 +380,7 @@ describe("resolveComposerPrefsSelection with an explicitly cleared catalog", () 
     });
 
     // Act / Assert
-    expect(next).toEqual({ modelId: "deepseek-reasoner", effort: "high" });
+    expect(next).toEqual({ modelId: "deepseek-reasoner", effort: "medium" });
     // The session keeps its stored route, so no official override is issued.
     expect(next.providerId).toBeUndefined();
     // The chip has to route on that same id, not the cleared channel `model`.
@@ -403,7 +403,7 @@ describe("resolveComposerPrefsSelection with an explicitly cleared catalog", () 
     });
 
     // Act / Assert
-    expect(next).toEqual({ modelId: "llama3", effort: "high" });
+    expect(next).toEqual({ modelId: "llama3", effort: "medium" });
     // A legacy provider that still lists a row keeps its own route.
     expect(next.providerId).toBeUndefined();
   });
@@ -509,5 +509,89 @@ describe("resolveComposerPrefsSelection with a corrupt catalog", () => {
     });
 
     expect(next).toEqual({ modelId: "grok-4.5", effort: "low" });
+  });
+});
+
+describe("resolveComposerPrefsSelection per-model reasoning variants", () => {
+  const sharedId = "shared-model";
+  const alpha = {
+    id: "alpha",
+    model: sharedId,
+    baseUrl: "https://alpha.example/v1",
+    models: [
+      {
+        id: sharedId,
+        name: "Shared",
+        efforts: [
+          { id: "minimal", name: "minimal" },
+          { id: "balanced", name: "balanced", isDefault: true },
+        ],
+      },
+    ],
+  };
+  const beta = {
+    id: "beta",
+    model: sharedId,
+    baseUrl: "https://beta.example/v1",
+    models: [
+      {
+        id: sharedId,
+        name: "Shared",
+        efforts: [
+          { id: "quick", name: "quick" },
+          { id: "deep", name: "deep" },
+        ],
+      },
+    ],
+  };
+
+  it("restores the raw id from the provider's own model ladder", () => {
+    const fromAlpha = resolveComposerPrefsSelection({
+      prefs: { modelId: sharedId, effort: "minimal", providerId: "alpha" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [alpha, beta],
+    });
+    const fromBeta = resolveComposerPrefsSelection({
+      prefs: { modelId: sharedId, effort: "quick", providerId: "beta" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [alpha, beta],
+    });
+
+    expect(fromAlpha).toEqual({ modelId: sharedId, effort: "minimal" });
+    expect(fromBeta).toEqual({ modelId: sharedId, effort: "quick" });
+  });
+
+  it("falls back to the model's default when a stored id is not advertised", () => {
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: sharedId, effort: "deep", providerId: "alpha" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [alpha, beta],
+    });
+
+    expect(next).toEqual({ modelId: sharedId, effort: "balanced" });
+  });
+
+  it("keeps the stored id when the model rejects reasoning effort", () => {
+    const noThink = {
+      id: "nothink",
+      model: "plain",
+      baseUrl: "https://nothink.example/v1",
+      efforts: [{ id: "channel", name: "channel", isDefault: true }],
+      models: [
+        {
+          id: "plain",
+          name: "Plain",
+          supportsReasoningEffort: false,
+          efforts: [{ id: "low", name: "low" }],
+        },
+      ],
+    };
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: "plain", effort: "stored", providerId: "nothink" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [noThink],
+    });
+
+    expect(next).toEqual({ modelId: "plain", effort: "stored" });
   });
 });

@@ -50,6 +50,7 @@ export const ptBRCore = {
   "effort.low": "Baixo",
   "effort.xhigh": "Muito alto",
   "effort.max": "Muito alto",
+  "effort.none": "Desativado",
   "mode.agent": "Agente",
   "mode.plan": "Plano",
   "mode.ask": "Perguntar",

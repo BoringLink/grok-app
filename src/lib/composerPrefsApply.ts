@@ -6,7 +6,6 @@
 
 import type { CustomProvider } from "@/lib/api/providers";
 import {
-  effortOptionsFromProvider,
   findModel,
   GROK_BUILD_MODELS,
   isValidEffort,
@@ -16,7 +15,7 @@ import {
   type EffortOption,
   type ModelOption,
 } from "@/lib/grokCatalog";
-import { resolveProviderEfforts } from "@/lib/providerModelConfig";
+import { pickSessionEffort, resolveSessionEffortOptions } from "@/lib/sessionEffort";
 
 export type ComposerPrefsSelectionInput = {
   modelId?: string | null;
@@ -121,23 +120,18 @@ function customSelection(
 ): { modelId: string; effort: string } | null {
   const nextModelId = resolvedCustomModel(provider, storedModel);
   if (!nextModelId) return null;
-  const efforts = effortOptionsFromProvider(
-    resolveProviderEfforts(
-      {
-        ...provider,
-        baseUrl: provider.baseUrl ?? "",
-        // An id the partial read omits has no row of its own; keep the
-        // channel ladder instead of borrowing another row's efforts.
-        models: keepsUnlistedModelOnCorrupt(provider, storedModel)
-          ? []
-          : provider.models,
-      },
-      nextModelId,
-    ),
-  );
+  const resolution = resolveSessionEffortOptions({
+    source: "custom",
+    // A corrupt partial read has no row for the stored id; the channel
+    // ladder stays in charge instead of borrowing another row's efforts.
+    provider: keepsUnlistedModelOnCorrupt(provider, storedModel)
+      ? { ...provider, models: [] }
+      : provider,
+    modelId: nextModelId,
+  });
   return {
     modelId: nextModelId,
-    effort: pickEffort(effort, efforts),
+    effort: pickSessionEffort(resolution.options, effort),
   };
 }
 

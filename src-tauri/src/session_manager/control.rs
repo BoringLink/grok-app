@@ -1628,6 +1628,24 @@ mod recycle_tests {
     }
 
     #[test]
+    fn mid_turn_effort_changes_keep_the_running_turn() {
+        // Arrange — a live agent is streaming an answer for this chat
+        let mgr = SessionManager::new();
+        let mut live = ready_session("sess-effort", "proc-effort", "agent-effort", "official");
+        let _ = live.fsm.begin_stream();
+        live.prompt_in_flight = true;
+        *mgr.inner.lock() = Some(live);
+
+        // Assert — effort retuning must defer to turn end, not kill the turn
+        assert!(mgr.session_is_busy("sess-effort"));
+        let guard = mgr.inner.lock();
+        let live = guard.as_ref().expect("live session");
+        assert!(SessionManager::should_preserve_live_process(live));
+        drop(guard);
+        assert!(!mgr.pending_soft_respawn.lock().contains_key("sess-effort"));
+    }
+
+    #[test]
     fn drain_all_agent_slots_clears_empty_maps() {
         let mgr = SessionManager::new();
         assert_eq!(mgr.tracked_agent_map_counts(), (0, 0, 0));

@@ -3,7 +3,7 @@
  * Draft/queue chrome lives in WorkbenchComposerShell.
  */
 import { useMemo, type Dispatch, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, type SetStateAction } from "react";
-import { createT } from "@/i18n";
+import { createT, type MessageKey } from "@/i18n";
 import type { AccountStatus } from "@/lib/api/account";
 import type { Project, SessionRow } from "@/lib/app/sidebarModels";
 import type { ComposerAtFileEntry } from "@/components/ComposerAtPanel";
@@ -61,6 +61,7 @@ import {
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ComposerModelMenu } from "@/components/ComposerModelMenu";
+import { buildApplyFooterNote, sessionHasLiveAgent } from "@/lib/modelEffortApply";
 import { WorkbenchComposerShell } from "@/app/WorkbenchComposerShell";
 import { MultiRootWorkspaceModal } from "@/components/MultiRootWorkspaceModal";
 import { useMultiRootWorkspace } from "@/hooks/useMultiRootWorkspace";
@@ -96,7 +97,7 @@ export type WorkbenchComposerColumnProps = {
   setProjects: Dispatch<SetStateAction<Project[]>>;
   setLocalError: Dispatch<SetStateAction<string | null>>;
   canGuideQueuedMessage: boolean;
-  channelEffortOptions: EffortOption[] | null;
+  effortOptions: EffortOption[] | null;
   chatAttachments: ChatRef[];
   clearSlashFilters: () => void;
   cliWorktrees: CliWorktreeEntry[];
@@ -359,12 +360,16 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
     composerProviderInputs,
     providerActiveSource,
     providerActiveId,
-    channelEffortOptions,
+    effortOptions,
     currentModelWindow,
     handleContextWindow,
     handleModelPick,
     handleEffortPick,
   } = p;
+  const effortApplyNote = buildApplyFooterNote({
+    kind: "effort",
+    hasLiveAgent: sessionHasLiveAgent(session.state),
+  });
   const multiRoot = useMultiRootWorkspace();
   const [permBusy, setPermBusy] = useState(false);
   const [permError, setPermError] = useState<string | null>(null);
@@ -1005,7 +1010,12 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                   providers={composerProviderInputs}
                   activeSource={providerActiveSource}
                   activeProviderId={providerActiveId}
-                  channelEfforts={channelEffortOptions}
+                  efforts={effortOptions}
+                  applyNotes={{
+                    effort: effortApplyNote
+                      ? tr(effortApplyNote.messageKey as MessageKey, effortApplyNote.vars)
+                      : null,
+                  }}
                   contextWindow={currentModelWindow}
                   contextWindowEditable={customRouteActive}
                   onContextWindow={handleContextWindow}
@@ -1018,6 +1028,8 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                     effortLow: tr("effort.low"),
                     effortXhigh: tr("effort.xhigh"),
                     effortMax: tr("effort.max"),
+                    effortNone: tr("effort.none"),
+                    effortUnavailable: tr("composer.effortUnavailable"),
                     modelSearchPlaceholder: tr(
                       "composer.modelSearchPlaceholder",
                     ),
@@ -1035,9 +1047,6 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                       "composer.contextWindowOfficialHint",
                     ),
                     advanced: tr("composer.advanced"),
-                    effortHint: tr("composer.effortPanelHint"),
-                    effortFaster: tr("composer.effortFaster"),
-                    effortSmarter: tr("composer.effortSmarter"),
                   }}
                   onModelPick={(pick) => {
                     void handleModelPick(pick);

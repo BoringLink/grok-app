@@ -248,16 +248,12 @@ import {
 import {
   DEFAULT_EFFORT,
   DEFAULT_MODEL_ID,
-  GROK_BUILD_EFFORTS,
   GROK_BUILD_MODELS,
   findModel,
-  effortCatalogForRoute,
-  effortOptionsFromProvider,
   isValidEffort,
   isValidModelId,
   isValidPolicy,
   isValidPrefsScope,
-  mapEffortToTargetCatalog,
   pickDefaultEffort,
   pickDefaultModelId,
   resolveContextWindow,
@@ -265,11 +261,15 @@ import {
   type ModelOption,
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
+import { modelsForContextWindow } from "@/lib/providerModelConfig";
 import {
-  materializeActiveModelChannel,
-  modelsForContextWindow,
-  resolveProviderEfforts,
-} from "@/lib/providerModelConfig";
+  classifyModelEffortError,
+  modelEffortErrorMessageKey,
+} from "@/lib/modelEffortApply";
+import {
+  pickSessionEffort,
+  resolveSessionEffortOptions,
+} from "@/lib/sessionEffort";
 import {
   mapPermissionButtons,
 } from "@/lib/permissionOptions";
@@ -713,6 +713,8 @@ import { useComposerSend } from "@/hooks/useComposerSend";
 import { useComposerEndPad } from "@/hooks/useComposerEndPad";
 import { useRewindComposerRestore } from "@/hooks/useRewindComposerRestore";
 import { useSessionCatalog } from "@/hooks/useSessionCatalog";
+import { useComposerEffort } from "@/hooks/useComposerEffort";
+import { useSessionEffortOptions } from "@/hooks/useSessionEffortOptions";
 import {
   createSessionNavHost,
   useSessionNavigation,
@@ -2404,6 +2406,26 @@ export function AppWorkbench() {
         isValidPolicy(prefs.permissionPolicy) ? prefs.permissionPolicy : "ask",
       );
       if (isValidPrefsScope(prefs.scope)) setPrefsScope(prefs.scope);
+      // The chip now shows this model's default; persist it so the next spawn
+      // does not reuse an id the model no longer advertises.
+      if (api.isTauri() && next.effort !== (prefs.effort ?? "").trim()) {
+        void api
+          .composerPrefsSet({
+            sessionId: chipFor?.sessionId ?? null,
+            effort: next.effort,
+          })
+          .catch((error) => {
+            console.warn("composer effort reconcile save failed", error);
+            showToastRef.current(
+              tr(
+                modelEffortErrorMessageKey(
+                  classifyModelEffortError(error),
+                ) as MessageKey,
+              ),
+              4000,
+            );
+          });
+      }
       if (chipFor) {
         sessionProviderChip.applyPrefsRoute({
           routeProviderId: next.providerId,
@@ -2412,7 +2434,7 @@ export function AppWorkbench() {
         });
       }
     },
-    [sessionProviderChip],
+    [sessionProviderChip, tr],
   );
 
   const refreshLists = useCallback(async () => {
@@ -9087,67 +9109,28 @@ export function AppWorkbench() {
     void refreshVoiceGate();
   }, [customRouteActive, refreshVoiceGate]);
 
-  /** Effort list for the active channel (custom provider catalog or official). */
-  const channelEffortOptions = useMemo(() => {
-    if (providerActiveSource !== "custom" || !activeCustomProvider) {
-      return null;
-    }
-    return effortOptionsFromProvider(
-      resolveProviderEfforts(activeCustomProvider),
-    );
-  }, [providerActiveSource, activeCustomProvider]);
+  const persistReconciledEffortRef = useRef<(next: string) => void>(() => {});
+  const effortOptions = useSessionEffortOptions({
+    source: providerActiveSource,
+    provider: activeCustomProvider,
+    modelId,
+    officialModels: availableModels,
+    effort,
+    setEffort,
+    onReconcile: (next) => persistReconciledEffortRef.current(next),
+  }).options;
 
-  /**
-   * Active effort catalog for the composer: custom channel efforts, else the
-   * selected official model (Grok 4.7 / Fast / 4.6 are 4-tier with xhigh).
-   */
-  const officialEffortCatalog = useMemo(
-    () =>
-      effortCatalogForRoute({
-        model: findModel(modelId, availableModels),
-      }),
-    [modelId, availableModels],
-  );
-  const activeEffortCatalog = useMemo(
-    () =>
-      effortCatalogForRoute({
-        model: findModel(modelId, availableModels),
-        channelEfforts: channelEffortOptions,
-      }),
-    [modelId, availableModels, channelEffortOptions],
-  );
-  const prevEffortCatalogRef = useRef(activeEffortCatalog);
-
-  // When switching channels / catalogs, map effort into the target list
-  // (DeepSeek high → Grok medium; xhigh/max → Grok high; reverse accordingly).
-  useEffect(() => {
-    const source = prevEffortCatalogRef.current;
-    prevEffortCatalogRef.current = activeEffortCatalog;
-    const next = mapEffortToTargetCatalog(
-      effort,
-      activeEffortCatalog,
-      source,
-    );
-    if (next !== effort) setEffort(next);
-  }, [activeEffortCatalog, effort]);
-
-  const handleEffortPick = useCallback(
-    (nextEffort: string) => {
-      if (!isValidEffort(nextEffort, activeEffortCatalog)) return;
-      setEffort(nextEffort);
-      effortApplyRef.current = queueComposerPreferenceApply(
-        effortApplyRef.current,
-        () =>
-          api.composerPrefsSet({
-            projectId: activeProject?.id ?? null,
-            sessionId: session.sessionId ?? null,
-            effort: nextEffort,
-          }),
-        (error) => showToast(String(error), 4000),
-      );
-    },
-    [activeEffortCatalog, activeProject?.id, session.sessionId, showToast],
-  );
+  const { handleEffortPick, persistReconciledEffort } = useComposerEffort({
+    effort,
+    effortOptions,
+    setEffort,
+    projectId: activeProject?.id,
+    sessionId: session.sessionId,
+    queueRef: effortApplyRef,
+    showToast,
+    translate: tr,
+  });
+  persistReconciledEffortRef.current = persistReconciledEffort;
 
   const handleModelPick = useCallback(
     async (requestedPick: ComposerModelPick) => {
@@ -9158,12 +9141,14 @@ export function AppWorkbench() {
       setModelPickBusy(true);
       try {
         const providerId = pick.kind === "official" ? "official" : pick.providerId;
-        let nextEfforts = officialEffortCatalog;
+        let nextEfforts: EffortOption[];
         if (pick.kind === "official") {
           if (!isValidModelId(pick.modelId, availableModels)) return;
-          nextEfforts = effortCatalogForRoute({
-            model: findModel(pick.modelId, availableModels),
-          });
+          nextEfforts = resolveSessionEffortOptions({
+            source: "official",
+            modelId: pick.modelId,
+            officialModels: availableModels,
+          }).options;
         } else {
           if (!api.isTauri()) return;
           const provider = customProviders.find((p) => p.id === pick.providerId);
@@ -9171,22 +9156,13 @@ export function AppWorkbench() {
             showToast(tr("prov.err.unknownProvider"), 4000);
             return;
           }
-          const models = provider.models?.length
-            ? provider.models
-            : [{ id: provider.model, name: provider.model }];
-          const catalog = models.some((m) => m.id === pick.modelId)
-            ? models
-            : [...models, { id: pick.modelId, name: pick.modelId }];
-          nextEfforts =
-            effortOptionsFromProvider(
-              materializeActiveModelChannel({
-                provider,
-                modelId: pick.modelId,
-                models: catalog,
-              }).efforts,
-            ) ?? GROK_BUILD_EFFORTS;
+          nextEfforts = resolveSessionEffortOptions({
+            source: "custom",
+            provider,
+            modelId: pick.modelId,
+          }).options;
         }
-        const clamped = mapEffortToTargetCatalog(effort, nextEfforts, channelEffortOptions ?? officialEffortCatalog);
+        const clamped = pickSessionEffort(nextEfforts, effort);
         const providerChanged =
           (providerId === "official") !== (providerActiveSource === "official") ||
           (providerId !== "official" && providerActiveId !== providerId);
@@ -9214,7 +9190,11 @@ export function AppWorkbench() {
           },
           (error) => {
             applyFailed = true;
-            showToast(String(error), 4000);
+            console.warn("composer model save failed", error);
+            showToast(
+              tr(modelEffortErrorMessageKey(classifyModelEffortError(error)) as MessageKey),
+              4000,
+            );
           },
         );
         effortApplyRef.current = apply;
@@ -9240,8 +9220,6 @@ export function AppWorkbench() {
       activeProject?.sshAlias,
       session.sessionId,
       effort,
-      channelEffortOptions,
-      officialEffortCatalog,
       providerActiveSource,
       providerActiveId,
       sessionProviderChip,
@@ -12611,7 +12589,7 @@ export function AppWorkbench() {
             setProjects={setProjects}
             setLocalError={setLocalError}
             canGuideQueuedMessage={canGuideQueuedMessage}
-            channelEffortOptions={channelEffortOptions}
+            effortOptions={effortOptions}
             chatAttachments={chatAttachments}
             clearSlashFilters={clearSlashFilters}
             cliWorktrees={cliWorktrees}
@@ -12903,6 +12881,8 @@ export function AppWorkbench() {
               effortLow: tr("effort.low"),
               effortXhigh: tr("effort.xhigh"),
               effortMax: tr("effort.max"),
+              effortNone: tr("effort.none"),
+              effortUnavailable: tr("composer.effortUnavailable"),
               contextCurrent: tr("context.current"),
               contextUnknown: tr("phone.contextUnknown"),
               contextCompact: tr("context.compactAction"),
@@ -12925,7 +12905,7 @@ export function AppWorkbench() {
             providers={composerProviderInputs}
             activeSource={providerActiveSource}
             activeProviderId={providerActiveId}
-            channelEfforts={channelEffortOptions}
+            efforts={effortOptions}
             mode={mode}
             policy={policy}
             contextDisplay={contextUsageDisplay}

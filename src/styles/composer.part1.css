@@ -329,8 +329,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cmm__stops-rail,
-  .cmm__stops-thumb,
   .composer__model-bar {
     transition: none;
   }
@@ -344,109 +342,17 @@
   }
 }
 
-/* Claude desktop Effort popover: capsule track, dots, sliding pill. */
-.cmm__stops {
+/* Raw model reasoning variants: catalog order, scroll for long ladders. */
+.cmm__effort-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
 }
 
-.cmm__stops-axis {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-@property --cmm-stop-t {
-  syntax: "<number>";
-  inherits: true;
-  initial-value: 0;
-}
-
-.cmm__stops-rail {
-  --cmm-thumb: 28px;
-  position: relative;
-  height: 28px;
-  padding: 0 6px;
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
-  cursor: pointer;
-  touch-action: none;
-  transition: --cmm-stop-t var(--motion-pane) var(--motion-pane-ease);
-}
-
-.cmm__stops-dots {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 100%;
-  padding: 0 8px;
-  pointer-events: none;
-}
-
-.cmm__stops-dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--text-primary) 28%, transparent);
-}
-
-.cmm__stops-dot.is-active {
-  opacity: 0;
-}
-
-.cmm__stops-dot.is-ultra {
-  background: #c4a0ff;
-}
-
-.cmm__stops-thumb {
-  position: absolute;
-  z-index: 2;
-  top: 4px;
-  height: 20px;
-  width: var(--cmm-thumb);
-  border-radius: 12px;
-  background: var(--bg-elevated, #fff);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.16);
-  left: calc(
-    6px + (100% - 12px - var(--cmm-thumb)) * var(--cmm-stop-t, 0)
-  );
-  pointer-events: none;
-  transition: background var(--motion-fast) ease;
-}
-
-.cmm__stops-thumb.is-ultra {
-  background: #c4a0ff;
-}
-
-.cmm__stops-hit {
-  position: absolute;
-  z-index: 3;
-  top: 0;
-  bottom: 0;
-  width: 28px;
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  transform: translateX(-50%);
-  cursor: pointer;
-}
-
-[data-theme="light"] .cmm__stops-rail {
-  background: #e6e4df;
-}
-
-[data-theme="light"] .cmm__stops-thumb {
-  background: #fff;
-}
-
-[data-theme="light"] .cmm__stops-dot.is-ultra,
-[data-theme="light"] .cmm__stops-thumb.is-ultra {
-  background: #7c4dff;
+.cmm__effort-list .cmm__opt {
+  flex-shrink: 0;
 }
 
 /*

@@ -101,7 +101,7 @@ describe("composer column matches chat width", () => {
     expect(modelIdx).toBeLessThan(shellIdx);
     expect(accessIdx).toBeGreaterThan(shellIdx);
     expect(app.indexOf("<ComposerModelMenu", modelIdx + 1)).toBe(-1);
-    expect(modelMenu).toContain("cmm__stops");
+    expect(modelMenu).toContain("cmm__effort-list");
     expect(modelMenu).toMatch(
       /const triggerText = `\$\{modelLabel\} \$\{eLabel\}`/,
     );
@@ -125,7 +125,7 @@ describe("composer column matches chat width", () => {
     expect(composer1).toMatch(
       /\.cmm__pop\.cmm__pop--access\s*\{[^}]*width:\s*300px/s,
     );
-    expect(composer1).toMatch(/\.cmm__stops-rail/);
+    expect(composer1).toMatch(/\.cmm__effort-list/);
     expect(composer1).toMatch(/@keyframes cmm-pop-up/);
     expect(composer1).toMatch(
       /\.cmm__pop\.cmm__pop--portal\.cmm__pop--flyout/,
