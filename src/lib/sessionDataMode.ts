@@ -62,16 +62,6 @@ export function normalizeSessionDataMode(raw: unknown): SessionDataMode {
 }
 
 /**
- * Custom provider routes write `config.toml` only under App agent-home.
- * Shared `~/.grok` cannot see those sections, so the host keeps independent.
- */
-export function sessionDataModeLockedByCustomRoute(
-  activeSource: unknown,
-): boolean {
-  return String(activeSource ?? "").trim().toLowerCase() === "custom";
-}
-
-/**
  * After `settings_set`, show the mode that actually landed.
  * Custom-route self-heal can persist independent even when the UI asked for shared.
  */

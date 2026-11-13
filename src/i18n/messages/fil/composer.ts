@@ -214,7 +214,7 @@ export const filComposer = {
   "composer.projectBound": "Nakatali ang session sa “{name}”",
   "composer.projectCleared": "Lumipat sa default na workspace",
   "composer.model": "Modelo",
-  "composer.modelViaProvider": "sa pamamagitan ng custom provider",
+
   "composer.modelGroupOfficial": "Opisyal",
   "composer.modelSearchPlaceholder": "Maghanap ng modelo…",
   "composer.modelSearchEmpty": "Walang tumutugmang modelo",

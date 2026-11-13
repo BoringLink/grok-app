@@ -216,7 +216,7 @@ export const zhComposer = {
   "composer.projectBound": "会话已绑定到「{name}」",
   "composer.projectCleared": "已切换到默认工作区",
   "composer.model": "模型",
-  "composer.modelViaProvider": "通过自定义提供商",
+
   "composer.modelGroupOfficial": "官方",
   "composer.modelSearchPlaceholder": "搜索模型…",
   "composer.modelSearchEmpty": "没有匹配的模型",

@@ -39,6 +39,7 @@ export const enDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "Custom relay",
   "setup.account.relayHint": "OpenAI-compatible base URL + key",
+  "setup.account.relayPerChatHint": "New chats start on Official. Choose a relay model in the composer to use it per chat.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "API key",
   "setup.account.protocol": "Message format",

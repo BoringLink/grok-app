@@ -214,7 +214,7 @@ export const ruComposer = {
   "composer.projectBound": "Сессия привязана к «{name}»",
   "composer.projectCleared": "Переключено на рабочую область по умолчанию",
   "composer.model": "Модель",
-  "composer.modelViaProvider": "через пользовательский провайдер",
+
   "composer.modelGroupOfficial": "Официальные",
   "composer.modelSearchPlaceholder": "Поиск моделей…",
   "composer.modelSearchEmpty": "Модели не найдены",

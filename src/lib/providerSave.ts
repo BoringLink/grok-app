@@ -1,35 +1,9 @@
 /**
  * Pure helpers for Settings → Account → Custom providers save / live-apply.
  *
- * Host writes agent-home `config.toml`; warm ACP processes must be recycled so
- * the next send reloads base_url / api_key / auth.json without a full app restart.
+ * Host writes agent-home `config.toml` and invalidates only chats that use the
+ * edited provider, so their next send reloads base_url / api_key / auth.json.
  */
-
-export type ProviderActiveRoute = {
-  activeSource: string;
-  activeProviderId: string | null | undefined;
-};
-
-/**
- * Whether a successful upsert should recycle warm agents so config applies live.
- *
- * - `setAsDefault` → route / default model changed
- * - Mutated id is the active custom route → key/url/backend edit must respawn
- */
-export function providerMutationNeedsAgentReload(
-  opts: {
-    setAsDefault: boolean;
-    providerId: string;
-  } & ProviderActiveRoute,
-): boolean {
-  if (opts.setAsDefault) return true;
-  const id = opts.providerId.trim();
-  if (!id) return false;
-  return (
-    opts.activeSource === "custom" &&
-    (opts.activeProviderId ?? "").trim() === id
-  );
-}
 
 /**
  * Race a promise against a wall-clock timeout so UI never sticks on “Saving…”.

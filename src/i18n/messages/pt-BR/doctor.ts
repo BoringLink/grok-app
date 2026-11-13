@@ -39,6 +39,7 @@ export const ptBRDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "Relay personalizado",
   "setup.account.relayHint": "Base URL + chave compatíveis com OpenAI",
+  "setup.account.relayPerChatHint": "Novas conversas começam com o modelo oficial. Escolha um modelo do relay no compositor para cada conversa.",
   "setup.account.basePh": "https://api.exemplo.com/v1",
   "setup.account.relayKeyPh": "Chave de API",
   "setup.account.protocol": "Formato da mensagem",

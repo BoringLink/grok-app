@@ -214,7 +214,7 @@ export const koComposer = {
   "composer.projectBound": "세션이 “{name}”에 연결됨",
   "composer.projectCleared": "기본 작업 공간으로 전환됨",
   "composer.model": "모델",
-  "composer.modelViaProvider": "사용자 지정 공급자 경유",
+
   "composer.modelGroupOfficial": "공식",
   "composer.modelSearchPlaceholder": "모델 검색…",
   "composer.modelSearchEmpty": "일치하는 모델이 없습니다",

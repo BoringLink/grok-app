@@ -1,56 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   PROVIDER_SAVE_TIMEOUT_MS,
-  providerMutationNeedsAgentReload,
   slugifyProviderId,
   withProviderSaveTimeout,
 } from "./providerSave";
-
-describe("providerMutationNeedsAgentReload", () => {
-  it("reloads when set as default", () => {
-    expect(
-      providerMutationNeedsAgentReload({
-        setAsDefault: true,
-        providerId: "relay",
-        activeSource: "official",
-        activeProviderId: null,
-      }),
-    ).toBe(true);
-  });
-
-  it("reloads when editing the active custom provider", () => {
-    expect(
-      providerMutationNeedsAgentReload({
-        setAsDefault: false,
-        providerId: "relay",
-        activeSource: "custom",
-        activeProviderId: "relay",
-      }),
-    ).toBe(true);
-  });
-
-  it("skips reload when editing a non-active provider", () => {
-    expect(
-      providerMutationNeedsAgentReload({
-        setAsDefault: false,
-        providerId: "other",
-        activeSource: "custom",
-        activeProviderId: "relay",
-      }),
-    ).toBe(false);
-  });
-
-  it("skips reload when official is active and not setting default", () => {
-    expect(
-      providerMutationNeedsAgentReload({
-        setAsDefault: false,
-        providerId: "relay",
-        activeSource: "official",
-        activeProviderId: null,
-      }),
-    ).toBe(false);
-  });
-});
 
 describe("slugifyProviderId", () => {
   it("normalizes display names", () => {

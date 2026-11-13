@@ -18,11 +18,9 @@ import { saveNotifySoundPref } from "@/lib/notifySound";
 import { saveWindowAlwaysOnTopPref } from "@/lib/windowAlwaysOnTop";
 import { savePermissionTimeoutSec } from "@/lib/permissionTimeout";
 import { saveAskUserTimeoutSec } from "@/lib/askUser/askUserTimeout";
-import { IDLE_SNAPSHOT } from "@/lib/session";
 import {
   applyPersistedSessionDataMode,
   normalizeSessionDataMode,
-  sessionDataModeLockedByCustomRoute,
 } from "@/lib/sessionDataMode";
 import {
   normalizeCompactionDetail,
@@ -71,7 +69,7 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
     setLocale, setLocalePreference, setManualCliPath, setMaxAgentTurns, setMaxConcurrentAgents, setMessageTimeFormat,
     setNoAskUser, setNotifyOnPermission, setNotifyOnTurnDone, setNotifySound, setPermissionTimeoutSec, setPlanEnabled,
     setPreferredAgent, setPrefsScope, setProviderBalanceCache, setProxyMode, setProxyNoProxy, setProxyUrl,
-    setReopenLastSession, setReplaceProviderBrandLogo, setResourceOpenTarget, setSession, setSessionDataMode, setSettingsFocusAnchor,
+    setReopenLastSession, setReplaceProviderBrandLogo, setResourceOpenTarget, setSessionDataMode, setSettingsFocusAnchor,
     setSetup, setShowMessageTimestamps, setShowProductTutorial, setShowReplyLength, setShowShortcuts, setSidebarShowRelativeTime,
     setSkillsReloadToken, setStoreApiKeysInKeychain, setStreamStallSeconds, setSttCustomBaseUrl, setSttCustomLanguage, setSttCustomModel,
     setSttEngine, setSttZhScript, setSubagentWorktreeSnapshotEnabled, setSubagentsEnabled, setToast, setTodoGateEnabled,
@@ -230,15 +228,6 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
           })();
           };
           if (mode === "shared") {
-          void (async () => {
-            const list = await api.providersList().catch(() => null);
-            if (sessionDataModeLockedByCustomRoute(list?.activeSource)) {
-              setToast(
-                tr("settings.sessionDataMode.customRequiresIndependent"),
-              );
-              window.setTimeout(() => setToast(null), 5200);
-              return;
-            }
             setAppDialog({
               kind: "confirm",
               title: tr("settings.sessionDataMode"),
@@ -246,7 +235,6 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
               confirmLabel: tr("common.confirm"),
               onConfirm: commit,
             });
-          })();
           return;
           }
           commit();
@@ -268,7 +256,7 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
           projectId: activeProject?.id ?? null,
           sessionId: session.sessionId ?? null,
           })
-          .then((prefs) => applyComposerPrefs(prefs, availableModels))
+          .then((prefs) => applyComposerPrefs(prefs, availableModels, { sessionId: session.sessionId, forceOfficial: !!activeProject?.sshAlias?.trim() }))
           .catch(() => {});
           }}
           availableModels={availableModels}
@@ -832,25 +820,11 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
             });
           }}
           onProviderActivated={() => {
-          // Host already recycled warm agents on upsert/activate. Refresh UI
-          // chrome only — never park (sessionDisconnect) a live process: that
-          // kept stale OIDC/config in memory and required a full app restart
-          // (issue #376). Soft-fail so save UI never sticks on “Saving…”.
+          // Official OAuth / API-key changes rebind the account chrome only.
+          // Sessions keep their own provider and reconnect on their next turn.
           void (async () => {
           try {
-          if (api.isTauri()) {
-          setSession({ ...IDLE_SNAPSHOT });
-          }
           await refreshProviderRoute();
-          // #557: custom activate may flip session_data_mode → independent.
-          try {
-            const s = await api.settingsGet();
-            if (s?.sessionDataMode) {
-              setSessionDataMode(normalizeSessionDataMode(s.sessionDataMode));
-            }
-          } catch {
-            /* soft-fail mode refresh */
-          }
           await refreshAccount({ refreshBilling: false }).catch(() => {
           /* soft-fail billing refresh */
           });

@@ -216,7 +216,7 @@ export const trComposer = {
   "composer.projectBound": "Oturum “{name}” projesine bağlandı",
   "composer.projectCleared": "Varsayılan çalışma alanına geçildi",
   "composer.model": "Model",
-  "composer.modelViaProvider": "özel sağlayıcı üzerinden",
+
   "composer.modelGroupOfficial": "Resmî",
   "composer.modelSearchPlaceholder": "Modellerde ara…",
   "composer.modelSearchEmpty": "Eşleşen model yok",

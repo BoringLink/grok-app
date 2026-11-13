@@ -556,6 +556,7 @@ import {
 
 import {
   composerMenuProviders,
+  pinComposerModelPickToOfficial,
   type ComposerModelPick,
 } from "@/lib/composerModelGroups";
 import {
@@ -679,7 +680,7 @@ import type { ContextMenuState } from "@/lib/app/appDialogTypes";
 import { useSessionRuntime } from "@/hooks/useSessionRuntime";
 import { sessionTranscriptStore } from "@/lib/sessionTranscriptStore";
 import { useSessionConnect, createSessionConnectHost } from "@/hooks/useSessionConnect";
-import { useSessionProviderChip } from "@/hooks/useSessionProviderChip";
+import { useSessionProviderChip, type ProviderRouteSource } from "@/hooks/useSessionProviderChip";
 import {
   createGitWorktreeChromeHost,
   useGitWorktreeChrome,
@@ -2393,9 +2394,9 @@ export function AppWorkbench() {
     (
       prefs: api.ComposerPrefs,
       catalog: ModelOption[],
-      chipFor?: { sessionId: string | null },
+      chipFor?: { sessionId: string | null; forceOfficial?: boolean },
     ) => {
-      const next = sessionProviderChip.resolvePrefs(prefs, catalog);
+      const next = sessionProviderChip.resolvePrefs(prefs, catalog, chipFor);
       setModelId(next.modelId);
       setEffort(next.effort);
       setMode(prefs.mode || "agent");
@@ -2818,9 +2819,7 @@ export function AppWorkbench() {
         })
         .then((prefs) => {
           if (cancelled) return;
-          applyComposerPrefs(prefs, availableModels, {
-            sessionId: session.sessionId,
-          });
+          applyComposerPrefs(prefs, availableModels, { sessionId: session.sessionId, forceOfficial: !!activeProject?.sshAlias?.trim() });
         })
         .catch(() => {});
     };
@@ -4212,7 +4211,7 @@ export function AppWorkbench() {
             projectId: proj.id,
             sessionId: session.sessionId ?? null,
           });
-          applyComposerPrefs(prefs, availableModels);
+          applyComposerPrefs(prefs, availableModels, { sessionId: session.sessionId, forceOfficial: !!activeProject?.sshAlias?.trim() });
         }
       } catch (e) {
         setLocalError(String(e));
@@ -8946,14 +8945,14 @@ export function AppWorkbench() {
   }, [contextUsage, messages, locale, currentModelWindow]);
   const sessionSpend = useSessionSpend(session.sessionId);
   const [providerActiveSource, setProviderActiveSource] =
-    useState<string>("official");
+    useState<ProviderRouteSource>("official");
   const [providerActiveId, setProviderActiveId] = useState<string | null>(null);
   const [modelPickBusy, setModelPickBusy] = useState(false);
   const modelPickBusyRef = useRef(false);
   const customRouteActive = activeCustomProvider != null;
   const composerProviderInputs = useMemo(
-    () => composerMenuProviders(customProviders),
-    [customProviders],
+    () => composerMenuProviders(activeProject?.sshAlias?.trim() ? [] : customProviders),
+    [customProviders, activeProject?.sshAlias],
   );
   sessionProviderChip.bind({
     setProviderActiveSource,
@@ -9151,13 +9150,14 @@ export function AppWorkbench() {
   );
 
   const handleModelPick = useCallback(
-    async (pick: ComposerModelPick) => {
+    async (requestedPick: ComposerModelPick) => {
+      const forceOfficial = !!activeProject?.sshAlias?.trim();
+      const pick = pinComposerModelPickToOfficial(requestedPick, forceOfficial, availableModels);
       if (modelPickBusyRef.current) return;
       modelPickBusyRef.current = true;
       setModelPickBusy(true);
       try {
-        const providerId =
-          pick.kind === "official" ? "official" : pick.providerId;
+        const providerId = pick.kind === "official" ? "official" : pick.providerId;
         let nextEfforts = officialEffortCatalog;
         if (pick.kind === "official") {
           if (!isValidModelId(pick.modelId, availableModels)) return;
@@ -9186,27 +9186,12 @@ export function AppWorkbench() {
               }).efforts,
             ) ?? GROK_BUILD_EFFORTS;
         }
-        const clamped = mapEffortToTargetCatalog(
-          effort,
-          nextEfforts,
-          channelEffortOptions ?? officialEffortCatalog,
-        );
-        setModelId(pick.modelId);
-        setEffort(clamped);
-        sessionProviderChip.paint(providerId);
-        if (session.sessionId) {
-          sessionProviderChip.draftComposerRouteRef.current = null;
-        } else {
-          sessionProviderChip.draftComposerRouteRef.current = {
-            providerId,
-            modelId: pick.modelId,
-            effort: clamped,
-          };
-        }
+        const clamped = mapEffortToTargetCatalog(effort, nextEfforts, channelEffortOptions ?? officialEffortCatalog);
         const providerChanged =
           (providerId === "official") !== (providerActiveSource === "official") ||
           (providerId !== "official" && providerActiveId !== providerId);
         const sid = session.sessionId;
+        let applyFailed = false;
         const apply = queueComposerPreferenceApply(
           effortApplyRef.current,
           async () => {
@@ -9225,14 +9210,22 @@ export function AppWorkbench() {
             if (!next) return;
             liveHostRef.current = next;
             setLiveHost(next);
-            setSession((prev) =>
-              prev.sessionId === sid ? { ...prev, state: next.state } : prev,
-            );
+            setSession((prev) => prev.sessionId === sid ? { ...prev, state: next.state } : prev);
           },
-          (error) => showToast(String(error), 4000),
+          (error) => {
+            applyFailed = true;
+            showToast(String(error), 4000);
+          },
         );
         effortApplyRef.current = apply;
         await apply;
+        if (applyFailed) return;
+        setModelId(pick.modelId);
+        setEffort(clamped);
+        sessionProviderChip.paint(providerId);
+        sessionProviderChip.draftComposerRouteRef.current = sid
+          ? null
+          : { providerId, modelId: pick.modelId, effort: clamped };
       } catch (e) {
         showToast(String(e), 4000);
       } finally {
@@ -9244,6 +9237,7 @@ export function AppWorkbench() {
       availableModels,
       customProviders,
       activeProject?.id,
+      activeProject?.sshAlias,
       session.sessionId,
       effort,
       channelEffortOptions,
@@ -9268,7 +9262,6 @@ export function AppWorkbench() {
             apiBackend: activeCustomProvider.apiBackend,
             models: modelsForContextWindow(activeCustomProvider, tokens),
             efforts: activeCustomProvider.efforts,
-            setAsDefault: false,
             contextWindow: tokens,
           });
           await refreshProviderRoute();
@@ -12899,7 +12892,6 @@ export function AppWorkbench() {
               modePlan: tr("mode.plan"),
               modeAsk: tr("mode.ask"),
               modelGroupOfficial: tr("composer.modelGroupOfficial"),
-              modelViaProvider: tr("composer.modelViaProvider"),
               policyAsk: tr("policy.ask"),
               policyAcceptEdits: tr("policy.accept_edits"),
               policySession: tr("policy.allow_for_session"),

@@ -143,7 +143,6 @@ pub struct UpsertProviderInput {
     pub api_backend: Option<String>,
     /// Explicit transport semantics. Never inferred from a provider hostname.
     pub provider_mode: Option<String>,
-    pub set_as_default: Option<bool>,
     pub create_only: Option<bool>,
     /// Optional multi-model catalog; when omitted on edit, keep previous `app_models`.
     pub models: Option<Vec<ProviderModelEntry>>,
@@ -569,6 +568,11 @@ fn ensure_reasoning_effort_support_fields() -> Result<bool, String> {
         "enabled reasoning-effort forwarding for existing custom providers"
     );
     Ok(true)
+}
+
+/// Normalize an external provider id with the same rules used by provider writes.
+pub fn sanitize_provider_id(raw: &str) -> Result<String, String> {
+    sanitize_id(raw)
 }
 
 fn sanitize_id(raw: &str) -> Result<String, String> {
@@ -1745,7 +1749,6 @@ pub fn maybe_migrate_legacy_relay(
         api_key: Some(key.into()),
         api_backend: Some("responses".into()),
         provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-        set_as_default: Some(true),
         create_only: Some(true),
         models: None,
         efforts: None,
@@ -2219,35 +2222,6 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
     }
 }
 
-/// Custom providers are written only under App agent-home. Shared mode uses
-/// `GROK_HOME=~/.grok`, so those sections are invisible to the agent. When the
-/// active route is (or becomes) custom, force independent mode (#557).
-///
-/// Returns `true` when the mode was changed on this call.
-pub fn ensure_independent_for_custom_route() -> bool {
-    match active_route() {
-        ActiveRoute::Custom { .. } => {}
-        ActiveRoute::Official => return false,
-    }
-    let mut settings = crate::store::load_settings();
-    if settings.session_data_mode == "independent" {
-        return false;
-    }
-    settings.session_data_mode = "independent".into();
-    if let Err(e) = crate::store::save_settings(&settings) {
-        tracing::warn!(
-            target: "providers",
-            "failed to switch session_data_mode to independent for custom route: {e}"
-        );
-        return false;
-    }
-    tracing::info!(
-        target: "providers",
-        "switched session_data_mode shared→independent so custom provider config.toml is live (#557)"
-    );
-    true
-}
-
 pub fn list_custom_providers() -> Result<ProvidersListResult, String> {
     let home = ensure_agent_home()?;
     let path = agent_config_toml();
@@ -2327,15 +2301,16 @@ pub fn stored_provider_model_catalog(provider_id: &str) -> Option<ModelCatalogRe
     ))
 }
 
-/// Extra system-prompt rules configured on the active custom channel.
+/// Extra system-prompt rules configured on one custom channel.
 ///
 /// Relays vary in what they need spelled out (tool syntax, language, refusal
 /// style), so this rides `--rules` — appended to the agent's prompt rather than
-/// replacing it. `None` on the official route or when the channel sets nothing.
-pub fn active_provider_append_prompt() -> Option<String> {
-    let ActiveRoute::Custom { id } = active_route() else {
+/// replacing it. `None` for an official / unknown provider or an empty value.
+pub fn provider_append_prompt(provider_id: &str) -> Option<String> {
+    let id = provider_id.trim();
+    if is_session_provider_official(id) {
         return None;
-    };
+    }
     list_custom_providers()
         .ok()?
         .providers
@@ -2344,34 +2319,10 @@ pub fn active_provider_append_prompt() -> Option<String> {
         .and_then(|p| p.append_prompt)
 }
 
-/// Owning `[model.<id>]` section for a composer / `app_models[].id` catalog id.
-///
-/// Used when the App picker stores the request-body id (e.g. `qwen3.8-27b`)
-/// while Grok Build `--model` only understands the TOML table name
-/// (`qwen38-local`). Official catalog ids are never remapped, even when a
-/// relay also lists `grok-4.7` in `app_models`. Section ids themselves are
-/// excluded — callers use `is_custom_provider_id` for those.
-pub fn custom_provider_id_for_catalog_model(catalog_id: &str) -> Option<String> {
-    let catalog_id = catalog_id.trim();
-    if catalog_id.is_empty() || is_official_catalog_model(catalog_id) {
-        return None;
-    }
-    let list = list_custom_providers().ok()?;
-    for p in &list.providers {
-        if p.id == catalog_id {
-            continue;
-        }
-        if p.model == catalog_id || p.models.iter().any(|m| m.id == catalog_id) {
-            return Some(p.id.clone());
-        }
-    }
-    None
-}
-
 /// Provider that uniquely lists `model`, for scheduling legacy rows.
 ///
-/// Unlike [`custom_provider_id_for_catalog_model`], ambiguous matches return
-/// `None`: a guessed route would silently send the model to the wrong relay.
+/// Ambiguous matches return `None`: a guessed route would silently send the
+/// model to the wrong relay.
 pub fn custom_provider_id_for_model_unique(model: &str) -> Option<String> {
     let model = model.trim();
     if model.is_empty() || is_official_catalog_model(model) {
@@ -2416,16 +2367,50 @@ pub fn is_session_provider_official(id: &str) -> bool {
     id.is_empty() || id.eq_ignore_ascii_case(SESSION_PROVIDER_OFFICIAL)
 }
 
-/// Provider this chat should connect with. Missing → the global route.
+/// Provider this chat should connect with. Missing → official.
+///
+/// Composer selection is the only authority for a session route; a legacy
+/// `[models].default` must not decide a session route.
 pub fn session_route_provider_id(stored: Option<&str>) -> String {
     match stored.map(str::trim).filter(|s| !s.is_empty()) {
         Some(id) if is_session_provider_official(id) => SESSION_PROVIDER_OFFICIAL.into(),
         Some(id) => id.to_string(),
-        None => match active_route() {
-            ActiveRoute::Custom { id } => id,
-            ActiveRoute::Official => SESSION_PROVIDER_OFFICIAL.into(),
-        },
+        None => SESSION_PROVIDER_OFFICIAL.into(),
     }
+}
+
+/// Drop a provider that no longer exists on disk before connecting.
+///
+/// A deleted provider must not spawn a process against a missing
+/// `[model.<id>]` section. The session keeps its stored id until the user
+/// picks again, so this is the recoverable official fallback.
+pub fn existing_session_route(route: &str) -> String {
+    let id = route.trim();
+    if !is_session_provider_official(id) && is_custom_provider_id(id) {
+        return id.to_string();
+    }
+    SESSION_PROVIDER_OFFICIAL.into()
+}
+
+/// Model to connect with after resolving a chat's saved provider.
+///
+/// If its custom provider was removed, the official route must discard the
+/// relay's model id—even when that id also exists in the official catalog.
+pub fn session_model_id_for_route(
+    stored_provider: Option<&str>,
+    resolved_route: &str,
+    composer_model: &str,
+) -> String {
+    let stored_id = stored_provider.map(str::trim).filter(|id| !id.is_empty());
+    let removed_provider = stored_id.is_some_and(|id| {
+        !is_session_provider_official(id)
+            && is_session_provider_official(resolved_route)
+            && !is_custom_provider_id(id)
+    });
+    if removed_provider {
+        return OFFICIAL_CATALOG_MODEL.into();
+    }
+    session_set_model_id_for(resolved_route, composer_model)
 }
 
 /// How a composer provider pick relates to the route this chat already uses.
@@ -2471,8 +2456,8 @@ pub fn session_provider_pick(
 /// Provider id to write for this pick. SSH never stores a custom id.
 pub fn provider_id_to_persist(ssh: bool, picked: Option<&str>) -> Option<String> {
     let picked = picked.map(str::trim).filter(|s| !s.is_empty())?;
-    if ssh && !is_session_provider_official(picked) {
-        None
+    if ssh {
+        Some(SESSION_PROVIDER_OFFICIAL.into())
     } else {
         Some(picked.to_string())
     }
@@ -2539,17 +2524,30 @@ pub fn spawn_model_for_provider(provider_id: &str, composer_model: &str) -> Stri
     session_set_model_id_for(provider_id, composer_model)
 }
 
+/// Official model id for one chat.
+///
+/// A saved id from a deleted relay, or any id the official catalog no longer
+/// lists, must not be sent to xAI. Fall back to the catalog default so the
+/// chat opens instead of failing every turn.
+pub fn official_model_id_for(requested: &str) -> String {
+    let model = requested.trim();
+    if model.is_empty() || model == OFFICIAL_DEFAULT_MODEL {
+        return OFFICIAL_CATALOG_MODEL.into();
+    }
+    if is_official_catalog_model(model) {
+        return model.into();
+    }
+    let available = crate::models_catalog::list_available_models();
+    if available.models.iter().any(|row| row.id == model) {
+        return model.into();
+    }
+    OFFICIAL_CATALOG_MODEL.into()
+}
+
 /// `session/set_model` id for one chat on `provider_id`.
 pub fn session_set_model_id_for(provider_id: &str, composer_model: &str) -> String {
     if is_session_provider_official(provider_id) {
-        let m = composer_model.trim();
-        if m.is_empty() || is_custom_provider_id(m) || m == OFFICIAL_DEFAULT_MODEL {
-            return OFFICIAL_CATALOG_MODEL.into();
-        }
-        if is_official_catalog_model(m) {
-            return m.into();
-        }
-        return m.into();
+        return official_model_id_for(composer_model);
     }
     let id = provider_id.trim();
     let found = list_custom_providers()
@@ -2643,27 +2641,6 @@ pub fn resolve_session_set_model_id(
     id.to_string()
 }
 
-pub fn agent_spawn_model_id(composer_model: &str) -> String {
-    match active_route() {
-        ActiveRoute::Custom { id } => spawn_model_for_provider(&id, composer_model),
-        ActiveRoute::Official => {
-            let m = composer_model.trim();
-            if m.is_empty() || is_custom_provider_id(m) || m == OFFICIAL_DEFAULT_MODEL {
-                return OFFICIAL_CATALOG_MODEL.into();
-            }
-            if is_official_catalog_model(m) {
-                return m.into();
-            }
-            // Picker stored app_models[].id / active `model =` while route is still
-            // official (common under session-scoped prefs + sticky settings.json).
-            if let Some(provider_id) = custom_provider_id_for_catalog_model(m) {
-                return spawn_model_for_provider(&provider_id, m);
-            }
-            m.into()
-        }
-    }
-}
-
 fn grok_build_proxy_spawn_from_section(
     section: &ModelSection,
     composer_model: &str,
@@ -2717,6 +2694,7 @@ fn grok_build_proxy_spawn_from_section(
     })
 }
 
+#[cfg(test)]
 fn grok_build_proxy_spawn_from_text(
     text: &str,
     composer_model: &str,
@@ -2744,13 +2722,6 @@ fn grok_build_proxy_spawn_for_provider_text(
     grok_build_proxy_spawn_from_section(&section, composer_model)
 }
 
-/// Resolve the active explicit Grok Build-compatible relay for one ACP spawn.
-/// The key is returned only to the spawn caller and must never be logged.
-pub fn active_grok_build_proxy_spawn(composer_model: &str) -> Option<GrokBuildProxySpawn> {
-    let text = read_text(&agent_config_toml());
-    grok_build_proxy_spawn_from_text(&text, composer_model)
-}
-
 /// Proxy env for a chat bound to `provider_id`, ignoring `[models].default`.
 pub fn session_grok_build_proxy_spawn(
     provider_id: &str,
@@ -2776,9 +2747,9 @@ pub fn route_auth_lock() -> &'static tokio::sync::Mutex<()> {
     &LOCK
 }
 
+/// Headless / account callers have no session context; they are official-only.
 pub fn prepare_route_auth_for_agent() {
-    let custom = matches!(active_route(), ActiveRoute::Custom { .. });
-    prepare_route_auth(custom);
+    prepare_route_auth(false);
 }
 
 /// Prepare agent-home auth for one spawn. `custom` strips `auth.json` so the
@@ -2786,7 +2757,6 @@ pub fn prepare_route_auth_for_agent() {
 /// Callers that spawn different providers must not overlap this write.
 pub fn prepare_route_auth(custom: bool) {
     if custom {
-        let _ = ensure_independent_for_custom_route();
         crate::account::clear_agent_home_auth();
         tracing::info!(
             target: "providers",
@@ -2811,78 +2781,6 @@ pub fn prepare_route_auth(custom: bool) {
             "compat.claude/cursor mcps=false pin failed: {e}"
         );
     }
-}
-
-/// Switch active route: `official` or `custom` (+ provider_id).
-///
-/// Completely rebinds agent-home credentials so the next ACP spawn cannot
-/// mix OIDC with a custom relay (or leave a relay as default when going official).
-pub fn activate_provider(
-    source: &str,
-    provider_id: Option<&str>,
-) -> Result<ProvidersListResult, String> {
-    let source = source.trim().to_ascii_lowercase();
-    match source.as_str() {
-        "official" => {
-            let result = set_default_model_id(OFFICIAL_DEFAULT_MODEL)?;
-            // Restore official OAuth into agent-home; drop relay display fields.
-            if let Err(e) = crate::account::sync_cli_auth_to_agent_home() {
-                tracing::warn!(target: "providers", "activate official: auth sync: {e}");
-            }
-            let mut secrets = crate::store::load_secrets();
-            secrets.relay_base_url = None;
-            // Prefer catalog id for composer, not the synthetic "grok" default key.
-            secrets.default_model = Some(OFFICIAL_CATALOG_MODEL.into());
-            let _ = crate::store::save_secrets(&secrets);
-            Ok(result)
-        }
-        "custom" => {
-            let id = provider_id
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| "providerId is required for custom source".to_string())?;
-            let list = list_custom_providers()?;
-            if !list.providers.iter().any(|p| p.id == id) {
-                return Err(format!("unknown provider `{id}`"));
-            }
-            let mut result = set_default_model_id(id)?;
-            // Critical: remove OIDC so Grok Build uses [model.<id>].api_key.
-            crate::account::clear_agent_home_auth();
-            if let Some(p) = result.providers.iter().find(|p| p.id == id) {
-                let mut secrets = crate::store::load_secrets();
-                secrets.relay_base_url = Some(p.base_url.clone());
-                // Route id selects the channel; upstream model lives in config.toml.
-                secrets.default_model = Some(id.to_string());
-                let _ = crate::store::save_secrets(&secrets);
-            }
-            // #557: agent-home config is only live when GROK_HOME is agent-home.
-            // set_default_model_id may already have switched; OR so we don't clobber.
-            result.switched_to_independent =
-                result.switched_to_independent || ensure_independent_for_custom_route();
-            Ok(result)
-        }
-        _ => Err(format!("unknown source `{source}` (use official|custom)")),
-    }
-}
-
-/// Whether a provider mutation should recycle warm ACP processes so the next
-/// send reloads `config.toml` / auth material without a full app restart.
-///
-/// - `set_as_default` → active route or default model changed
-/// - Mutated id is the active custom route → key / base_url / backend edit
-pub fn provider_mutation_needs_agent_reload(
-    set_as_default: bool,
-    mutated_id: &str,
-    result: &ProvidersListResult,
-) -> bool {
-    if set_as_default {
-        return true;
-    }
-    let id = mutated_id.trim();
-    if id.is_empty() {
-        return false;
-    }
-    result.active_source == "custom" && result.active_provider_id.as_deref() == Some(id)
 }
 
 pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersListResult, String> {
@@ -3191,20 +3089,9 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     }
     text = append_section(&text, &id, &fields);
 
-    if input.set_as_default.unwrap_or(false) {
-        text = set_models_default(&text, &id);
-    }
-
     write_text(&path, &text)?;
     let _ = ensure_custom_ids_in_allowed_models();
-    let mut result = list_custom_providers()?;
-    if input.set_as_default.unwrap_or(false) {
-        // Newly defaulted custom channel must not inherit OIDC.
-        crate::account::clear_agent_home_auth();
-        // #557: keep GROK_HOME on agent-home when this becomes the live route.
-        result.switched_to_independent = ensure_independent_for_custom_route();
-    }
-    Ok(result)
+    list_custom_providers()
 }
 
 pub fn remove_custom_provider(id: &str) -> Result<ProvidersListResult, String> {
@@ -3223,33 +3110,13 @@ pub fn remove_custom_provider(id: &str) -> Result<ProvidersListResult, String> {
     if parse_model_sections(&text).iter().any(|s| s.id == id) {
         return Err(format!("failed to remove provider `{id}` from config"));
     }
-    let fell_back_official = def.as_deref() == Some(id.as_str());
-    if fell_back_official {
+    if def.as_deref() == Some(id.as_str()) {
         text = set_models_default(&text, OFFICIAL_DEFAULT_MODEL);
     }
     write_text(&path, &text)?;
-    let result = list_custom_providers()?;
-    if fell_back_official {
-        prepare_route_auth_for_agent();
-    }
-    Ok(result)
-}
-
-pub fn set_default_model_id(model_id: &str) -> Result<ProvidersListResult, String> {
-    let id = model_id.trim();
-    if id.is_empty() {
-        return Err("modelId is required".into());
-    }
-    let path = agent_config_toml();
-    let mut text = read_text(&path);
-    text = set_models_default(&text, id);
-    write_text(&path, &text)?;
-    let mut result = list_custom_providers()?;
-    // #557: custom default must run under agent-home GROK_HOME.
-    if result.active_source == "custom" {
-        result.switched_to_independent = ensure_independent_for_custom_route();
-    }
-    Ok(result)
+    // The next connect for a chat on this provider falls back to official and
+    // prepares its own auth under the spawn lock.
+    list_custom_providers()
 }
 
 fn resolve_stored_key(provider_id: Option<&str>) -> String {
@@ -4856,33 +4723,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
     }
 
     #[test]
-    fn mutation_reload_when_default_or_active() {
-        let active = ProvidersListResult {
-            providers: vec![CustomProvider {
-                id: "relay".into(),
-                model: "m".into(),
-                base_url: "https://ex/v1".into(),
-                name: "Relay".into(),
-                has_api_key: true,
-                api_backend: "responses".into(),
-                provider_mode: PROVIDER_MODE_GENERIC.into(),
-                is_default: true,
-                models: vec![ProviderModelEntry::named("m", "m")],
-                model_catalog_corrupt: false,
-                efforts: vec![],
-                context_window: None,
-                base_url_full_path: false,
-                append_prompt: None,
-                supports_vision: false,
-                extra_headers: vec![],
-            }],
-            default_model: Some("relay".into()),
-            active_source: "custom".into(),
-            active_provider_id: Some("relay".into()),
-            config_path: String::new(),
-            agent_home: String::new(),
-            switched_to_independent: false,
-        };
+    fn generic_section_resolution() {
         // Generic relay with no per-model section yet: the API model id is not
         // a CLI section. Sending it falls through to the built-in catalog (#1294).
         assert_eq!(
@@ -4934,21 +4775,6 @@ base_url = \"http://127.0.0.1:8080/v1\"
             resolve_session_set_model_id(Some("other"), "gpt-5.6-sol", &other_sections),
             "other__gpt-5-6-sol"
         );
-        assert!(provider_mutation_needs_agent_reload(true, "other", &active));
-        assert!(provider_mutation_needs_agent_reload(
-            false, "relay", &active
-        ));
-        assert!(!provider_mutation_needs_agent_reload(
-            false, "other", &active
-        ));
-        let official = ProvidersListResult {
-            active_source: "official".into(),
-            active_provider_id: None,
-            ..active.clone()
-        };
-        assert!(!provider_mutation_needs_agent_reload(
-            false, "relay", &official
-        ));
     }
 
     #[test]
@@ -5767,7 +5593,6 @@ app_append_prompt = \"1. 结构化输出确保可读性\"
                 api_key: Some("sk-channel-secret".into()),
                 api_backend: Some("chat_completions".into()),
                 provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                set_as_default: Some(false),
                 create_only: Some(false),
                 models: Some(vec![ProviderModelEntry::named("demo-model", "Demo")]),
                 efforts: None,
@@ -5820,7 +5645,6 @@ app_append_prompt = \"1. 结构化输出确保可读性\"
                 api_key: None,
                 api_backend: Some("chat_completions".into()),
                 provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                set_as_default: Some(false),
                 create_only: Some(false),
                 models: None,
                 efforts: None,
@@ -5845,7 +5669,6 @@ app_append_prompt = \"1. 结构化输出确保可读性\"
                 api_key: None,
                 api_backend: Some("chat_completions".into()),
                 provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                set_as_default: Some(false),
                 create_only: Some(false),
                 models: None,
                 efforts: None,
@@ -6017,7 +5840,6 @@ api_backend = \"responses\"";
             api_key: Some("test-key".into()),
             api_backend: Some("responses".into()),
             provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-            set_as_default: Some(false),
             create_only: Some(true),
             models: Some(vec![ProviderModelEntry::named(
                 "custom-reasoner",
@@ -6154,7 +5976,6 @@ context_window = 128000
                 api_key: None,
                 api_backend: Some("chat_completions".into()),
                 provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                set_as_default: Some(false),
                 create_only: Some(false),
                 models: Some(Vec::new()),
                 efforts: Some(Vec::new()),
@@ -6248,7 +6069,6 @@ context_window = 128000
                 api_key: None,
                 api_backend: Some("chat_completions".into()),
                 provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                set_as_default: Some(false),
                 create_only: Some(false),
                 models: None,
                 efforts: None,
@@ -6351,7 +6171,6 @@ app_models = {}
                     api_key: None,
                     api_backend: Some("chat_completions".into()),
                     provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                    set_as_default: Some(false),
                     create_only: Some(false),
                     models,
                     efforts: None,
@@ -6479,7 +6298,6 @@ app_models = {}
                     api_key: None,
                     api_backend: Some("chat_completions".into()),
                     provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                    set_as_default: Some(false),
                     create_only: Some(false),
                     models,
                     efforts: None,
@@ -6610,7 +6428,6 @@ api_backend = \"chat_completions\"
                 api_key: None,
                 api_backend: Some("chat_completions".into()),
                 provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                set_as_default: Some(false),
                 create_only: Some(false),
                 models,
                 efforts: None,
@@ -6740,7 +6557,6 @@ app_parent_provider = \"relay\"
                 api_key: Some("sk-new".into()),
                 api_backend: Some("chat_completions".into()),
                 provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                set_as_default: Some(false),
                 create_only: Some(false),
                 models: None,
                 efforts: None,
@@ -6898,7 +6714,6 @@ app_models = {}
                 api_key: None,
                 api_backend: Some("chat_completions".into()),
                 provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                set_as_default: Some(false),
                 create_only: Some(false),
                 models,
                 efforts: None,
@@ -7023,7 +6838,6 @@ app_models = {}
                 api_key: Some("sk-relay-key".into()),
                 api_backend: Some("chat_completions".into()),
                 provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                set_as_default: Some(false),
                 create_only: Some(false),
                 models,
                 efforts: None,
@@ -7148,7 +6962,6 @@ app_models = {}
                     efforts_source: Some("user".into()),
                     supports_reasoning_effort: Some(false),
                     supports_reasoning_effort_source: Some("remote".into()),
-                    ..Default::default()
                 },
                 ProviderModelEntry {
                     id: "text".into(),
@@ -7168,7 +6981,6 @@ app_models = {}
                 api_key: Some("sk-test-key".into()),
                 api_backend: Some("chat_completions".into()),
                 provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                set_as_default: Some(false),
                 create_only: Some(true),
                 models: Some(models.clone()),
                 efforts: Some(vec![ProviderEffortEntry {
@@ -7192,7 +7004,6 @@ app_models = {}
                 api_key: None,
                 api_backend: Some("chat_completions".into()),
                 provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-                set_as_default: Some(false),
                 create_only: Some(false),
                 models: None,
                 efforts: None,
@@ -7407,9 +7218,9 @@ context_window = "1000000"
     }
 
     #[test]
-    fn spawn_model_maps_app_models_id_when_route_still_official() {
-        // #1000: picker stores app_models[].id; [models].default stays official.
-        // --model must receive the TOML section id, not the catalog id.
+    fn official_route_does_not_remap_a_custom_catalog_model() {
+        // A chat without a custom provider preference is official. A stale relay
+        // Model id must not silently route it back to that relay.
         let _lock = crate::paths::APP_HOME_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -7429,7 +7240,6 @@ context_window = "1000000"
             api_key: Some("sk-test".into()),
             api_backend: Some("chat_completions".into()),
             provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-            set_as_default: Some(false),
             create_only: Some(true),
             models: Some(vec![
                 ProviderModelEntry::named("qwen3.8-27b", "Qwen3.8 27B"),
@@ -7448,26 +7258,35 @@ context_window = "1000000"
         assert_eq!(listed.active_source, "official");
 
         assert_eq!(
-            custom_provider_id_for_catalog_model("qwen3.8-27b").as_deref(),
-            Some("qwen38-local")
-        );
-        assert_eq!(
-            agent_spawn_model_id("qwen3.8-27b"),
+            spawn_model_for_provider("qwen38-local", "qwen3.8-27b"),
             generic_model_section_id("qwen38-local", "qwen3.8-27b")
         );
         assert_eq!(
             session_set_model_id_for("qwen38-local", "qwen3.8-27b"),
             generic_model_section_id("qwen38-local", "qwen3.8-27b")
         );
-        // Official catalog ids must not remap through a relay that also lists them.
-        assert_eq!(agent_spawn_model_id("grok-4.6"), "grok-4.6");
-        assert_eq!(agent_spawn_model_id("grok-4.7"), "grok-4.7");
+        // Official catalog ids are never remapped through a relay that lists them.
         assert_eq!(
-            agent_spawn_model_id("grok-4.7-build-fast"),
+            session_set_model_id_for(SESSION_PROVIDER_OFFICIAL, "grok-4.6"),
+            "grok-4.6"
+        );
+        assert_eq!(
+            session_set_model_id_for(SESSION_PROVIDER_OFFICIAL, "grok-4.7"),
+            "grok-4.7"
+        );
+        assert_eq!(
+            session_set_model_id_for(SESSION_PROVIDER_OFFICIAL, "grok-4.7-build-fast"),
             "grok-4.7-build-fast"
         );
-        // Bare section id on official route still falls back to catalog (legacy).
-        assert_eq!(agent_spawn_model_id("qwen38-local"), OFFICIAL_CATALOG_MODEL);
+        // A stale relay model on the official route opens instead of 401ing.
+        assert_eq!(
+            session_set_model_id_for(SESSION_PROVIDER_OFFICIAL, "qwen3.8-27b"),
+            OFFICIAL_CATALOG_MODEL
+        );
+        assert_eq!(
+            session_set_model_id_for(SESSION_PROVIDER_OFFICIAL, "qwen38-local"),
+            OFFICIAL_CATALOG_MODEL
+        );
 
         match previous_home {
             Some(value) => std::env::set_var("GROK_APP_HOME", value),
@@ -7496,7 +7315,6 @@ context_window = "1000000"
             api_key: Some("sk-test".into()),
             api_backend: Some("chat_completions".into()),
             provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-            set_as_default: Some(false),
             create_only: Some(true),
             models: None,
             efforts: None,
@@ -7551,7 +7369,6 @@ context_window = "1000000"
             api_key: Some("sk-test".into()),
             api_backend: Some("chat_completions".into()),
             provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-            set_as_default: Some(false),
             create_only: Some(true),
             models: None,
             efforts: None,
@@ -7574,7 +7391,6 @@ context_window = "1000000"
             api_key: None,
             api_backend: Some("chat_completions".into()),
             provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-            set_as_default: Some(false),
             create_only: Some(false),
             models: None,
             efforts: None,
@@ -7597,6 +7413,120 @@ context_window = "1000000"
         assert!(
             !config.contains("extra_headers"),
             "empty list must drop extra_headers, not copy the old table:\n{config}"
+        );
+    }
+
+    #[test]
+    fn session_route_does_not_follow_a_legacy_global_default() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home =
+            std::env::temp_dir().join(format!("grok-app-session-route-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = ensure_agent_home();
+        let path = agent_config_toml();
+        let text = set_models_default(&read_text(&path), "relay");
+        write_text(&path, &text).expect("write config");
+        let text = append_section(
+            &read_text(&path),
+            "relay",
+            &[
+                ("base_url".into(), "https://relay.example/v1".into()),
+                ("api_key".into(), "sk-test".into()),
+                ("model".into(), "shared-model".into()),
+            ],
+        );
+        write_text(&path, &text).expect("write provider");
+
+        assert_eq!(session_route_provider_id(None), SESSION_PROVIDER_OFFICIAL);
+        assert_eq!(session_route_provider_id(Some("relay")), "relay");
+        assert_eq!(
+            session_route_provider_id(Some("deleted-relay")),
+            "deleted-relay"
+        );
+        assert_eq!(
+            existing_session_route("deleted-relay"),
+            SESSION_PROVIDER_OFFICIAL
+        );
+        assert_eq!(
+            existing_session_route(SESSION_PROVIDER_OFFICIAL),
+            SESSION_PROVIDER_OFFICIAL
+        );
+        assert_eq!(
+            session_model_id_for_route(
+                Some("deleted-relay"),
+                SESSION_PROVIDER_OFFICIAL,
+                "grok-4.6",
+            ),
+            OFFICIAL_CATALOG_MODEL,
+            "a model id shared with the official catalog must still use the official fallback after deletion",
+        );
+        assert_eq!(
+            session_model_id_for_route(Some("relay"), SESSION_PROVIDER_OFFICIAL, "grok-4.6",),
+            "grok-4.6",
+            "an existing SSH-pinned provider keeps a valid official model id",
+        );
+
+        match previous {
+            Some(v) => std::env::set_var("GROK_APP_HOME", v),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn append_prompt_is_read_from_the_chat_provider_only() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home =
+            std::env::temp_dir().join(format!("grok-app-provider-rules-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = ensure_agent_home();
+        let path = agent_config_toml();
+        let text = append_section(
+            &read_text(&path),
+            "relay",
+            &[
+                ("base_url".into(), "https://relay.example/v1".into()),
+                ("api_key".into(), "sk-test".into()),
+                ("model".into(), "m1".into()),
+                (APP_APPEND_PROMPT_KEY.into(), "Use relay rules".into()),
+            ],
+        );
+        write_text(&path, &text).expect("write provider");
+
+        assert_eq!(
+            provider_append_prompt("relay").as_deref(),
+            Some("Use relay rules")
+        );
+        assert!(provider_append_prompt(SESSION_PROVIDER_OFFICIAL).is_none());
+        assert!(provider_append_prompt("missing").is_none());
+
+        match previous {
+            Some(v) => std::env::set_var("GROK_APP_HOME", v),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn unknown_official_model_falls_back_to_the_official_default() {
+        let unknown = format!("not-an-official-model-{}", uuid::Uuid::new_v4());
+        assert_eq!(
+            session_set_model_id_for(SESSION_PROVIDER_OFFICIAL, &unknown),
+            OFFICIAL_CATALOG_MODEL
+        );
+        assert_eq!(
+            session_set_model_id_for(SESSION_PROVIDER_OFFICIAL, ""),
+            OFFICIAL_CATALOG_MODEL
+        );
+        assert_eq!(
+            session_set_model_id_for(SESSION_PROVIDER_OFFICIAL, OFFICIAL_DEFAULT_MODEL),
+            OFFICIAL_CATALOG_MODEL
         );
     }
 
@@ -7673,7 +7603,7 @@ context_window = "1000000"
         assert!(!from_custom_row.route_changed);
         assert_eq!(from_custom_row.set_model_id.as_deref(), Some("grok-4.5"));
 
-        // Custom provider on SSH: no respawn, no persisted custom id, no set_model.
+        // Custom provider picks on SSH normalize to official identity.
         assert_eq!(
             session_provider_pick(true, None, Some("relay-b")),
             SameRoute
@@ -7684,12 +7614,14 @@ context_window = "1000000"
         );
         let custom = composer_provider_pick(true, None, Some("relay-b"), Some("deepseek-v4-flash"));
         assert!(!custom.route_changed);
-        assert!(custom.provider_to_persist.is_none());
+        assert_eq!(custom.provider_to_persist.as_deref(), Some("official"));
         assert!(custom.set_model_id.is_none());
         let custom_id_as_model =
             composer_provider_pick(true, Some("official"), Some("relay-b"), Some("relay-b"));
-        assert!(custom_id_as_model.provider_to_persist.is_none());
-        assert!(custom_id_as_model.set_model_id.is_none());
+        assert_eq!(
+            custom_id_as_model.provider_to_persist.as_deref(),
+            Some("official")
+        );
 
         // Same cells locally still respawn and still send the model on a real switch.
         let local_switch = composer_provider_pick(
@@ -8686,7 +8618,6 @@ app_parent_provider = "proxy"
             api_key: Some("sk-z".into()),
             api_backend: Some("chat_completions".into()),
             provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-            set_as_default: Some(false),
             create_only: Some(true),
             models: Some(vec![
                 ProviderModelEntry::named("glm-a", "GLM A"),
@@ -8738,7 +8669,6 @@ app_parent_provider = "proxy"
             api_key: None,
             api_backend: Some("chat_completions".into()),
             provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
-            set_as_default: Some(false),
             create_only: Some(false),
             models: Some(vec![ProviderModelEntry::named("glm-a", "GLM A")]),
             efforts: None,
@@ -8782,7 +8712,6 @@ app_parent_provider = "proxy"
             api_key: Some("sk".into()),
             api_backend: Some("responses".into()),
             provider_mode: Some(PROVIDER_MODE_GROK_BUILD_PROXY.into()),
-            set_as_default: Some(false),
             create_only: Some(true),
             models: Some(vec![
                 ProviderModelEntry::named("grok-4.6", "Grok 4.6"),
@@ -8864,7 +8793,6 @@ app_parent_provider = "relay"
             api_key: None,
             api_backend: Some("chat_completions".into()),
             provider_mode: Some(provider_mode.into()),
-            set_as_default: Some(false),
             create_only: Some(false),
             models: None,
             efforts: None,

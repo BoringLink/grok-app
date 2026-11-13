@@ -1012,7 +1012,6 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                   labels={{
                     model: tr("composer.model"),
                     modelGroupOfficial: tr("composer.modelGroupOfficial"),
-                    modelViaProvider: tr("composer.modelViaProvider"),
                     effort: tr("composer.effort"),
                     effortHigh: tr("effort.high"),
                     effortMedium: tr("effort.medium"),

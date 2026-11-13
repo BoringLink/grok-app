@@ -24,7 +24,6 @@ vi.mock("@/lib/api", () => ({
   isTauri: () => true,
   providersList: mocks.providersList,
   secretsGetMasked: mocks.secretsGetMasked,
-  providersActivate: vi.fn(),
   providersBalance: vi.fn(),
   providersCcSwitchImport: vi.fn(),
   providersCcSwitchScan: vi.fn(),
@@ -89,6 +88,18 @@ afterEach(() => {
 function renderPanel() {
   return render(<ProvidersPanel locale="en" />);
 }
+
+describe("ProvidersPanel route activation", () => {
+  it("does not offer a global Use action on provider cards", async () => {
+    renderPanel();
+
+    await screen.findByRole("button", { name: /Relay/ });
+
+    expect(screen.queryByRole("button", { name: "Use" })).toBeNull();
+    expect(screen.queryByText("Use")).toBeNull();
+    expect(screen.queryByText("Active")).toBeNull();
+  });
+});
 
 describe("ProvidersPanel corrupt catalog", () => {
   it("disables model settings for an untouched corrupt catalog", async () => {

@@ -39,6 +39,7 @@ export const jaDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "カスタムリレー",
   "setup.account.relayHint": "OpenAI 互換の base URL + キー",
+  "setup.account.relayPerChatHint": "新しいチャットは公式モデルで始まります。各チャットで使うリレーモデルをコンポーザーから選択してください。",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "API キー",
   "setup.account.protocol": "メッセージ形式",

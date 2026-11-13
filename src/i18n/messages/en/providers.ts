@@ -112,14 +112,14 @@ export const enProviders = {
   "prov.fetching": "Fetching…",
   "prov.loaded": "Loaded {n} models",
   "prov.emptyList": "No models returned",
-  "prov.setDefault": "Set as default",
+
   "prov.save": "Save",
   "prov.add": "Add",
   "prov.saving": "Saving…",
   "prov.saved": "Provider saved.",
   "prov.savedReplaced": "Same id already existed — replaced with this form (previous entry was still on disk).",
   "prov.err.recreateNeedKey": "This id still exists on disk. Enter an API key to replace it, or delete the leftover provider first.",
-  "prov.savedHotReload": "Provider saved. Agents reloaded — next message uses the new config (no app restart).",
+
   "prov.savedApplyFailed": "Provider saved on disk, but live apply failed ({detail}). Try sending a message, or restart the app if chat stays offline.",
   "prov.err.saveTimeout": "Save is taking too long. Config may still have been written — close and reopen this panel, or restart if chat does not work.",
   "prov.confirmDelete": "Delete provider “{id}”?",
@@ -147,14 +147,14 @@ export const enProviders = {
   "prov.officialKeySaved": "Official API key saved. Voice controls will appear when ready.",
   "prov.officialKeyCleared": "Official API key removed.",
   "prov.officialKeyPresent": "A key is stored (not shown). Paste a new one to replace it.",
-  "prov.officialVoiceHint": "Composer voice dictation needs official login (Account) or this API key, and the active provider must be Official Grok. Custom/third-party providers and live voice are not supported yet.",
+  "prov.officialVoiceHint": "Composer dictation needs official login (Account) or this API key; the chat's model provider does not affect it.",
   "prov.officialLoginHint": "Or sign in under Settings → Account for full membership features.",
   "prov.officialAuthOk": "Signed in or key ready",
   "prov.officialKeyOnly": "API key stored",
-  "prov.active": "Active",
+
   "prov.customProvider": "Custom provider",
-  "prov.useThis": "Use",
-  "prov.switchedHotReload": "Provider applied. Next message reconnects with the new config — no full app restart needed.",
+
+
   "prov.ccSwitch.importBtn": "Import from CC Switch",
   "prov.ccSwitch.importBtnHint": "Read Grok Build providers from local CC Switch and add them here",
   "prov.ccSwitch.title": "Import from CC Switch",
@@ -180,8 +180,8 @@ export const enProviders = {
   "prov.empty.hostOnly": "Custom providers need the desktop app (Tauri). Open Grok App to add relays.",
   "prov.empty.noCustom": "No custom relays yet — add an OpenAI-compatible provider, or use Official Grok above.",
   "prov.empty.loadError": "Could not load providers. Fix the host error above, then retry.",
-  "prov.apply.softRespawn": "Provider saved. Agents reloaded — next message uses the new config (no app restart).",
-  "prov.apply.savedDiskOnly": "Provider saved on disk. Activate with Use (or pick it in the composer) to apply the route.",
+
+  "prov.apply.savedDiskOnly": "Provider saved. Chats using this provider pick up the new config on their next turn.",
   "prov.apply.hostOnly": "Provider changes need the desktop app. Open Grok App to save relays.",
   "prov.err.validation": "Could not save: invalid provider fields (id, URL, key, or models). Check the form and try again.",
   "prov.err.network": "Could not save: network or host IPC error. Check connectivity and retry.",

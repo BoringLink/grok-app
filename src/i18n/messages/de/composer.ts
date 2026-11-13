@@ -214,7 +214,7 @@ export const deComposer = {
   "composer.projectBound": "Sitzung an „{name}“ gebunden",
   "composer.projectCleared": "Zum Standard-Arbeitsbereich gewechselt",
   "composer.model": "Modell",
-  "composer.modelViaProvider": "via Custom-Anbieter",
+
   "composer.modelGroupOfficial": "Offiziell",
   "composer.modelSearchPlaceholder": "Modelle suchen…",
   "composer.modelSearchEmpty": "Keine Modelle passen",

@@ -172,46 +172,46 @@ export const idFeatures = {
   "managedSetup.error.rejected": "Kunci deployment ditolak atau kedaluwarsa. Konfirmasikan dengan administrator Anda.",
   "managedSetup.error.signatureRejectedTitle": "Tanda tangan terkelola ditolak",
   "managedSetup.error.signatureRejected": "CLI menolak tanda tangan atau amplop konfigurasi terkelola. Hubungi administrator Anda; App tidak akan menulis kebijakan tak terverifikasi.",
-  "modelAux.title": "Perutean model bantu",
-  "modelAux.desc": "Model utama menangani loop obrolan. Tugas samping dapat memakai model multimodal yang lebih kuat (seperti slot bantu Hermes). Hanya menulis kunci tugas [models] — tidak pernah mengubah rute utama Anda.",
-  "modelAux.loading": "Memuat lapisan model…",
-  "modelAux.refresh": "Muat ulang",
-  "modelAux.saved": "Model bantu disimpan. Agen akan menyambung ulang pada giliran berikutnya.",
-  "modelAux.sharedReadOnly": "Mode sesi bersama: App tidak menulis ulang ~/.grok. Beralih ke mode mandiri atau sunting config.toml di CLI.",
-  "modelAux.mainDefault": "[models].default utama",
-  "modelAux.activeSource": "Rute aktif",
-  "modelAux.option.auto": "Otomatis (bawaan CLI)",
-  "modelAux.slot.imageDescription": "Deskripsi gambar",
-  "modelAux.slot.imageDescriptionDesc": "Saat model utama tidak dapat melihat gambar, Grok Build mendeskripsikan lampiran dengan model ini.",
-  "modelAux.slot.webSearch": "Pencarian web",
-  "modelAux.slot.webSearchDesc": "Model yang dipakai alat web_search (pencarian backend paling baik pada model kelas Grok).",
-  "modelAux.slot.sessionSummary": "Ringkasan sesi",
-  "modelAux.slot.sessionSummaryDesc": "Model tugas samping untuk ringkasan sesi / teks terkait pemadatan.",
-  "modelAux.slot.promptSuggestion": "Saran prompt",
-  "modelAux.slot.promptSuggestionDesc": "Model yang dipakai untuk saran prompt composer saat CLI mengaktifkannya.",
-  "modelAux.saveGrok": "Simpan Grok",
-  "modelAux.saveGrokHint": "Arahkan keempat slot ke {model}. Model utama tidak berubah.",
-  "modelAux.saveGrokNoTarget": "Belum ada target multimodal. Tambahkan kunci API resmi (Akun → Penyedia kustom → Resmi) atau relai yang mampu Grok (Amux / Yun), lalu coba lagi.",
-  "modelAux.saveGrokConfirmTitle": "Terapkan preset Simpan Grok?",
-  "modelAux.saveGrokConfirmBody": "Atur deskripsi gambar, pencarian web, ringkasan sesi, dan saran prompt ke {model}. Model utama / rute aktif Anda tetap seperti adanya.",
-  "modelAux.saveGrokDone": "Semua slot bantu → {model}",
-  "modelAux.resetDefaults": "Pulihkan bawaan resmi",
-  "modelAux.resetConfirmTitle": "Pulihkan bawaan CLI?",
-  "modelAux.resetConfirmBody": "Hapus penimpaan kustom untuk empat slot bantu. Bawaan bawaan Grok Build berlaku lagi. Model utama dan penyedia kustom tidak diubah. Untuk mengalihkan rute utama kembali ke resmi, gunakan Penyedia kustom → Resmi → Gunakan.",
-  "modelAux.resetDone": "Slot bantu dipulihkan ke bawaan CLI.",
-  "modelAux.footnote": "Tips: setelah beralih kembali ke langganan resmi, gunakan “Pulihkan bawaan resmi” di sini agar tugas samping berhenti memakai relai kustom.",
-  "modelAux.pathLabel": "Konfigurasi",
-  "modelAux.needOfficialKey": "Untuk memakai Grok Resmi sebagai model bantu saat rute utama adalah relai kustom, tempel kunci API resmi di Penyedia kustom → Resmi (auth.json dihapus pada rute kustom).",
-  "modelAux.health.officialIncomplete": "Slot bantu mengarah ke Grok resmi, tetapi tidak ada bagian model resmi lengkap atau kunci API. Gambar tidak akan dikirim sebagai piksel (menghindari DeepSeek image_url 400). Perbaiki: tempel kunci API resmi di Penyedia kustom → Resmi, atau hapus slot dengan “Pulihkan bawaan resmi”, atau tambah Amux/Yun dan jalankan ulang Simpan Grok.",
-  "modelAux.health.textOnlyNoVision": "Model utama hanya teks dan bantu visi belum siap. Gambar terlampir dikirim hanya sebagai catatan jalur hingga Anda mengonfigurasi model visi di sini.",
-  "modelAux.nextStepsTitle": "Cara mengaktifkan visi pada model utama teks",
-  "modelAux.nextStep1": "Opsi A — Resmi: Akun → Penyedia kustom → Resmi → tempel kunci API xAI, lalu atur Deskripsi gambar ke Resmi · grok-4.7 (atau Simpan Grok).",
-  "modelAux.nextStep2": "Opsi B — Relai: tambah Amux / Yun dengan grok-4.7, lalu atur semua slot bantu ke penyedia itu (atau Simpan Grok).",
-  "modelAux.nextStep3": "Jika slot macet pada id Grok resmi yang rusak, klik “Pulihkan bawaan resmi” terlebih dahulu, lalu konfigurasikan ulang.",
-  "modelAux.goProviders": "Buka Penyedia kustom",
-  "modelAux.officialAuxTitle": "Saluran samping resmi",
-  "modelAux.officialAuxReady": "Saluran samping Grok resmi siap ({reason}). MCP sesi “official-aux” mengekspos web_search + x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe lewat grok -p terisolasi (tidak memakai autentikasi DeepSeek).",
-  "modelAux.officialAuxMissing": "Saluran samping resmi offline. Masuk dengan Grok Build (autentikasi CLI) atau tempel kunci API resmi di Penyedia kustom → Resmi — lalu sambungkan ulang sesi.",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "Rekap biaya",
   "costRollup.settingsDesc": "Pemakaian token yang diketahui menurut proyek atau sesi dan hari (dari pemakaian langsung dan jurnal sesi jika tersedia). Saring menurut proyek/sesi, ekspor ringkasan teks polos, atau hapus cincin sampel lokal. Hanya perkiraan — bukan penagihan.",
   "costRollup.lead": "Tampilan bergulir {days} hari jumlah token yang dilaporkan agen. Beralih butir Proyek / Sesi dan chip filter di bawah. Sesi tanpa pemakaian yang diketahui tetap Tidak diketahui.",

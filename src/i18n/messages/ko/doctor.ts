@@ -39,6 +39,7 @@ export const koDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "사용자 지정 릴레이",
   "setup.account.relayHint": "OpenAI 호환 base URL + 키",
+  "setup.account.relayPerChatHint": "새 채팅은 공식 모델로 시작합니다. 각 채팅에서 사용할 릴레이 모델을 작성기에서 선택하세요.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "API 키",
   "setup.account.protocol": "메시지 형식",

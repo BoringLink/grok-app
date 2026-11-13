@@ -11,33 +11,19 @@ import {
 } from "./providerRouteHonesty";
 
 describe("resolveProviderApplyEffect", () => {
-  it("host_only when not Tauri regardless of reload", () => {
-    expect(
-      resolveProviderApplyEffect({ needsReload: true, isTauri: false }),
-    ).toBe("host_only");
-    expect(
-      resolveProviderApplyEffect({ needsReload: false, isTauri: false }),
-    ).toBe("host_only");
+  it("host_only outside Tauri", () => {
+    expect(resolveProviderApplyEffect({ isTauri: false })).toBe("host_only");
   });
 
-  it("soft_respawn when Tauri + needsReload", () => {
-    expect(
-      resolveProviderApplyEffect({ needsReload: true, isTauri: true }),
-    ).toBe("soft_respawn");
-  });
-
-  it("saved_disk_only when Tauri + no reload", () => {
-    expect(
-      resolveProviderApplyEffect({ needsReload: false, isTauri: true }),
-    ).toBe("saved_disk_only");
+  it("saved_disk_only in Tauri", () => {
+    expect(resolveProviderApplyEffect({ isTauri: true })).toBe(
+      "saved_disk_only",
+    );
   });
 });
 
 describe("buildProviderApplyToastKey", () => {
   it("maps effects to stable prov.apply.* keys", () => {
-    expect(buildProviderApplyToastKey("soft_respawn")).toBe(
-      "prov.apply.softRespawn",
-    );
     expect(buildProviderApplyToastKey("saved_disk_only")).toBe(
       "prov.apply.savedDiskOnly",
     );
@@ -239,31 +225,16 @@ describe("unsupportedGrokBuildProxyModels", () => {
 describe("product matrix", () => {
   const cases: Array<{
     name: string;
-    needsReload: boolean;
     isTauri: boolean;
     effect: ReturnType<typeof resolveProviderApplyEffect>;
   }> = [
     {
-      name: "browser + reload → host_only",
-      needsReload: true,
+      name: "browser → host_only",
       isTauri: false,
       effect: "host_only",
     },
     {
-      name: "browser + no reload → host_only",
-      needsReload: false,
-      isTauri: false,
-      effect: "host_only",
-    },
-    {
-      name: "tauri + active route → soft_respawn",
-      needsReload: true,
-      isTauri: true,
-      effect: "soft_respawn",
-    },
-    {
-      name: "tauri + inactive edit → saved_disk_only",
-      needsReload: false,
+      name: "tauri → saved_disk_only",
       isTauri: true,
       effect: "saved_disk_only",
     },
@@ -271,12 +242,9 @@ describe("product matrix", () => {
 
   for (const c of cases) {
     it(c.name, () => {
-      expect(
-        resolveProviderApplyEffect({
-          needsReload: c.needsReload,
-          isTauri: c.isTauri,
-        }),
-      ).toBe(c.effect);
+      expect(resolveProviderApplyEffect({ isTauri: c.isTauri })).toBe(
+        c.effect,
+      );
       expect(buildProviderApplyToastKey(c.effect).startsWith("prov.apply.")).toBe(
         true,
       );

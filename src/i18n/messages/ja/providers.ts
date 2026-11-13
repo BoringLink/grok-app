@@ -111,14 +111,14 @@ export const jaProviders = {
   "prov.fetching": "取得中…",
   "prov.loaded": "{n} 件のモデルを読み込みました",
   "prov.emptyList": "モデルは返されませんでした",
-  "prov.setDefault": "既定にする",
+
   "prov.save": "保存",
   "prov.add": "追加",
   "prov.saving": "保存中…",
   "prov.saved": "プロバイダーを保存しました。",
   "prov.savedReplaced": "同じ id が残っていたため、このフォームで上書きしました（以前の項目がディスクに残っていた可能性があります）。",
   "prov.err.recreateNeedKey": "この id はディスク上にまだあります。上書きするには API キーを入力するか、残っているプロバイダーを先に削除してください。",
-  "prov.savedHotReload": "プロバイダーを保存し、エージェントを再読み込みしました — 次のメッセージから新しい設定を使います（アプリの再起動は不要）。",
+
   "prov.savedApplyFailed": "プロバイダーはディスクに保存されましたが、即時適用に失敗しました（{detail}）。まずメッセージを送ってみてください。チャットが使えない場合はアプリを再起動してください。",
   "prov.err.saveTimeout": "保存に時間がかかりすぎています。設定は書き込まれている可能性があります — このパネルを閉じて開き直すか、チャットが動かない場合は再起動してください。",
   "prov.confirmDelete": "プロバイダー「{id}」を削除しますか？",
@@ -146,14 +146,14 @@ export const jaProviders = {
   "prov.officialKeySaved": "公式 API キーを保存しました。音声の準備ができたら入力欄に表示されます。",
   "prov.officialKeyCleared": "公式 API キーを削除しました。",
   "prov.officialKeyPresent": "キーは保存済みです（平文は表示しません）。新しいキーを貼り付けると上書きできます。",
-  "prov.officialVoiceHint": "コンポーザーの音声入力には、公式ログイン（アカウント）またはここの API キーが必要で、アクティブなプロバイダーは公式 Grok である必要があります。カスタム/サードパーティのプロバイダーとライブ音声はまだ未対応です。",
+  "prov.officialVoiceHint": "コンポーザーの音声入力には公式ログイン（アカウント）またはここの API キーが必要です。チャットのモデルプロバイダーは影響しません。",
   "prov.officialLoginHint": "または「設定 → アカウント」でサインインすると会員機能を使えます。",
   "prov.officialAuthOk": "サインイン済み、またはキー準備完了",
   "prov.officialKeyOnly": "API キー保存済み",
-  "prov.active": "使用中",
+
   "prov.customProvider": "カスタムプロバイダー",
-  "prov.useThis": "使う",
-  "prov.switchedHotReload": "プロバイダーを適用しました。次のメッセージは新しい設定で再接続します — アプリ全体の再起動は不要です。",
+
+
   "prov.ccSwitch.importBtn": "CC Switch から取り込む",
   "prov.ccSwitch.importBtnHint": "このマシンの CC Switch から Grok Build プロバイダーを読み、ここに追加します",
   "prov.ccSwitch.title": "CC Switch から取り込む",
@@ -179,8 +179,8 @@ export const jaProviders = {
   "prov.empty.hostOnly": "カスタムプロバイダーにはデスクトップアプリ（Tauri）が必要です。Grok App でリレーを追加してください。",
   "prov.empty.noCustom": "カスタムリレーはまだありません — OpenAI 互換プロバイダーを追加するか、上の公式 Grok を使ってください。",
   "prov.empty.loadError": "プロバイダー一覧を読み込めませんでした。上のホストエラーを直してから再試行してください。",
-  "prov.apply.softRespawn": "プロバイダーを保存し、エージェントを再読み込みしました — 次のメッセージから新しい設定を使います（アプリの再起動は不要）。",
-  "prov.apply.savedDiskOnly": "プロバイダーをディスクに保存しました。「使う」で有効にするか、コンポーザーで選ぶとルートが切り替わります。",
+
+  "prov.apply.savedDiskOnly": "プロバイダーを保存しました。このプロバイダーを使うチャットは次のターンで新しい設定を反映します。",
   "prov.apply.hostOnly": "プロバイダーの変更にはデスクトップアプリが必要です。Grok App でリレーを保存してください。",
   "prov.err.validation": "保存できません: プロバイダーの項目が無効です（id、URL、キー、またはモデル）。フォームを確認して再試行してください。",
   "prov.err.network": "保存できません: ネットワークまたはホスト IPC エラーです。接続を確認して再試行してください。",

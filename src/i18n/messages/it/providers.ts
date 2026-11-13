@@ -111,14 +111,14 @@ export const itProviders = {
   "prov.fetching": "Recupero…",
   "prov.loaded": "Caricati {n} modelli",
   "prov.emptyList": "Nessun modello restituito",
-  "prov.setDefault": "Imposta come predefinito",
+
   "prov.save": "Salva",
   "prov.add": "Aggiungi",
   "prov.saving": "Salvataggio…",
   "prov.saved": "Provider salvato.",
   "prov.savedReplaced": "Lo stesso id esisteva già — sostituito con questo modulo (la voce precedente era ancora sul disco).",
   "prov.err.recreateNeedKey": "Questo id esiste ancora sul disco. Inserisci una chiave API per sostituirlo, oppure elimina prima il provider rimasto.",
-  "prov.savedHotReload": "Provider salvato. Agenti ricaricati — il prossimo messaggio usa la nuova config (nessun riavvio dell’app).",
+
   "prov.savedApplyFailed": "Provider salvato su disco, ma l’applicazione live non è riuscita ({detail}). Prova a inviare un messaggio, oppure riavvia l’app se la chat resta offline.",
   "prov.err.saveTimeout": "Il salvataggio sta impiegando troppo. La config potrebbe essere stata scritta comunque — chiudi e riapri questo pannello, o riavvia se la chat non funziona.",
   "prov.confirmDelete": "Eliminare il provider «{id}»?",
@@ -146,14 +146,14 @@ export const itProviders = {
   "prov.officialKeySaved": "Chiave API ufficiale salvata. I controlli vocali compariranno quando saranno pronti.",
   "prov.officialKeyCleared": "Chiave API ufficiale rimossa.",
   "prov.officialKeyPresent": "Una chiave è memorizzata (non mostrata). Incollane una nuova per sostituirla.",
-  "prov.officialVoiceHint": "La dettatura vocale del composer richiede l’accesso ufficiale (Account) o questa chiave API, e il provider attivo deve essere Grok ufficiale. Provider personalizzati/terze parti e live voice non sono ancora supportati.",
+  "prov.officialVoiceHint": "La dettatura vocale del composer richiede l’accesso ufficiale (Account) o questa chiave API; il provider del modello della chat non influisce.",
   "prov.officialLoginHint": "Oppure accedi in Impostazioni → Account per le funzioni complete dell’abbonamento.",
   "prov.officialAuthOk": "Accesso effettuato o chiave pronta",
   "prov.officialKeyOnly": "Chiave API memorizzata",
-  "prov.active": "Attivo",
+
   "prov.customProvider": "Provider personalizzato",
-  "prov.useThis": "Usa",
-  "prov.switchedHotReload": "Provider applicato. Il prossimo messaggio si riconnette con la nuova config — nessun riavvio completo dell’app.",
+
+
   "prov.ccSwitch.importBtn": "Importa da CC Switch",
   "prov.ccSwitch.importBtnHint": "Leggi i provider Grok Build dal CC Switch locale e aggiungili qui",
   "prov.ccSwitch.title": "Importa da CC Switch",
@@ -179,8 +179,8 @@ export const itProviders = {
   "prov.empty.hostOnly": "I provider personalizzati richiedono l’app desktop (Tauri). Apri Grok App per aggiungere i relay.",
   "prov.empty.noCustom": "Ancora nessun relay personalizzato — aggiungi un provider compatibile OpenAI, oppure usa Grok ufficiale sopra.",
   "prov.empty.loadError": "Impossibile caricare i provider. Correggi l’errore dell’host sopra, poi riprova.",
-  "prov.apply.softRespawn": "Provider salvato. Agenti ricaricati — il prossimo messaggio usa la nuova config (nessun riavvio dell’app).",
-  "prov.apply.savedDiskOnly": "Provider salvato su disco. Attivalo con Use (o sceglilo nel composer) per applicare il percorso.",
+
+  "prov.apply.savedDiskOnly": "Provider salvato. Le chat che lo usano applicheranno la nuova configurazione al turno successivo.",
   "prov.apply.hostOnly": "Le modifiche ai provider richiedono l’app desktop. Apri Grok App per salvare i relay.",
   "prov.err.validation": "Impossibile salvare: campi provider non validi (id, URL, chiave o modelli). Controlla il modulo e riprova.",
   "prov.err.network": "Impossibile salvare: errore di rete o IPC dell’host. Controlla la connettività e riprova.",

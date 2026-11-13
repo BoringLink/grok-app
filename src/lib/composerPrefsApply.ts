@@ -39,7 +39,7 @@ function isCustomProviderId(providerId: string | null | undefined): boolean {
 
 /**
  * Selectable rows for one provider. A host that sends `models` owns the list,
- * and `[]` is an explicit clear (BOR-152); only a missing catalog keeps the
+ * and `[]` is an explicit clear; only a missing catalog keeps the
  * legacy channel `model` row.
  */
 function providerModelList(provider: ComposerPrefsProvider) {
@@ -88,7 +88,7 @@ function draftModelIdIsKnown(
 /**
  * A saved model id that a corrupt catalog's partial read no longer lists.
  * The host keeps the session's generic child section, so the stored id is
- * still routable and must not be replaced by the channel `model` (BOR-152).
+ * still routable and must not be replaced by the channel `model`.
  */
 function keepsUnlistedModelOnCorrupt(
   provider: ComposerPrefsProvider,
@@ -155,6 +155,10 @@ export function resolveComposerPrefsSelection(opts: {
   prefs: ComposerPrefsSelectionInput;
   catalog: ModelOption[];
   providers?: readonly ComposerPrefsProvider[];
+  /** False before the first provider list arrives; an empty loaded list is final. */
+  providersLoaded?: boolean;
+  /** SSH sessions are pinned to the official route. */
+  forceOfficial?: boolean;
   /**
    * A chat that has not been created yet keeps its pick in memory only, so a
    * resolve — which reads the global / project defaults — would otherwise put
@@ -164,6 +168,18 @@ export function resolveComposerPrefsSelection(opts: {
 }): ComposerPrefsSelection {
   const catalog = opts.catalog.length > 0 ? opts.catalog : GROK_BUILD_MODELS;
   const providers = opts.providers ?? [];
+  const providersLoaded = opts.providersLoaded === true;
+  if (opts.forceOfficial) {
+    const requestedModelId = opts.prefs.modelId?.trim() ?? "";
+    const modelId = isValidModelId(requestedModelId, catalog)
+      ? requestedModelId
+      : pickDefaultModelId(catalog);
+    return {
+      modelId,
+      effort: pickEffort(opts.prefs.effort, findModel(modelId, catalog)),
+      providerId: null,
+    };
+  }
   const providerId = opts.prefs.providerId?.trim() ?? "";
 
   const draftModelId = opts.draft?.modelId?.trim() ?? "";
@@ -171,7 +187,7 @@ export function resolveComposerPrefsSelection(opts: {
     const drafted = providers.find((p) => p.id === opts.draft?.providerId?.trim());
     if (!drafted) {
       // List not back yet: nothing disproves the pick, so keep it.
-      if (providers.length === 0) {
+      if (!providersLoaded && providers.length === 0) {
         const draftEffort = opts.draft?.effort?.trim() ?? "";
         return {
           modelId: draftModelId,
@@ -204,25 +220,30 @@ export function resolveComposerPrefsSelection(opts: {
     const storedModel = opts.prefs.modelId?.trim() ?? "";
     // List not back yet: keep the disk id so the chip does not flash official.
     if (!provider) {
-      if (providers.length === 0 && storedModel) {
+      if (!providersLoaded && storedModel) {
         const storedEffort = (opts.prefs.effort ?? "").trim();
         return {
           modelId: storedModel,
           effort: storedEffort || pickDefaultEffort(null),
         };
       }
-    } else {
-      const picked = customSelection(provider, storedModel, opts.prefs.effort);
-      if (picked) return picked;
-      // Nothing on this provider is selectable, so the official route has to
-      // take over; otherwise the chip paints official while the send still
-      // routes to the provider (BOR-152).
+      // Provider deleted / empty list: official takes over on both sides.
       return {
         modelId: pickDefaultModelId(catalog),
         effort: pickEffort(opts.prefs.effort, null),
         providerId: null,
       };
     }
+    const picked = customSelection(provider, storedModel, opts.prefs.effort);
+    if (picked) return picked;
+    // Nothing on this provider is selectable, so the official route has to
+    // take over; otherwise the chip paints official while the send still
+    // routes to the provider.
+    return {
+      modelId: pickDefaultModelId(catalog),
+      effort: pickEffort(opts.prefs.effort, null),
+      providerId: null,
+    };
   }
 
   const nextModelId =
@@ -232,6 +253,5 @@ export function resolveComposerPrefsSelection(opts: {
   return {
     modelId: nextModelId,
     effort: pickEffort(opts.prefs.effort, findModel(nextModelId, catalog)),
-    ...(isCustomProviderId(providerId) ? { providerId: null } : {}),
   };
 }

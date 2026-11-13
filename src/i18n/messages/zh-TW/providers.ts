@@ -112,14 +112,14 @@ export const zhTWProviders = {
   "prov.fetching": "擷取中…",
   "prov.loaded": "已載入 {n} 個模型",
   "prov.emptyList": "未回傳模型",
-  "prov.setDefault": "設為預設",
+
   "prov.save": "儲存",
   "prov.add": "新增",
   "prov.saving": "儲存中…",
   "prov.saved": "供應商已儲存。",
   "prov.savedReplaced": "同 id 仍殘留在設定中，已用目前表單覆蓋（舊項目可能未刪乾淨）。",
   "prov.err.recreateNeedKey": "此 id 在磁碟上仍存在。請填寫 API Key 以覆蓋，或先刪除殘留的供應商。",
-  "prov.savedHotReload": "供應商已儲存，Agent 已重載 — 下一則訊息使用新設定（無需重新啟動應用程式）。",
+
   "prov.savedApplyFailed": "供應商已寫入磁碟，但即時套用失敗（{detail}）。可先傳送一則訊息；若對話仍不可用再重新啟動應用程式。",
   "prov.err.saveTimeout": "儲存耗時過長。設定可能已寫入 — 請關閉後重新開啟此面板；若對話不可用再重新啟動應用程式。",
   "prov.confirmDelete": "刪除供應商「{id}」？",
@@ -147,14 +147,14 @@ export const zhTWProviders = {
   "prov.officialKeySaved": "官方 API Key 已儲存。語音就緒後會顯示在輸入框。",
   "prov.officialKeyCleared": "已移除官方 API Key。",
   "prov.officialKeyPresent": "已儲存金鑰（不顯示明文）。貼上新金鑰可覆蓋。",
-  "prov.officialVoiceHint": "語音聽寫需要官方登入（帳戶）或此處 API Key，且目前供應商須為官方 Grok。自訂/第三方供應商與即時語音暫不可用。",
+  "prov.officialVoiceHint": "語音聽寫需要官方登入（帳戶）或此處 API Key；目前聊天選擇的模型供應商不會影響聽寫。",
   "prov.officialLoginHint": "也可在「設定 → 帳戶」登入以使用會員能力。",
   "prov.officialAuthOk": "已登入或已設定金鑰",
   "prov.officialKeyOnly": "已存 API Key",
-  "prov.active": "使用中",
+
   "prov.customProvider": "自訂供應商",
-  "prov.useThis": "使用",
-  "prov.switchedHotReload": "服務商已套用。下一則訊息會用新設定重連 — 無需完整重新啟動應用程式。",
+
+
   "prov.ccSwitch.importBtn": "從 CC Switch 匯入",
   "prov.ccSwitch.importBtnHint": "讀取本機 CC Switch 的 Grok Build 供應商並新增到此處",
   "prov.ccSwitch.title": "從 CC Switch 匯入",
@@ -180,8 +180,8 @@ export const zhTWProviders = {
   "prov.empty.hostOnly": "自訂供應商需要桌面端應用程式（Tauri）。請在 Grok App 中新增中轉。",
   "prov.empty.noCustom": "尚無自訂中轉 — 可新增 OpenAI 相容供應商，或使用上方的官方 Grok。",
   "prov.empty.loadError": "無法載入供應商列表。請先修復上方宿主錯誤後重試。",
-  "prov.apply.softRespawn": "供應商已儲存，Agent 已重載 — 下一則訊息使用新設定（無需重新啟動應用程式）。",
-  "prov.apply.savedDiskOnly": "供應商已寫入磁碟。用「使用」啟用（或在輸入框選擇）後才會切換路由。",
+
+  "prov.apply.savedDiskOnly": "供應商已儲存。使用該供應商的會話將在下一輪套用新設定。",
   "prov.apply.hostOnly": "修改供應商需要桌面端應用程式。請在 Grok App 中儲存中轉。",
   "prov.err.validation": "無法儲存：供應商欄位無效（id、URL、Key 或模型）。請檢查表單後重試。",
   "prov.err.network": "無法儲存：網路或宿主 IPC 錯誤。請檢查連線後重試。",
