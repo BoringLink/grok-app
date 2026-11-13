@@ -6,19 +6,30 @@ import {
 
 // ── Custom providers (agent-home config.toml) ───────────────────────────────
 
+/** Which layer produced a per-model metadata value. */
+export type ProviderModelFieldSource = "user" | "remote" | "fallback";
+
 export interface ProviderModelEntry {
   /** Upstream request body model id. */
   id: string;
   /** Composer chip / menu display label. */
   name: string;
-  /** Per-model context window (tokens). Missing → channel, then App default. */
+  /** Per-model context window (tokens). Missing → API value, then 1M default. */
   contextWindow?: number | null;
-  /** Per-model: this request id accepts image pixels. Missing → channel flag. */
+  /** `contextWindow` provenance. Legacy rows without it keep a value as user. */
+  contextWindowSource?: ProviderModelFieldSource;
+  /** Legacy image-pixel flag. No Settings control; kept verbatim. */
   supportsVision?: boolean;
-  /** Per-model: this request id accepts video input. Missing → unset. */
+  /** Legacy video-input flag. No Settings control; kept verbatim. */
   supportsVideo?: boolean;
-  /** Per-model reasoning ladder. Empty/missing → channel `efforts`. */
+  /** Per-model reasoning ladder. Empty/missing → channel `efforts`, then default. */
   efforts?: ProviderEffortEntry[];
+  /** `efforts` provenance. */
+  effortsSource?: ProviderModelFieldSource;
+  /** Whether this model accepts reasoning levels. Missing → supported. */
+  supportsReasoningEffort?: boolean | null;
+  /** `supportsReasoningEffort` provenance. */
+  supportsReasoningEffortSource?: ProviderModelFieldSource;
 }
 
 export interface ProviderEffortEntry {
@@ -399,6 +410,9 @@ export async function providersListModels(opts: {
       contextWindow?: number | null;
       supportsVision?: boolean | null;
       supportsVideo?: boolean | null;
+      /** Extended `/models` rows may advertise a reasoning ladder. */
+      reasoningEfforts?: ProviderEffortEntry[];
+      supportsReasoningEffort?: boolean | null;
     }>;
   }>("providers_list_models", {
     baseUrl: opts.baseUrl,

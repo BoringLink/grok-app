@@ -1,28 +1,65 @@
 /**
- * Resolve per-model extras on a custom provider without dropping the
+ * Resolve per-model metadata on a custom provider without dropping the
  * channel-level fields Grok Build still reads (`app_efforts`,
  * `context_window`, `app_supports_vision`).
  *
- * Runtime: composer / Host keep using the channel fields. When the user
- * picks a model, App copies that model's extras onto the channel so spawn
- * stays compatible with old TOML.
+ * Context window and reasoning ladder carry a provenance marker so a live
+ * `/models` refresh can update API/fallback values while leaving an explicit
+ * user override alone. Legacy rows without a marker keep a non-empty value as
+ * user-set.
  */
 
 import type {
   CustomProvider,
   ProviderEffortEntry,
   ProviderModelEntry,
+  ProviderModelFieldSource,
 } from "@/lib/api";
+import { DEFAULT_CUSTOM_CONTEXT_WINDOW } from "@/lib/grokCatalog";
 import { alignGrokPresetEfforts } from "@/lib/providerPresets";
 
-export type RemoteModelCaps = {
+export type RemoteModelMetadata = {
   id: string;
   ownedBy?: string | null;
   supportsBackendSearch?: boolean | null;
   contextWindow?: number | null;
   supportsVision?: boolean | null;
   supportsVideo?: boolean | null;
+  reasoningEfforts?: ProviderEffortEntry[] | null;
+  supportsReasoningEffort?: boolean | null;
 };
+
+export type ResolvedModelValue<T> = {
+  value: T;
+  source: ProviderModelFieldSource;
+};
+
+/** Fallback used when neither the API nor the user supplied a context window. */
+export const DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW =
+  DEFAULT_CUSTOM_CONTEXT_WINDOW;
+
+/**
+ * Reasoning levels used when the API does not advertise a ladder. The ids are
+ * sent verbatim as `reasoning_effort`; `medium` is the default.
+ */
+export function defaultProviderModelEfforts(): ProviderEffortEntry[] {
+  return [
+    { id: "low", name: "low", isDefault: false },
+    { id: "medium", name: "medium", isDefault: true },
+    { id: "high", name: "high", isDefault: false },
+    { id: "xhigh", name: "xhigh", isDefault: false },
+  ];
+}
+
+export function normalizeModelFieldSource(
+  raw: unknown,
+): ProviderModelFieldSource | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim().toLowerCase();
+  return value === "user" || value === "remote" || value === "fallback"
+    ? value
+    : null;
+}
 
 export function findProviderModel(
   provider: Pick<CustomProvider, "models" | "model">,
@@ -41,6 +78,124 @@ export function findProviderModel(
 function positiveWindow(n: number | null | undefined): number | null {
   if (n == null || !Number.isFinite(n) || n <= 0) return null;
   return Math.floor(n);
+}
+
+/**
+ * Normalize a reasoning ladder.
+ *
+ * Ids are preserved (trimmed only), blank/duplicate ids are dropped, and
+ * exactly one row is marked default: the first API-marked row, else `medium`,
+ * else the first valid row. That keeps `isDefault` pointing at an id that is
+ * actually in the list.
+ */
+export function normalizeModelEfforts(
+  efforts: ProviderEffortEntry[] | null | undefined,
+): ProviderEffortEntry[] {
+  const out: ProviderEffortEntry[] = [];
+  const seen = new Set<string>();
+  let apiDefault = "";
+  for (const effort of efforts ?? []) {
+    const id = (effort.id ?? "").trim();
+    if (!id) continue;
+    if (effort.isDefault && !apiDefault) apiDefault = id;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      id,
+      name: (effort.name ?? "").trim() || id,
+      isDefault: false,
+    });
+  }
+  if (out.length === 0) return out;
+  const defaultId =
+    apiDefault && seen.has(apiDefault)
+      ? apiDefault
+      : seen.has("medium")
+        ? "medium"
+        : out[0].id;
+  return out.map((effort) => ({
+    ...effort,
+    isDefault: effort.id === defaultId,
+  }));
+}
+
+export function effectiveModelContextWindow(
+  model: Pick<ProviderModelEntry, "contextWindow" | "contextWindowSource">,
+): ResolvedModelValue<number> {
+  const window = positiveWindow(model.contextWindow);
+  const explicit = normalizeModelFieldSource(model.contextWindowSource);
+  return {
+    value: window ?? DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW,
+    source:
+      window == null
+        ? "fallback"
+        : explicit === "user" || explicit === "remote" || explicit === "fallback"
+          ? explicit
+          : "user",
+  };
+}
+
+export function effectiveModelEfforts(
+  model: Pick<ProviderModelEntry, "efforts" | "effortsSource">,
+): ResolvedModelValue<ProviderEffortEntry[]> {
+  const efforts = normalizeModelEfforts(model.efforts);
+  const explicit = normalizeModelFieldSource(model.effortsSource);
+  if (efforts.length === 0) {
+    return { value: defaultProviderModelEfforts(), source: "fallback" };
+  }
+  return {
+    value: efforts,
+    source:
+      explicit === "user" || explicit === "remote" || explicit === "fallback"
+        ? explicit
+        : "user",
+  };
+}
+
+export function effectiveModelSupportsReasoningEffort(
+  model: Pick<
+    ProviderModelEntry,
+    "supportsReasoningEffort" | "supportsReasoningEffortSource"
+  >,
+): ResolvedModelValue<boolean> {
+  const hasValue = typeof model.supportsReasoningEffort === "boolean";
+  const explicit = normalizeModelFieldSource(
+    model.supportsReasoningEffortSource,
+  );
+  return {
+    value: hasValue ? !!model.supportsReasoningEffort : true,
+    source:
+      hasValue &&
+      (explicit === "user" ||
+        explicit === "remote" ||
+        explicit === "fallback")
+        ? explicit
+        : hasValue
+          ? "user"
+          : "fallback",
+  };
+}
+
+/**
+ * Materialize the effective metadata and provenance markers on a catalog row.
+ * Used when the form opens or the user adds a row, so every row can persist
+ * the fallback it currently shows.
+ */
+export function withResolvedModelMetadata(
+  model: ProviderModelEntry,
+): ProviderModelEntry {
+  const contextWindow = effectiveModelContextWindow(model);
+  const efforts = effectiveModelEfforts(model);
+  const reasoning = effectiveModelSupportsReasoningEffort(model);
+  return {
+    ...model,
+    contextWindow: contextWindow.value,
+    contextWindowSource: contextWindow.source,
+    efforts: efforts.value,
+    effortsSource: efforts.source,
+    supportsReasoningEffort: reasoning.value,
+    supportsReasoningEffortSource: reasoning.source,
+  };
 }
 
 /** Channel efforts the composer should show for the active (or given) model. */
@@ -121,27 +276,64 @@ export function materializeActiveModelChannel(opts: {
 }
 
 /**
- * Apply live `/models` caps onto a catalog row.
- * API values win when present (more accurate than a stale form).
+ * Apply live `/models` metadata onto a catalog row.
+ *
+ * User-set values win. API values update rows that came from the API, and
+ * missing API values fall back to the App default. A row that the API did not
+ * return is untouched. Legacy vision/video flags are deliberately not merged:
+ * they are no longer user-editable Settings, so a refresh must not change them.
  */
-export function mergeRemoteModelCaps(
+export function mergeRemoteModelMetadata(
   model: ProviderModelEntry,
-  remote: RemoteModelCaps | null | undefined,
+  remote: RemoteModelMetadata | null | undefined,
 ): ProviderModelEntry {
   if (!remote || remote.id.trim() !== model.id.trim()) return model;
-  const contextWindow = positiveWindow(remote.contextWindow ?? null);
+
+  const context = effectiveModelContextWindow(model);
+  const remoteWindow = positiveWindow(remote.contextWindow);
+  const nextContext =
+    context.source === "user"
+      ? context
+      : remoteWindow != null
+        ? { value: remoteWindow, source: "remote" as const }
+        : context.source === "fallback"
+          ? context
+          : {
+              value: DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW,
+              source: "fallback" as const,
+            };
+
+  const efforts = effectiveModelEfforts(model);
+  const remoteEfforts = normalizeModelEfforts(remote.reasoningEfforts);
+  const nextEfforts =
+    efforts.source === "user"
+      ? efforts
+      : remoteEfforts.length > 0
+        ? { value: remoteEfforts, source: "remote" as const }
+        : efforts.source === "fallback"
+          ? efforts
+          : { value: defaultProviderModelEfforts(), source: "fallback" as const };
+
+  const reasoning = effectiveModelSupportsReasoningEffort(model);
+  const remoteReasoning =
+    typeof remote.supportsReasoningEffort === "boolean"
+      ? remote.supportsReasoningEffort
+      : null;
+  const nextReasoning =
+    reasoning.source === "user"
+      ? reasoning
+      : remoteReasoning != null
+        ? { value: remoteReasoning, source: "remote" as const }
+        : { value: true, source: "fallback" as const };
+
   return {
     ...model,
-    contextWindow:
-      contextWindow ?? model.contextWindow ?? null,
-    supportsVision:
-      remote.supportsVision == null
-        ? model.supportsVision
-        : remote.supportsVision,
-    supportsVideo:
-      remote.supportsVideo == null
-        ? model.supportsVideo
-        : remote.supportsVideo,
+    contextWindow: nextContext.value,
+    contextWindowSource: nextContext.source,
+    efforts: nextEfforts.value,
+    effortsSource: nextEfforts.source,
+    supportsReasoningEffort: nextReasoning.value,
+    supportsReasoningEffortSource: nextReasoning.source,
   };
 }
 
@@ -177,11 +369,16 @@ export function withModelContextWindow(
   if (!id) return list;
   const next = positiveWindow(tokens);
   let found = false;
-  const mapped = list.map((m) => {
-    if (m.id.trim() !== id) return m;
+  const patch = <T extends ProviderModelEntry>(model: T): T => ({
+    ...model,
+    contextWindow: next,
+    contextWindowSource: next == null ? undefined : "user",
+  });
+  const mapped = list.map((model) => {
+    if (model.id.trim() !== id) return model;
     found = true;
-    return { ...m, contextWindow: next };
+    return patch(model);
   });
   if (found) return mapped;
-  return [...mapped, { id, name: id, contextWindow: next }];
+  return [...mapped, patch({ id, name: id })];
 }

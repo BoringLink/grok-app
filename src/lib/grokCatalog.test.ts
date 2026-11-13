@@ -565,7 +565,7 @@ describe("resolveContextWindow", () => {
         models,
       }),
     ).toBeNull();
-    expect(DEFAULT_CUSTOM_CONTEXT_WINDOW).toBe(200_000);
+    expect(DEFAULT_CUSTOM_CONTEXT_WINDOW).toBe(1_000_000);
   });
 
   it("returns null for official model without contextWindow", () => {

@@ -50,7 +50,8 @@ import { Tip } from "@/components/ui/tooltip";
 import { ProviderModelSettingsModal } from "@/components/ProviderModelSettingsModal";
 import {
   materializeActiveModelChannel,
-  mergeRemoteModelCaps,
+  mergeRemoteModelMetadata,
+  type RemoteModelMetadata,
 } from "@/lib/providerModelConfig";
 import {
   PROVIDER_SAVE_TIMEOUT_MS,
@@ -153,15 +154,7 @@ export function ProvidersPanel({
   const [form, setForm] = useState<FormState>(emptyForm);
   const [busy, setBusy] = useState(false);
   const [showKey, setShowKey] = useState(false);
-  const [remoteModels, setRemoteModels] = useState<
-    Array<{
-      id: string;
-      supportsBackendSearch?: boolean;
-      contextWindow?: number | null;
-      supportsVision?: boolean | null;
-      supportsVideo?: boolean | null;
-    }>
-  >([]);
+  const [remoteModels, setRemoteModels] = useState<RemoteModelMetadata[]>([]);
   const [modelSettingsIndex, setModelSettingsIndex] = useState<number | null>(
     null,
   );
@@ -555,15 +548,7 @@ export function ProvidersPanel({
     setDraftModelName("");
   };
 
-  const addModelToForm = (
-    modelId: string,
-    displayName?: string,
-    extras?: {
-      contextWindow?: number | null;
-      supportsVision?: boolean | null;
-      supportsVideo?: boolean | null;
-    },
-  ) => {
+  const addModelToForm = (modelId: string, displayName?: string) => {
     const id = modelId.trim();
     if (!id) return;
     const name = (displayName ?? draftModelName).trim() || id;
@@ -571,16 +556,7 @@ export function ProvidersPanel({
     setForm((f) => {
       if (f.models.some((m) => m.id === id)) return f;
       const row = asFormModel(
-        mergeRemoteModelCaps(
-          {
-            id,
-            name,
-            contextWindow: extras?.contextWindow ?? null,
-            supportsVision: extras?.supportsVision ?? undefined,
-            supportsVideo: extras?.supportsVideo ?? undefined,
-          },
-          remote,
-        ),
+        mergeRemoteModelMetadata({ id, name }, remote),
       );
       return { ...f, models: [...f.models, row] };
     });
@@ -661,26 +637,29 @@ export function ProvidersPanel({
     const preferred = reuseStoredModel
       ? storedModel
       : models[0]?.id || storedModel || id;
-    const applied = keepStoredChannel
-      ? null
-      : materializeActiveModelChannel({
-          provider: {
-            id,
-            model: preferred,
-            baseUrl: form.baseUrl.trim(),
-            name: form.name.trim() || id,
-            hasApiKey: true,
-            apiBackend: form.apiBackend,
-            providerMode: form.providerMode,
-            isDefault: false,
+    // An unchanged catalog keeps the stored channel metadata; only a real
+    // catalog edit materializes model values onto the channel.
+    const applied =
+      keepStoredChannel || modelsToSave === undefined
+        ? null
+        : materializeActiveModelChannel({
+            provider: {
+              id,
+              model: preferred,
+              baseUrl: form.baseUrl.trim(),
+              name: form.name.trim() || id,
+              hasApiKey: true,
+              apiBackend: form.apiBackend,
+              providerMode: form.providerMode,
+              isDefault: false,
+              models,
+              efforts: fallbackEfforts,
+              contextWindow: form.contextWindow,
+              supportsVision: form.supportsVision,
+            },
+            modelId: preferred,
             models,
-            efforts: fallbackEfforts,
-            contextWindow: form.contextWindow,
-            supportsVision: form.supportsVision,
-          },
-          modelId: preferred,
-          models,
-        });
+          });
     const payload = {
       id,
       model: preferred,
@@ -903,7 +882,7 @@ export function ProvidersPanel({
           ...f,
           models: f.models.map((m) => {
             const remote = r.models.find((x) => x.id === m.id);
-            return remote ? asFormModel(mergeRemoteModelCaps(m, remote)) : m;
+            return remote ? asFormModel(mergeRemoteModelMetadata(m, remote)) : m;
           }),
         }));
         onToast?.(tr("prov.fetchedCapsApplied", { n: String(r.models.length) }), 2800);
@@ -1724,7 +1703,7 @@ export function ProvidersPanel({
                 {/* Models — full-width section, 2 equal columns inside */}
                 <div
                   className="prov-field prov-field--full prov-section"
-                  id="settings-anchor-prov-supports-vision"
+                  id="settings-anchor-prov-models"
                 >
                   <span className="prov-field__label-row">
                     <FieldHelp
@@ -2270,13 +2249,9 @@ export function ProvidersPanel({
             ? form.models[modelSettingsIndex] ?? null
             : null
         }
-        providerId={form.id}
-        baseUrl={form.baseUrl}
-        fallbackEfforts={form.efforts.map((e) => ({
-          id: e.id,
-          name: e.name,
-          isDefault: e.isDefault,
-        }))}
+        remote={remoteModels.find(
+          (remoteModel) => remoteModel.id === form.models[modelSettingsIndex ?? -1]?.id,
+        )}
         onClose={() => setModelSettingsIndex(null)}
         onSave={(next) => {
           const index = modelSettingsIndex;
@@ -2288,9 +2263,12 @@ export function ProvidersPanel({
                 ? {
                     ...row,
                     contextWindow: next.contextWindow,
-                    supportsVision: next.supportsVision,
-                    supportsVideo: next.supportsVideo,
+                    contextWindowSource: next.contextWindowSource,
+                    supportsReasoningEffort: next.supportsReasoningEffort,
+                    supportsReasoningEffortSource:
+                      next.supportsReasoningEffortSource,
                     efforts: toFormEfforts(next.efforts),
+                    effortsSource: next.effortsSource,
                   }
                 : row,
             ),

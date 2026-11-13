@@ -42,7 +42,7 @@ export type ProviderPreset = {
   supportsVision?: boolean;
   /**
    * Prefill per-channel `context_window` (bare integer in TOML).
-   * Missing → Host/composer default 200k for custom channels.
+   * Missing → Host/composer default 1M for custom channels.
    */
   contextWindow?: number;
   /**
