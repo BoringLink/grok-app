@@ -2906,6 +2906,11 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     } else {
         crate::relay_stream_proxy::rewrite_base_for_cli(&id, &user_base, &api_backend, full_path)?
     };
+    // The key only exists while `base_url` is our loopback sanitize rewrite, so a
+    // re-saved local proxy without a new upstream keeps the previous real host.
+    let keep_prev_upstream = app_upstream.is_none()
+        && provider_mode != PROVIDER_MODE_GROK_BUILD_PROXY
+        && crate::relay_stream_proxy::is_local_sanitize_proxy_url(&base_url);
     let create_only = input.create_only.unwrap_or(false);
     if create_only && existing.is_some() {
         return Err(format!("provider id `{id}` already exists"));
@@ -3078,8 +3083,7 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
             crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY.into(),
             up,
         ));
-    } else if crate::relay_stream_proxy::is_local_sanitize_proxy_url(&base_url) {
-        // User re-saved a local proxy URL without retyping upstream: keep previous.
+    } else if keep_prev_upstream {
         if let Some(prev) = existing
             .and_then(|s| {
                 s.fields
@@ -3099,6 +3103,10 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
             fields.iter().map(|(k, _)| k.clone()).collect();
         // Always treated as managed — empty list must not copy the old table back.
         known.insert(EXTRA_HEADERS_KEY.into());
+        // `app_upstream_base_url` belongs to the loopback sanitize rewrite only;
+        // a direct endpoint or the native proxy must not inherit the real host a
+        // previous sanitize save stored. The one kept copy is pushed above.
+        known.insert(crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY.into());
         // Explicit clear (`Some("")` → None) must drop the previous prompt.
         // Omitted (`None`) stays out of `known` so the kept value is copied.
         if append_prompt_explicit {
@@ -8392,5 +8400,226 @@ app_parent_provider = "proxy"
             None => std::env::remove_var("GROK_APP_HOME"),
         }
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    fn with_seeded_agent_home<T>(label: &str, config: &str, body: impl FnOnce() -> T) -> T {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!("grok-app-{label}-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = std::fs::create_dir_all(home.join("agent-home"));
+        std::fs::write(agent_config_toml(), config).expect("seed config");
+        let outcome = body();
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        outcome
+    }
+
+    fn sanitized_relay_config(port: u16) -> String {
+        format!(
+            r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "http://127.0.0.1:{port}/r/relay/v1"
+app_upstream_base_url = "https://opencode.ai/zen/go/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+
+[model.relay__m1]
+model = "m1"
+base_url = "http://127.0.0.1:{port}/r/relay/v1"
+app_upstream_base_url = "https://opencode.ai/zen/go/v1"
+name = "M1"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+"#
+        )
+    }
+
+    fn relay_upsert(base_url: &str, provider_mode: &str) -> UpsertProviderInput {
+        UpsertProviderInput {
+            id: "relay".into(),
+            model: "m1".into(),
+            base_url: base_url.into(),
+            name: Some("Relay".into()),
+            api_key: None,
+            api_backend: Some("chat_completions".into()),
+            provider_mode: Some(provider_mode.into()),
+            set_as_default: Some(false),
+            create_only: Some(false),
+            models: None,
+            efforts: None,
+            context_window: None,
+            base_url_full_path: None,
+            append_prompt: None,
+            supports_vision: None,
+            extra_headers: None,
+        }
+    }
+
+    #[test]
+    fn switching_a_sanitized_relay_to_a_direct_endpoint_drops_the_stale_upstream() {
+        let config = sanitized_relay_config(45_001);
+        with_seeded_agent_home("stale-upstream-switch", &config, || {
+            upsert_custom_provider(relay_upsert(
+                "https://api.openai.example/v1",
+                PROVIDER_MODE_GENERIC,
+            ))
+            .expect("upsert");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            for id in ["relay", "relay__m1"] {
+                assert_eq!(
+                    field_of(&after, id, "base_url").as_deref(),
+                    Some("https://api.openai.example/v1"),
+                    "`{id}` must point at the new endpoint:\n{after}"
+                );
+                assert!(
+                    field_of(
+                        &after,
+                        id,
+                        crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                    )
+                    .is_none(),
+                    "`{id}` must not keep the old sanitizer upstream:\n{after}"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn re_saving_the_local_proxy_keeps_the_real_upstream() {
+        let config = sanitized_relay_config(45_001);
+        with_seeded_agent_home("local-proxy-resave", &config, || {
+            upsert_custom_provider(relay_upsert(
+                "http://127.0.0.1:45002/r/relay/v1",
+                PROVIDER_MODE_GENERIC,
+            ))
+            .expect("upsert");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            for id in ["relay", "relay__m1"] {
+                assert_eq!(
+                    field_of(&after, id, "base_url").as_deref(),
+                    Some("http://127.0.0.1:45002/r/relay/v1")
+                );
+                assert_eq!(
+                    field_of(
+                        &after,
+                        id,
+                        crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                    )
+                    .as_deref(),
+                    Some("https://opencode.ai/zen/go/v1"),
+                    "`{id}` must keep the real upstream when only the proxy port moved:\n{after}"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn a_local_proxy_saved_without_a_prior_upstream_stores_no_upstream() {
+        let config = r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://api.openai.example/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+"#;
+        with_seeded_agent_home("local-proxy-no-upstream", config, || {
+            upsert_custom_provider(relay_upsert(
+                "http://127.0.0.1:45001/r/relay/v1",
+                PROVIDER_MODE_GENERIC,
+            ))
+            .expect("upsert");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            assert_eq!(
+                field_of(&after, "relay", "base_url").as_deref(),
+                Some("http://127.0.0.1:45001/r/relay/v1")
+            );
+            assert!(
+                field_of(
+                    &after,
+                    "relay",
+                    crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                )
+                .is_none(),
+                "a loopback base must not be recorded as its own upstream:\n{after}"
+            );
+        });
+    }
+
+    #[test]
+    fn native_proxy_upsert_drops_a_sanitizer_upstream_left_on_the_section() {
+        let config = sanitized_relay_config(45_001);
+        with_seeded_agent_home("native-proxy-upstream", &config, || {
+            upsert_custom_provider(relay_upsert(
+                "https://relay.example/v1",
+                PROVIDER_MODE_GROK_BUILD_PROXY,
+            ))
+            .expect("upsert");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            assert_eq!(
+                field_of(&after, "relay", "base_url").as_deref(),
+                Some("https://relay.example/v1")
+            );
+            assert!(
+                !after.contains(crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY),
+                "no section may keep the sanitizer upstream:\n{after}"
+            );
+        });
+    }
+
+    #[test]
+    fn sanitize_proxy_repair_drops_an_upstream_left_beside_a_direct_endpoint() {
+        let config = r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://api.openai.example/v1"
+app_upstream_base_url = "https://old-upstream.example/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+"#;
+        with_seeded_agent_home("repair-stale-upstream", config, || {
+            let repaired =
+                crate::relay_stream_proxy::repair_sanitize_proxy_bases().expect("repair");
+            assert!(repaired, "the stale upstream must be a repair");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            assert_eq!(
+                field_of(&after, "relay", "base_url").as_deref(),
+                Some("https://api.openai.example/v1")
+            );
+            assert!(
+                field_of(
+                    &after,
+                    "relay",
+                    crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                )
+                .is_none(),
+                "repair must drop the upstream beside a direct endpoint:\n{after}"
+            );
+        });
     }
 }
