@@ -2,8 +2,11 @@
  * Effective inference model shown in composer model chips.
  *
  * Shows the model this chat picked when that id is in the provider catalog.
- * A leftover official catalog id such as Grok 4.5, which is not in the
- * catalog, falls back to the channel `model` (#1337, #1394).
+ * An explicitly cleared catalog (`[]`) offers no row, so only the id the chat
+ * already stored can be shown; the cleared channel `model` is not selectable
+ * and resolves to nothing (BOR-152). A leftover official catalog id such as
+ * Grok 4.5, which is not in the catalog, falls back to the channel `model`
+ * (#1337, #1394).
  */
 
 export function resolveCustomRouteDisplay(
@@ -22,8 +25,15 @@ export function resolveCustomRouteDisplay(
   requestModel: string | null;
 } | null {
   if (!provider) return null;
-  const models = provider.models ?? [];
   const sessionId = sessionModelId.trim();
+  if (provider.models != null && provider.models.length === 0) {
+    if (!sessionId) return null;
+    return {
+      chip: { name: sessionId, model: sessionId },
+      requestModel: sessionId,
+    };
+  }
+  const models = provider.models ?? [];
   const configured = provider.model?.trim() ?? "";
   const sessionEntry = sessionId
     ? models.find((m) => m.id === sessionId)

@@ -65,6 +65,47 @@ describe("resolveCustomRouteDisplay", () => {
   });
 });
 
+describe("resolveCustomRouteDisplay with an explicitly cleared catalog", () => {
+  const cleared = {
+    name: "Cleared",
+    model: "deepseek-chat",
+    models: [] as Array<{ id: string; name?: string | null }>,
+  };
+
+  it("shows the model a saved session still routes on", () => {
+    // Act
+    const shown = resolveCustomRouteDisplay(cleared, "deepseek-reasoner");
+
+    // Assert — the stored id, not the cleared channel `model`
+    expect(shown?.chip).toEqual({
+      name: "deepseek-reasoner",
+      model: "deepseek-reasoner",
+    });
+    expect(shown?.requestModel).toBe("deepseek-reasoner");
+  });
+
+  it("shows nothing when the session stores no model", () => {
+    expect(resolveCustomRouteDisplay(cleared, "")).toBeNull();
+    expect(resolveCustomRouteDisplay(cleared, "   ")).toBeNull();
+  });
+
+  it("keeps the channel model for a legacy provider with no catalog", () => {
+    // Arrange — a missing catalog is the legacy read, not a clear
+    const legacy = { name: "Legacy", model: "llama3" };
+    const nullCatalog = { name: "Legacy", model: "llama3", models: null };
+
+    // Act / Assert
+    expect(resolveCustomRouteDisplay(legacy, "")?.chip).toEqual({
+      name: "llama3",
+      model: "llama3",
+    });
+    expect(resolveCustomRouteDisplay(legacy, "")?.requestModel).toBe("llama3");
+    expect(resolveCustomRouteDisplay(nullCatalog, "")?.requestModel).toBe(
+      "llama3",
+    );
+  });
+});
+
 describe("composerModelChipLabel", () => {
   it("uses official label when no custom route", () => {
     expect(

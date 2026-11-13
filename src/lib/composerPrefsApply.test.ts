@@ -321,6 +321,10 @@ describe("resolveComposerPrefsSelection with an explicitly cleared catalog", () 
 
     // Act / Assert
     expect(next).toEqual({ modelId: "deepseek-reasoner", effort: "high" });
+    // The chip has to route on that same id, not the cleared channel `model`.
+    const shown = resolveCustomRouteDisplay(cleared, next.modelId);
+    expect(shown?.chip.model).toBe("deepseek-reasoner");
+    expect(shown?.requestModel).toBe("deepseek-reasoner");
   });
 
   it("still seeds the channel model for a legacy provider with no catalog", () => {
