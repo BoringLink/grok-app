@@ -609,17 +609,17 @@ pub fn looks_text_only_model(id_or_name: &str) -> bool {
 /// Custom channel is vision-capable when the **active** model opted in, or the
 /// id / name / active model looks multimodal. Unknown relays stay text-only.
 /// Per-model `supports_vision` wins over the channel flag so mixed catalogs
-/// (DeepSeek flash + vision-exp) do not treat every row as vision. A catalog
-/// that does not contain the active row (partial recovery from corrupt text)
-/// must not lend that row a sibling's capability.
+/// (DeepSeek flash + vision-exp) do not treat every row as vision. An explicit
+/// `Some(false)` on the exact active row also wins over id / name heuristics,
+/// so a `grok-vision-*` id can still be pinned to text. A catalog that does not
+/// contain the active row (partial recovery from corrupt text) must not lend
+/// that row a sibling's capability.
 pub fn custom_provider_is_text_only(p: &crate::providers::CustomProvider) -> bool {
     let active = p.models.iter().find(|m| m.id.trim() == p.model.trim());
     if let Some(m) = active {
         match m.supports_vision {
             Some(true) => return false,
-            Some(false) => {
-                return !(looks_vision_model(&m.id) || looks_vision_model(&m.name));
-            }
+            Some(false) => return true,
             None => {
                 if p.supports_vision || looks_vision_model(&m.id) || looks_vision_model(&m.name) {
                     return false;
@@ -1679,6 +1679,57 @@ yolo = false
             "active flash must stay text-only even when a sibling is vision"
         );
         p.model = "deepseek-v4-flash-vision-exp".into();
+        assert!(!custom_provider_is_text_only(&p));
+    }
+
+    #[test]
+    fn custom_vision_explicit_off_beats_a_vision_looking_active_id() {
+        // Explicit per-model flags win over id / name heuristics.
+        let mut p = sample_provider("relay", "gpt-4o", "My API", true);
+        p.models = vec![crate::providers::ProviderModelEntry {
+            id: "gpt-4o".into(),
+            name: "GPT-4o text route".into(),
+            supports_vision: Some(false),
+            ..Default::default()
+        }];
+        assert!(
+            custom_provider_is_text_only(&p),
+            "an explicit supportsVision=false row must stay text-only"
+        );
+
+        let mut grok = sample_provider("relay", "grok-vision-beta", "My API", false);
+        grok.models = vec![crate::providers::ProviderModelEntry {
+            id: "grok-vision-beta".into(),
+            name: "Grok Vision Beta".into(),
+            supports_vision: Some(false),
+            ..Default::default()
+        }];
+        assert!(
+            custom_provider_is_text_only(&grok),
+            "a grok-vision id must not override an explicit supportsVision=false"
+        );
+    }
+
+    #[test]
+    fn custom_vision_explicit_off_does_not_leak_to_or_from_a_sibling_row() {
+        let mut p = sample_provider("deepseek", "deepseek-v4-flash", "DeepSeek", false);
+        p.models = vec![
+            crate::providers::ProviderModelEntry {
+                id: "deepseek-v4-flash".into(),
+                name: "DeepSeek V4 Flash".into(),
+                supports_vision: Some(false),
+                ..Default::default()
+            },
+            crate::providers::ProviderModelEntry {
+                id: "grok-vision-exp".into(),
+                name: "Grok Vision Exp".into(),
+                supports_vision: Some(true),
+                ..Default::default()
+            },
+        ];
+        assert!(custom_provider_is_text_only(&p));
+
+        p.model = "grok-vision-exp".into();
         assert!(!custom_provider_is_text_only(&p));
     }
 
