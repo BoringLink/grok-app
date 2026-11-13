@@ -238,7 +238,6 @@ import {
   type Locale,
   type LocalePreference,
 } from "@/i18n";
-import { resolveComposerPrefsSelection } from "@/lib/composerPrefsApply";
 import {
   messagesAfterEditResend,
   optimisticLiveHostForEditResend,
@@ -2391,13 +2390,12 @@ export function AppWorkbench() {
   const sessionProviderChip = useSessionProviderChip();
 
   const applyComposerPrefs = useCallback(
-    (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
-      const next = resolveComposerPrefsSelection({
-        prefs,
-        catalog,
-        providers: sessionProviderChip.providersSnapshot(),
-        draft: sessionProviderChip.draftComposerRouteRef.current,
-      });
+    (
+      prefs: api.ComposerPrefs,
+      catalog: ModelOption[],
+      chipFor?: { sessionId: string | null },
+    ) => {
+      const next = sessionProviderChip.resolvePrefs(prefs, catalog);
       setModelId(next.modelId);
       setEffort(next.effort);
       setMode(prefs.mode || "agent");
@@ -2405,7 +2403,13 @@ export function AppWorkbench() {
         isValidPolicy(prefs.permissionPolicy) ? prefs.permissionPolicy : "ask",
       );
       if (isValidPrefsScope(prefs.scope)) setPrefsScope(prefs.scope);
-      return next;
+      if (chipFor) {
+        sessionProviderChip.applyPrefsRoute({
+          routeProviderId: next.providerId,
+          prefsProviderId: prefs.providerId,
+          sessionId: chipFor.sessionId,
+        });
+      }
     },
     [sessionProviderChip],
   );
@@ -2814,21 +2818,9 @@ export function AppWorkbench() {
         })
         .then((prefs) => {
           if (cancelled) return;
-          const next = applyComposerPrefs(prefs, availableModels);
-          if (session.sessionId) {
-            sessionProviderChip.draftComposerRouteRef.current = null;
-          }
-          const stored = prefs.providerId?.trim() ?? "";
-          const draft = sessionProviderChip.draftComposerRouteRef.current;
-          if (next.providerId !== undefined) {
-            sessionProviderChip.paint(next.providerId ?? "official");
-          } else if (stored) {
-            sessionProviderChip.paint(stored);
-          } else if (session.sessionId || !draft) {
-            sessionProviderChip.paint(null);
-          } else {
-            sessionProviderChip.paint(draft.providerId);
-          }
+          applyComposerPrefs(prefs, availableModels, {
+            sessionId: session.sessionId,
+          });
         })
         .catch(() => {});
     };

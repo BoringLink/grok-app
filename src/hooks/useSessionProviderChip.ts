@@ -1,5 +1,11 @@
 import { useCallback, useMemo, useRef } from "react";
 import type { CustomProvider } from "@/lib/api/providers";
+import {
+  resolveComposerPrefsSelection,
+  type ComposerPrefsSelection,
+  type ComposerPrefsSelectionInput,
+} from "@/lib/composerPrefsApply";
+import type { ModelOption } from "@/lib/grokCatalog";
 
 export type DraftComposerRoute = {
   providerId: string;
@@ -11,6 +17,18 @@ type ProviderChipSetters = {
   setProviderActiveSource: (source: string) => void;
   setProviderActiveId: (id: string | null) => void;
   setActiveCustomProvider: (provider: CustomProvider | null) => void;
+};
+
+/**
+ * Route painting for one applied prefs resolve.
+ * `routeProviderId` is the resolver's override: `null` pins the official
+ * route, `undefined` keeps the stored → draft → global order (BOR-152).
+ */
+export type PrefsRouteInput = {
+  routeProviderId?: string | null;
+  prefsProviderId?: string | null;
+  /** Chat on screen; a stored chat drops its unsaved draft pick first. */
+  sessionId?: string | null;
 };
 
 /**
@@ -58,6 +76,42 @@ export function useSessionProviderChip() {
     set.setActiveCustomProvider(providers.find((p) => p.id === id) ?? null);
   }, []);
 
+  /**
+   * Resolve stored prefs against the provider list and the new-chat draft the
+   * chip already holds, so callers do not have to reach into those refs.
+   */
+  const resolvePrefs = useCallback(
+    (
+      prefs: ComposerPrefsSelectionInput,
+      catalog: ModelOption[],
+    ): ComposerPrefsSelection =>
+      resolveComposerPrefsSelection({
+        prefs,
+        catalog,
+        providers: customProvidersRef.current,
+        draft: draftComposerRouteRef.current,
+      }),
+    [],
+  );
+
+  const applyPrefsRoute = useCallback(
+    (input: PrefsRouteInput) => {
+      if (input.sessionId) draftComposerRouteRef.current = null;
+      if (input.routeProviderId !== undefined) {
+        paint(input.routeProviderId ?? "official");
+        return;
+      }
+      const stored = input.prefsProviderId?.trim() ?? "";
+      if (stored) {
+        paint(stored);
+        return;
+      }
+      const draft = input.sessionId ? null : draftComposerRouteRef.current;
+      paint(draft?.providerId ?? null);
+    },
+    [paint],
+  );
+
   const noteProviderList = useCallback(
     (
       list: {
@@ -102,11 +156,6 @@ export function useSessionProviderChip() {
     [paint],
   );
 
-  const providersSnapshot = useCallback(
-    () => customProvidersRef.current,
-    [],
-  );
-
   const setAfterProviderList = useCallback((fn: (() => void) | null) => {
     afterProviderListRef.current = fn;
   }, []);
@@ -119,11 +168,19 @@ export function useSessionProviderChip() {
     () => ({
       draftComposerRouteRef,
       paint,
+      resolvePrefs,
+      applyPrefsRoute,
       noteProviderList,
       bind,
-      providersSnapshot,
       setAfterProviderList,
     }),
-    [bind, noteProviderList, paint, providersSnapshot, setAfterProviderList],
+    [
+      applyPrefsRoute,
+      bind,
+      noteProviderList,
+      paint,
+      resolvePrefs,
+      setAfterProviderList,
+    ],
   );
 }
