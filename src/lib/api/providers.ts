@@ -46,8 +46,15 @@ export interface CustomProvider {
   /** Explicit relay semantics. Host never infers this from the URL. */
   providerMode: "generic" | "grok_build_proxy" | string;
   isDefault: boolean;
-  /** Selectable models for this channel (App-managed catalog). */
+  /** Selectable models for this channel (App-managed catalog). An empty array is an explicit clear. */
   models?: ProviderModelEntry[];
+  /**
+   * True when the stored `app_models` value cannot be read. `models` still
+   * carries the legacy fallback row, but saving without changing the catalog
+   * keeps the stored value instead of overwriting it. Opaque: never includes
+   * the raw value or parse detail.
+   */
+  modelCatalogCorrupt?: boolean;
   /** Reasoning efforts for this channel (App-managed). Empty → Grok 3-tier fallback. */
   efforts?: ProviderEffortEntry[];
   /** Per-channel context window (tokens). None → catalog window, then default. */

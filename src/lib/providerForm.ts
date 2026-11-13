@@ -99,7 +99,9 @@ export const emptyForm = (): FormState => ({
 });
 
 export function modelsFromProvider(p: api.CustomProvider): FormModel[] {
-  if (p.models?.length) {
+  // The host always emits the App catalog, including an explicit empty clear
+  // (`[]`). Only a missing array means a legacy single-model provider.
+  if (Array.isArray(p.models)) {
     return p.models.map((m) => ({
       id: m.id,
       name: m.name?.trim() || m.id,
@@ -116,6 +118,130 @@ export function modelsFromProvider(p: api.CustomProvider): FormModel[] {
   const id = p.model?.trim() ?? "";
   if (!id) return [];
   return [{ id, name: id }];
+}
+
+/**
+ * Index of the first model row whose id is blank after trimming, or `-1`.
+ *
+ * An empty catalog is only valid when the user removed every row; a blank id
+ * is a half-finished edit and must block the save instead of shrinking or
+ * clearing the stored catalog.
+ */
+export function blankModelIdIndex(models: FormModel[]): number {
+  return models.findIndex((m) => !m.id.trim());
+}
+
+/**
+ * Canonical `providers_upsert` catalog rows for the current form values.
+ *
+ * Throws on a blank row: callers must reject it first via
+ * {@link blankModelIdIndex}. Normalizing it away would produce a smaller
+ * catalog, or `[]`, which the host reads as an explicit clear.
+ */
+export function formModelsPayload(models: FormModel[]): api.ProviderModelEntry[] {
+  if (blankModelIdIndex(models) >= 0) {
+    throw new Error("model rows require a non-empty id");
+  }
+  return models.map((m) => ({
+    id: m.id.trim(),
+    name: m.name.trim() || m.id.trim(),
+    contextWindow: m.contextWindow ?? null,
+    supportsVision: m.supportsVision,
+    supportsVideo: m.supportsVideo,
+    efforts: (m.efforts ?? [])
+      .map((e) => ({
+        id: e.id.trim(),
+        name: e.name.trim() || e.id.trim(),
+        isDefault: !!e.isDefault,
+      }))
+      .filter((e) => e.id),
+  }));
+}
+
+/** Order-sensitive equality for canonical catalog rows. */
+function sameCatalog(
+  a: api.ProviderModelEntry[],
+  b: api.ProviderModelEntry[],
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * Row-level identity (id, name, order). Per-model metadata is excluded because
+ * a corrupt read only supplies fallback rows with no stored metadata; a change
+ * there is not a catalog repair.
+ */
+function sameCatalogRows(
+  a: api.ProviderModelEntry[],
+  b: api.ProviderModelEntry[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((row, i) => row.id === b[i]?.id && row.name === b[i]?.name)
+  );
+}
+
+/**
+ * `models` to send on save. `undefined` leaves the stored `app_models` alone,
+ * which is the only safe choice when the stored value is unreadable and the
+ * user changed another field: re-sending the read fallback row would overwrite
+ * it. Metadata-only changes (context window, caps, efforts) also stay out of a
+ * corrupt provider's payload for the same reason. A create that collides with
+ * an existing id is an update, so it follows the same comparison. Without a
+ * stored provider there is no baseline to compare against, so the rows
+ * (including `[]`) are sent as-is.
+ */
+export function modelsForProviderSave(opts: {
+  formModels: FormModel[];
+  stored: api.CustomProvider | undefined;
+}): api.ProviderModelEntry[] | undefined {
+  const next = formModelsPayload(opts.formModels);
+  if (!opts.stored) return next;
+  const storedCatalog = formModelsPayload(modelsFromProvider(opts.stored));
+  const unchanged =
+    opts.stored.modelCatalogCorrupt === true
+      ? sameCatalogRows(next, storedCatalog)
+      : sameCatalog(next, storedCatalog);
+  return unchanged ? undefined : next;
+}
+
+/**
+ * `true` when this save keeps an unreadable `app_models` value on disk.
+ *
+ * The visible rows are then only the read-recovery result, not the stored
+ * catalog. Deriving the channel model or its metadata (context window, vision,
+ * efforts) from them would retarget the provider on an unrelated name / key
+ * save, so the caller must keep the stored channel instead.
+ */
+export function keepsStoredChannel(opts: {
+  stored: api.CustomProvider | undefined;
+  modelsToSave: api.ProviderModelEntry[] | undefined;
+}): boolean {
+  return (
+    opts.stored?.modelCatalogCorrupt === true && opts.modelsToSave === undefined
+  );
+}
+
+/**
+ * Per-model settings stay off until a corrupt provider's catalog is explicitly
+ * replaced in the model list; the read fallback row carries none of the
+ * original catalog. A create collision stays locked until the save makes the
+ * stored catalog readable again.
+ */
+export function isModelCatalogLocked(opts: {
+  stored: api.CustomProvider | undefined;
+  isCreate: boolean;
+  formModels: FormModel[];
+}): boolean {
+  if (opts.stored?.modelCatalogCorrupt !== true) return false;
+  if (opts.isCreate) return true;
+  // A blank row cannot be saved and already differs from the stored fallback,
+  // so keep per-model controls usable while the user fixes or removes it.
+  if (blankModelIdIndex(opts.formModels) >= 0) return false;
+  return sameCatalogRows(
+    formModelsPayload(opts.formModels),
+    formModelsPayload(modelsFromProvider(opts.stored)),
+  );
 }
 
 export function effortsFromProvider(p: api.CustomProvider): FormEffort[] {
