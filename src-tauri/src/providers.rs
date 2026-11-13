@@ -937,10 +937,16 @@ fn append_section(text: &str, id: &str, fields: &[(String, String)]) -> String {
     }
 }
 
+/// Keys whose blank value is still written as `key = ""`.
+///
+/// A blank `app_models` is a legacy provider, but an edit that omits `models`
+/// must not turn a present field into a missing one.
+const PRESERVED_BLANK_FIELD_KEYS: &[&str] = &[APP_MODELS_KEY];
+
 fn render_section_body(fields: &[(String, String)]) -> String {
     fields
         .iter()
-        .filter(|(_, v)| !v.is_empty())
+        .filter(|(k, v)| !v.is_empty() || PRESERVED_BLANK_FIELD_KEYS.contains(&k.as_str()))
         .map(|(k, v)| format!("{k} = {}", format_toml_field_value(k, v)))
         .collect::<Vec<_>>()
         .join("\n")
@@ -2792,15 +2798,7 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         }
         (None, ModelCatalogRead::Stored(rows)) => rows.clone(),
         (None, ModelCatalogRead::LegacyChannel) => legacy_model_catalog(&model, &model),
-        (None, ModelCatalogRead::Corrupt(defect)) => {
-            tracing::warn!(
-                target: "providers",
-                provider = %id,
-                category = %defect.kind,
-                "app_models is unusable; keeping the stored value because this edit omits `models`"
-            );
-            legacy_model_catalog(&model, &model)
-        }
+        (None, ModelCatalogRead::Corrupt(_)) => legacy_model_catalog(&model, &model),
     };
     let model = resolve_active_model(&models, &model);
     let provider_mode = match input.provider_mode.as_deref() {
@@ -2872,11 +2870,24 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         .unwrap_or(id.as_str())
         .to_string();
 
-    let app_models_json = match (&input.models, &catalog_read) {
-        // Do not persist a replacement catalog derived from an unreadable one:
-        // only an explicit `models: []` may clear the field.
-        (None, ModelCatalogRead::Corrupt(defect)) => defect.raw.clone(),
-        _ => encode_app_models(&models)?,
+    // `models: None` means the caller did not edit the catalog. Whatever the
+    // parent holds is then carried over as the original decoded field value, so
+    // unknown per-row fields and surrounding whitespace survive an unrelated
+    // save; a parent without the key keeps no key. Only an explicit
+    // `models: Some(rows)` writes a normalized catalog (`Some([])` clears).
+    let app_models_field: Option<String> = match &input.models {
+        Some(_) => Some(encode_app_models(&models)?),
+        None => {
+            if let ModelCatalogRead::Corrupt(defect) = &catalog_read {
+                tracing::warn!(
+                    target: "providers",
+                    provider = %id,
+                    category = %defect.kind,
+                    "app_models is unusable; keeping the stored value because this edit omits `models`"
+                );
+            }
+            prev_app_models.clone()
+        }
     };
     let active_model = models.iter().find(|m| m.id == model);
 
@@ -2960,8 +2971,12 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         ("api_key".into(), next_key),
         ("api_backend".into(), api_backend),
         (APP_PROVIDER_MODE_KEY.into(), provider_mode),
-        (APP_MODELS_KEY.into(), app_models_json),
     ];
+    // The merge below copies unknown previous fields back; listing the kept
+    // catalog here keeps its line position stable across saves.
+    if let Some(raw) = app_models_field {
+        fields.push((APP_MODELS_KEY.into(), raw));
+    }
     if full_path {
         fields.push((APP_BASE_URL_FULL_PATH_KEY.into(), "true".into()));
     }
@@ -5760,6 +5775,261 @@ app_models = {}
                 .expect("relay provider after clear");
             assert!(cleared_relay.models.is_empty());
         }
+    }
+
+    struct VerbatimCatalogSnapshot {
+        stored: String,
+        after_keep: String,
+        after_second_keep: String,
+        after_change: String,
+        after_clear: String,
+        kept_models: Vec<ProviderModelEntry>,
+    }
+
+    #[test]
+    fn omitting_models_keeps_the_stored_catalog_field_verbatim() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-verbatim-catalog-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<Vec<VerbatimCatalogSnapshot>, String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let mut captured = Vec::new();
+            for stored in [
+                // Blank is a legacy provider, but the present key must stay.
+                "",
+                "  [{\"id\":\"m1\",\"name\":\"M1\",\"appNote\":\"keep-me\",\"contextWindow\":128000}]  ",
+            ] {
+                write_text(
+                    &path,
+                    &format!(
+                        "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+app_models = {}
+",
+                        quote(stored)
+                    ),
+                )?;
+                let input = |models: Option<Vec<ProviderModelEntry>>| UpsertProviderInput {
+                    id: "relay".into(),
+                    model: "m1".into(),
+                    base_url: "https://relay.example/v1".into(),
+                    name: Some("Relay".into()),
+                    api_key: None,
+                    api_backend: Some("chat_completions".into()),
+                    provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                    set_as_default: Some(false),
+                    create_only: Some(false),
+                    models,
+                    efforts: None,
+                    context_window: None,
+                    base_url_full_path: None,
+                    append_prompt: None,
+                    supports_vision: None,
+                    extra_headers: None,
+                };
+                let kept = upsert_custom_provider(input(None))?;
+                let after_keep = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                upsert_custom_provider(input(None))?;
+                let after_second_keep =
+                    std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                upsert_custom_provider(input(Some(vec![ProviderModelEntry::named("m2", "M2")])))?;
+                let after_change = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                upsert_custom_provider(input(Some(Vec::new())))?;
+                let after_clear = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                captured.push(VerbatimCatalogSnapshot {
+                    stored: stored.to_string(),
+                    after_keep,
+                    after_second_keep,
+                    after_change,
+                    after_clear,
+                    kept_models: kept
+                        .providers
+                        .iter()
+                        .find(|p| p.id == "relay")
+                        .map(|p| p.models.clone())
+                        .unwrap_or_default(),
+                });
+            }
+            Ok(captured)
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let captured = outcome.expect("catalog edits should succeed");
+        assert_eq!(captured.len(), 2);
+        let changed_catalog =
+            encode_app_models(&[ProviderModelEntry::named("m2", "M2")]).expect("encode catalog");
+        for snapshot in &captured {
+            assert_eq!(
+                field_of(&snapshot.after_keep, "relay", APP_MODELS_KEY).as_deref(),
+                Some(snapshot.stored.as_str()),
+                "`models: None` must write back the decoded field value, unknown row fields and \
+                 whitespace included:\n{}",
+                snapshot.after_keep
+            );
+            assert_eq!(
+                field_of(&snapshot.after_second_keep, "relay", APP_MODELS_KEY).as_deref(),
+                Some(snapshot.stored.as_str()),
+                "the preserved value must be stable across saves:\n{}",
+                snapshot.after_second_keep
+            );
+            assert_eq!(
+                field_of(&snapshot.after_change, "relay", APP_MODELS_KEY).as_deref(),
+                Some(changed_catalog.as_str()),
+                "`models: Some(rows)` must write the normalized catalog:\n{}",
+                snapshot.after_change
+            );
+            assert_eq!(
+                field_of(&snapshot.after_clear, "relay", APP_MODELS_KEY).as_deref(),
+                Some("[]"),
+                "`models: []` must stay an explicit clear:\n{}",
+                snapshot.after_clear
+            );
+        }
+        assert_eq!(
+            captured[0].kept_models,
+            vec![ProviderModelEntry::named("m1", "m1")],
+            "a blank catalog still reads as the legacy channel row"
+        );
+        assert_eq!(
+            captured[1].kept_models,
+            vec![ProviderModelEntry {
+                id: "m1".into(),
+                name: "M1".into(),
+                context_window: Some(128_000),
+                supports_vision: None,
+                supports_video: None,
+                efforts: Vec::new(),
+            }],
+            "an unrelated save must not change what the catalog reads back"
+        );
+    }
+
+    #[test]
+    fn omitting_models_leaves_a_legacy_parent_without_the_catalog_key() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-legacy-catalog-key-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<(String, String, Vec<ProviderModelEntry>), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            write_text(
+                &path,
+                "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+",
+            )?;
+            let input = |models: Option<Vec<ProviderModelEntry>>| UpsertProviderInput {
+                id: "relay".into(),
+                model: "m1".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            };
+            let kept = upsert_custom_provider(input(None))?;
+            let after_keep = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            upsert_custom_provider(input(Some(vec![ProviderModelEntry::named("m1", "M1")])))?;
+            let after_explicit = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let kept_models = kept
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .map(|p| p.models.clone())
+                .unwrap_or_default();
+            Ok((after_keep, after_explicit, kept_models))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (after_keep, after_explicit, kept_models) = outcome.expect("edits should succeed");
+        assert!(
+            field_of(&after_keep, "relay", APP_MODELS_KEY).is_none(),
+            "an omitted `models` must not create a catalog key a legacy parent never had:\n{after_keep}"
+        );
+        assert_eq!(
+            kept_models,
+            vec![ProviderModelEntry::named("m1", "m1")],
+            "a legacy parent still lists its channel model"
+        );
+        assert_eq!(
+            field_of(&after_explicit, "relay", APP_MODELS_KEY).as_deref(),
+            Some(
+                encode_app_models(&[ProviderModelEntry::named("m1", "M1")])
+                    .expect("encode catalog")
+                    .as_str()
+            ),
+            "an explicit catalog edit creates the key:\n{after_explicit}"
+        );
+    }
+
+    #[test]
+    fn parsed_app_models_distinguishes_an_absent_key_from_a_blank_value() {
+        let text = "\
+[model.absent]
+model = \"m\"
+
+[model.blank]
+model = \"m\"
+app_models = \"\"
+";
+        let sections = parse_model_sections(text);
+
+        assert!(!sections[0].fields.contains_key(APP_MODELS_KEY));
+        assert_eq!(
+            sections[1].fields.get(APP_MODELS_KEY).map(String::as_str),
+            Some("")
+        );
     }
 
     #[test]
