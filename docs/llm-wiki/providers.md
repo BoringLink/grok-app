@@ -116,7 +116,7 @@ Grok Build’s stream parsers are strict. OpenCode Zen Go historically breaks bo
 
 1. Prefer preset `api_backend = "chat_completions"` for OpenCode Go (do **not** use `responses`).
 2. Host starts a **loopback SSE sanitize proxy** (`relay_stream_proxy`): rewrites that provider’s `base_url` to `http://127.0.0.1:{port}/r/{id}/v1`, stores the real host in `app_upstream_base_url` (CLI ignores unknown keys), and **drops** cost / ping / missing-`id` frames before Grok Build sees them.
-3. Settings UI still shows the real upstream URL; repair runs on app start and `providers_list`.
+3. Settings UI still shows the real upstream URL; repair runs on app start and `providers_list`. `app_upstream_base_url` exists only while `base_url` is that loopback rewrite: saving the channel back to a direct endpoint — or switching it to `grok_build_proxy` — drops the old upstream, so display and native routing stop pointing at the previous host. Re-saving the same local proxy keeps the real upstream; startup repair also drops an upstream left beside a direct endpoint.
 
 Form shows a **Get API Key** text control under the key field when the channel matches a preset (by id or base host). Opens the URL via `open_external_url`.
 

@@ -304,7 +304,21 @@ pub fn repair_sanitize_proxy_bases() -> Result<bool, String> {
             .unwrap_or("chat_completions");
         let displayed = effective_upstream_base(&s.fields);
         if !host_needs_stream_sanitize(&displayed) {
-            // Drop stale app_upstream if the host no longer needs sanitizing.
+            // Nothing to sanitize: unless `base_url` is still our loopback
+            // rewrite, a stored upstream is stale and would keep winning
+            // `effective_upstream_base` for display and native routing.
+            let cur = s.fields.get("base_url").cloned().unwrap_or_default();
+            if !is_local_sanitize_proxy_url(&cur)
+                && s.fields.contains_key(APP_UPSTREAM_BASE_URL_KEY)
+            {
+                out = crate::providers::rewrite_section_base_urls(&out, &s.id, &cur, None)?;
+                changed = true;
+                tracing::info!(
+                    target: "relay_stream_proxy",
+                    id = %s.id,
+                    "dropped stale app_upstream_base_url"
+                );
+            }
             continue;
         }
         let full_path = crate::providers::base_url_full_path_from_fields(&s.fields);
