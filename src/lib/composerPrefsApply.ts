@@ -141,6 +141,16 @@ function customSelection(
   };
 }
 
+export type ComposerPrefsSelection = {
+  modelId: string;
+  effort: string;
+  /**
+   * Route override for the composer chip. `null` means the official route;
+   * `undefined` means the caller keeps the route it already paints.
+   */
+  providerId?: string | null;
+};
+
 export function resolveComposerPrefsSelection(opts: {
   prefs: ComposerPrefsSelectionInput;
   catalog: ModelOption[];
@@ -151,7 +161,7 @@ export function resolveComposerPrefsSelection(opts: {
    * the model back to the default. The provider is already restored this way.
    */
   draft?: ComposerPrefsDraftPick | null;
-}): { modelId: string; effort: string } {
+}): ComposerPrefsSelection {
   const catalog = opts.catalog.length > 0 ? opts.catalog : GROK_BUILD_MODELS;
   const providers = opts.providers ?? [];
   const providerId = opts.prefs.providerId?.trim() ?? "";
@@ -204,9 +214,13 @@ export function resolveComposerPrefsSelection(opts: {
     } else {
       const picked = customSelection(provider, storedModel, opts.prefs.effort);
       if (picked) return picked;
+      // Nothing on this provider is selectable, so the official route has to
+      // take over; otherwise the chip paints official while the send still
+      // routes to the provider (BOR-152).
       return {
         modelId: pickDefaultModelId(catalog),
         effort: pickEffort(opts.prefs.effort, null),
+        providerId: null,
       };
     }
   }
@@ -218,5 +232,6 @@ export function resolveComposerPrefsSelection(opts: {
   return {
     modelId: nextModelId,
     effort: pickEffort(opts.prefs.effort, findModel(nextModelId, catalog)),
+    ...(isCustomProviderId(providerId) ? { providerId: null } : {}),
   };
 }

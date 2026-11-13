@@ -303,8 +303,12 @@ describe("resolveComposerPrefsSelection with an explicitly cleared catalog", () 
       providers: [cleared],
     });
 
-    // Act / Assert — the official default, not the cleared channel model
-    expect(next).toEqual({ modelId: "grok-4.7", effort: "high" });
+    // Act / Assert — the official default and route, not the cleared channel
+    expect(next).toEqual({
+      modelId: "grok-4.7",
+      effort: "high",
+      providerId: null,
+    });
   });
 
   it("keeps a saved session's model even though its catalog was cleared", () => {
@@ -321,6 +325,8 @@ describe("resolveComposerPrefsSelection with an explicitly cleared catalog", () 
 
     // Act / Assert
     expect(next).toEqual({ modelId: "deepseek-reasoner", effort: "high" });
+    // The session keeps its stored route, so no official override is issued.
+    expect(next.providerId).toBeUndefined();
     // The chip has to route on that same id, not the cleared channel `model`.
     const shown = resolveCustomRouteDisplay(cleared, next.modelId);
     expect(shown?.chip.model).toBe("deepseek-reasoner");
@@ -342,6 +348,21 @@ describe("resolveComposerPrefsSelection with an explicitly cleared catalog", () 
 
     // Act / Assert
     expect(next).toEqual({ modelId: "llama3", effort: "high" });
+    // A legacy provider that still lists a row keeps its own route.
+    expect(next.providerId).toBeUndefined();
+  });
+
+  it("leaves a deleted provider's chat on the official route", () => {
+    // Arrange — the chat remembers a provider the list no longer has
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: null, effort: null, providerId: "gone" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [cleared],
+    });
+
+    // Act / Assert — official model, and the route has to follow it
+    expect(next.modelId).toBe("grok-4.7");
+    expect(next.providerId).toBeNull();
   });
 });
 
@@ -417,6 +438,8 @@ describe("resolveComposerPrefsSelection with a corrupt catalog", () => {
 
     // Act / Assert — the recovered row, not a fabricated selection
     expect(next).toEqual({ modelId: "m1", effort: "max" });
+    // A recovered row is still a custom model, so the route stays custom.
+    expect(next.providerId).toBeUndefined();
     expect(resolveCustomRouteDisplay(corrupt, next.modelId)?.requestModel).toBe(
       "m1",
     );

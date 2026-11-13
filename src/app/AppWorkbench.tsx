@@ -2405,6 +2405,7 @@ export function AppWorkbench() {
         isValidPolicy(prefs.permissionPolicy) ? prefs.permissionPolicy : "ask",
       );
       if (isValidPrefsScope(prefs.scope)) setPrefsScope(prefs.scope);
+      return next;
     },
     [sessionProviderChip],
   );
@@ -2813,13 +2814,15 @@ export function AppWorkbench() {
         })
         .then((prefs) => {
           if (cancelled) return;
-          applyComposerPrefs(prefs, availableModels);
+          const next = applyComposerPrefs(prefs, availableModels);
           if (session.sessionId) {
             sessionProviderChip.draftComposerRouteRef.current = null;
           }
           const stored = prefs.providerId?.trim() ?? "";
           const draft = sessionProviderChip.draftComposerRouteRef.current;
-          if (stored) {
+          if (next.providerId !== undefined) {
+            sessionProviderChip.paint(next.providerId ?? "official");
+          } else if (stored) {
             sessionProviderChip.paint(stored);
           } else if (session.sessionId || !draft) {
             sessionProviderChip.paint(null);
