@@ -2475,8 +2475,8 @@ pub fn composer_provider_pick(
 ///
 /// Official routes spawn with a catalog id. A generic custom route spawns with
 /// the per-model section when one exists, otherwise the provider section.
-/// A Grok Build-compatible relay spawns with the catalog id, or with the id the
-/// chat stored when its catalog fixes no rows.
+/// A Grok Build-compatible relay spawns with the catalog id, with the id the
+/// chat stored when its catalog fixes no rows, or with the active row (#152).
 pub fn spawn_model_for_provider(provider_id: &str, composer_model: &str) -> String {
     session_set_model_id_for(provider_id, composer_model)
 }
@@ -2497,48 +2497,62 @@ pub fn session_set_model_id_for(provider_id: &str, composer_model: &str) -> Stri
     let found = list_custom_providers()
         .ok()
         .and_then(|list| list.providers.into_iter().find(|p| p.id == id));
-    let (models, allow_catalog_id, preserve_unlisted) = match found {
-        Some(p) => {
-            let allow = p.provider_mode == PROVIDER_MODE_GROK_BUILD_PROXY;
-            // A corrupt or explicitly cleared catalog fixes no rows, so the
-            // chat's stored model cannot be checked against it. The proxy spawn
-            // keeps that id; set_model must send the same one instead of the
-            // channel alias, or the CLI switches model on the next turn.
-            let preserve = allow && (p.model_catalog_corrupt || p.models.is_empty());
-            let mut ids = Vec::new();
-            if !p.model.trim().is_empty() {
-                ids.push(p.model);
-            }
-            ids.extend(p.models.into_iter().map(|entry| entry.id));
-            (ids, allow, preserve)
-        }
-        None => (Vec::new(), false, false),
+    let Some(provider) = found else {
+        return resolve_session_set_model_id(Some(id), composer_model, &[]);
     };
-    let sections = if allow_catalog_id {
-        Vec::new()
-    } else {
-        generic_sections_for_provider(id)
-    };
-    resolve_session_set_model_id(
-        Some(id),
-        composer_model,
-        &models,
-        allow_catalog_id,
-        &sections,
-        preserve_unlisted,
-    )
+    if provider.provider_mode == PROVIDER_MODE_GROK_BUILD_PROXY {
+        // A corrupt or explicitly cleared catalog fixes no rows, which is
+        // exactly when the native spawn keeps the chat's stored id.
+        return resolve_grok_build_proxy_session_model_id(
+            id,
+            composer_model,
+            &provider.models,
+            &provider.model,
+            provider.model_catalog_corrupt || provider.models.is_empty(),
+        );
+    }
+    resolve_session_set_model_id(Some(id), composer_model, &generic_sections_for_provider(id))
 }
 
-/// Pure half of [`session_set_model_id_for`]. `None` route means official; the
-/// caller passes an already resolved official id.
+/// Pure half of [`session_set_model_id_for`] for a Grok Build-compatible relay.
 ///
-/// `allow_catalog_id` is only for a Grok Build-compatible relay, whose spawn
-/// already selected a real catalog id.
+/// Must repeat what [`grok_build_proxy_spawn_from_section`] binds as `--model`,
+/// because one chat cannot switch model between its spawn and its next
+/// `session/set_model`: a listed row passes through verbatim, a stored id
+/// passes through when the catalog fixes no rows, and everything else falls
+/// back to the spawn's active row (the channel `model` when it is a row,
+/// otherwise the first row).
 ///
-/// `preserve_unlisted_catalog_model` is for that same relay when its stored
-/// catalog fixes no rows (unreadable, or an explicit clear). Such a catalog
-/// cannot vet the chat's stored model, and the spawn passes that model through
-/// unverified; set_model repeats it so one chat never switches model mid-way.
+/// `catalog_rows` is the readable catalog (recovered rows included),
+/// `configured_model` the channel `model`, and `catalog_fixes_no_rows` is true
+/// for an unreadable or explicitly cleared catalog.
+pub fn resolve_grok_build_proxy_session_model_id(
+    provider_id: &str,
+    requested: &str,
+    catalog_rows: &[ProviderModelEntry],
+    configured_model: &str,
+    catalog_fixes_no_rows: bool,
+) -> String {
+    let id = provider_id.trim();
+    let configured = configured_model.trim();
+    // The spawn falls back to the section id when the channel has no model.
+    let configured = if configured.is_empty() {
+        id
+    } else {
+        configured
+    };
+    let requested = requested.trim();
+    if !requested.is_empty() && requested != id && catalog_fixes_no_rows {
+        return requested.to_string();
+    }
+    if !requested.is_empty() && catalog_rows.iter().any(|row| row.id == requested) {
+        return requested.to_string();
+    }
+    resolve_active_model(catalog_rows, configured)
+}
+
+/// Pure half of [`session_set_model_id_for`] for a generic relay. `None` route
+/// means official; the caller passes an already resolved official id.
 ///
 /// A generic relay's request body comes from `[model.<section>].model`.
 /// CLI 1.0.70 accepts `session/set_model` of that section name (`matched by
@@ -2550,10 +2564,7 @@ pub fn session_set_model_id_for(provider_id: &str, composer_model: &str) -> Stri
 pub fn resolve_session_set_model_id(
     custom_provider_id: Option<&str>,
     composer_model: &str,
-    same_provider_models: &[String],
-    allow_catalog_id: bool,
     generic_sections: &[GenericSectionBinding],
-    preserve_unlisted_catalog_model: bool,
 ) -> String {
     let m = composer_model.trim();
     let Some(id) = custom_provider_id.map(str::trim).filter(|s| !s.is_empty()) else {
@@ -2563,16 +2574,7 @@ pub fn resolve_session_set_model_id(
             m.to_string()
         };
     };
-    // The provider section id is a route name, never an upstream model, so it
-    // never qualifies here even when it is what the chat stored.
-    if allow_catalog_id
-        && !m.is_empty()
-        && m != id
-        && (preserve_unlisted_catalog_model || same_provider_models.iter().any(|got| got == m))
-    {
-        return m.to_string();
-    }
-    if !allow_catalog_id && !m.is_empty() {
+    if !m.is_empty() {
         if let Some(hit) = generic_sections.iter().find(|s| s.section_id == m) {
             return hit.section_id.clone();
         }
@@ -4479,6 +4481,77 @@ base_url = \"http://127.0.0.1:8080/v1\"
         ));
     }
 
+    /// One pick for the native proxy spawn and `session/set_model`, across every
+    /// `app_models` state.
+    #[test]
+    fn proxy_session_model_matches_the_native_spawn_pick() {
+        let readable = ["m2", "m1"].map(|id| ProviderModelEntry::named(id, id));
+        // A listed row passes through; empty, unknown, or channel-alias requests
+        // take the active row.
+        assert_eq!(
+            resolve_grok_build_proxy_session_model_id("relay", "m1", &readable, "m2", false),
+            "m1"
+        );
+        ["", "relay", "m9"].iter().for_each(|requested| {
+            assert_eq!(
+                resolve_grok_build_proxy_session_model_id(
+                    "relay", requested, &readable, "m2", false
+                ),
+                "m2",
+                "a readable catalog falls back to the active row for `{requested}`"
+            );
+        });
+        assert_eq!(
+            resolve_grok_build_proxy_session_model_id("relay", "m9", &readable, "gone", false),
+            "m2",
+            "a channel model outside the catalog falls back to the first row"
+        );
+
+        // A catalog that fixes no rows cannot vet the chat's stored id, so a
+        // non-empty non-alias id is repeated; only empty / alias requests take
+        // the active row.
+        let recovered = [ProviderModelEntry::named("m2", "M2")];
+        assert_eq!(
+            resolve_grok_build_proxy_session_model_id("relay", "m3", &recovered, "m1", true),
+            "m3"
+        );
+        ["", "relay"].iter().for_each(|requested| {
+            assert_eq!(
+                resolve_grok_build_proxy_session_model_id(
+                    "relay", requested, &recovered, "m1", true
+                ),
+                "m2",
+                "corrupt catalog: `{requested}` takes the recovered row"
+            );
+        });
+        let cleared: [ProviderModelEntry; 0] = [];
+        assert_eq!(
+            resolve_grok_build_proxy_session_model_id("relay", "m2", &cleared, "m1", true),
+            "m2"
+        );
+        ["", "relay"].iter().for_each(|requested| {
+            assert_eq!(
+                resolve_grok_build_proxy_session_model_id("relay", requested, &cleared, "m1", true),
+                "m1",
+                "cleared catalog: `{requested}` keeps the channel model"
+            );
+        });
+        assert_eq!(
+            resolve_grok_build_proxy_session_model_id("relay", "", &cleared, "", true),
+            "relay",
+            "a channel without a model falls back to the section id"
+        );
+
+        // Legacy channel singleton: the channel row is the whole catalog.
+        let legacy = [ProviderModelEntry::named("m1", "m1")];
+        ["", "m3"].iter().for_each(|requested| {
+            assert_eq!(
+                resolve_grok_build_proxy_session_model_id("relay", requested, &legacy, "m1", false),
+                "m1"
+            );
+        });
+    }
+
     #[test]
     fn native_proxy_spawn_uses_real_model_and_process_only_binding() {
         let models = encode_app_models(&[
@@ -4671,67 +4744,15 @@ base_url = \"http://127.0.0.1:8080/v1\"
         // Generic relay with no per-model section yet: the API model id is not
         // a CLI section. Sending it falls through to the built-in catalog (#1294).
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("api-top"),
-                "grok-4.6",
-                &["grok-4.6".into(), "grok-4.5".into()],
-                false,
-                &[],
-                false,
-            ),
+            resolve_session_set_model_id(Some("api-top"), "grok-4.6", &[]),
             "api-top"
         );
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("relay"),
-                "deepseek-v4-pro",
-                &["deepseek-v4-flash".into(), "deepseek-v4-pro".into()],
-                false,
-                &[],
-                false,
-            ),
+            resolve_session_set_model_id(Some("relay"), "deepseek-v4-pro", &[]),
             "relay"
         );
-        // Grok Build-compatible relay: spawn bound the catalog id, so set_model
-        // repeats it. Per-model sections are not consulted.
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("beef-relay"),
-                "grok-4.5",
-                &["grok-4.6".into(), "grok-4.5".into()],
-                true,
-                &[GenericSectionBinding {
-                    section_id: "beef-relay__grok-4-5".into(),
-                    model_id: "grok-4.5".into(),
-                }],
-                false,
-            ),
-            "grok-4.5"
-        );
-        assert_eq!(
-            resolve_session_set_model_id(
-                Some("relay"),
-                "grok-4.7",
-                &["deepseek-v4-flash".into()],
-                true,
-                &[],
-                false,
-            ),
-            "relay"
-        );
-        // A proxy catalog that fixes no rows cannot vet the chat's model, so the
-        // stored id is repeated instead of the channel alias.
-        assert_eq!(
-            resolve_session_set_model_id(Some("beef-relay"), "m3", &[], true, &[], true),
-            "m3"
-        );
-        assert_eq!(
-            resolve_session_set_model_id(Some("beef-relay"), "beef-relay", &[], true, &[], true),
-            "beef-relay",
-            "the channel alias is a route name, never a request model"
-        );
-        assert_eq!(
-            resolve_session_set_model_id(None, "grok-4.7", &[], false, &[], false),
+            resolve_session_set_model_id(None, "grok-4.7", &[]),
             "grok-4.7"
         );
         // #1337 / #1394: a generic chat names the section whose `model` field
@@ -4752,36 +4773,15 @@ base_url = \"http://127.0.0.1:8080/v1\"
             },
         ];
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("kiro"),
-                "gpt-5.6-luna",
-                &["auto".into(), "gpt-5.6-luna".into(), "gpt-5.6-sol".into()],
-                false,
-                &kiro_sections,
-                false,
-            ),
+            resolve_session_set_model_id(Some("kiro"), "gpt-5.6-luna", &kiro_sections),
             "kiro__gpt-5-6-luna"
         );
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("kiro"),
-                "kiro__gpt-5-6-luna",
-                &[],
-                false,
-                &kiro_sections,
-                false,
-            ),
+            resolve_session_set_model_id(Some("kiro"), "kiro__gpt-5-6-luna", &kiro_sections),
             "kiro__gpt-5-6-luna"
         );
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("kiro"),
-                "gpt-5.6-luna",
-                &["auto".into(), "gpt-5.6-luna".into()],
-                false,
-                &[],
-                false,
-            ),
+            resolve_session_set_model_id(Some("kiro"), "gpt-5.6-luna", &[]),
             "kiro"
         );
         let other_sections = [GenericSectionBinding {
@@ -4789,14 +4789,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
             model_id: "gpt-5.6-sol".into(),
         }];
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("other"),
-                "gpt-5.6-sol",
-                &["sol".into(), "gpt-5.6-sol".into()],
-                false,
-                &other_sections,
-                false,
-            ),
+            resolve_session_set_model_id(Some("other"), "gpt-5.6-sol", &other_sections),
             "other__gpt-5-6-sol"
         );
         assert!(provider_mutation_needs_agent_reload(true, "other", &active));
@@ -7614,14 +7607,7 @@ app_parent_provider = "relay"
             })
             .collect();
         for model in &relay.models {
-            let section_id = resolve_session_set_model_id(
-                Some("relay"),
-                &model.id,
-                &model_ids,
-                false,
-                &sections,
-                false,
-            );
+            let section_id = resolve_session_set_model_id(Some("relay"), &model.id, &sections);
             assert_eq!(
                 field_of(&once, &section_id, "model").as_deref(),
                 Some(model.id.as_str()),
@@ -7685,6 +7671,10 @@ app_models = {}
     /// Seed one `grok_build_proxy` channel; `models_atom` is the TOML literal
     /// for `app_models` so a corrupt value stays byte-exact.
     fn seed_proxy_catalog(models_atom: &str) {
+        seed_proxy_catalog_with_channel_model("m1", models_atom);
+    }
+
+    fn seed_proxy_catalog_with_channel_model(channel_model: &str, models_atom: &str) {
         std::fs::write(
             agent_config_toml(),
             format!(
@@ -7692,7 +7682,7 @@ app_models = {}
 default = "relay"
 
 [model.relay]
-model = "m1"
+model = "{channel_model}"
 base_url = "https://relay.example/v1"
 api_key = "sk-test"
 name = "Relay"
@@ -7712,6 +7702,13 @@ app_models = {models_atom}
             .into_iter()
             .find(|p| p.id == "relay")
             .expect("relay provider")
+    }
+
+    /// `--model` the native proxy spawn binds for `composer_model`.
+    fn proxy_spawn_model(composer_model: &str) -> String {
+        session_grok_build_proxy_spawn("relay", composer_model)
+            .expect("proxy spawn binding")
+            .model
     }
 
     #[test]
@@ -7744,15 +7741,13 @@ app_models = {models_atom}
             "m3",
             "set_model must not retarget a chat whose catalog cannot vet its model"
         );
-        assert_eq!(
-            session_grok_build_proxy_spawn("relay", "m3")
-                .expect("proxy spawn binding")
-                .model,
-            "m3",
-            "the native proxy spawn and set_model must send one id"
-        );
-        // A channel section alias is a route name, never a request model.
-        assert_eq!(session_set_model_id_for("relay", "relay"), "relay");
+        assert_eq!(proxy_spawn_model("m3"), "m3");
+        // A channel section alias is a route name, never a request model; both
+        // paths take the recovered row instead.
+        assert_eq!(session_set_model_id_for("relay", "relay"), "m2");
+        assert_eq!(proxy_spawn_model("relay"), "m2");
+        assert_eq!(session_set_model_id_for("relay", ""), "m2");
+        assert_eq!(proxy_spawn_model(""), "m2");
 
         // Explicit clear: no rows, and the chat is still on the old m2.
         seed_proxy_catalog("\"[]\"");
@@ -7761,13 +7756,11 @@ app_models = {models_atom}
         assert!(relay.models.is_empty(), "fixture must clear the catalog");
         assert_eq!(spawn_model_for_provider("relay", "m2"), "m2");
         assert_eq!(session_set_model_id_for("relay", "m2"), "m2");
-        assert_eq!(
-            session_grok_build_proxy_spawn("relay", "m2")
-                .expect("proxy spawn binding")
-                .model,
-            "m2"
-        );
-        assert_eq!(session_set_model_id_for("relay", "relay"), "relay");
+        assert_eq!(proxy_spawn_model("m2"), "m2");
+        assert_eq!(session_set_model_id_for("relay", "relay"), "m1");
+        assert_eq!(proxy_spawn_model("relay"), "m1");
+        assert_eq!(session_set_model_id_for("relay", ""), "m1");
+        assert_eq!(proxy_spawn_model(""), "m1");
 
         match previous {
             Some(value) => std::env::set_var("GROK_APP_HOME", value),
@@ -7799,15 +7792,64 @@ app_models = {models_atom}
         // Listed rows are still sent verbatim.
         assert_eq!(session_set_model_id_for("relay", "m2"), "m2");
         assert_eq!(spawn_model_for_provider("relay", "m2"), "m2");
-        // An id the readable catalog does not list keeps the old provider
-        // fallback instead of an unverified upstream model.
+        assert_eq!(proxy_spawn_model("m2"), "m2");
+        // An id the readable catalog does not list never reaches the upstream;
+        // both paths take the same active row as the native proxy spawn.
         assert_eq!(
             session_set_model_id_for("relay", "m9"),
-            "relay",
+            "m1",
             "a readable catalog must not pass an unlisted id through"
         );
-        assert_eq!(spawn_model_for_provider("relay", "m9"), "relay");
-        assert_eq!(session_set_model_id_for("relay", "relay"), "relay");
+        assert_eq!(spawn_model_for_provider("relay", "m9"), "m1");
+        assert_eq!(proxy_spawn_model("m9"), "m1");
+        assert_eq!(session_set_model_id_for("relay", "relay"), "m1");
+        assert_eq!(proxy_spawn_model("relay"), "m1");
+        assert_eq!(session_set_model_id_for("relay", ""), "m1");
+        assert_eq!(proxy_spawn_model(""), "m1");
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn proxy_readable_catalog_without_the_channel_model_uses_the_first_row() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-proxy-channel-absent-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = std::fs::create_dir_all(home.join("agent-home"));
+
+        // Legacy channel model is no longer in the readable catalog.
+        seed_proxy_catalog_with_channel_model(
+            "legacy-channel",
+            &quote(r#"[{"id":"m2","name":"M2"},{"id":"m1","name":"M1"}]"#),
+        );
+        let relay = proxy_channel();
+        assert!(!relay.model_catalog_corrupt);
+        assert_eq!(relay.model, "legacy-channel");
+
+        for requested in ["", "legacy-channel", "m9"] {
+            assert_eq!(
+                session_set_model_id_for("relay", requested),
+                "m2",
+                "set_model must take the first row for `{requested}`"
+            );
+            assert_eq!(
+                proxy_spawn_model(requested),
+                "m2",
+                "the native proxy spawn must take the first row for `{requested}`"
+            );
+        }
+        assert_eq!(session_set_model_id_for("relay", "m1"), "m1");
+        assert_eq!(proxy_spawn_model("m1"), "m1");
 
         match previous {
             Some(value) => std::env::set_var("GROK_APP_HOME", value),
