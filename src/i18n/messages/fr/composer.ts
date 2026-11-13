@@ -214,7 +214,7 @@ export const frComposer = {
   "composer.projectBound": "Session liée à « {name} »",
   "composer.projectCleared": "Passage à l’espace de travail par défaut",
   "composer.model": "Modèle",
-  "composer.modelViaProvider": "via fournisseur personnalisé",
+
   "composer.modelGroupOfficial": "Officiel",
   "composer.modelSearchPlaceholder": "Rechercher des modèles…",
   "composer.modelSearchEmpty": "Aucun modèle correspondant",

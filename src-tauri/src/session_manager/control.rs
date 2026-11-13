@@ -735,6 +735,41 @@ impl SessionManager {
         }
     }
 
+    /// Drop warm processes that run on `provider_id` after its config changed
+    /// or the provider was removed. Other chats keep their process.
+    pub async fn invalidate_sessions_for_provider(
+        &self,
+        app: &AppHandle,
+        provider_id: &str,
+        reason: &str,
+    ) {
+        let provider_id = provider_id.trim();
+        if provider_id.is_empty() {
+            return;
+        }
+        let provider_id = provider_id.to_string();
+        let session_ids = tauri::async_runtime::spawn_blocking(move || {
+            store::load_sessions_index()
+                .into_iter()
+                .filter(|session| session.provider_id.as_deref() == Some(provider_id.as_str()))
+                .map(|session| session.id)
+                .collect::<Vec<_>>()
+        })
+        .await;
+        let session_ids = match session_ids {
+            Ok(ids) => ids,
+            Err(error) => {
+                tracing::warn!("provider session invalidation lookup failed: {error}");
+                return;
+            }
+        };
+        for session_id in session_ids {
+            self.invalidate_spawn_flags_for_session(app, &session_id, reason)
+                .await;
+        }
+        self.retire_prewarm().await;
+    }
+
     /// Apply model id on the live ACP session (best-effort session/set_model).
     ///
     /// `session_id` is the chat the change belongs to. Only that chat gets
@@ -760,9 +795,9 @@ impl SessionManager {
                 .find(|s| s.id == id)
                 .and_then(|s| s.provider_id)
         });
-        let provider = stored_provider
-            .clone()
-            .unwrap_or_else(|| crate::providers::session_route_provider_id(None));
+        let provider = crate::providers::existing_session_route(
+            &crate::providers::session_route_provider_id(stored_provider.as_deref()),
+        );
         let agent_model = crate::providers::session_set_model_id_for(&provider, &model_id);
         let (acp, sid) = {
             let mut guard = self.inner.lock();
@@ -845,8 +880,9 @@ impl SessionManager {
             .into_iter()
             .find(|s| s.id == app_session_id)
             .and_then(|s| s.provider_id);
-        let provider =
-            stored_provider.unwrap_or_else(|| crate::providers::session_route_provider_id(None));
+        let provider = crate::providers::existing_session_route(
+            &crate::providers::session_route_provider_id(stored_provider.as_deref()),
+        );
         let agent_model = crate::providers::session_set_model_id_for(&provider, &model_id);
         let catalog = crate::models_catalog::list_available_models();
         let supported = catalog
@@ -935,15 +971,16 @@ impl SessionManager {
     /// session — kills the process only when the hot path fails or the turn is
     /// busy (mid-turn swaps are deferred to the next connect injection).
     pub async fn apply_extensions_mcp_change(&self, app: &AppHandle) {
-        let (hot_sid, hot_busy, cwd) = {
+        let (hot_sid, hot_busy, cwd, custom_route) = {
             let guard = self.inner.lock();
             match guard.as_ref() {
                 Some(s) if s.acp.as_ref().is_some_and(|c| c.is_alive()) => (
                     s.meta.agent_session_id.clone(),
                     Self::live_session_is_busy(s),
                     s.project_path.clone(),
+                    s.acp.as_ref().is_some_and(|c| c.is_custom_route()),
                 ),
-                _ => (None, false, None),
+                _ => (None, false, None, false),
             }
         };
         if let (Some(sid), false, Some(cwd)) = (hot_sid, hot_busy, cwd) {
@@ -953,6 +990,7 @@ impl SessionManager {
                 crate::extensions::build_session_mcp_servers(
                     Some(cwd.as_str()),
                     build_sid.as_deref(),
+                    custom_route,
                 )
             })
             .await

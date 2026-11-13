@@ -318,7 +318,7 @@ export function useSessionConnect(opts: {
                 effort: pendingRoute.effort,
               });
             } catch {
-              /* connect still follows the global route if the stamp fails */
+              /* connect still works: a missing provider pref means official */
             }
           }
           if (

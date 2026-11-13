@@ -371,8 +371,6 @@ export interface ComposerModelMenuProps {
     modelSearchEmpty: string;
     /** Section header for official catalog models. */
     modelGroupOfficial: string;
-    /** @deprecated Prefer real custom groups via `providers`. */
-    modelViaProvider?: string;
     /** Context window sub-menu labels. */
     contextWindow: string;
     contextWindowOfficial: string;

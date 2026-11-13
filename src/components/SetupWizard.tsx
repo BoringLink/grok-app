@@ -339,8 +339,8 @@ export function SetupWizard({
     clearError();
     try {
       // Write agent-home config with chosen message format (default Responses).
-      // Host recycles warm agents on setAsDefault so the first workbench send
-      // spawns with the relay (no full app restart — issue #376).
+      // The relay stays available in the composer model menu; no global route
+      // switch.
       await api.providersUpsert({
         id: "relay",
         model: "default",
@@ -348,7 +348,6 @@ export function SetupWizard({
         name: "Custom relay",
         apiKey: key,
         apiBackend: relayBackend || "responses",
-        setAsDefault: true,
       });
       try {
         await api.secretsSet({ relayBaseUrl: base, relayApiKey: key });
@@ -793,6 +792,9 @@ export function SetupWizard({
                       aria-label={tr("setup.account.protocol")}
                     />
                   </label>
+                  <p className="setup-hint">
+                    {tr("setup.account.relayPerChatHint")}
+                  </p>
                   <div className="setup-actions__row">
                     <button
                       type="button"

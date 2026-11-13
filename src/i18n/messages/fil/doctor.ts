@@ -39,6 +39,7 @@ export const filDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "Pasadyang relay",
   "setup.account.relayHint": "OpenAI-compatible na base URL + key",
+  "setup.account.relayPerChatHint": "Nagsisimula sa opisyal na modelo ang mga bagong chat. Pumili ng relay model sa composer para sa bawat chat.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "Susì ng API",
   "setup.account.protocol": "Format ng mensahe",

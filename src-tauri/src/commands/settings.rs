@@ -65,12 +65,6 @@ pub async fn settings_set(
     let official_aux_inject_flip =
         prev.official_aux_inject != settings.official_aux_inject
             || prev.official_aux_with_user_mcp != settings.official_aux_with_user_mcp;
-    // Keep native-Imagine PreToolUse hook in sync with inject / route (independent home only).
-    if official_aux_inject_flip || session_data_mode_changed {
-        let mode = settings.session_data_mode.clone();
-        let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
-        let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    }
     let no_ask_user_flip = prev.no_ask_user != settings.no_ask_user;
     let disallowed_tools_flip = !crate::acp_client::disallowed_tools_equal(
         &prev.disallowed_tools,
@@ -196,16 +190,6 @@ pub async fn settings_set(
     }
 
     if session_data_mode_changed {
-        // Custom route + shared mode cannot see agent-home config.toml.
-        // Self-heal back to independent and return the value that actually landed.
-        if settings.session_data_mode == "shared"
-            && crate::providers::ensure_independent_for_custom_route()
-        {
-            settings = store::load_settings_async().await;
-            tracing::info!(
-                "settings_set: custom route self-healed session_data_mode shared → independent"
-            );
-        }
         // Rebuild media/fs roots so shared (`~/.grok`) vs independent agent-home
         // switch takes effect for media:// previews immediately.
         crate::path_scope::refresh_from_store();
@@ -370,11 +354,24 @@ pub async fn composer_prefs_set(
     let previous_effort = effort.as_ref().map(|_| {
         store::resolve_composer_prefs(project_id.as_deref(), session_id.as_deref()).effort
     });
-    let (previous_provider, ssh) = session_provider_and_ssh(session_id.as_deref());
+    let (previous_provider, ssh) =
+        session_provider_and_ssh(session_id.as_deref(), project_id.as_deref());
+    let model_id = model_id.map(|model| {
+        if ssh {
+            crate::providers::official_model_id_for(&model)
+        } else {
+            model
+        }
+    });
+    let picked_provider = if ssh {
+        Some(crate::providers::SESSION_PROVIDER_OFFICIAL)
+    } else {
+        provider_id.as_deref()
+    };
     let pick = crate::providers::composer_provider_pick(
         ssh,
         previous_provider.as_deref(),
-        provider_id.as_deref(),
+        picked_provider,
         model_id.as_deref(),
     );
 
@@ -396,9 +393,9 @@ pub async fn composer_prefs_set(
             tracing::warn!("composer_prefs_set apply_permission: {e}");
         }
     }
-    // Empty stored id follows the global route. Comparing the raw column to
-    // the pick treats the first save of that same route as a switch, which
-    // clears the CLI resume id and skips session/set_model. SSH pins both
+    // An empty stored id is the official route. Comparing the effective
+    // routes treats the first save of that same route as a no-op, which keeps
+    // the CLI resume id and still applies session/set_model. SSH pins both
     // sides to official, so an official model never respawns that chat.
     if pick.route_changed {
         // This chat's process was spawned for the previous provider. Clear
@@ -435,22 +432,25 @@ pub async fn composer_prefs_set(
     Ok(prefs)
 }
 
-fn session_provider_and_ssh(session_id: Option<&str>) -> (Option<String>, bool) {
-    let Some(sid) = session_id.map(str::trim).filter(|s| !s.is_empty()) else {
-        return (None, false);
-    };
-    let row = store::load_sessions_index()
-        .into_iter()
-        .find(|s| s.id == sid);
-    let Some(row) = row else {
-        return (None, false);
-    };
-    let ssh = row.project_id.as_deref().is_some_and(|pid| {
+fn session_provider_and_ssh(
+    session_id: Option<&str>,
+    project_id: Option<&str>,
+) -> (Option<String>, bool) {
+    let row = session_id
+        .map(str::trim)
+        .filter(|session_id| !session_id.is_empty())
+        .and_then(|sid| store::load_sessions_index().into_iter().find(|s| s.id == sid));
+    let provider = row.as_ref().and_then(|session| session.provider_id.clone());
+    let project_id = row
+        .as_ref()
+        .and_then(|session| session.project_id.as_deref())
+        .or_else(|| project_id.map(str::trim).filter(|id| !id.is_empty()));
+    let ssh = project_id.is_some_and(|pid| {
         store::load_projects()
             .into_iter()
-            .any(|p| p.id == pid && p.is_ssh_remote())
+            .any(|project| project.id == pid && project.is_ssh_remote())
     });
-    (row.provider_id, ssh)
+    (provider, ssh)
 }
 
 #[tauri::command]

@@ -214,7 +214,7 @@ export const esComposer = {
   "composer.projectBound": "Sesión vinculada a «{name}»",
   "composer.projectCleared": "Cambiado al espacio de trabajo predeterminado",
   "composer.model": "Modelo",
-  "composer.modelViaProvider": "vía proveedor personalizado",
+
   "composer.modelGroupOfficial": "Oficial",
   "composer.modelSearchPlaceholder": "Buscar modelos…",
   "composer.modelSearchEmpty": "Ningún modelo coincide",

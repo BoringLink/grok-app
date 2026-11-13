@@ -112,14 +112,14 @@ export const zhProviders = {
   "prov.fetching": "拉取中…",
   "prov.loaded": "已加载 {n} 个模型",
   "prov.emptyList": "未返回模型",
-  "prov.setDefault": "设为默认",
+
   "prov.save": "保存",
   "prov.add": "添加",
   "prov.saving": "保存中…",
   "prov.saved": "提供商已保存。",
   "prov.savedReplaced": "同 id 仍残留在配置中，已用当前表单覆盖（旧条目可能未删干净）。",
   "prov.err.recreateNeedKey": "该 id 在磁盘上仍存在。请填写 API Key 以覆盖，或先删除残留的提供商。",
-  "prov.savedHotReload": "提供商已保存，Agent 已重载 — 下一条消息使用新配置（无需重启应用）。",
+
   "prov.savedApplyFailed": "提供商已写入磁盘，但即时应用失败（{detail}）。可先发一条消息；若对话仍不可用再重启应用。",
   "prov.err.saveTimeout": "保存耗时过长。配置可能已写入 — 请关闭后重新打开此面板；若对话不可用再重启应用。",
   "prov.confirmDelete": "删除提供商「{id}」？",
@@ -147,14 +147,14 @@ export const zhProviders = {
   "prov.officialKeySaved": "官方 API Key 已保存。语音就绪后会显示在输入框。",
   "prov.officialKeyCleared": "已移除官方 API Key。",
   "prov.officialKeyPresent": "已保存密钥（不显示明文）。粘贴新密钥可覆盖。",
-  "prov.officialVoiceHint": "语音听写需要官方登录（账户）或此处 API Key，且当前提供商须为官方 Grok。自定义/第三方提供商与实时语音暂不可用。",
+  "prov.officialVoiceHint": "语音听写需要官方登录（账户）或此处 API Key；当前聊天选择的模型提供商不会影响听写。",
   "prov.officialLoginHint": "也可在「设置 → 账户」登录以使用会员能力。",
   "prov.officialAuthOk": "已登录或已配置密钥",
   "prov.officialKeyOnly": "已存 API Key",
-  "prov.active": "使用中",
+
   "prov.customProvider": "自定义提供商",
-  "prov.useThis": "使用",
-  "prov.switchedHotReload": "服务商已应用。下一条消息会用新配置重连 — 无需完整重启应用。",
+
+
   "prov.ccSwitch.importBtn": "从 CC Switch 导入",
   "prov.ccSwitch.importBtnHint": "读取本机 CC Switch 的 Grok Build 供应商并添加到此处",
   "prov.ccSwitch.title": "从 CC Switch 导入",
@@ -180,8 +180,8 @@ export const zhProviders = {
   "prov.empty.hostOnly": "自定义提供商需要桌面端应用（Tauri）。请在 Grok App 中添加中转。",
   "prov.empty.noCustom": "暂无自定义中转 — 可添加 OpenAI 兼容提供商，或使用上方的官方 Grok。",
   "prov.empty.loadError": "无法加载提供商列表。请先修复上方宿主错误后重试。",
-  "prov.apply.softRespawn": "提供商已保存，Agent 已重载 — 下一条消息使用新配置（无需重启应用）。",
-  "prov.apply.savedDiskOnly": "提供商已写入磁盘。用「使用」激活（或在输入框选择）后才会切换路由。",
+
+  "prov.apply.savedDiskOnly": "提供商已保存。使用该提供商的会话将在下一轮使用新配置。",
   "prov.apply.hostOnly": "修改提供商需要桌面端应用。请在 Grok App 中保存中转。",
   "prov.err.validation": "无法保存：提供商字段无效（id、URL、Key 或模型）。请检查表单后重试。",
   "prov.err.network": "无法保存：网络或宿主 IPC 错误。请检查连接后重试。",

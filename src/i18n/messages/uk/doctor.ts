@@ -39,6 +39,7 @@ export const ukDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "Власне реле",
   "setup.account.relayHint": "Сумісний з OpenAI base URL + ключ",
+  "setup.account.relayPerChatHint": "Нові чати починаються з офіційної моделі. Виберіть модель ретранслятора в композері для кожного чату.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "Ключ API",
   "setup.account.protocol": "Формат повідомлень",

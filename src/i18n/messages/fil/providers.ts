@@ -111,14 +111,14 @@ export const filProviders = {
   "prov.fetching": "Kinukuha…",
   "prov.loaded": "Na-load ang {n} modelo",
   "prov.emptyList": "Walang ibinalik na modelo",
-  "prov.setDefault": "Itakda bilang default",
+
   "prov.save": "I-save",
   "prov.add": "Magdagdag",
   "prov.saving": "Sine-save…",
   "prov.saved": "Na-save ang provider.",
   "prov.savedReplaced": "Umiiral na ang parehong id — pinalitan ng form na ito (nasa disk pa ang nakaraang entry).",
   "prov.err.recreateNeedKey": "Umiiral pa ang id na ito sa disk. Maglagay ng API key para palitan ito, o burahin muna ang natitirang provider.",
-  "prov.savedHotReload": "Na-save ang provider. Na-reload ang mga agent — ginagamit ng susunod na mensahe ang bagong config (walang restart ng app).",
+
   "prov.savedApplyFailed": "Na-save ang provider sa disk, pero nabigo ang live apply ({detail}). Subukang magpadala ng mensahe, o i-restart ang app kung nananatiling offline ang chat.",
   "prov.err.saveTimeout": "Masyadong matagal ang pag-save. Maaaring naisulat pa rin ang config — isara at buksan ulit ang panel na ito, o i-restart kung hindi gumagana ang chat.",
   "prov.confirmDelete": "Burahin ang provider na “{id}”?",
@@ -146,14 +146,14 @@ export const filProviders = {
   "prov.officialKeySaved": "Na-save ang opisyal na API key. Lalabas ang mga kontrol ng voice kapag handa na.",
   "prov.officialKeyCleared": "Inalis ang opisyal na API key.",
   "prov.officialKeyPresent": "May naka-store na key (hindi ipinapakita). I-paste ang bago para palitan ito.",
-  "prov.officialVoiceHint": "Kailangan ng voice dictation sa composer ang opisyal na login (Account) o API key na ito, at dapat Opisyal na Grok ang aktibong provider. Hindi pa sinusuportahan ang custom/third-party na provider at live voice.",
+  "prov.officialVoiceHint": "Kailangan ng voice dictation sa composer ang opisyal na login (Account) o API key na ito; hindi ito naaapektuhan ng model provider ng chat.",
   "prov.officialLoginHint": "O mag-sign in sa Mga setting → Account para sa buong feature ng membership.",
   "prov.officialAuthOk": "Naka-sign in o handa na ang key",
   "prov.officialKeyOnly": "Naka-store ang API key",
-  "prov.active": "Aktibo",
+
   "prov.customProvider": "Pasadyang provider",
-  "prov.useThis": "Gamitin",
-  "prov.switchedHotReload": "Na-apply ang provider. Kokonekta ulit ang susunod na mensahe sa bagong config — hindi kailangan ng buong restart ng app.",
+
+
   "prov.ccSwitch.importBtn": "I-import mula sa CC Switch",
   "prov.ccSwitch.importBtnHint": "Basahin ang mga provider ng Grok Build mula sa lokal na CC Switch at idagdag sila rito",
   "prov.ccSwitch.title": "I-import mula sa CC Switch",
@@ -179,8 +179,8 @@ export const filProviders = {
   "prov.empty.hostOnly": "Kailangan ng desktop app (Tauri) ang custom provider. Buksan ang Grok App para magdagdag ng relay.",
   "prov.empty.noCustom": "Wala pang custom relay — magdagdag ng OpenAI-compatible na provider, o gamitin ang Opisyal na Grok sa itaas.",
   "prov.empty.loadError": "Hindi ma-load ang mga provider. Ayusin ang error ng host sa itaas, tapos subukan ulit.",
-  "prov.apply.softRespawn": "Na-save ang provider. Na-reload ang mga agent — ginagamit ng susunod na mensahe ang bagong config (walang restart ng app).",
-  "prov.apply.savedDiskOnly": "Na-save ang provider sa disk. I-activate gamit ang Gamitin (o piliin ito sa composer) para i-apply ang ruta.",
+
+  "prov.apply.savedDiskOnly": "Na-save ang provider. Gagamitin ng mga chat na gumagamit nito ang bagong config sa susunod na turn.",
   "prov.apply.hostOnly": "Kailangan ng desktop app ang mga pagbabago sa provider. Buksan ang Grok App para i-save ang mga relay.",
   "prov.err.validation": "Hindi ma-save: hindi wastong field ng provider (id, URL, key, o modelo). Tingnan ang form at subukan ulit.",
   "prov.err.network": "Hindi ma-save: error sa network o host IPC. Tingnan ang koneksyon at subukan ulit.",

@@ -172,46 +172,46 @@ export const trFeatures = {
   "managedSetup.error.rejected": "Dağıtım anahtarı reddedildi ya da süresi doldu. Yöneticinizle doğrulayın.",
   "managedSetup.error.signatureRejectedTitle": "Yönetilen imza reddedildi",
   "managedSetup.error.signatureRejected": "CLI yönetilen yapılandırma imzasını ya da zarfını reddetti. Yöneticinizle iletişime geçin; uygulama doğrulanmamış politikayı yazmaz.",
-  "modelAux.title": "Yardımcı model yönlendirmesi",
-  "modelAux.desc": "Sohbet döngüsünü ana model yürütür. Yan görevler daha güçlü, çok kipli bir model kullanabilir (Hermes yardımcı yuvaları gibi). Yalnızca [models] görev anahtarlarını yazar; ana rotanızı asla değiştirmez.",
-  "modelAux.loading": "Model katmanları yükleniyor…",
-  "modelAux.refresh": "Yeniden yükle",
-  "modelAux.saved": "Yardımcı model kaydedildi. Ajanlar sonraki turda yeniden bağlanacak.",
-  "modelAux.sharedReadOnly": "Paylaşımlı oturum modu: uygulama ~/.grok'u yeniden yazmaz. Bağımsız moda geçin ya da config.toml'u CLI'de düzenleyin.",
-  "modelAux.mainDefault": "Ana [models].default",
-  "modelAux.activeSource": "Etkin rota",
-  "modelAux.option.auto": "Otomatik (CLI varsayılanı)",
-  "modelAux.slot.imageDescription": "Görsel açıklama",
-  "modelAux.slot.imageDescriptionDesc": "Ana model görselleri göremediğinde Grok Build ekleri bu modelle açıklar.",
-  "modelAux.slot.webSearch": "Web araması",
-  "modelAux.slot.webSearchDesc": "web_search aracının kullandığı model (altyapı araması en iyi Grok sınıfı modellerde çalışır).",
-  "modelAux.slot.sessionSummary": "Oturum özeti",
-  "modelAux.slot.sessionSummaryDesc": "Oturum özetleri / sıkıştırmayla ilgili metinler için yan görev modeli.",
-  "modelAux.slot.promptSuggestion": "İstem önerisi",
-  "modelAux.slot.promptSuggestionDesc": "CLI etkinleştirdiğinde yazma kutusu istem önerileri için kullanılan model.",
-  "modelAux.saveGrok": "Grok'u kaydet",
-  "modelAux.saveGrokHint": "Dört yuvanın hepsini {model} modeline yönlendirir. Ana model değişmez.",
-  "modelAux.saveGrokNoTarget": "Henüz çok kipli hedef yok. Resmî bir API anahtarı (Hesap → Özel sağlayıcılar → Resmî) ya da Grok destekli bir aktarıcı (Amux / Yun) ekleyip tekrar deneyin.",
-  "modelAux.saveGrokConfirmTitle": "Grok'u kaydet ön ayarı uygulansın mı?",
-  "modelAux.saveGrokConfirmBody": "Görsel açıklama, web araması, oturum özeti ve istem önerisini {model} yapar. Ana modeliniz / etkin rotanız olduğu gibi kalır.",
-  "modelAux.saveGrokDone": "Tüm yardımcı yuvalar → {model}",
-  "modelAux.resetDefaults": "Resmî varsayılanları geri yükle",
-  "modelAux.resetConfirmTitle": "CLI varsayılanları geri yüklensin mi?",
-  "modelAux.resetConfirmBody": "Dört yardımcı yuva için özel geçersiz kılmaları kaldırır. Grok Build yerleşik varsayılanları yeniden geçerli olur. Ana model ve özel sağlayıcılar değişmez. Ana rotayı resmîye döndürmek için Özel sağlayıcılar → Resmî → Kullan'ı kullanın.",
-  "modelAux.resetDone": "Yardımcı yuvalar CLI varsayılanlarına döndürüldü.",
-  "modelAux.footnote": "İpucu: resmî aboneliğe geri döndükten sonra, yan görevler özel aktarıcıyı kullanmayı bıraksın diye buradaki “Resmî varsayılanları geri yükle”yi kullanın.",
-  "modelAux.pathLabel": "Yapılandırma",
-  "modelAux.needOfficialKey": "Ana rota özel bir aktarıcıyken resmî Grok'u yardımcı model olarak kullanmak için Özel sağlayıcılar → Resmî altına resmî bir API anahtarı yapıştırın (özel rotalarda auth.json temizlenir).",
-  "modelAux.health.officialIncomplete": "Yardımcı yuvalar resmî Grok'u gösteriyor ama eksiksiz bir resmî model bölümü ya da API anahtarı yok. Görseller piksel olarak gönderilmeyecek (DeepSeek image_url 400 hatasını önler). Çözüm: Özel sağlayıcılar → Resmî altına resmî bir API anahtarı yapıştırın, “Resmî varsayılanları geri yükle” ile yuvaları temizleyin ya da Amux/Yun ekleyip Grok'u kaydet'i yeniden çalıştırın.",
-  "modelAux.health.textOnlyNoVision": "Ana model yalnızca metin destekliyor ve görsel yardımcısı hazır değil. Burada bir görsel model yapılandırana kadar eklenen görseller yalnızca yol notu olarak gönderilir.",
-  "modelAux.nextStepsTitle": "Metin ana modelde görme nasıl açılır",
-  "modelAux.nextStep1": "Seçenek A, Resmî: Hesap → Özel sağlayıcılar → Resmî → xAI API anahtarını yapıştırın, sonra Görsel açıklama'yı Resmî · grok-4.7 yapın (ya da Grok'u kaydet).",
-  "modelAux.nextStep2": "Seçenek B, Aktarıcı: grok-4.7 ile Amux / Yun ekleyin, sonra tüm yardımcı yuvaları o sağlayıcıya ayarlayın (ya da Grok'u kaydet).",
-  "modelAux.nextStep3": "Yuvalar bozuk bir resmî Grok kimliğinde takılı kaldıysa önce “Resmî varsayılanları geri yükle”ye tıklayın, sonra yeniden yapılandırın.",
-  "modelAux.goProviders": "Özel sağlayıcıları aç",
-  "modelAux.officialAuxTitle": "Resmî yan kanal",
-  "modelAux.officialAuxReady": "Resmî Grok yan kanalı hazır ({reason}). Oturum MCP'si “official-aux”, yalıtılmış grok -p üzerinden web_search + x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe sunar (DeepSeek kimlik doğrulamasını kullanmaz).",
-  "modelAux.officialAuxMissing": "Resmî yan kanal çevrimdışı. Grok Build ile giriş yapın (CLI kimlik doğrulaması) ya da Özel sağlayıcılar → Resmî altına resmî bir API anahtarı yapıştırın, sonra oturumu yeniden bağlayın.",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "Maliyet özeti",
   "costRollup.settingsDesc": "Proje ya da oturum ve gün bazında bilinen belirteç kullanımı (varsa canlı kullanım ve oturum günlüklerinden). Proje/oturuma göre filtreleyin, düz metin özet dışa aktarın ya da yerel örnek halkasını temizleyin. Yalnızca tahmindir; fatura değildir.",
   "costRollup.lead": "Ajanın bildirdiği belirteç sayılarının {days} günlük kayan görünümü. Aşağıdan Proje / Oturum ayrıntısını ve filtre etiketlerini değiştirin. Kullanımı bilinmeyen oturumlar Bilinmiyor olarak kalır.",

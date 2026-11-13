@@ -172,46 +172,46 @@ export const filFeatures = {
   "managedSetup.error.rejected": "Tinanggihan o nag-expire ang deployment key. Kumpirmahin ito sa iyong administrator.",
   "managedSetup.error.signatureRejectedTitle": "Tinanggihan ang managed signature",
   "managedSetup.error.signatureRejected": "Tinanggihan ng CLI ang signature o envelope ng managed config. Makipag-ugnayan sa iyong administrator; hindi magsusulat ang App ng hindi na-verify na polisiya.",
-  "modelAux.title": "Routing ng auxiliary model",
-  "modelAux.desc": "Hinahawakan ng pangunahing modelo ang chat loop. Puwedeng gumamit ang mga side task ng mas malakas na multimodal na modelo (tulad ng Hermes auxiliary slot). Nagsusulat lang ng [models] task keys — hindi kailanman binabago ang iyong pangunahing ruta.",
-  "modelAux.loading": "Nilo-load ang mga layer ng modelo…",
-  "modelAux.refresh": "I-reload",
-  "modelAux.saved": "Na-save ang auxiliary model. Kokonekta ulit ang mga agent sa susunod na turn.",
-  "modelAux.sharedReadOnly": "Shared session mode: hindi nire-rewrite ng App ang ~/.grok. Lumipat sa independent mode o i-edit ang config.toml sa CLI.",
-  "modelAux.mainDefault": "Pangunahing [models].default",
-  "modelAux.activeSource": "Aktibong ruta",
-  "modelAux.option.auto": "Auto (default ng CLI)",
-  "modelAux.slot.imageDescription": "Paglalarawan ng larawan",
-  "modelAux.slot.imageDescriptionDesc": "Kapag hindi makakita ng larawan ang pangunahing modelo, inilalarawan ng Grok Build ang mga attachment gamit ang modelong ito.",
-  "modelAux.slot.webSearch": "Paghahanap sa web",
-  "modelAux.slot.webSearchDesc": "Modelong ginagamit ng web_search tool (pinakamahusay ang backend search sa mga modelong Grok-class).",
-  "modelAux.slot.sessionSummary": "Buod ng session",
-  "modelAux.slot.sessionSummaryDesc": "Side-job na modelo para sa mga buod ng session / tekstong related sa compact.",
-  "modelAux.slot.promptSuggestion": "Mungkahi ng prompt",
-  "modelAux.slot.promptSuggestionDesc": "Modelong ginagamit para sa mga mungkahi ng prompt sa composer kapag naka-enable sila sa CLI.",
-  "modelAux.saveGrok": "I-save ang Grok",
-  "modelAux.saveGrokHint": "Ituro ang apat na slot sa {model}. Hindi nababago ang pangunahing modelo.",
-  "modelAux.saveGrokNoTarget": "Wala pang multimodal na target. Magdagdag ng opisyal na API key (Account → Custom providers → Opisyal) o Grok-capable na relay (Amux / Yun), tapos subukan ulit.",
-  "modelAux.saveGrokConfirmTitle": "I-apply ang Save Grok preset?",
-  "modelAux.saveGrokConfirmBody": "Itakda ang paglalarawan ng larawan, web search, buod ng session, at mungkahi ng prompt sa {model}. Nanatili ang iyong pangunahing modelo / aktibong ruta.",
-  "modelAux.saveGrokDone": "Lahat ng auxiliary slot → {model}",
-  "modelAux.resetDefaults": "Ibalik ang opisyal na default",
-  "modelAux.resetConfirmTitle": "Ibalik ang default ng CLI?",
-  "modelAux.resetConfirmBody": "Alisin ang custom override para sa apat na auxiliary slot. Muling naaapply ang built-in na default ng Grok Build. Hindi nababago ang pangunahing modelo at custom provider. Para ibalik ang pangunahing ruta sa opisyal, gamitin ang Custom providers → Opisyal → Gamitin.",
-  "modelAux.resetDone": "Naibalik ang mga auxiliary slot sa default ng CLI.",
-  "modelAux.footnote": "Tip: pagkatapos bumalik sa opisyal na subscription, gamitin ang “Ibalik ang opisyal na default” dito para huminto ang mga side task sa paggamit ng custom relay.",
-  "modelAux.pathLabel": "Config",
-  "modelAux.needOfficialKey": "Para gamitin ang Opisyal na Grok bilang aux model habang custom relay ang pangunahing ruta, i-paste ang opisyal na API key sa Custom providers → Opisyal (na-clear ang auth.json sa custom na ruta).",
-  "modelAux.health.officialIncomplete": "Tumturo ang mga aux slot sa opisyal na Grok, pero walang kumpletong opisyal na seksyon ng modelo o API key. Hindi ipapadala ang mga larawan bilang pixel (iniiwasan ang DeepSeek image_url 400). Ayos: i-paste ang opisyal na API key sa Custom providers → Opisyal, o i-clear ang mga slot gamit ang “Ibalik ang opisyal na default”, o magdagdag ng Amux/Yun at patakbuhin ulit ang I-save ang Grok.",
-  "modelAux.health.textOnlyNoVision": "Text-only ang pangunahing modelo at hindi handa ang vision aux. Ipinapadala lang ang mga naka-attach na larawan bilang tala ng path hanggang mag-configure ka ng vision model dito.",
-  "modelAux.nextStepsTitle": "Paano i-enable ang vision sa text na pangunahing modelo",
-  "modelAux.nextStep1": "Opsyon A — Opisyal: Account → Custom providers → Opisyal → i-paste ang xAI API key, tapos itakda ang Paglalarawan ng larawan sa Opisyal · grok-4.7 (o I-save ang Grok).",
-  "modelAux.nextStep2": "Opsyon B — Relay: magdagdag ng Amux / Yun na may grok-4.7, tapos itakda lahat ng aux slot sa provider na iyon (o I-save ang Grok).",
-  "modelAux.nextStep3": "Kung natigil ang mga slot sa sira na opisyal na Grok id, i-click muna ang “Ibalik ang opisyal na default”, tapos i-configure ulit.",
-  "modelAux.goProviders": "Buksan ang Custom providers",
-  "modelAux.officialAuxTitle": "Opisyal na side-channel",
-  "modelAux.officialAuxReady": "Handa ang opisyal na Grok side-channel ({reason}). Inilalantad ng session MCP “official-aux” ang web_search + x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe sa pamamagitan ng isolated na grok -p (hindi ginagamit ang DeepSeek auth).",
-  "modelAux.officialAuxMissing": "Offline ang opisyal na side-channel. Mag-sign in sa Grok Build (CLI auth) o i-paste ang opisyal na API key sa Custom providers → Opisyal — tapos ikonekta ulit ang session.",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "Kabuuang gastos",
   "costRollup.settingsDesc": "Kilalang paggamit ng token ayon sa proyekto o session at araw (mula sa live na paggamit at journal ng session kapag available). I-filter ayon sa proyekto/session, mag-export ng plain-text na buod, o i-clear ang lokal na sample ring. Taya lang — hindi billing.",
   "costRollup.lead": "Gumagalaw na {days}-araw na view ng bilang ng token na iniuulat ng agent. Palitan ang butil ng Proyekto / Session at ang mga filter chip sa ibaba. Mananatiling Hindi alam ang mga session na walang kilalang paggamit.",

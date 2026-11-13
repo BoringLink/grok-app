@@ -39,6 +39,7 @@ export const frDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "Relais personnalisé",
   "setup.account.relayHint": "URL de base compatible OpenAI + clé",
+  "setup.account.relayPerChatHint": "Les nouvelles discussions démarrent avec le modèle officiel. Choisissez un modèle relais dans le compositeur pour chaque discussion.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "Clé API",
   "setup.account.protocol": "Format de message",

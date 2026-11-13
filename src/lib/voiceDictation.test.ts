@@ -133,17 +133,6 @@ describe("voiceAvailabilityFromAuth", () => {
     expect(s.reason).toBe("not_available");
   });
 
-  it("disables when active provider is custom even with official login", () => {
-    const s = voiceAvailabilityFromAuth({
-      signedInOfficial: true,
-      hasOfficialApiKey: true,
-      hasRelayOnly: false,
-      activeProviderIsCustom: true,
-    });
-    expect(s.available).toBe(false);
-    expect(s.reason).toBe("not_available");
-  });
-
   it("enables with custom STT endpoint without any official auth", () => {
     const s = voiceAvailabilityFromAuth({
       signedInOfficial: false,
@@ -161,7 +150,6 @@ describe("voiceAvailabilityFromAuth", () => {
       hasOfficialApiKey: false,
       hasRelayOnly: true,
       sttCustomConfigured: true,
-      activeProviderIsCustom: true,
     });
     expect(s.available).toBe(true);
     expect(s.reason).toBeNull();

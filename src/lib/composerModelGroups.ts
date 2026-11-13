@@ -1,8 +1,27 @@
-import type { ModelOption } from "@/lib/grokCatalog";
+import {
+  isValidModelId,
+  pickDefaultModelId,
+  type ModelOption,
+} from "@/lib/grokCatalog";
 
 export type ComposerModelPick =
   | { kind: "official"; modelId: string }
   | { kind: "custom"; providerId: string; modelId: string };
+
+/** Pin a custom model pick to the official catalog when the session requires it. */
+export function pinComposerModelPickToOfficial(
+  pick: ComposerModelPick,
+  forceOfficial: boolean,
+  officialModels: ModelOption[],
+): ComposerModelPick {
+  if (!forceOfficial || pick.kind === "official") return pick;
+  return {
+    kind: "official",
+    modelId: isValidModelId(pick.modelId, officialModels)
+      ? pick.modelId
+      : pickDefaultModelId(officialModels),
+  };
+}
 
 export type ComposerModelEntry = {
   pick: ComposerModelPick;
@@ -41,8 +60,8 @@ export type ComposerProviderInput = {
 };
 
 /**
- * A host that sends `models` owns the list, and `[]` is an explicit clear
- * (BOR-152). Only an older host that omits the field keeps the legacy row.
+ * A host that sends `models` owns the list, and `[]` is an explicit clear.
+ * Only an older host that omits the field keeps the legacy row.
  */
 function hasCatalog(
   models: ReadonlyArray<ComposerProviderModelInput> | null | undefined,
@@ -195,9 +214,7 @@ export function isComposerModelEntryActive(
       opts.activeSource !== "custom" && entry.pick.modelId === opts.modelId
     );
   }
-  const requestOk =
-    !opts.activeRequestModel ||
-    opts.activeRequestModel === entry.pick.modelId;
+  const requestOk = opts.activeRequestModel === entry.pick.modelId;
   return (
     opts.activeSource === "custom" &&
     opts.activeProviderId === entry.pick.providerId &&

@@ -9,7 +9,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
 } from "react";
 import * as api from "@/lib/api";
 import {
@@ -55,7 +54,6 @@ import {
 } from "@/lib/providerModelConfig";
 import {
   PROVIDER_SAVE_TIMEOUT_MS,
-  providerMutationNeedsAgentReload,
   slugifyProviderId,
   withProviderSaveTimeout,
 } from "@/lib/providerSave";
@@ -99,14 +97,11 @@ export interface ProvidersPanelProps {
    * Parent should refresh composer model groups — lightweight, no route recycle toast.
    */
   onProvidersChanged?: () => void;
-  /** Called after switching official/custom so host can reconnect Grok Build. */
-  onProviderActivated?: () => void;
+  /** Official API key saved or cleared. */
+  onOfficialKeyChanged?: () => void;
   /** Ephemeral feedback (e.g. fetch models result). */
   onToast?: (msg: string, ms?: number) => void;
-  /**
-   * When the edited channel is the active DeepSeek route and balance loads,
-   * parent can refresh sidebar / UserMenu cache.
-   */
+  /** Refresh provider-specific sidebar / UserMenu cache after balance loads. */
   onBalanceLoaded?: (
     providerId: string,
     result: api.ProviderBalanceResult,
@@ -140,7 +135,7 @@ export function ProvidersPanel({
   locale,
   officialAvailable = false,
   onProvidersChanged,
-  onProviderActivated,
+  onOfficialKeyChanged,
   onToast,
   onBalanceLoaded,
 }: ProvidersPanelProps) {
@@ -283,9 +278,6 @@ export function ProvidersPanel({
     isCreate,
     formModels: form.models,
   });
-  const activeSource = list?.activeSource ?? "official";
-  const activeProviderId = list?.activeProviderId ?? null;
-  const officialActive = activeSource === "official";
   /** Show official row even without OAuth so users can paste an API key for speech. */
   const showOfficialRow = true;
 
@@ -415,7 +407,6 @@ export function ProvidersPanel({
       const r = await api.providersCcSwitchImport({
         sourceIds: Array.from(ccSelected),
         onConflict: "overwrite",
-        activateId: null,
       });
       if (r.providers) setList(r.providers);
       const failN = r.failed?.length ?? 0;
@@ -472,7 +463,7 @@ export function ProvidersPanel({
       setHasOfficialKey(true);
       setHint(tr("prov.officialKeySaved"));
       setHintTone("ok");
-      onProviderActivated?.();
+      onOfficialKeyChanged?.();
     } catch (e) {
       setHint(String(e));
       setHintTone("err");
@@ -491,7 +482,7 @@ export function ProvidersPanel({
       setOfficialKeyDraft("");
       setHint(tr("prov.officialKeyCleared"));
       setHintTone("muted");
-      onProviderActivated?.();
+      onOfficialKeyChanged?.();
     } catch (e) {
       setHint(String(e));
       setHintTone("err");
@@ -668,7 +659,6 @@ export function ProvidersPanel({
       apiKey: form.apiKey.trim() || undefined,
       apiBackend: form.apiBackend,
       providerMode: form.providerMode,
-      setAsDefault: false as boolean,
       models: modelsToSave,
       efforts: applied?.efforts ?? fallbackEfforts,
       baseUrlFullPath: form.baseUrlFullPath,
@@ -690,7 +680,7 @@ export function ProvidersPanel({
     try {
       // Wall-clock budget so a hung host IPC cannot leave the UI on “Saving…”.
       // Disk write may still complete after a timeout (user can re-open panel).
-      // Do not auto-set default — user activates via Use / composer pick.
+      // New providers are available in the composer picker for one chat at a time.
       //
       // Create: try createOnly first so we never silently merge a ghost section.
       // If the same id still exists (failed/missed delete, or re-add preset),
@@ -739,34 +729,11 @@ export function ProvidersPanel({
       }
       // Always refresh composer model groups (list may have new models/names).
       onProvidersChanged?.();
-      const needsReload = providerMutationNeedsAgentReload({
-        setAsDefault: false,
-        providerId: id,
-        activeSource: r.activeSource,
-        activeProviderId: r.activeProviderId,
-      });
-      // Apply-path honesty: soft_respawn | saved_disk_only | host_only.
-      const effect = resolveProviderApplyEffect({
-        needsReload,
-        isTauri: api.isTauri(),
-      });
+      // Apply-path honesty: host_only | saved_disk_only. Sessions using this
+      // provider reconnect on their next turn; no global route switch exists.
+      const effect = resolveProviderApplyEffect({ isTauri: api.isTauri() });
       const toastKey = buildProviderApplyToastKey(effect) as MessageKey;
-      if (effect === "soft_respawn") {
-        setHint(tr(toastKey));
-        setHintTone("ok");
-        try {
-          // Fire-and-forget UI refresh; host already recycled agents on upsert.
-          onProviderActivated?.();
-        } catch (e) {
-          // Soft-fail: config is on disk; next message / restart still works.
-          setHint(tr("prov.savedApplyFailed", { detail: String(e) }));
-          setHintTone("err");
-          onToast?.(
-            tr("prov.savedApplyFailed", { detail: String(e) }),
-            4800,
-          );
-        }
-      } else if (replacedExisting && effect === "saved_disk_only") {
+      if (replacedExisting && effect === "saved_disk_only") {
         setHint(tr("prov.savedReplaced"));
         setHintTone("ok");
       } else {
@@ -802,8 +769,6 @@ export function ProvidersPanel({
   const confirmRemove = async () => {
     if (!deleteTarget) return;
     const { id } = deleteTarget;
-    const wasActive =
-      activeSource === "custom" && activeProviderId === id;
     setBusy(true);
     setDeleteTarget(null);
     try {
@@ -813,44 +778,8 @@ export function ProvidersPanel({
         closeRight();
       }
       onProvidersChanged?.();
-      // Deleting the live route falls back to official — recycle chrome like activate.
-      if (wasActive) {
-        onProviderActivated?.();
-      }
     } catch (e) {
       setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const activateOfficial = async (e?: MouseEvent) => {
-    e?.stopPropagation();
-    setBusy(true);
-    try {
-      const r = await api.providersActivate("official");
-      setList(r);
-      onProviderActivated?.();
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const activateCustom = async (id: string, e?: MouseEvent) => {
-    e?.stopPropagation();
-    setBusy(true);
-    try {
-      const r = await api.providersActivate("custom", id);
-      setList(r);
-      // #557: Host may auto-switch shared → independent so agent-home config is live.
-      if (r.switchedToIndependent) {
-        onToast?.(tr("prov.switchedToIndependent"), 5200);
-      }
-      onProviderActivated?.();
-    } catch (err) {
-      setError(String(err));
     } finally {
       setBusy(false);
     }
@@ -1109,8 +1038,7 @@ export function ProvidersPanel({
                 role="listitem"
                 className={
                   "prov-item" +
-                  (selection === "official" ? " is-selected" : "") +
-                  (officialActive ? " is-active" : "")
+                  (selection === "official" ? " is-selected" : "")
                 }
               >
                 <button
@@ -1134,32 +1062,10 @@ export function ProvidersPanel({
                     )}
                   </span>
                 </button>
-                {officialAvailable ? (
-                  !officialActive ? (
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm prov-item__use"
-                      disabled={busy}
-                      onClick={(e) => void activateOfficial(e)}
-                    >
-                      {tr("prov.useThis")}
-                    </button>
-                  ) : (
-                    <span
-                      className="prov-item__using"
-                      title={tr("prov.active")}
-                      aria-label={tr("prov.active")}
-                    >
-                      <IconCheck size={14} />
-                    </span>
-                  )
-                ) : null}
               </div>
             )}
 
             {providers.map((p) => {
-              const active =
-                activeSource === "custom" && activeProviderId === p.id;
               const selected = selection === p.id;
               const brandId = resolveProviderBrandId({
                 providerId: p.id,
@@ -1170,9 +1076,7 @@ export function ProvidersPanel({
                   key={p.id}
                   role="listitem"
                   className={
-                    "prov-item" +
-                    (selected ? " is-selected" : "") +
-                    (active ? " is-active" : "")
+                    "prov-item" + (selected ? " is-selected" : "")
                   }
                 >
                   <button
@@ -1201,24 +1105,6 @@ export function ProvidersPanel({
                       </span>
                     </span>
                   </button>
-                  {!active ? (
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm prov-item__use"
-                      disabled={busy}
-                      onClick={(e) => void activateCustom(p.id, e)}
-                    >
-                      {tr("prov.useThis")}
-                    </button>
-                  ) : (
-                    <span
-                      className="prov-item__using"
-                      title={tr("prov.active")}
-                      aria-label={tr("prov.active")}
-                    >
-                      <IconCheck size={14} />
-                    </span>
-                  )}
                 </div>
               );
             })}
@@ -1316,22 +1202,7 @@ export function ProvidersPanel({
                     {tr("prov.officialDesc")}
                   </p>
                 </div>
-                {officialAvailable ? (
-                  officialActive ? (
-                    <span className="account-badge account-badge--ok">
-                      {tr("prov.active")}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn--solid"
-                      disabled={busy}
-                      onClick={() => void activateOfficial()}
-                    >
-                      {tr("prov.useThis")}
-                    </button>
-                  )
-                ) : null}
+
               </div>
               <p className="prov-detail__sub" id="settings-anchor-official-key">
                 {tr("prov.officialVoiceHint")}

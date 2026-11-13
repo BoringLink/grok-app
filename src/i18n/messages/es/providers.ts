@@ -111,14 +111,14 @@ export const esProviders = {
   "prov.fetching": "Obteniendo…",
   "prov.loaded": "Se cargaron {n} modelos",
   "prov.emptyList": "No se devolvieron modelos",
-  "prov.setDefault": "Definir como predeterminado",
+
   "prov.save": "Guardar",
   "prov.add": "Añadir",
   "prov.saving": "Guardando…",
   "prov.saved": "Proveedor guardado.",
   "prov.savedReplaced": "Ese id ya existía — se sustituyó con este formulario (la entrada anterior seguía en el disco).",
   "prov.err.recreateNeedKey": "Este id sigue existiendo en el disco. Introduce una clave de API para sustituirlo, o elimina primero el proveedor sobrante.",
-  "prov.savedHotReload": "Proveedor guardado. Agentes recargados — el siguiente mensaje usa la configuración nueva (sin reiniciar la app).",
+
   "prov.savedApplyFailed": "Proveedor guardado en disco, pero falló la aplicación en vivo ({detail}). Prueba a enviar un mensaje, o reinicia la app si el chat sigue desconectado.",
   "prov.err.saveTimeout": "Guardar está tardando demasiado. La configuración puede haberse escrito — cierra y vuelve a abrir este panel, o reinicia si el chat no funciona.",
   "prov.confirmDelete": "¿Eliminar el proveedor «{id}»?",
@@ -146,14 +146,14 @@ export const esProviders = {
   "prov.officialKeySaved": "Clave de API oficial guardada. Los controles de voz aparecerán cuando estén listos.",
   "prov.officialKeyCleared": "Clave de API oficial quitada.",
   "prov.officialKeyPresent": "Hay una clave guardada (no se muestra). Pega una nueva para sustituirla.",
-  "prov.officialVoiceHint": "El dictado por voz del cuadro de mensaje necesita inicio de sesión oficial (Cuenta) o esta clave de API, y el proveedor activo debe ser Grok oficial. Los proveedores personalizados/de terceros y la voz en vivo aún no se admiten.",
+  "prov.officialVoiceHint": "El dictado del compositor necesita inicio de sesión oficial (Cuenta) o esta clave de API; el proveedor de modelos del chat no influye.",
   "prov.officialLoginHint": "O inicia sesión en Ajustes → Cuenta para las funciones completas de membresía.",
   "prov.officialAuthOk": "Sesión iniciada o clave lista",
   "prov.officialKeyOnly": "Clave de API guardada",
-  "prov.active": "Activo",
+
   "prov.customProvider": "Proveedor personalizado",
-  "prov.useThis": "Usar",
-  "prov.switchedHotReload": "Proveedor aplicado. El siguiente mensaje reconecta con la configuración nueva — no hace falta reiniciar la app por completo.",
+
+
   "prov.ccSwitch.importBtn": "Importar desde CC Switch",
   "prov.ccSwitch.importBtnHint": "Leer proveedores de Grok Build del CC Switch local y añadirlos aquí",
   "prov.ccSwitch.title": "Importar desde CC Switch",
@@ -179,8 +179,8 @@ export const esProviders = {
   "prov.empty.hostOnly": "Los proveedores personalizados necesitan la aplicación de escritorio (Tauri). Abre Grok App para añadir relés.",
   "prov.empty.noCustom": "Aún no hay relés personalizados — añade un proveedor compatible con OpenAI, o usa Grok oficial arriba.",
   "prov.empty.loadError": "No se pudieron cargar los proveedores. Corrige el error del host de arriba y reintenta.",
-  "prov.apply.softRespawn": "Proveedor guardado. Agentes recargados — el siguiente mensaje usa la configuración nueva (sin reiniciar la app).",
-  "prov.apply.savedDiskOnly": "Proveedor guardado en disco. Actívalo con Usar (o elígelo en el cuadro de mensaje) para aplicar la ruta.",
+
+  "prov.apply.savedDiskOnly": "Proveedor guardado. Los chats que usan este proveedor aplicarán la nueva configuración en su próximo turno.",
   "prov.apply.hostOnly": "Los cambios de proveedor necesitan la aplicación de escritorio. Abre Grok App para guardar relés.",
   "prov.err.validation": "No se pudo guardar: campos de proveedor no válidos (id, URL, clave o modelos). Revisa el formulario e inténtalo de nuevo.",
   "prov.err.network": "No se pudo guardar: error de red o IPC del host. Revisa la conectividad y reintenta.",

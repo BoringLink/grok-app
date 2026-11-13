@@ -57,7 +57,11 @@ export type WorkbenchSettingsStageProps = {
   agentsJson: string;
   allowUnverifiedCliInstall: boolean;
   allowedTools: string[];
-  applyComposerPrefs: (prefs: ComposerPrefs, catalog: ModelOption[]) => void;
+  applyComposerPrefs: (
+    prefs: ComposerPrefs,
+    catalog: ModelOption[],
+    chipFor?: { sessionId: string | null; forceOfficial?: boolean },
+  ) => void;
   applyGlobalSandboxProfile: (nextRaw: string) => void;
   applyPermissionPolicy: (next: PermissionPolicyId) => void;
   applySkinChoice: (next: ThemeSkinId, options?: { applyPreferredTheme?: boolean | undefined; } | undefined) => void;

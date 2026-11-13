@@ -214,7 +214,7 @@ export const idComposer = {
   "composer.projectBound": "Sesi terikat ke “{name}”",
   "composer.projectCleared": "Beralih ke ruang kerja bawaan",
   "composer.model": "Model",
-  "composer.modelViaProvider": "lewat penyedia kustom",
+
   "composer.modelGroupOfficial": "Resmi",
   "composer.modelSearchPlaceholder": "Cari model…",
   "composer.modelSearchEmpty": "Tidak ada model yang cocok",

@@ -111,14 +111,14 @@ export const koProviders = {
   "prov.fetching": "가져오는 중…",
   "prov.loaded": "모델 {n}개를 불러왔습니다",
   "prov.emptyList": "반환된 모델 없음",
-  "prov.setDefault": "기본값으로 설정",
+
   "prov.save": "저장",
   "prov.add": "추가",
   "prov.saving": "저장 중…",
   "prov.saved": "공급자를 저장했습니다.",
   "prov.savedReplaced": "같은 id가 이미 있었습니다 — 이 양식으로 바꿨습니다(이전 항목은 디스크에 남아 있었습니다).",
   "prov.err.recreateNeedKey": "이 id가 디스크에 아직 있습니다. 바꾸려면 API 키를 입력하거나 남은 공급자를 먼저 삭제하세요.",
-  "prov.savedHotReload": "공급자를 저장했습니다. 에이전트를 다시 불러왔습니다 — 다음 메시지가 새 구성을 사용합니다(앱 재시작 없음).",
+
   "prov.savedApplyFailed": "공급자를 디스크에 저장했지만 실시간 적용에 실패했습니다({detail}). 메시지를 보내 보거나 채팅이 오프라인이면 앱을 다시 시작하세요.",
   "prov.err.saveTimeout": "저장이 너무 오래 걸립니다. 구성은 이미 기록되었을 수 있습니다 — 이 패널을 닫았다가 열거나 채팅이 동작하지 않으면 다시 시작하세요.",
   "prov.confirmDelete": "공급자 “{id}”을(를) 삭제할까요?",
@@ -146,14 +146,14 @@ export const koProviders = {
   "prov.officialKeySaved": "공식 API 키를 저장했습니다. 준비되면 음성 컨트롤이 나타납니다.",
   "prov.officialKeyCleared": "공식 API 키를 제거했습니다.",
   "prov.officialKeyPresent": "키가 저장되어 있습니다(표시되지 않음). 바꾸려면 새 키를 붙여넣으세요.",
-  "prov.officialVoiceHint": "작성기 음성 받아쓰기는 공식 로그인(계정) 또는 이 API 키가 필요하고, 활성 공급자가 공식 Grok이어야 합니다. 사용자 지정/타사 공급자와 실시간 음성은 아직 지원되지 않습니다.",
+  "prov.officialVoiceHint": "작성기 음성 입력에는 공식 로그인(계정) 또는 이 API 키가 필요하며, 채팅의 모델 공급자는 영향을 주지 않습니다.",
   "prov.officialLoginHint": "또는 설정 → 계정에서 로그인해 전체 멤버십 기능을 쓰세요.",
   "prov.officialAuthOk": "로그인됨 또는 키 준비됨",
   "prov.officialKeyOnly": "API 키 저장됨",
-  "prov.active": "사용 중",
+
   "prov.customProvider": "사용자 지정 공급자",
-  "prov.useThis": "사용",
-  "prov.switchedHotReload": "공급자를 적용했습니다. 다음 메시지가 새 구성으로 다시 연결됩니다 — 앱 전체 재시작은 필요 없습니다.",
+
+
   "prov.ccSwitch.importBtn": "CC Switch에서 가져오기",
   "prov.ccSwitch.importBtnHint": "로컬 CC Switch에서 Grok Build 공급자를 읽어 여기에 추가합니다",
   "prov.ccSwitch.title": "CC Switch에서 가져오기",
@@ -179,8 +179,8 @@ export const koProviders = {
   "prov.empty.hostOnly": "사용자 지정 공급자는 데스크톱 앱(Tauri)이 필요합니다. 릴레이를 추가하려면 Grok App을 여세요.",
   "prov.empty.noCustom": "아직 사용자 지정 릴레이가 없습니다 — OpenAI 호환 공급자를 추가하거나 위의 공식 Grok을 사용하세요.",
   "prov.empty.loadError": "공급자를 불러오지 못했습니다. 위의 호스트 오류를 고친 뒤 다시 시도하세요.",
-  "prov.apply.softRespawn": "공급자를 저장했습니다. 에이전트를 다시 불러왔습니다 — 다음 메시지가 새 구성을 사용합니다(앱 재시작 없음).",
-  "prov.apply.savedDiskOnly": "공급자를 디스크에 저장했습니다. 사용을 누르거나 작성기에서 선택해 라우트를 적용하세요.",
+
+  "prov.apply.savedDiskOnly": "공급자를 저장했습니다. 이 공급자를 사용하는 채팅은 다음 턴에 새 구성을 적용합니다.",
   "prov.apply.hostOnly": "공급자 변경은 데스크톱 앱이 필요합니다. 릴레이를 저장하려면 Grok App을 여세요.",
   "prov.err.validation": "저장할 수 없음: 공급자 필드가 유효하지 않습니다(id, URL, 키 또는 모델). 양식을 확인한 뒤 다시 시도하세요.",
   "prov.err.network": "저장할 수 없음: 네트워크 또는 호스트 IPC 오류. 연결을 확인한 뒤 다시 시도하세요.",

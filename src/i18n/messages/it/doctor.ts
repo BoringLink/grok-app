@@ -39,6 +39,7 @@ export const itDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "Relay personalizzato",
   "setup.account.relayHint": "Base URL + chiave compatibili OpenAI",
+  "setup.account.relayPerChatHint": "Le nuove chat partono dal modello ufficiale. Scegli un modello relay nel composer per ogni chat.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "Chiave API",
   "setup.account.protocol": "Formato messaggi",

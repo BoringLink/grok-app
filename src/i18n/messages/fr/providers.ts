@@ -111,14 +111,14 @@ export const frProviders = {
   "prov.fetching": "Récupération…",
   "prov.loaded": "{n} modèles chargés",
   "prov.emptyList": "Aucun modèle renvoyé",
-  "prov.setDefault": "Définir par défaut",
+
   "prov.save": "Enregistrer",
   "prov.add": "Ajouter",
   "prov.saving": "Enregistrement…",
   "prov.saved": "Fournisseur enregistré.",
   "prov.savedReplaced": "Le même id existait déjà — remplacé par ce formulaire (l’entrée précédente était encore sur le disque).",
   "prov.err.recreateNeedKey": "Cet id existe encore sur le disque. Saisissez une clé API pour le remplacer, ou supprimez d’abord le fournisseur restant.",
-  "prov.savedHotReload": "Fournisseur enregistré. Agents rechargés — le prochain message utilise la nouvelle config (pas de redémarrage de l’app).",
+
   "prov.savedApplyFailed": "Fournisseur enregistré sur le disque, mais l’application en direct a échoué ({detail}). Essayez d’envoyer un message, ou redémarrez l’app si le chat reste hors ligne.",
   "prov.err.saveTimeout": "L’enregistrement prend trop de temps. La config a peut-être encore été écrite — fermez et rouvrez ce panneau, ou redémarrez si le chat ne fonctionne pas.",
   "prov.confirmDelete": "Supprimer le fournisseur « {id} » ?",
@@ -146,14 +146,14 @@ export const frProviders = {
   "prov.officialKeySaved": "Clé API officielle enregistrée. Les commandes vocales apparaîtront lorsque c’est prêt.",
   "prov.officialKeyCleared": "Clé API officielle retirée.",
   "prov.officialKeyPresent": "Une clé est stockée (non affichée). Collez-en une nouvelle pour la remplacer.",
-  "prov.officialVoiceHint": "La dictée vocale de la zone de saisie nécessite une connexion officielle (Compte) ou cette clé API, et le fournisseur actif doit être Grok officiel. Les fournisseurs personnalisés/tiers et la voix en direct ne sont pas encore pris en charge.",
+  "prov.officialVoiceHint": "La dictée vocale du compositeur nécessite une connexion officielle (Compte) ou cette clé API ; le fournisseur de modèles du chat n’a aucun effet.",
   "prov.officialLoginHint": "Ou connectez-vous sous Réglages → Compte pour les fonctions d’abonnement complètes.",
   "prov.officialAuthOk": "Connecté ou clé prête",
   "prov.officialKeyOnly": "Clé API stockée",
-  "prov.active": "Actif",
+
   "prov.customProvider": "Fournisseur personnalisé",
-  "prov.useThis": "Utiliser",
-  "prov.switchedHotReload": "Fournisseur appliqué. Le prochain message reconnecte avec la nouvelle config — pas de redémarrage complet de l’app.",
+
+
   "prov.ccSwitch.importBtn": "Importer depuis CC Switch",
   "prov.ccSwitch.importBtnHint": "Lire les fournisseurs Grok Build depuis CC Switch local et les ajouter ici",
   "prov.ccSwitch.title": "Importer depuis CC Switch",
@@ -179,8 +179,8 @@ export const frProviders = {
   "prov.empty.hostOnly": "Les fournisseurs personnalisés nécessitent l’application de bureau (Tauri). Ouvrez Grok App pour ajouter des relais.",
   "prov.empty.noCustom": "Aucun relais personnalisé pour l’instant — ajoutez un fournisseur compatible OpenAI, ou utilisez Grok officiel ci-dessus.",
   "prov.empty.loadError": "Impossible de charger les fournisseurs. Corrigez l’erreur hôte ci-dessus, puis réessayez.",
-  "prov.apply.softRespawn": "Fournisseur enregistré. Agents rechargés — le prochain message utilise la nouvelle config (pas de redémarrage de l’app).",
-  "prov.apply.savedDiskOnly": "Fournisseur enregistré sur le disque. Activez avec Utiliser (ou choisissez-le dans la zone de saisie) pour appliquer la route.",
+
+  "prov.apply.savedDiskOnly": "Fournisseur enregistré. Les discussions qui l’utilisent appliqueront la nouvelle configuration à leur prochain tour.",
   "prov.apply.hostOnly": "Les changements de fournisseur nécessitent l’application de bureau. Ouvrez Grok App pour enregistrer des relais.",
   "prov.err.validation": "Impossible d’enregistrer : champs de fournisseur invalides (id, URL, clé ou modèles). Vérifiez le formulaire et réessayez.",
   "prov.err.network": "Impossible d’enregistrer : erreur réseau ou IPC hôte. Vérifiez la connectivité et réessayez.",

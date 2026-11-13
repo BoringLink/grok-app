@@ -34,7 +34,7 @@ const relay: CustomProvider = {
 };
 
 /** Boots the hook the way App does: setters bound, provider list loaded. */
-function mountChip(globalProviderId: string | null = "cleared") {
+function mountChip() {
   const setters = {
     setProviderActiveSource: vi.fn(),
     setProviderActiveId: vi.fn(),
@@ -43,19 +43,38 @@ function mountChip(globalProviderId: string | null = "cleared") {
   const { result } = renderHook(() => useSessionProviderChip());
   act(() => {
     result.current.bind(setters);
-    result.current.noteProviderList({
-      providers: [cleared, relay],
-      activeSource: globalProviderId ? "custom" : "official",
-      activeProviderId: globalProviderId,
-    });
+    result.current.noteProviderList({ providers: [cleared, relay] });
   });
   return { chip: result.current, setters };
 }
 
 describe("useSessionProviderChip applyPrefsRoute", () => {
+  it("does not apply a new-chat draft while resolving a saved session", () => {
+    // Arrange — a draft relay pick belongs to the new chat, not this session
+    const { chip } = mountChip();
+    act(() => {
+      chip.draftComposerRouteRef.current = {
+        providerId: "relay",
+        modelId: "grok-4.6",
+        effort: "high",
+      };
+    });
+
+    // Act
+    const next = chip.resolvePrefs(
+      { modelId: "grok-4.7", effort: "medium", providerId: "official" },
+      GROK_BUILD_MODELS,
+      { sessionId: "saved" },
+    );
+
+    // Assert — the saved session keeps its own model and official route
+    expect(next.modelId).toBe("grok-4.7");
+    expect(next.providerId).toBeUndefined();
+  });
+
   it("pins the official route when the resolve falls back from an empty catalog", () => {
     // Arrange — the cleared provider is also the global route
-    const { chip, setters } = mountChip("cleared");
+    const { chip, setters } = mountChip();
     const next = chip.resolvePrefs(
       { modelId: null, effort: null, providerId: "cleared" },
       GROK_BUILD_MODELS,
@@ -78,7 +97,7 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
 
   it("keeps the stored session provider when the resolve leaves the route alone", () => {
     // Arrange — a saved model keeps routing on its own child section
-    const { chip, setters } = mountChip("cleared");
+    const { chip, setters } = mountChip();
     const next = chip.resolvePrefs(
       { modelId: "deepseek-reasoner", effort: null, providerId: "cleared" },
       GROK_BUILD_MODELS,
@@ -101,9 +120,24 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
     expect(chip.draftComposerRouteRef.current).toBeNull();
   });
 
+  it("keeps the selected route while the provider list reloads", () => {
+    // Arrange
+    const { chip, setters } = mountChip();
+    act(() => chip.applyPrefsRoute({ prefsProviderId: "relay" }));
+
+    // Act — the catalog temporarily unloads, then returns
+    act(() => chip.noteProviderList(null));
+    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith("relay");
+    act(() => chip.noteProviderList({ providers: [relay] }));
+
+    // Assert — reloaded metadata restores the matching provider identity
+    expect(setters.setProviderActiveSource).toHaveBeenLastCalledWith("custom");
+    expect(setters.setActiveCustomProvider).toHaveBeenLastCalledWith(relay);
+  });
+
   it("paints a custom provider when the stored prefs name one", () => {
     // Arrange — only the stored prefs carry the route
-    const { chip, setters } = mountChip("cleared");
+    const { chip, setters } = mountChip();
 
     // Act
     act(() => chip.applyPrefsRoute({ prefsProviderId: "relay" }));
@@ -116,7 +150,7 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
 
   it("paints the official chip for a stored official chat", () => {
     // Arrange
-    const { chip, setters } = mountChip("cleared");
+    const { chip, setters } = mountChip();
 
     // Act
     act(() => chip.applyPrefsRoute({ prefsProviderId: "official" }));
@@ -129,7 +163,7 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
 
   it("lets an explicit route win over the stored provider", () => {
     // Arrange
-    const { chip, setters } = mountChip("cleared");
+    const { chip, setters } = mountChip();
 
     // Act
     act(() =>
@@ -145,7 +179,7 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
 
   it("drops an unsaved draft pick when the chat is already stored", () => {
     // Arrange — the draft belongs to a new chat, not to the stored one
-    const { chip, setters } = mountChip("relay");
+    const { chip, setters } = mountChip();
     act(() => {
       chip.draftComposerRouteRef.current = {
         providerId: "cleared",
@@ -157,14 +191,14 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
     // Act
     act(() => chip.applyPrefsRoute({ sessionId: "saved" }));
 
-    // Assert — the chat follows the global route, not the draft
+    // Assert — a stored chat without a provider follows official, not the draft
     expect(chip.draftComposerRouteRef.current).toBeNull();
-    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith("relay");
+    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith(null);
   });
 
   it("keeps a new chat's draft provider", () => {
     // Arrange — nothing stored yet, so the in-memory pick is the route
-    const { chip, setters } = mountChip("relay");
+    const { chip, setters } = mountChip();
     act(() => {
       chip.draftComposerRouteRef.current = {
         providerId: "cleared",
@@ -182,21 +216,23 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
     expect(setters.setActiveCustomProvider).toHaveBeenLastCalledWith(cleared);
   });
 
-  it("falls back to the global route for a new chat with no draft", () => {
-    // Arrange — a custom global route proves the fallback is not a pin
-    const { chip, setters } = mountChip("relay");
+  it("falls back to official for a new chat with no draft", () => {
+    // Arrange — configured providers do not activate a route by themselves
+    const { chip, setters } = mountChip();
 
     // Act
     act(() => chip.applyPrefsRoute({}));
 
     // Assert
-    expect(setters.setProviderActiveSource).toHaveBeenLastCalledWith("custom");
-    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith("relay");
+    expect(setters.setProviderActiveSource).toHaveBeenLastCalledWith(
+      "official",
+    );
+    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith(null);
   });
 
   it("resolves a new chat's draft model against the loaded provider list", () => {
     // Arrange — the draft lives only in the hook
-    const { chip } = mountChip("relay");
+    const { chip } = mountChip();
     act(() => {
       chip.draftComposerRouteRef.current = {
         providerId: "cleared",

@@ -704,7 +704,8 @@ impl AcpClient {
         let app_session_id = opts.app_session_id.clone();
         let home_override = opts.grok_home_override.clone();
         // Route class is process-scoped (auth material + config.toml). Official
-        // aux override home is always OIDC-side; main home follows active_route.
+        // aux override home is always OIDC-side; the main home is this chat's
+        // Custom routes use agent-home; an unspecified route is official.
         // Custom relays live only in agent-home — force that GROK_HOME even when
         // session_data_mode=shared so third-party keys work without official login (#557).
         let explicit_route = opts
@@ -718,22 +719,14 @@ impl AcpClient {
         } else if let Some(ref id) = explicit_route {
             !crate::providers::is_session_provider_official(id)
         } else {
-            matches!(
-                crate::providers::active_route(),
-                crate::providers::ActiveRoute::Custom { .. }
-            )
+            false
         };
         let route_provider_id = match explicit_route {
             Some(id) if crate::providers::is_session_provider_official(&id) => {
                 crate::providers::SESSION_PROVIDER_OFFICIAL.to_string()
             }
             Some(id) => id,
-            None => match crate::providers::active_route() {
-                crate::providers::ActiveRoute::Custom { id } => id,
-                crate::providers::ActiveRoute::Official => {
-                    crate::providers::SESSION_PROVIDER_OFFICIAL.to_string()
-                }
-            },
+            None => crate::providers::SESSION_PROVIDER_OFFICIAL.to_string(),
         };
         let grok_home = if let Some(ref h) = home_override {
             h.clone()
@@ -771,29 +764,22 @@ impl AcpClient {
             }
         }
 
-        // Composer may hold a catalog id while the active channel is a custom
-        // provider — resolve to the route id Grok Build actually understands.
-        // Override home (official aux): pass model id through as catalog id.
+        // The composer stores a catalog id; resolve it to the route id Grok
+        // Build actually understands for this chat's provider. Override home
+        // (official aux) passes the model id through as a catalog id.
         let grok_build_proxy = if ssh_alias.is_some() || home_override.is_some() {
             None
-        } else if opts.route_provider_id.is_some() {
-            // This chat's provider only. A global proxy default must not attach
-            // to an official chat, and a proxy section must still bind when it
-            // is not `[models].default`.
+        } else {
+            // This chat's provider only. An official chat never binds a proxy
+            // section, and a proxy section binds even when it is not the
+            // legacy `[models].default`.
             crate::providers::session_grok_build_proxy_spawn(
                 &route_provider_id,
                 opts.model_id.as_deref().unwrap_or(""),
             )
-        } else {
-            crate::providers::active_grok_build_proxy_spawn(opts.model_id.as_deref().unwrap_or(""))
         };
         let spawn_model = if ssh_alias.is_some() {
-            let m = opts.model_id.as_deref().unwrap_or("").trim();
-            if m.is_empty() || crate::providers::is_custom_provider_id(m) {
-                crate::providers::OFFICIAL_CATALOG_MODEL.to_string()
-            } else {
-                m.to_string()
-            }
+            crate::providers::official_model_id_for(opts.model_id.as_deref().unwrap_or(""))
         } else if let Some(ref native) = grok_build_proxy {
             native.model.clone()
         } else if home_override.is_some() {
@@ -803,25 +789,14 @@ impl AcpClient {
             } else {
                 m.to_string()
             }
-        } else if opts.route_provider_id.is_some() {
-            let m = opts.model_id.as_deref().unwrap_or("").trim();
-            if m.is_empty() {
-                route_provider_id.clone()
-            } else if custom_route
-                && crate::providers::provider_mode_for_id(&route_provider_id)
-                    != crate::providers::PROVIDER_MODE_GROK_BUILD_PROXY
-            {
-                // Generic: `--model` is the per-model section, not the channel id.
-                // The id passed in may already be that section (connect) or the
-                // catalog id. Proxy relays took the catalog id above.
-                crate::providers::spawn_model_for_provider(&route_provider_id, m)
-            } else if custom_route {
-                route_provider_id.clone()
-            } else {
-                m.to_string()
-            }
         } else {
-            crate::providers::agent_spawn_model_id(opts.model_id.as_deref().unwrap_or(""))
+            // Generic custom routes spawn with the per-model section; official
+            // routes validate the catalog id. Proxy relays took the catalog id
+            // above.
+            crate::providers::spawn_model_for_provider(
+                &route_provider_id,
+                opts.model_id.as_deref().unwrap_or(""),
+            )
         };
 
         // Flag placement (CLI 0.2.x):
@@ -866,8 +841,10 @@ impl AcpClient {
         // Custom main + official-aux inject: block native Imagine tools so the
         // model cannot call image_gen/image_edit against the wrong GROK_HOME
         // (HTTP 400 Incorrect API key). Force official-aux__* instead.
-        let disallowed_tools =
-            crate::official_aux::merge_disallowed_tools_for_main(&settings.disallowed_tools);
+        let disallowed_tools = crate::official_aux::merge_disallowed_tools_for_main(
+            &settings.disallowed_tools,
+            custom_route,
+        );
         let allowed_tools = settings.allowed_tools.clone();
         let todo_gate_enabled = settings.todo_gate_enabled;
         let todo_gate_max_fires = crate::agent_todo_gate::normalize_todo_gate_max_fires(Some(
@@ -927,8 +904,13 @@ impl AcpClient {
             // Custom + inject: PreToolUse hook blocks native Imagine (ACP ignores
             // --disallowed-tools which is headless-only). Official route / inject
             // off removes the managed hook file.
-            let _ = crate::official_aux::sync_native_media_block_hook_for_current(prep_mode);
-            let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(prep_mode);
+            let _ = crate::official_aux::sync_native_media_block_hook(
+                prep_mode,
+                crate::official_aux::should_inject_mcp_for_main_for_route(custom_route),
+                &route_provider_id,
+            );
+            let _ =
+                crate::extensions::sync_user_mcp_for_official_aux_inject(prep_mode, custom_route);
             // Heal duplicate keys left by older upsert bugs (e.g. yolo vs yolo_mode).
             // Valid configs are never rewritten. Soft-fail so spawn still attempts.
             match crate::agent_home_config::ensure_agent_home_config_sane(prep_mode) {
@@ -2761,12 +2743,14 @@ impl AcpClient {
             )
             .map(str::to_string);
             let budget = crate::extensions::MCP_CONNECT_BUDGET;
+            let custom_route = self.custom_route;
             let servers = match tokio::time::timeout(
                 budget,
                 tauri::async_runtime::spawn_blocking(move || {
                     crate::extensions::build_session_mcp_servers_for_connect(
                         Some(project_cwd.as_str()),
                         app_session_id.as_deref(),
+                        custom_route,
                     )
                 }),
             )

@@ -172,46 +172,46 @@ export const frFeatures = {
   "managedSetup.error.rejected": "La clé de déploiement a été rejetée ou a expiré. Confirmez-la auprès de votre administrateur.",
   "managedSetup.error.signatureRejectedTitle": "Signature gérée rejetée",
   "managedSetup.error.signatureRejected": "La CLI a rejeté la signature ou l’enveloppe de la config gérée. Contactez votre administrateur ; l’application n’écrira pas de politique non vérifiée.",
-  "modelAux.title": "Routage du modèle auxiliaire",
-  "modelAux.desc": "Le modèle principal gère la boucle de chat. Les tâches annexes peuvent utiliser un modèle multimodal plus fort (comme les slots auxiliaires Hermes). N’écrit que les clés de tâche [models] — ne change jamais votre route principale.",
-  "modelAux.loading": "Chargement des couches de modèles…",
-  "modelAux.refresh": "Recharger",
-  "modelAux.saved": "Modèle auxiliaire enregistré. Les agents se reconnecteront au prochain tour.",
-  "modelAux.sharedReadOnly": "Mode de session partagé : l’application ne réécrit pas ~/.grok. Passez en mode indépendant ou modifiez config.toml dans la CLI.",
-  "modelAux.mainDefault": "Principal [models].default",
-  "modelAux.activeSource": "Route active",
-  "modelAux.option.auto": "Auto (défaut CLI)",
-  "modelAux.slot.imageDescription": "Description d’image",
-  "modelAux.slot.imageDescriptionDesc": "Lorsque le modèle principal ne voit pas les images, Grok Build décrit les pièces jointes avec ce modèle.",
-  "modelAux.slot.webSearch": "Recherche web",
-  "modelAux.slot.webSearchDesc": "Modèle utilisé par l’outil web_search (la recherche backend fonctionne mieux sur les modèles de classe Grok).",
-  "modelAux.slot.sessionSummary": "Résumé de session",
-  "modelAux.slot.sessionSummaryDesc": "Modèle de tâche annexe pour les résumés de session / textes liés au compactage.",
-  "modelAux.slot.promptSuggestion": "Suggestion d’invite",
-  "modelAux.slot.promptSuggestionDesc": "Modèle utilisé pour les suggestions d’invite de la zone de saisie lorsque la CLI les active.",
-  "modelAux.saveGrok": "Enregistrer Grok",
-  "modelAux.saveGrokHint": "Pointer les quatre slots vers {model}. Le modèle principal reste inchangé.",
-  "modelAux.saveGrokNoTarget": "Aucun cible multimodale pour l’instant. Ajoutez une clé API officielle (Compte → Fournisseurs personnalisés → Officiel) ou un relais compatible Grok (Amux / Yun), puis réessayez.",
-  "modelAux.saveGrokConfirmTitle": "Appliquer le préréglage Save Grok ?",
-  "modelAux.saveGrokConfirmBody": "Définir description d’image, recherche web, résumé de session et suggestion d’invite sur {model}. Votre modèle principal / route active reste inchangé.",
-  "modelAux.saveGrokDone": "Tous les slots auxiliaires → {model}",
-  "modelAux.resetDefaults": "Restaurer les défauts officiels",
-  "modelAux.resetConfirmTitle": "Restaurer les défauts CLI ?",
-  "modelAux.resetConfirmBody": "Supprimer les substitutions personnalisées des quatre slots auxiliaires. Les défauts intégrés Grok Build s’appliquent à nouveau. Le modèle principal et les fournisseurs personnalisés ne sont pas modifiés. Pour ramener la route principale à l’officiel, utilisez Fournisseurs personnalisés → Officiel → Utiliser.",
-  "modelAux.resetDone": "Slots auxiliaires restaurés aux défauts CLI.",
-  "modelAux.footnote": "Astuce : après un retour à l’abonnement officiel, utilisez « Restaurer les défauts officiels » ici pour que les tâches annexes cessent d’utiliser un relais personnalisé.",
-  "modelAux.pathLabel": "Config",
-  "modelAux.needOfficialKey": "Pour utiliser Grok officiel comme modèle aux alors que la route principale est un relais personnalisé, collez une clé API officielle sous Fournisseurs personnalisés → Officiel (auth.json est effacé sur les routes personnalisées).",
-  "modelAux.health.officialIncomplete": "Les slots aux pointent vers Grok officiel, mais il n’y a pas de section de modèle officiel complète ni de clé API. Les images ne seront pas envoyées comme pixels (évite DeepSeek image_url 400). Correction : collez une clé API officielle sous Fournisseurs personnalisés → Officiel, ou videz les slots avec « Restaurer les défauts officiels », ou ajoutez Amux/Yun et relancez Save Grok.",
-  "modelAux.health.textOnlyNoVision": "Le modèle principal est texte seul et l’aux vision n’est pas prêt. Les images jointes sont envoyées comme notes de chemin uniquement jusqu’à ce que vous configuriez un modèle vision ici.",
-  "modelAux.nextStepsTitle": "Comment activer la vision sur un modèle principal texte",
-  "modelAux.nextStep1": "Option A — Officiel : Compte → Fournisseurs personnalisés → Officiel → coller une clé API xAI, puis définir Description d’image sur Officiel · grok-4.7 (ou Save Grok).",
-  "modelAux.nextStep2": "Option B — Relais : ajouter Amux / Yun avec grok-4.7, puis définir tous les slots aux sur ce fournisseur (ou Save Grok).",
-  "modelAux.nextStep3": "Si les slots restent bloqués sur un id Grok officiel cassé, cliquez d’abord « Restaurer les défauts officiels », puis reconfigurez.",
-  "modelAux.goProviders": "Ouvrir Fournisseurs personnalisés",
-  "modelAux.officialAuxTitle": "Canal latéral officiel",
-  "modelAux.officialAuxReady": "Canal latéral Grok officiel prêt ({reason}). Le MCP de session « official-aux » expose web_search + x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe via grok -p isolé (n’utilise pas l’auth DeepSeek).",
-  "modelAux.officialAuxMissing": "Canal latéral officiel hors ligne. Connectez-vous avec Grok Build (auth CLI) ou collez une clé API officielle sous Fournisseurs personnalisés → Officiel — puis reconnectez la session.",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "Cumul des coûts",
   "costRollup.settingsDesc": "Usage de jetons connu par projet ou session et par jour (depuis l’usage en direct et les journaux de session lorsqu’ils sont disponibles). Filtrez par projet/session, exportez un résumé texte, ou effacez l’anneau d’échantillons local. Estimations uniquement — pas une facture.",
   "costRollup.lead": "Vue glissante sur {days} jours des comptes de jetons rapportés par l’agent. Basculez le grain Projet / Session et les puces de filtre ci-dessous. Les sessions sans usage connu restent Inconnu.",

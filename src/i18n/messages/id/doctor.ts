@@ -39,6 +39,7 @@ export const idDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "Relai kustom",
   "setup.account.relayHint": "URL dasar kompatibel OpenAI + kunci",
+  "setup.account.relayPerChatHint": "Chat baru dimulai dengan model resmi. Pilih model relay di composer untuk setiap chat.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "Kunci API",
   "setup.account.protocol": "Format pesan",

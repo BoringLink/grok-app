@@ -1307,8 +1307,17 @@ pub fn resolve_mcp_app_session_id<'a>(
 
 /// Full inject (settings / hot swap). `app_session_id` scopes the per-session
 /// App MCPs, so a live agent keeps its tools across a hot MCP swap.
-pub fn build_session_mcp_servers(project_cwd: Option<&str>, app_session_id: Option<&str>) -> Value {
-    build_session_mcp_servers_with_opts(project_cwd, McpInjectOptions::default(), app_session_id)
+pub fn build_session_mcp_servers(
+    project_cwd: Option<&str>,
+    app_session_id: Option<&str>,
+    custom_route: bool,
+) -> Value {
+    build_session_mcp_servers_with_opts(
+        project_cwd,
+        McpInjectOptions::default(),
+        app_session_id,
+        custom_route,
+    )
 }
 
 /// Connect / open_session inject: config-only, no OAuth network, panic-safe.
@@ -1319,6 +1328,7 @@ pub fn build_session_mcp_servers(project_cwd: Option<&str>, app_session_id: Opti
 pub fn build_session_mcp_servers_for_connect(
     project_cwd: Option<&str>,
     app_session_id: Option<&str>,
+    custom_route: bool,
 ) -> Value {
     let start = Instant::now();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -1326,6 +1336,7 @@ pub fn build_session_mcp_servers_for_connect(
             project_cwd,
             McpInjectOptions::for_connect(),
             app_session_id,
+            custom_route,
         )
     }));
     match result {
@@ -1357,8 +1368,9 @@ pub fn build_session_mcp_servers_with_opts(
     project_cwd: Option<&str>,
     opts: McpInjectOptions,
     app_session_id: Option<&str>,
+    custom_route: bool,
 ) -> Value {
-    let inject = crate::official_aux::should_inject_mcp_for_main();
+    let inject = crate::official_aux::should_inject_mcp_for_main_for_route(custom_route);
     let load_user = !inject || crate::official_aux::should_load_user_mcp_with_official_aux();
 
     let mut arr: Vec<Value> = if load_user {
@@ -2069,11 +2081,14 @@ pub fn apply_inject_mcp_enabled_in_toml(
 
 /// Independent mode only: rewrite agent-home MCP `enabled` for official-aux
 /// solo inject. Shared mode must not rewrite `~/.grok`.
-pub fn sync_user_mcp_for_official_aux_inject(session_data_mode: &str) -> Result<(), String> {
+pub fn sync_user_mcp_for_official_aux_inject(
+    session_data_mode: &str,
+    custom_route: bool,
+) -> Result<(), String> {
     if session_data_mode == "shared" {
         return Ok(());
     }
-    let solo = crate::official_aux::should_inject_mcp_for_main()
+    let solo = crate::official_aux::should_inject_mcp_for_main_for_route(custom_route)
         && !crate::official_aux::should_load_user_mcp_with_official_aux();
     let prefs = load_prefs();
     let path = {
@@ -2397,7 +2412,8 @@ mod tests {
     #[test]
     fn connect_builder_never_panics_returns_array() {
         // Empty cwd / no config — still a JSON array, never panic.
-        let v = build_session_mcp_servers_for_connect(Some("/nonexistent/project/path"), None);
+        let v =
+            build_session_mcp_servers_for_connect(Some("/nonexistent/project/path"), None, false);
         assert!(v.is_array(), "connect inject must always yield an array");
     }
 

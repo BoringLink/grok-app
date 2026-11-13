@@ -2,10 +2,12 @@
 
 ## 原则
 
-| 主路由 | 行为 |
-|--------|------|
-| **官方 Grok 订阅**（`active_source == official`） | **严禁** 注入 MCP `official-aux`、Host 识图预跑、侧信道 session rules。使用 Grok Build **默认原生** vision / `x_*` / `web_search`，避免双轨污染。 |
+| 当前会话路由 | 行为 |
+|--------------|------|
+| **官方 Grok 订阅**（无 provider 偏好或显式 official） | **严禁** 注入 MCP `official-aux`、Host 识图预跑、侧信道 session rules。使用 Grok Build **默认原生** vision / `x_*` / `web_search`，避免双轨污染。 |
 | **自定义 / 第三方**（DeepSeek、中转等） | 开关开启且官方凭证可用时，注入 **可调用** MCP `official-aux`；附图且主模型纯文本时 Host 识图预跑。通道勾了 **这个模型能看图**（或名称/模型 id 像 Grok / GPT-4o / Claude / Gemini）则主模型按多模态发像素，不剥 `@path`、不拦 `read_file` 读图。 |
+
+路由来自该会话保存的 provider，不看全局 `[models].default`；同一 App 里官方与自定义会话可以并存。
 
 X / web **不做 Host 关键词预跑**；由 agent 通过 tools 调用 `official-aux__x_*` / `web_search`。
 
@@ -15,9 +17,9 @@ X / web **不做 Host 关键词预跑**；由 agent 通过 tools 调用 `officia
 
 | 控件 | 行为 |
 |------|------|
-| **注入官方工具能力** | `AppSettings.official_aux_inject`（默认 **开**，仅在 **custom 主路由** 可勾选） |
-| **同时加载扩展 MCP** | `official_aux_with_user_mcp`（默认 **关**）；关时 session 只注入 `official-aux` |
-| 官方 Grok 订阅主路由 | 注入开关 **置灰、显示为关**；不注入（原生 Imagine / X / vision） |
+| **注入官方工具能力** | `AppSettings.official_aux_inject`（默认 **开**）。只对 **自定义 provider 的会话** 生效，官方会话仍用原生工具 |
+| **同时加载扩展 MCP** | `official_aux_with_user_mcp`（默认 **关**）；关时该会话只注入 `official-aux` |
+| 官方 Grok 会话 | 不注入（原生 Imagine / X / vision），即使开关打开 |
 | 无官方凭证 | **置灰**不可用 |
 
 深链：`#/settings/account/extras` · anchor `settings-anchor-official-aux-inject`。
@@ -55,7 +57,7 @@ X / web **不做 Host 关键词预跑**；由 agent 通过 tools 调用 `officia
 
 脚本：`scripts/official-aux-mcp.mjs`（`include_str!` 写入 `agent-home-official/official-aux-mcp.mjs`，打包 App 不依赖仓库路径）。Host：`src-tauri/src/official_aux.rs`。
 
-门闸实现：`should_inject_mcp_for_main()` = inject 开 ∧ 凭证可用 ∧ **`active_route() == Custom`**。
+门闸实现：`should_inject_mcp_for_main_for_route(custom_route)` = inject 开 ∧ 凭证可用 ∧ **该会话的 provider 是自定义**。spawn 传入会话路由，不再读取全局 `[models].default`。
 
 **Solo inject 与 Claude MCP：**  
 默认 `official_aux_with_user_mcp=false` 时，spawn 设置 `GROK_CLAUDE_MCPS_ENABLED=false` / `GROK_CURSOR_MCPS_ENABLED=false`，避免把 `~/.claude.json` 里的 Playwright 等并进会话、拖慢 30s 才结束 connecting（官方-aux 本身约 10ms 即可就绪）。
@@ -71,20 +73,19 @@ ACP `mcpServers` 省略用户 MCP **不够**。Grok CLI 仍会从 agent `config.
 
 1. **硬拦截原生 Imagine**（两道）：  
    - CLI `--disallowed-tools image_gen,image_edit,image_to_video,reference_to_video`（**仅 headless `grok -p` 生效**；ACP `agent stdio` 常忽略）。  
-   - **PreToolUse hook**（可靠）：`{agent-home}/hooks/grok-app-block-native-imagine.json`，matcher 匹配上述工具并 `decision: deny`，reason 指引改走 `official-aux__*`。spawn / 开关变更时 `sync_native_media_block_hook`。  
+   - **PreToolUse hook**（可靠）：`{agent-home}/hooks/grok-app-block-native-imagine.json`，matcher 匹配上述工具并 `decision: deny`，reason 指引改走 `official-aux__*`。每次 spawn 按该会话路由写 canonical agent-home，再 seal 到进程私有 `GROK_HOME`，所以同机官方会话不会被自定义会话的 hook 影响。
 2. 模型必须 `use_tool` → MCP `official-aux__image_*` / `image_to_video` / `reference_to_video`，侧信道 `GROK_HOME=agent-home-official`：  
    - 有 Settings 官方 API Key → 写入 `[model.grok-4.7] api_key`  
    - 仅 SuperGrok OIDC → 同步 `~/.grok/auth.json`，并 **去掉** 过期/错误 api_key，强制用订阅凭证  
 3. **禁止** 在 API key 失败后改用 PIL/代码画图。  
 4. **禁止** 对 `.png/.jpg/.webp…` 调用 `read_file` 做「验图」——纯文本主模型（DeepSeek 等）会因 tool result 里的 `image_url` 块 400 崩溃（`unknown variant image_url`）。Hook 同步拦截；成功后只回报绝对路径，UI 从路径挂附件。  
 5. Host 从 MCP `rawOutput.output.OkayOutput` / markdown 反引号路径提取媒体路径 → `session://generated_image` / journal attachments。  
-6. 官方订阅主路由：不 inject、不装 hook、不 disallowed 原生 Imagine（保持默认）。
+6. 官方订阅会话：不 inject、不装 hook、不 disallowed 原生 Imagine（保持默认）；与自定义会话并存时互不影响。
 
 ## 开关与生效
 
-- 改 `official_aux_inject` / `official_aux_with_user_mcp` → `settings_set` soft-respawn。  
-- 改完后建议**重连会话**。  
-- 切回官方订阅：自动不注入，无需手关（门闸看路由）。
+- 改 `official_aux_inject` / `official_aux_with_user_mcp` → `settings_set`；下一次 spawn / 重连按新值准备，已连进程保持旧配置。
+- 切到官方模型：该会话自动不注入，无需手关（门闸看该会话路由）。
 
 ## 相关
 

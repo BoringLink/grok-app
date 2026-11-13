@@ -111,14 +111,14 @@ export const idProviders = {
   "prov.fetching": "Mengambil…",
   "prov.loaded": "{n} model dimuat",
   "prov.emptyList": "Tidak ada model dikembalikan",
-  "prov.setDefault": "Atur sebagai bawaan",
+
   "prov.save": "Simpan",
   "prov.add": "Tambah",
   "prov.saving": "Menyimpan…",
   "prov.saved": "Penyedia disimpan.",
   "prov.savedReplaced": "Id yang sama sudah ada — diganti dengan formulir ini (entri sebelumnya masih di disk).",
   "prov.err.recreateNeedKey": "Id ini masih ada di disk. Masukkan kunci API untuk menggantinya, atau hapus penyedia sisa terlebih dahulu.",
-  "prov.savedHotReload": "Penyedia disimpan. Agen dimuat ulang — pesan berikutnya memakai konfigurasi baru (tanpa mulai ulang aplikasi).",
+
   "prov.savedApplyFailed": "Penyedia disimpan di disk, tetapi terapan langsung gagal ({detail}). Coba kirim pesan, atau mulai ulang aplikasi jika obrolan tetap offline.",
   "prov.err.saveTimeout": "Penyimpanan terlalu lama. Konfigurasi mungkin tetap tertulis — tutup dan buka ulang panel ini, atau mulai ulang jika obrolan tidak berfungsi.",
   "prov.confirmDelete": "Hapus penyedia “{id}”?",
@@ -146,14 +146,14 @@ export const idProviders = {
   "prov.officialKeySaved": "Kunci API resmi disimpan. Kontrol suara akan muncul saat siap.",
   "prov.officialKeyCleared": "Kunci API resmi dihapus.",
   "prov.officialKeyPresent": "Kunci tersimpan (tidak ditampilkan). Tempel yang baru untuk menggantinya.",
-  "prov.officialVoiceHint": "Dikte suara composer memerlukan masuk resmi (Akun) atau kunci API ini, dan penyedia aktif harus Grok resmi. Penyedia kustom/pihak ketiga dan suara langsung belum didukung.",
+  "prov.officialVoiceHint": "Dikte suara composer memerlukan login resmi (Akun) atau kunci API ini; penyedia model chat tidak memengaruhinya.",
   "prov.officialLoginHint": "Atau masuk di Pengaturan → Akun untuk fitur keanggotaan penuh.",
   "prov.officialAuthOk": "Sudah masuk atau kunci siap",
   "prov.officialKeyOnly": "Kunci API tersimpan",
-  "prov.active": "Aktif",
+
   "prov.customProvider": "Penyedia kustom",
-  "prov.useThis": "Gunakan",
-  "prov.switchedHotReload": "Penyedia diterapkan. Pesan berikutnya menyambung ulang dengan konfigurasi baru — tidak perlu mulai ulang aplikasi penuh.",
+
+
   "prov.ccSwitch.importBtn": "Impor dari CC Switch",
   "prov.ccSwitch.importBtnHint": "Baca penyedia Grok Build dari CC Switch lokal dan tambahkan di sini",
   "prov.ccSwitch.title": "Impor dari CC Switch",
@@ -179,8 +179,8 @@ export const idProviders = {
   "prov.empty.hostOnly": "Penyedia kustom memerlukan aplikasi desktop (Tauri). Buka Grok App untuk menambah relai.",
   "prov.empty.noCustom": "Belum ada relai kustom — tambah penyedia kompatibel OpenAI, atau gunakan Grok resmi di atas.",
   "prov.empty.loadError": "Penyedia tidak dapat dimuat. Perbaiki galat host di atas, lalu coba lagi.",
-  "prov.apply.softRespawn": "Penyedia disimpan. Agen dimuat ulang — pesan berikutnya memakai konfigurasi baru (tanpa mulai ulang aplikasi).",
-  "prov.apply.savedDiskOnly": "Penyedia disimpan di disk. Aktifkan dengan Gunakan (atau pilih di composer) untuk menerapkan rute.",
+
+  "prov.apply.savedDiskOnly": "Penyedia disimpan. Chat yang memakai penyedia ini akan memakai konfigurasi baru pada giliran berikutnya.",
   "prov.apply.hostOnly": "Perubahan penyedia memerlukan aplikasi desktop. Buka Grok App untuk menyimpan relai.",
   "prov.err.validation": "Tidak dapat disimpan: kolom penyedia tidak valid (id, URL, kunci, atau model). Periksa formulir lalu coba lagi.",
   "prov.err.network": "Tidak dapat disimpan: galat jaringan atau IPC host. Periksa konektivitas lalu coba lagi.",

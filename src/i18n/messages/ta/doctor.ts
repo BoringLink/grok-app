@@ -39,6 +39,7 @@ export const taDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "தனிப்பயன் ரிலே",
   "setup.account.relayHint": "OpenAI-இணக்கமான அடிப்படை URL + விசை",
+  "setup.account.relayPerChatHint": "புதிய அரட்டைகள் அதிகாரப்பூர்வ மாதிரியுடன் தொடங்கும். ஒவ்வொரு அரட்டைக்கும் composer-இல் relay மாதிரியைத் தேர்ந்தெடுக்கவும்.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "API விசை",
   "setup.account.protocol": "செய்தி வடிவம்",

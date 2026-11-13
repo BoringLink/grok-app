@@ -1178,22 +1178,27 @@ fn extract_vision_reply(raw: &str, api_backend: &str) -> Result<String, String> 
 /// (custom text-only main + image `@path` in prompt). Used for UI chip.
 ///
 /// Official Grok subscription route: always false (native multimodal).
-pub fn host_vision_will_run(prompt: &str) -> bool {
+pub fn host_vision_will_run(prompt: &str, provider_id: &str) -> bool {
     // Hard gate: never Host-describe on official main (avoid double vision).
-    if list_custom_providers()
-        .map(|l| l.active_source == "official")
-        .unwrap_or(true)
-    {
+    if crate::providers::is_session_provider_official(provider_id) {
         return false;
     }
-    let config = read_config_text();
     let Ok(list) = list_custom_providers() else {
         return false;
     };
-    if !main_is_text_only(&config, &list) {
+    if !route_is_text_only(&list, provider_id) {
         return false;
     }
     !extract_image_at_paths(prompt).is_empty()
+}
+
+/// Text-only check for one chat's provider. A deleted / unknown provider is not
+/// a custom route (connect falls back to official).
+fn route_is_text_only(list: &crate::providers::ProvidersListResult, provider_id: &str) -> bool {
+    list.providers
+        .iter()
+        .find(|p| p.id == provider_id)
+        .is_some_and(custom_provider_is_text_only)
 }
 
 /// Outcome of Host vision side-channel (for tool chip complete/fail).
@@ -1218,8 +1223,8 @@ pub struct HostVisionPrep {
 ///
 /// Safe to call for every send; no-op when main is multimodal.
 #[allow(dead_code)]
-pub async fn prepare_agent_prompt_for_main(prompt: &str) -> String {
-    prepare_agent_prompt_for_main_detailed(prompt, None)
+pub async fn prepare_agent_prompt_for_main(prompt: &str, provider_id: &str) -> String {
+    prepare_agent_prompt_for_main_detailed(prompt, None, provider_id)
         .await
         .prompt
 }
@@ -1230,6 +1235,7 @@ pub async fn prepare_agent_prompt_for_main(prompt: &str) -> String {
 pub async fn prepare_agent_prompt_for_main_detailed(
     prompt: &str,
     progress: Option<crate::official_aux::OfficialProgressCb>,
+    provider_id: &str,
 ) -> HostVisionPrep {
     let config = read_config_text();
     let list = match list_custom_providers() {
@@ -1244,7 +1250,9 @@ pub async fn prepare_agent_prompt_for_main_detailed(
             };
         }
     };
-    if !main_is_text_only(&config, &list) {
+    if crate::providers::is_session_provider_official(provider_id)
+        || !route_is_text_only(&list, provider_id)
+    {
         return HostVisionPrep {
             prompt: prompt.to_string(),
             ran: false,

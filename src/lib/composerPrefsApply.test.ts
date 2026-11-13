@@ -105,6 +105,36 @@ describe("resolveComposerPrefsSelection", () => {
     expect(next).toEqual({ modelId: "gemini-3.5-flash", effort: "max" });
   });
 
+  it("falls back to official when the loaded provider list is empty", () => {
+    const next = resolveComposerPrefsSelection({
+      prefs: {
+        modelId: "deepseek-v4-flash",
+        effort: "max",
+        providerId: "deleted",
+      },
+      catalog: GROK_BUILD_MODELS,
+      providers: [],
+      providersLoaded: true,
+    });
+    expect(next.modelId).toBe("grok-4.7");
+    expect(next.providerId).toBeNull();
+  });
+
+  it("falls back to official when the stored provider was deleted", () => {
+    const next = resolveComposerPrefsSelection({
+      prefs: {
+        modelId: "gemini-3.5-flash",
+        effort: "max",
+        providerId: "deleted",
+      },
+      catalog: GROK_BUILD_MODELS,
+      providers: [requesty],
+      providersLoaded: true,
+    });
+    expect(next.modelId).toBe("grok-4.7");
+    expect(next.providerId).toBeNull();
+  });
+
   it("keeps a new chat's pick while the provider list is not loaded yet", () => {
     // Arrange — nothing disproves the pick, so it is not thrown away
     const next = resolveComposerPrefsSelection({
@@ -240,6 +270,32 @@ describe("resolveComposerPrefsSelection", () => {
     });
     expect(luna.modelId).toBe("gpt-5.6-luna");
     expect(sol.modelId).toBe("gpt-5.6-luna");
+  });
+
+  it("pins SSH project preferences to an official model", () => {
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: "deepseek-v4-flash", effort: "high", providerId: "relay" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [requesty],
+      forceOfficial: true,
+    });
+
+    expect(next).toEqual({
+      modelId: "grok-4.7",
+      effort: "high",
+      providerId: null,
+    });
+  });
+
+  it("keeps an official model id when an SSH session has a matching official model", () => {
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: "grok-4.6", effort: "low", providerId: "relay" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [requesty],
+      forceOfficial: true,
+    });
+
+    expect(next).toEqual({ modelId: "grok-4.6", effort: "low", providerId: null });
   });
 
   it("falls back to the provider model when the stored custom id is unknown", () => {

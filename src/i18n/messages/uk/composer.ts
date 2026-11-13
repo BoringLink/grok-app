@@ -214,7 +214,7 @@ export const ukComposer = {
   "composer.projectBound": "Сесію прив’язано до «{name}»",
   "composer.projectCleared": "Перемкнено на робочу область за замовчуванням",
   "composer.model": "Модель",
-  "composer.modelViaProvider": "через власного провайдера",
+
   "composer.modelGroupOfficial": "Офіційна",
   "composer.modelSearchPlaceholder": "Пошук моделей…",
   "composer.modelSearchEmpty": "Немає відповідних моделей",

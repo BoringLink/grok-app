@@ -140,6 +140,7 @@ export interface CcSwitchScanResult {
 export interface CcSwitchImportResult {
   imported: number;
   skipped: number;
+  affectedProviderIds: string[];
   failed: Array<{ sourceId: string; reason: string }>;
   providers?: ProvidersListResult | null;
 }
@@ -154,28 +155,12 @@ export async function providersCcSwitchImport(body: {
   sourceIds: string[];
   /** Default overwrite — same id updates key/base_url. */
   onConflict?: "skip" | "overwrite" | "rename";
-  activateId?: string | null;
 }) {
   return invoke<CcSwitchImportResult>("providers_cc_switch_import", {
     body: {
       sourceIds: body.sourceIds,
       onConflict: body.onConflict ?? "overwrite",
-      activateId: body.activateId ?? null,
     },
-  });
-}
-
-/** Switch to official Grok Build or a custom provider (writes config.toml default). */
-export async function providersActivate(
-  source: "official" | "custom",
-  providerId?: string | null,
-  /** False: reload only the live chat. Default true: drop every warm process. */
-  recycleAgents?: boolean,
-) {
-  return invoke<ProvidersListResult>("providers_activate", {
-    source,
-    providerId: providerId ?? null,
-    recycleAgents: recycleAgents ?? null,
   });
 }
 
@@ -336,7 +321,6 @@ export async function providersUpsert(body: {
   apiKey?: string;
   apiBackend?: string;
   providerMode?: "generic" | "grok_build_proxy" | string;
-  setAsDefault?: boolean;
   createOnly?: boolean;
   models?: ProviderModelEntry[];
   efforts?: ProviderEffortEntry[];
@@ -358,7 +342,6 @@ export async function providersUpsert(body: {
     apiKey: body.apiKey ?? null,
     apiBackend: body.apiBackend ?? null,
     providerMode: body.providerMode ?? null,
-    setAsDefault: body.setAsDefault ?? null,
     createOnly: body.createOnly ?? null,
     models: body.models ?? null,
     efforts: body.efforts ?? null,
@@ -372,10 +355,6 @@ export async function providersUpsert(body: {
 
 export async function providersRemove(id: string) {
   return invoke<ProvidersListResult>("providers_remove", { id });
-}
-
-export async function providersSetDefault(modelId: string) {
-  return invoke<ProvidersListResult>("providers_set_default", { modelId });
 }
 
 export async function providersPing(opts?: {

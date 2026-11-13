@@ -172,46 +172,46 @@ export const esFeatures = {
   "managedSetup.error.rejected": "La clave de implementación fue rechazada o caducó. Confírmala con tu administrador.",
   "managedSetup.error.signatureRejectedTitle": "Firma gestionada rechazada",
   "managedSetup.error.signatureRejected": "La CLI rechazó la firma o el sobre de la configuración gestionada. Contacta con tu administrador; la App no escribirá una política no verificada.",
-  "modelAux.title": "Enrutado del modelo auxiliar",
-  "modelAux.desc": "El modelo principal gestiona el bucle del chat. Las tareas laterales pueden usar un modelo multimodal más potente (como las ranuras auxiliares de Hermes). Solo escribe claves de tarea [models] — nunca cambia tu ruta principal.",
-  "modelAux.loading": "Cargando capas de modelo…",
-  "modelAux.refresh": "Recargar",
-  "modelAux.saved": "Modelo auxiliar guardado. Los agentes se reconectarán en el siguiente turno.",
-  "modelAux.sharedReadOnly": "Modo de sesión compartido: la App no reescribe ~/.grok. Cambia al modo independiente o edita config.toml en la CLI.",
-  "modelAux.mainDefault": "[models].default principal",
-  "modelAux.activeSource": "Ruta activa",
-  "modelAux.option.auto": "Auto (predeterminado de la CLI)",
-  "modelAux.slot.imageDescription": "Descripción de imagen",
-  "modelAux.slot.imageDescriptionDesc": "Cuando el modelo principal no puede ver imágenes, Grok Build describe los adjuntos con este modelo.",
-  "modelAux.slot.webSearch": "Búsqueda web",
-  "modelAux.slot.webSearchDesc": "Modelo que usa la herramienta web_search (la búsqueda de backend funciona mejor en modelos de clase Grok).",
-  "modelAux.slot.sessionSummary": "Resumen de sesión",
-  "modelAux.slot.sessionSummaryDesc": "Modelo de trabajo lateral para resúmenes de sesión / texto relacionado con compact.",
-  "modelAux.slot.promptSuggestion": "Sugerencia de prompt",
-  "modelAux.slot.promptSuggestionDesc": "Modelo para las sugerencias de prompt del cuadro de mensaje cuando la CLI las activa.",
-  "modelAux.saveGrok": "Guardar Grok",
-  "modelAux.saveGrokHint": "Apunta las cuatro ranuras a {model}. El modelo principal no cambia.",
-  "modelAux.saveGrokNoTarget": "Aún no hay destino multimodal. Añade una clave de API oficial (Cuenta → Proveedores personalizados → Oficial) o un relé compatible con Grok (Amux / Yun) e inténtalo de nuevo.",
-  "modelAux.saveGrokConfirmTitle": "¿Aplicar el preajuste Guardar Grok?",
-  "modelAux.saveGrokConfirmBody": "Establece descripción de imagen, búsqueda web, resumen de sesión y sugerencia de prompt en {model}. Tu modelo principal / ruta activa se queda igual.",
-  "modelAux.saveGrokDone": "Todas las ranuras auxiliares → {model}",
-  "modelAux.resetDefaults": "Restaurar valores oficiales",
-  "modelAux.resetConfirmTitle": "¿Restaurar los valores de la CLI?",
-  "modelAux.resetConfirmBody": "Quita las anulaciones personalizadas de las cuatro ranuras auxiliares. Vuelven a aplicar los valores integrados de Grok Build. El modelo principal y los proveedores personalizados no cambian. Para devolver la ruta principal a oficial, usa Proveedores personalizados → Oficial → Usar.",
-  "modelAux.resetDone": "Ranuras auxiliares restauradas a los valores de la CLI.",
-  "modelAux.footnote": "Consejo: tras volver a la suscripción oficial, usa «Restaurar valores oficiales» aquí para que las tareas laterales dejen de usar un relé personalizado.",
-  "modelAux.pathLabel": "Configuración",
-  "modelAux.needOfficialKey": "Para usar Grok oficial como modelo auxiliar mientras la ruta principal es un relé personalizado, pega una clave de API oficial en Proveedores personalizados → Oficial (auth.json se borra en las rutas personalizadas).",
-  "modelAux.health.officialIncomplete": "Las ranuras auxiliares apuntan a Grok oficial, pero no hay una sección de modelo oficial completa ni clave de API. Las imágenes no se enviarán como píxeles (evita DeepSeek image_url 400). Solución: pega una clave de API oficial en Proveedores personalizados → Oficial, o borra las ranuras con «Restaurar valores oficiales», o añade Amux/Yun y vuelve a Guardar Grok.",
-  "modelAux.health.textOnlyNoVision": "El modelo principal es solo texto y el auxiliar de visión no está listo. Las imágenes adjuntas se envían solo como notas de ruta hasta que configures aquí un modelo de visión.",
-  "modelAux.nextStepsTitle": "Cómo activar visión en un modelo principal de solo texto",
-  "modelAux.nextStep1": "Opción A — Oficial: Cuenta → Proveedores personalizados → Oficial → pega la clave de API de xAI y pon Descripción de imagen en Oficial · grok-4.7 (o Guardar Grok).",
-  "modelAux.nextStep2": "Opción B — Relé: añade Amux / Yun con grok-4.7 y pon todas las ranuras auxiliares en ese proveedor (o Guardar Grok).",
-  "modelAux.nextStep3": "Si las ranuras están atascadas en un id de Grok oficial roto, pulsa primero «Restaurar valores oficiales» y vuelve a configurar.",
-  "modelAux.goProviders": "Abrir Proveedores personalizados",
-  "modelAux.officialAuxTitle": "Canal lateral oficial",
-  "modelAux.officialAuxReady": "Canal lateral oficial de Grok listo ({reason}). El MCP de sesión «official-aux» expone web_search + x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe mediante grok -p aislado (no usa autenticación de DeepSeek).",
-  "modelAux.officialAuxMissing": "Canal lateral oficial desconectado. Inicia sesión con Grok Build (autenticación CLI) o pega una clave de API oficial en Proveedores personalizados → Oficial — luego reconecta la sesión.",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "Resumen de costes",
   "costRollup.settingsDesc": "Uso conocido de tokens por proyecto o sesión y día (del uso en vivo y los diarios de sesión cuando hay datos). Filtra por proyecto/sesión, exporta un resumen en texto o borra el anillo de muestras locales. Solo estimaciones — no es facturación.",
   "costRollup.lead": "Vista móvil de {days} días de recuentos de tokens informados por el agente. Cambia el grano Proyecto / Sesión y los chips de filtro abajo. Las sesiones sin uso conocido quedan como Desconocido.",

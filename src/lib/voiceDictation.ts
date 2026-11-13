@@ -290,8 +290,7 @@ export function resolveVoiceErrorClass(
  * - Custom STT endpoint (Settings → Voice) is available on its own — no
  *   official account needed, and works under custom/third-party providers.
  * - Otherwise needs official Grok OAuth token or official xAI API key.
- * - Active custom / third-party provider route disables official dictation
- *   (relay keys are not enough).
+ * - The current chat's main-model route does not change voice authentication.
  * - Live voice is gated separately (currently not exposed in the composer).
  */
 export function voiceAvailabilityFromAuth(opts: {
@@ -300,14 +299,9 @@ export function voiceAvailabilityFromAuth(opts: {
   hasRelayOnly: boolean;
   /** True when a custom OpenAI-compatible STT endpoint is configured. */
   sttCustomConfigured?: boolean;
-  /** True when Settings → Providers is set to a custom relay. */
-  activeProviderIsCustom?: boolean;
 }): VoiceStatus {
   if (opts.sttCustomConfigured) {
     return { available: true, reason: null };
-  }
-  if (opts.activeProviderIsCustom) {
-    return { available: false, reason: "not_available" };
   }
   if (opts.signedInOfficial || opts.hasOfficialApiKey) {
     return { available: true, reason: null };

@@ -1228,16 +1228,18 @@ pub fn main_route_is_custom() -> bool {
 /// Requires:
 /// - user setting `official_aux_inject`
 /// - official credentials available (for the side-channel home)
-/// - **custom main route** (never inject on official subscription)
-pub fn should_inject_mcp_for_main() -> bool {
+/// - **custom main route** for this chat (never inject on official subscription)
+pub fn should_inject_mcp_for_main_for_route(custom_route: bool) -> bool {
     let settings = store::load_settings();
-    if !settings.official_aux_inject {
-        return false;
-    }
-    if !main_route_is_custom() {
+    if !settings.official_aux_inject || !custom_route {
         return false;
     }
     official_aux_available()
+}
+
+/// Legacy gate for call sites without a session route.
+pub fn should_inject_mcp_for_main() -> bool {
+    should_inject_mcp_for_main_for_route(main_route_is_custom())
 }
 
 /// When inject is on: only load `official-aux` (default), unless user opts into
@@ -1265,9 +1267,12 @@ pub fn native_media_tools_to_disallow_on_custom_main() -> &'static [&'static str
 /// Note: CLI `--disallowed-tools` is **headless-only** (`grok -p`). ACP
 /// `agent stdio` often ignores it, so custom main also installs a PreToolUse
 /// hook via [`sync_native_media_block_hook`].
-pub fn merge_disallowed_tools_for_main(settings_tools: &[String]) -> Vec<String> {
+pub fn merge_disallowed_tools_for_main(
+    settings_tools: &[String],
+    custom_route: bool,
+) -> Vec<String> {
     let mut out: Vec<String> = settings_tools.to_vec();
-    if should_inject_mcp_for_main() {
+    if should_inject_mcp_for_main_for_route(custom_route) {
         for t in native_media_tools_to_disallow_on_custom_main() {
             out.push((*t).to_string());
         }
@@ -1403,20 +1408,27 @@ pub fn native_media_block_hook_json() -> String {
     )
 }
 
-fn current_main_is_text_only() -> bool {
+fn provider_is_text_only(provider_id: &str) -> bool {
     let list = match crate::providers::list_custom_providers() {
         Ok(l) => l,
         Err(_) => return true,
     };
-    let text = fs::read_to_string(&list.config_path).unwrap_or_default();
-    crate::models_aux::main_is_text_only(&text, &list)
+    list.providers
+        .iter()
+        .find(|p| p.id == provider_id)
+        .map(crate::models_aux::custom_provider_is_text_only)
+        .unwrap_or(true)
 }
 
 /// Install or remove the native-Imagine block hook under agent GROK_HOME.
 ///
 /// When `enabled` (custom + inject): write `{home}/hooks/grok-app-block-native-imagine.{json,sh}`.
 /// When disabled: remove those managed files only (never touch user hooks).
-pub fn sync_native_media_block_hook(session_data_mode: &str, enabled: bool) -> Result<(), String> {
+pub fn sync_native_media_block_hook(
+    session_data_mode: &str,
+    enabled: bool,
+    provider_id: &str,
+) -> Result<(), String> {
     if session_data_mode == "shared" {
         // Never rewrite shared ~/.grok hooks for this App-only policy.
         return Ok(());
@@ -1428,7 +1440,7 @@ pub fn sync_native_media_block_hook(session_data_mode: &str, enabled: bool) -> R
     if enabled {
         fs::create_dir_all(&hooks_dir).map_err(|e| format!("create agent hooks dir: {e}"))?;
         let body = native_media_block_hook_json();
-        let block_image_read = current_main_is_text_only();
+        let block_image_read = provider_is_text_only(provider_id);
         let script = native_media_block_hook_script_body_with(block_image_read);
         let need_json = match fs::read_to_string(&path) {
             Ok(existing) => existing != body,
@@ -1473,11 +1485,6 @@ pub fn sync_native_media_block_hook(session_data_mode: &str, enabled: bool) -> R
         }
     }
     Ok(())
-}
-
-/// Sync hook based on current inject gate (spawn / settings path).
-pub fn sync_native_media_block_hook_for_current(session_data_mode: &str) -> Result<(), String> {
-    sync_native_media_block_hook(session_data_mode, should_inject_mcp_for_main())
 }
 
 /// Session `--rules` body when official-aux inject is on (always available for tests).
@@ -1536,8 +1543,8 @@ If official-aux tools are missing from the session, say so — do not substitute
 
 /// Session `--rules` block when official-aux is active (DeepSeek etc. need this).
 /// Official Grok main route must not receive this (native tools already exist).
-pub fn inject_session_rules() -> Option<String> {
-    if !should_inject_mcp_for_main() {
+pub fn inject_session_rules(custom_route: bool) -> Option<String> {
+    if !should_inject_mcp_for_main_for_route(custom_route) {
         return None;
     }
     Some(official_aux_session_rules_text().trim().to_string())
@@ -1562,15 +1569,23 @@ pub fn path_citation_session_rules() -> &'static str {
 }
 
 /// Merge user session extra_rules with always-on path rules + official-aux inject.
-pub fn merge_extra_rules(user: Option<&str>) -> Option<String> {
+pub fn merge_extra_rules(
+    user: Option<&str>,
+    custom_route: bool,
+    provider_id: &str,
+) -> Option<String> {
     let path = path_citation_session_rules().trim();
-    let inject = inject_session_rules();
+    let inject = inject_session_rules(custom_route);
     let user = user
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
-    // Channel-level rules from the active custom provider (Settings → Providers).
-    let channel = crate::providers::active_provider_append_prompt();
+    // Channel-level rules belong to this chat's provider, not a global route.
+    let channel = if custom_route {
+        crate::providers::provider_append_prompt(provider_id)
+    } else {
+        None
+    };
     let mut parts: Vec<String> = Vec::with_capacity(4);
     if let Some(u) = user {
         parts.push(u);
@@ -2466,11 +2481,11 @@ A UI screenshot.
     #[test]
     fn merge_rules_appends_inject() {
         // Without credentials inject may be None — still ok to call.
-        let m = merge_extra_rules(Some("prefer tests"));
+        let m = merge_extra_rules(Some("prefer tests"), false, "official");
         assert!(m.as_deref().unwrap_or("").contains("prefer tests"));
         // Path citation rules always merge (display stays short in UI).
         assert!(m.as_deref().unwrap_or("").contains("Path citations"));
-        let only_path = merge_extra_rules(None).expect("path rules alone");
+        let only_path = merge_extra_rules(None, false, "official").expect("path rules alone");
         assert!(only_path.contains("Path citations"));
         assert!(only_path.contains("project-relative"));
         // Product guidance: inline backticks, not fenced-only handoff.
@@ -2512,7 +2527,7 @@ A UI screenshot.
     fn merge_disallowed_includes_imagine_tools_when_list_nonempty() {
         // When inject is off, merge still returns settings tools only (no panic).
         let base = vec!["Bash".into()];
-        let merged = merge_disallowed_tools_for_main(&base);
+        let merged = merge_disallowed_tools_for_main(&base, false);
         assert!(merged.iter().any(|t| t == "Bash"));
         // Imagine denylist entries are only added when should_inject is true
         // (env-dependent). Always expose the static list for docs/spawn.

@@ -216,7 +216,7 @@ export const zhTWComposer = {
   "composer.projectBound": "對話已繫結至「{name}」",
   "composer.projectCleared": "已切換到預設工作區",
   "composer.model": "模型",
-  "composer.modelViaProvider": "透過自訂提供商",
+
   "composer.modelGroupOfficial": "官方",
   "composer.modelSearchPlaceholder": "搜尋模型…",
   "composer.modelSearchEmpty": "沒有符合的模型",

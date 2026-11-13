@@ -39,6 +39,7 @@ export const deDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "Custom-Relay",
   "setup.account.relayHint": "OpenAI-kompatible Basis-URL + Schlüssel",
+  "setup.account.relayPerChatHint": "Neue Chats starten mit Official. Wähle im Composer pro Chat ein Relay-Modell aus.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "API-Schlüssel",
   "setup.account.protocol": "Nachrichtenformat",
