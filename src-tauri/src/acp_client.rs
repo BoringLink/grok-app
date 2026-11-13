@@ -1086,14 +1086,7 @@ impl AcpClient {
         if !spawn_model.is_empty() {
             cmd.args(["--model", &spawn_model]);
         }
-        if let Some(ref e) = opts.effort {
-            let e = e.trim();
-            // Pass any catalog/channel effort id (low/medium/high, max, …).
-            // Do not hard-allowlist only Grok 3-tier — custom channels use max etc.
-            if is_spawnable_reasoning_effort(e) {
-                cmd.args(["--reasoning-effort", e]);
-            }
-        }
+        cmd.args(reasoning_effort_spawn_flags(opts.effort.as_deref()));
         if should_pass_always_approve(spawn_policy, spawn_product_mode) {
             cmd.arg("--always-approve");
         }
@@ -6721,6 +6714,25 @@ mod reasoning_effort_spawn_tests {
         assert!(!is_spawnable_reasoning_effort("-high"));
         assert!(!is_spawnable_reasoning_effort("hi gh"));
         assert!(!is_spawnable_reasoning_effort("a".repeat(65).as_str()));
+    }
+
+    #[test]
+    fn omits_the_flag_when_the_effective_effort_is_none() {
+        assert_eq!(reasoning_effort_spawn_flags(None), Vec::<String>::new());
+        assert_eq!(
+            reasoning_effort_spawn_flags(Some("   ")),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            reasoning_effort_spawn_flags(Some("none")),
+            vec!["--reasoning-effort".to_string(), "none".to_string()],
+            "Off is a real value, not an omitted flag"
+        );
+        assert_eq!(
+            reasoning_effort_spawn_flags(Some(" max ")),
+            vec!["--reasoning-effort".to_string(), "max".to_string()],
+            "raw ids pass through verbatim"
+        );
     }
 }
 

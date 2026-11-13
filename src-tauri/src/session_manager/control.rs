@@ -21,6 +21,17 @@ fn catalog_advertises_context_window(tokens: u64) -> bool {
         .any(|model| crate::models_catalog::model_supports_context_window(model, tokens))
 }
 
+/// What a tracked live slot needs after an effective-effort change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum EffortStage {
+    /// No live process to drop (idle/no ACP); the next connect picks it up.
+    Unchanged,
+    /// Idle live process: caller should soft-respawn now.
+    LiveRespawn,
+    /// Mid-turn live process: queued; flush after the turn ends.
+    LiveDeferred,
+}
+
 impl SessionManager {
     #[allow(dead_code)]
     pub fn set_permission_policy(&self, policy: PermissionPolicy) {
@@ -232,19 +243,9 @@ impl SessionManager {
     /// now that the session is idle (or drop a parked process so next
     /// connect cold-spawns with the new flags).
     pub async fn flush_pending_soft_respawn(&self, app: &AppHandle, session_id: &str) {
-        let reason = { self.pending_soft_respawn.lock().remove(session_id) };
-        let Some(reason) = reason else {
+        let Some(reason) = self.take_pending_soft_respawn(session_id) else {
             return;
         };
-        let busy = self
-            .with_session_mut(session_id, |s| Self::live_session_is_busy(s))
-            .unwrap_or(false);
-        if busy {
-            self.pending_soft_respawn
-                .lock()
-                .insert(session_id.to_string(), reason);
-            return;
-        }
         if self.is_live_session(session_id) {
             self.soft_respawn_with_reason(app, &reason).await;
             return;
@@ -1030,101 +1031,137 @@ impl SessionManager {
         }
     }
 
-    /// Record desired effort. CLI has no mid-session set_effort RPC; soft-drop the
-    /// live agent so the next connect re-spawns with `--reasoning-effort`.
+    /// Update the tracked slots with one chat's stored / effective effort.
     ///
-    /// `session_id` is the chat the change belongs to. A draft chat (`None`) or a
-    /// background chat owns no agent here, and applying its effort to the live
-    /// slot used to retune — and soft-respawn — an unrelated conversation.
-    pub async fn set_effort_and_respawn_needed(
+    /// No process is killed here. A busy live slot queues a turn-end respawn;
+    /// an idle live slot asks the caller to soft-respawn; idle background /
+    /// parked slots are updated or dropped so process reuse matches the next
+    /// connect. Other sessions are never touched.
+    pub(super) fn stage_effort_change(
         &self,
-        app: &AppHandle,
-        effort: String,
-        session_id: Option<&str>,
-        effort_changed: bool,
-    ) -> Result<(), String> {
-        let effort = effort.trim().to_string();
-        // Accept CLI catalog values; unknown efforts still fail closed with a clear error.
-        let ok = matches!(
-            effort.as_str(),
-            "low" | "medium" | "high" | "xhigh" | "max" | "none"
-        ) || (effort
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-            && (2..=32).contains(&effort.len()));
-        if !ok {
-            return Err(format!("invalid effort: {effort}"));
-        }
-        // Grok Build's session/load restores the old model and reasoning effort,
-        // overriding this process's fresh spawn flags. On a real effort change,
-        // force session/new; the existing journal bootstrap preserves continuity.
-        if effort_changed {
-            if let Some(sid) = session_id {
-                store::clear_session_agent_session_id(sid)?;
-            }
-        }
-        let need = {
+        session_id: &str,
+        stored_effort: &str,
+        effective_effort: Option<&str>,
+        changed: bool,
+    ) -> EffortStage {
+        let stored = stored_effort.trim().to_string();
+        let effective = effective_effort.map(str::to_string);
+        let mut action = EffortStage::Unchanged;
+
+        {
             let mut guard = self.inner.lock();
-            match guard.as_mut() {
-                Some(s) if session_id.is_some_and(|id| id == s.app_session_id) => {
-                    let same = s.effort.as_deref() == Some(effort.as_str());
-                    s.effort = Some(effort.clone());
-                    s.meta.effort = Some(effort.clone());
-                    if effort_changed {
-                        s.meta.agent_session_id = None;
-                    }
-                    let _ = store::update_session_meta(&s.meta);
-                    !same && s.acp.is_some()
-                }
-                _ => false,
-            }
-        };
-        // Parked / background chats own their process — updating only the live
-        // slot left them running the previous `--reasoning-effort` (#598).
-        if let Some(sid) = session_id {
-            let background_needs_respawn = if let Some(s) = self.background.lock().get_mut(sid) {
-                let same = s.effort.as_deref() == Some(effort.as_str());
-                s.effort = Some(effort.clone());
-                s.meta.effort = Some(effort.clone());
-                if effort_changed {
+            if let Some(s) = guard.as_mut().filter(|s| s.app_session_id == session_id) {
+                s.effort = effective.clone();
+                s.meta.effort = Some(stored.clone());
+                if changed {
+                    // `session/load` would restore the old process-level flag.
                     s.meta.agent_session_id = None;
+                    if Self::live_session_is_busy(s) {
+                        self.pending_soft_respawn
+                            .lock()
+                            .insert(session_id.to_string(), "effort".into());
+                        action = EffortStage::LiveDeferred;
+                    } else if s.acp.is_some() {
+                        action = EffortStage::LiveRespawn;
+                    }
                 }
                 let _ = store::update_session_meta(&s.meta);
-                !same && s.acp.is_some()
-            } else {
-                false
-            };
-            if background_needs_respawn {
-                self.pending_soft_respawn
-                    .lock()
-                    .insert(sid.to_string(), "effort".into());
-            }
-            // Let-binding so the parking_lot guard drops before the if-let body
-            // (edition 2021 keeps if-let temps alive through else — re-lock deadlock).
-            let removed = self.parked.lock().remove(sid);
-            if let Some(p) = removed {
-                if p.effort.as_deref() != Some(effort.as_str()) {
-                    if !self.has_other_process_tenant(&p.process_id, sid) {
-                        tokio::spawn(async move {
-                            SessionManager::kill_acp_bounded(&p.acp).await;
-                        });
-                    } else {
-                        tracing::info!(
-                            session = %sid,
-                            process = %p.process_id,
-                            "effort change: removed parked entry, skip kill (mid-turn cohabitant)"
-                        );
-                    }
-                } else {
-                    self.parked.lock().insert(sid.to_string(), p);
-                }
             }
         }
-        if need {
-            self.soft_respawn_with_reason(app, "effort").await;
-            if let Some(sid) = session_id {
-                self.flush_pending_soft_respawn(app, sid).await;
+
+        // Background chats own their process and must not keep the old flag.
+        // Queue rather than kill a mid-turn answer (same as soft_respawn).
+        {
+            let mut bg = self.background.lock();
+            if let Some(s) = bg.get_mut(session_id) {
+                s.effort = effective.clone();
+                s.meta.effort = Some(stored.clone());
+                if changed {
+                    s.meta.agent_session_id = None;
+                    if s.acp.is_some() || Self::live_session_is_busy(s) {
+                        self.pending_soft_respawn
+                            .lock()
+                            .insert(session_id.to_string(), "effort".into());
+                    }
+                }
+                let _ = store::update_session_meta(&s.meta);
             }
+        }
+
+        let removed = self.parked.lock().remove(session_id);
+        if let Some(mut p) = removed {
+            if changed && p.effort.as_deref() != effective.as_deref() {
+                if !self.has_other_process_tenant(&p.process_id, session_id) {
+                    let acp = p.acp;
+                    tokio::spawn(async move {
+                        SessionManager::kill_acp_bounded(&acp).await;
+                    });
+                } else {
+                    tracing::info!(
+                        session = %session_id,
+                        process = %p.process_id,
+                        "effort change: removed parked entry, skip kill (mid-turn cohabitant)"
+                    );
+                }
+            } else {
+                p.effort = effective;
+                p.meta.effort = Some(stored);
+                let _ = store::update_session_meta(&p.meta);
+                self.parked.lock().insert(session_id.to_string(), p);
+            }
+        }
+
+        action
+    }
+
+    /// Remove a pending respawn only when the chat is idle. A still-busy turn
+    /// keeps the entry queued for the next turn-end flush.
+    pub(super) fn take_pending_soft_respawn(&self, session_id: &str) -> Option<String> {
+        let reason = { self.pending_soft_respawn.lock().remove(session_id) }?;
+        let busy = self
+            .with_session_mut(session_id, |s| Self::live_session_is_busy(s))
+            .unwrap_or(false);
+        if busy {
+            self.pending_soft_respawn
+                .lock()
+                .insert(session_id.to_string(), reason);
+            return None;
+        }
+        Some(reason)
+    }
+
+    /// Apply one chat's effective effort after prefs / model changes.
+    ///
+    /// `None` means the provider/model cannot express a reasoning effort, so
+    /// the CLI spawns without `--reasoning-effort`. The stored value is kept
+    /// in session meta so switching back to a supporting model restores it.
+    pub async fn apply_effective_effort(
+        &self,
+        app: &AppHandle,
+        session_id: &str,
+        stored_effort: &str,
+        effective_effort: Option<&str>,
+        effective_changed: bool,
+    ) -> Result<(), String> {
+        if let Some(effort) = effective_effort {
+            let effort = effort.trim();
+            if !crate::acp_client::is_spawnable_reasoning_effort(effort) {
+                return Err(format!("invalid effort: {effort}"));
+            }
+        }
+        if effective_changed {
+            // Grok Build's session/load restores the old model / effort and
+            // would ignore the fresh process flags. Force session/new.
+            store::clear_session_agent_session_id(session_id)?;
+        }
+        let action = self.stage_effort_change(
+            session_id,
+            stored_effort,
+            effective_effort,
+            effective_changed,
+        );
+        if action == EffortStage::LiveRespawn {
+            self.soft_respawn_with_reason(app, "effort").await;
         }
         Ok(())
     }
@@ -1643,6 +1680,90 @@ mod recycle_tests {
         assert!(SessionManager::should_preserve_live_process(live));
         drop(guard);
         assert!(!mgr.pending_soft_respawn.lock().contains_key("sess-effort"));
+    }
+
+    #[test]
+    fn mid_turn_effort_change_queues_until_turn_end_and_leaves_other_sessions() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-app-effort-stage-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("temp home");
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &tmp);
+        let _ = crate::paths::ensure_app_dirs();
+
+        let mgr = SessionManager::new();
+        let mut live = ready_session("sess-a", "proc-a", "agent-a", "relay");
+        live.effort = Some("high".into());
+        live.meta.effort = Some("high".into());
+        let _ = live.fsm.begin_stream();
+        live.prompt_in_flight = true;
+        let mut other = ready_session("sess-b", "proc-b", "agent-b", "official");
+        other.effort = Some("medium".into());
+        other.meta.effort = Some("medium".into());
+        crate::store::save_sessions_index(&[live.meta.clone(), other.meta.clone()])
+            .expect("seed sessions");
+        *mgr.inner.lock() = Some(live);
+        mgr.background.lock().insert("sess-b".into(), other);
+
+        // Act — the effective id changes while the live turn is still running
+        let action = mgr.stage_effort_change("sess-a", "low", Some("low"), true);
+
+        // Assert — the turn is untouched; the respawn waits for turn end
+        assert_eq!(action, EffortStage::LiveDeferred);
+        assert!(mgr.session_is_busy("sess-a"));
+        {
+            let guard = mgr.inner.lock();
+            let s = guard.as_ref().expect("live session");
+            assert_eq!(s.effort.as_deref(), Some("low"));
+            assert_eq!(s.meta.effort.as_deref(), Some("low"));
+            assert!(s.prompt_in_flight);
+            assert!(matches!(s.fsm.state(), SessionState::Streaming));
+            assert!(s.meta.agent_session_id.is_none());
+        }
+        assert!(mgr.pending_soft_respawn.lock().contains_key("sess-a"));
+
+        // Unrelated background session keeps its process and preference.
+        {
+            let bg = mgr.background.lock();
+            let s = bg.get("sess-b").expect("background session");
+            assert_eq!(s.effort.as_deref(), Some("medium"));
+            assert_eq!(s.meta.effort.as_deref(), Some("medium"));
+            assert_eq!(s.meta.agent_session_id.as_deref(), Some("agent-b"));
+        }
+        assert!(!mgr.pending_soft_respawn.lock().contains_key("sess-b"));
+
+        // Still busy: the queued respawn stays parked.
+        assert!(mgr.take_pending_soft_respawn("sess-a").is_none());
+        assert!(mgr.pending_soft_respawn.lock().contains_key("sess-a"));
+
+        // Turn end: the queued respawn is released for the flush caller.
+        {
+            let mut guard = mgr.inner.lock();
+            let s = guard.as_mut().expect("live session");
+            s.prompt_in_flight = false;
+            let _ = s.fsm.end_stream();
+        }
+        assert_eq!(
+            mgr.take_pending_soft_respawn("sess-a").as_deref(),
+            Some("effort")
+        );
+        assert!(!mgr.pending_soft_respawn.lock().contains_key("sess-a"));
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]

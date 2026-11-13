@@ -2514,6 +2514,77 @@ pub fn composer_provider_pick(
     }
 }
 
+/// Default id for a reasoning ladder: explicit `isDefault`, then `medium`,
+/// then the first non-blank id. Mirrors the composer's raw-id default rule.
+pub fn reasoning_effort_ladder_default(efforts: &[ProviderEffortEntry]) -> Option<String> {
+    efforts
+        .iter()
+        .find(|entry| entry.is_default && !entry.id.trim().is_empty())
+        .or_else(|| {
+            efforts
+                .iter()
+                .find(|entry| entry.id.trim().eq_ignore_ascii_case("medium"))
+        })
+        .or_else(|| efforts.iter().find(|entry| !entry.id.trim().is_empty()))
+        .map(|entry| entry.id.trim().to_string())
+}
+
+/// Process-level reasoning effort for one session route + model.
+///
+/// `None` means the CLI must spawn without `--reasoning-effort`:
+/// - the exact custom model row sets `supports_reasoning_effort = false`, or
+/// - neither the model nor the channel advertises a stored value and the
+///   caller stored no effort.
+///
+/// A model row with an explicit ladder resolves an unadvertised stored id to
+/// that ladder's default so a stale value is never forwarded. Missing row or
+/// ladder metadata keeps the stored value for legacy providers. `none` stays a
+/// real string value (Off), never Rust `None`.
+pub fn effective_reasoning_effort(
+    provider_id: &str,
+    composer_model: &str,
+    stored_effort: &str,
+) -> Option<String> {
+    let stored = stored_effort.trim();
+    if is_session_provider_official(provider_id) {
+        return (!stored.is_empty()).then(|| stored.to_string());
+    }
+    let Ok(list) = list_custom_providers() else {
+        return (!stored.is_empty()).then(|| stored.to_string());
+    };
+    let Some(provider) = list
+        .providers
+        .into_iter()
+        .find(|provider| provider.id == provider_id.trim())
+    else {
+        return (!stored.is_empty()).then(|| stored.to_string());
+    };
+    let model_id = composer_model.trim();
+    let model = provider
+        .models
+        .iter()
+        .find(|model| model.id.trim() == model_id);
+    let Some(model) = model else {
+        return (!stored.is_empty()).then(|| stored.to_string());
+    };
+    if model.supports_reasoning_effort == Some(false) {
+        return None;
+    }
+    let ladder = if model.efforts.is_empty() {
+        &provider.efforts
+    } else {
+        &model.efforts
+    };
+    if ladder.is_empty() {
+        return (!stored.is_empty()).then(|| stored.to_string());
+    }
+    if ladder.iter().any(|entry| entry.id.trim() == stored) {
+        return (!stored.is_empty()).then(|| stored.to_string());
+    }
+    reasoning_effort_ladder_default(ladder)
+        .or_else(|| (!stored.is_empty()).then(|| stored.to_string()))
+}
+
 /// `--model` for a process bound to `provider_id`.
 ///
 /// Official routes spawn with a catalog id. A generic custom route spawns with
@@ -3020,9 +3091,12 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     if !app_efforts_json.is_empty() && app_efforts_json != "[]" {
         fields.push((APP_EFFORTS_KEY.into(), app_efforts_json));
     }
+    let models_support_reasoning = models
+        .iter()
+        .any(|row| row.supports_reasoning_effort == Some(true) || !row.efforts.is_empty());
     fields.push((
         SUPPORTS_REASONING_EFFORT_KEY.into(),
-        (!efforts.is_empty()).to_string(),
+        (!efforts.is_empty() || models_support_reasoning).to_string(),
     ));
     if let Some(ref p) = resolved_append_prompt {
         fields.push((APP_APPEND_PROMPT_KEY.into(), p.clone()));
@@ -5820,6 +5894,123 @@ api_backend = \"responses\"";
         let json = encode_app_efforts(&list);
         let decoded = decode_app_efforts(Some(&json));
         assert_eq!(decoded, list);
+    }
+
+    #[test]
+    fn effective_reasoning_effort_omits_unsupported_models_and_keeps_raw_ids() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-effective-effort-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let result = upsert_custom_provider(UpsertProviderInput {
+            id: "relay".into(),
+            model: "no-think".into(),
+            base_url: "https://relay.example/v1".into(),
+            name: Some("Relay".into()),
+            api_key: Some("test-key".into()),
+            api_backend: Some("responses".into()),
+            provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+            create_only: Some(true),
+            models: Some(vec![
+                ProviderModelEntry {
+                    id: "no-think".into(),
+                    name: "No think".into(),
+                    supports_reasoning_effort: Some(false),
+                    efforts: vec![ProviderEffortEntry {
+                        id: "low".into(),
+                        name: "low".into(),
+                        is_default: true,
+                    }],
+                    ..Default::default()
+                },
+                ProviderModelEntry {
+                    id: "raw".into(),
+                    name: "Raw".into(),
+                    efforts: vec![
+                        ProviderEffortEntry {
+                            id: "max".into(),
+                            name: "Max".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "minimal".into(),
+                            name: "Minimal".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "none".into(),
+                            name: "Off".into(),
+                            is_default: false,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                ProviderModelEntry {
+                    id: "med".into(),
+                    name: "Medium default".into(),
+                    efforts: vec![
+                        ProviderEffortEntry {
+                            id: "low".into(),
+                            name: "low".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "medium".into(),
+                            name: "medium".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "high".into(),
+                            name: "high".into(),
+                            is_default: false,
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ]),
+            efforts: None,
+            context_window: None,
+            base_url_full_path: Some(false),
+            append_prompt: None,
+            supports_vision: Some(false),
+            extra_headers: None,
+        });
+
+        let config = std::fs::read_to_string(agent_config_toml()).expect("config");
+        let omitted = effective_reasoning_effort("relay", "no-think", "high");
+        let raw = effective_reasoning_effort("relay", "raw", "max");
+        let off = effective_reasoning_effort("relay", "raw", "none");
+        let unadvertised_off = effective_reasoning_effort("relay", "med", "none");
+        let medium = effective_reasoning_effort("relay", "med", "missing");
+        let official = effective_reasoning_effort("official", "grok-4.7", "xhigh");
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        result.expect("provider fixture");
+        assert!(
+            config.contains("supports_reasoning_effort = true"),
+            "a model-level ladder must enable the CLI capability gate"
+        );
+
+        assert_eq!(omitted, None, "a model-level opt-out must omit the flag");
+        assert_eq!(raw.as_deref(), Some("max"), "raw id must pass through");
+        assert_eq!(off.as_deref(), Some("none"), "advertised Off stays a value");
+        assert_eq!(
+            unadvertised_off.as_deref(),
+            Some("medium"),
+            "an unadvertised Off must not become a real value"
+        );
+        assert_eq!(medium.as_deref(), Some("medium"));
+        assert_eq!(official.as_deref(), Some("xhigh"));
     }
 
     #[test]

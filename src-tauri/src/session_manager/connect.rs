@@ -407,6 +407,10 @@ impl SessionManager {
         );
         // Spawn and `session/set_model` must use the same section/model identity.
         let session_model = agent_model.clone();
+        // Process-level reasoning flag follows this session's provider/model:
+        // a model that rejects reasoning effort gets no `--reasoning-effort`.
+        let effective_effort =
+            crate::providers::effective_reasoning_effort(&route, &prefs.model_id, &prefs.effort);
 
         // Pending CLI --fork-session: must cold-spawn so open can call session/fork.
         // Never no-op / unpark a warm process that still holds the source agent id.
@@ -503,7 +507,7 @@ impl SessionManager {
                     let ready_match = matches!(s.fsm.state(), SessionState::Ready)
                         && !Self::live_session_is_busy(s)
                         && s.project_path == project_path
-                        && s.effort.as_deref() == Some(prefs.effort.as_str());
+                        && s.effort.as_deref() == effective_effort.as_deref();
                     if preserve || ready_match {
                         Self::touch_activity_locked(s);
                         tracing::info!(
@@ -548,7 +552,7 @@ impl SessionManager {
             if let Some(live) = self.unpark_to_live(&meta.id) {
                 // Spawn flags are process-level. Effort / policy mismatch
                 // cannot be hot-patched — kill and fall through to cold spawn.
-                let effort_ok = live.effort.as_deref() == Some(prefs.effort.as_str());
+                let effort_ok = live.effort.as_deref() == effective_effort.as_deref();
                 let policy_ok = live.policy == policy;
                 let route_ok = live
                     .acp
@@ -558,7 +562,7 @@ impl SessionManager {
                     tracing::info!(
                         session = %meta.id,
                         parked_effort = ?live.effort,
-                        want_effort = %prefs.effort,
+                        want_effort = ?effective_effort,
                         parked_policy = ?live.policy,
                         "unpark spawn-flag mismatch — cold spawn"
                     );
@@ -579,7 +583,7 @@ impl SessionManager {
                     // Refresh prefs on shell (model may have changed in UI).
                     let mut live = live;
                     live.model_id = Some(prefs.model_id.clone());
-                    live.effort = Some(prefs.effort.clone());
+                    live.effort = effective_effort.clone();
                     live.product_mode = Some(prefs.mode.clone());
                     live.policy = policy;
                     live.project_path = project_path.clone();
@@ -735,7 +739,7 @@ impl SessionManager {
                 stream_last_was_assistant: false,
                 stream_attachments: Vec::new(),
                 model_id: Some(prefs.model_id.clone()),
-                effort: Some(prefs.effort.clone()),
+                effort: effective_effort.clone(),
                 product_mode: Some(prefs.mode.clone()),
                 project_path: project_path.clone(),
                 allow_cache: SessionAllowCache::default(),
@@ -850,7 +854,7 @@ impl SessionManager {
                         p_sandbox,
                         p_custom,
                         policy,
-                        &prefs.effort,
+                        effective_effort.as_deref(),
                         &eff_sandbox,
                         target_custom,
                     )
@@ -870,12 +874,8 @@ impl SessionManager {
                     if p_policy != policy {
                         parts.push(format!("policy {}≠{}", p_policy.as_str(), policy.as_str()));
                     }
-                    if p_effort != Some(prefs.effort.as_str()) {
-                        parts.push(format!(
-                            "effort {:?}≠{:?}",
-                            p_effort,
-                            Some(prefs.effort.as_str())
-                        ));
+                    if p_effort != effective_effort.as_deref() {
+                        parts.push(format!("effort {:?}≠{:?}", p_effort, effective_effort));
                     }
                     if p_sandbox.unwrap_or("off") != eff_sandbox.as_str() {
                         parts.push(format!(
@@ -1009,7 +1009,7 @@ impl SessionManager {
                         target: "session",
                         session = %meta.id,
                         target_policy = %policy.as_str(),
-                        target_effort = %prefs.effort,
+                        target_effort = ?effective_effort,
                         target_sandbox = %eff_sandbox,
                         target_custom_route = target_custom,
                         "connect reuse rejected (cold spawn): {}",
@@ -1055,7 +1055,7 @@ impl SessionManager {
                         // Connect is not a user turn — load replay must drop.
                         s.prompt_in_flight = false;
                         s.model_id = Some(prefs.model_id.clone());
-                        s.effort = Some(prefs.effort.clone());
+                        s.effort = effective_effort.clone();
                         s.product_mode = Some(prefs.mode.clone());
                         s.policy = policy;
                         s.project_path = project_path.clone();
@@ -1083,7 +1083,7 @@ impl SessionManager {
                                 s.process_id = reused_process.clone();
                                 s.meta.agent_session_id = Some(agent_sid.clone());
                                 s.model_id = Some(prefs.model_id.clone());
-                                s.effort = Some(prefs.effort.clone());
+                                s.effort = effective_effort.clone();
                                 s.product_mode = Some(prefs.mode.clone());
                                 s.policy = policy;
                                 s.project_path = project_path.clone();
@@ -1295,7 +1295,7 @@ impl SessionManager {
                 prefs.model_id.clone()
             }),
             route_provider_id: Some(cold_start_route_provider_id(ssh_alias.as_deref(), &route)),
-            effort: Some(prefs.effort.clone()),
+            effort: effective_effort.clone(),
             permission_policy: Some(prefs.permission_policy.clone()),
             product_mode: Some(prefs.mode.clone()),
             sandbox_profile: Some(sandbox_for_spawn),
@@ -1603,7 +1603,7 @@ impl SessionManager {
                         s.meta.effort = Some(prefs.effort.clone());
                         s.meta.permission_policy = Some(prefs.permission_policy.clone());
                         s.model_id = Some(prefs.model_id.clone());
-                        s.effort = Some(prefs.effort.clone());
+                        s.effort = effective_effort.clone();
                         s.product_mode = Some(prefs.mode.clone());
                         s.backend = "grok_agent_stdio".into();
                         s.needs_history_bootstrap = need_bootstrap;
@@ -1945,6 +1945,11 @@ impl SessionManager {
             &prewarm_route,
             &prefs.model_id,
         );
+        let prewarm_effort = crate::providers::effective_reasoning_effort(
+            &prewarm_route,
+            &prefs.model_id,
+            &prefs.effort,
+        );
         // Default-workspace cwd only. Project sessions with a non-off OS
         // sandbox must cold-spawn (#986) — Seatbelt locks write roots here.
         // Must exist for Command::current_dir (spawn fails silently otherwise).
@@ -1953,7 +1958,7 @@ impl SessionManager {
         let effective_sandbox = store::resolve_sandbox_profile(&settings.sandbox_profile, None);
         let spawn_opts = crate::acp_client::SpawnOptions {
             model_id: Some(agent_model),
-            effort: Some(prefs.effort.clone()),
+            effort: prewarm_effort.clone(),
             permission_policy: Some(prefs.permission_policy.clone()),
             product_mode: Some(prefs.mode.clone()),
             sandbox_profile: Some(effective_sandbox.clone()),
@@ -2005,7 +2010,7 @@ impl SessionManager {
                     acp: client.clone(),
                     process_id,
                     policy,
-                    effort: Some(prefs.effort),
+                    effort: prewarm_effort,
                     sandbox_profile: Some(effective_sandbox),
                     model_id: Some(prefs.model_id),
                     created_at: Instant::now(),
@@ -2092,13 +2097,13 @@ impl SessionManager {
         p_sandbox: Option<&str>,
         p_custom_route: bool,
         policy: PermissionPolicy,
-        effort: &str,
+        effort: Option<&str>,
         sandbox: &str,
         target_custom_route: bool,
     ) -> bool {
         alive
             && p_policy == policy
-            && p_effort == Some(effort)
+            && p_effort == effort
             && p_sandbox.unwrap_or("off") == sandbox
             && p_custom_route == target_custom_route
     }
@@ -2806,7 +2811,7 @@ mod reuse_gate_tests {
             Some("off"),
             true, // custom route
             ask(),
-            "high",
+            Some("high"),
             "off",
             true,
         ));
@@ -2818,7 +2823,7 @@ mod reuse_gate_tests {
             Some("off"),
             true,
             PermissionPolicy::parse("bypassPermissions"),
-            "high",
+            Some("high"),
             "off",
             true,
         ));
@@ -2830,7 +2835,7 @@ mod reuse_gate_tests {
             Some("off"),
             true,
             ask(),
-            "low",
+            Some("low"),
             "off",
             true,
         ));
@@ -2842,7 +2847,7 @@ mod reuse_gate_tests {
             Some("off"),
             true,
             ask(),
-            "high",
+            Some("high"),
             "workspace",
             true,
         ));
@@ -2854,7 +2859,7 @@ mod reuse_gate_tests {
             Some("off"),
             true,
             ask(),
-            "high",
+            Some("high"),
             "off",
             false,
         ));
@@ -2866,7 +2871,30 @@ mod reuse_gate_tests {
             Some("off"),
             true,
             ask(),
-            "high",
+            Some("high"),
+            "off",
+            true,
+        ));
+        // No effective effort (unsupported model) only reuses a no-flag process.
+        assert!(SessionManager::reuse_gate(
+            true,
+            ask(),
+            None,
+            Some("off"),
+            true,
+            ask(),
+            None,
+            "off",
+            true,
+        ));
+        assert!(!SessionManager::reuse_gate(
+            true,
+            ask(),
+            Some("high"),
+            Some("off"),
+            true,
+            ask(),
+            None,
             "off",
             true,
         ));

@@ -268,7 +268,7 @@ import {
 } from "@/lib/modelEffortApply";
 import {
   pickSessionEffort,
-  resolveSessionEffortOptions,
+  resolvePickedModelEfforts,
 } from "@/lib/sessionEffort";
 import {
   mapPermissionButtons,
@@ -2407,14 +2407,23 @@ export function AppWorkbench() {
       );
       if (isValidPrefsScope(prefs.scope)) setPrefsScope(prefs.scope);
       // The chip now shows this model's default; persist it so the next spawn
-      // does not reuse an id the model no longer advertises.
-      if (api.isTauri() && next.effort !== (prefs.effort ?? "").trim()) {
-        void api
-          .composerPrefsSet({
-            sessionId: chipFor?.sessionId ?? null,
-            effort: next.effort,
-          })
-          .catch((error) => {
+      // does not reuse an id the model no longer advertises. Unsupported models
+      // keep their stored id and never write it as this model's effort.
+      if (
+        api.isTauri() &&
+        next.effortSupported !== false &&
+        next.effort.trim() !== "" &&
+        next.effort !== (prefs.effort ?? "").trim()
+      ) {
+        effortApplyRef.current = queueComposerPreferenceApply(
+          effortApplyRef.current,
+          async () => {
+            await api.composerPrefsSet({
+              sessionId: chipFor?.sessionId ?? null,
+              effort: next.effort,
+            });
+          },
+          (error) => {
             console.warn("composer effort reconcile save failed", error);
             showToastRef.current(
               tr(
@@ -2424,7 +2433,8 @@ export function AppWorkbench() {
               ),
               4000,
             );
-          });
+          },
+        );
       }
       if (chipFor) {
         sessionProviderChip.applyPrefsRoute({
@@ -9141,28 +9151,21 @@ export function AppWorkbench() {
       setModelPickBusy(true);
       try {
         const providerId = pick.kind === "official" ? "official" : pick.providerId;
-        let nextEfforts: EffortOption[];
-        if (pick.kind === "official") {
-          if (!isValidModelId(pick.modelId, availableModels)) return;
-          nextEfforts = resolveSessionEffortOptions({
-            source: "official",
-            modelId: pick.modelId,
-            officialModels: availableModels,
-          }).options;
-        } else {
-          if (!api.isTauri()) return;
-          const provider = customProviders.find((p) => p.id === pick.providerId);
-          if (!provider) {
+        if (pick.kind === "custom" && !api.isTauri()) return;
+        const resolution = resolvePickedModelEfforts({
+          pick,
+          providers: customProviders,
+          officialModels: availableModels,
+        });
+        if (!resolution) {
+          if (pick.kind === "custom") {
             showToast(tr("prov.err.unknownProvider"), 4000);
-            return;
           }
-          nextEfforts = resolveSessionEffortOptions({
-            source: "custom",
-            provider,
-            modelId: pick.modelId,
-          }).options;
+          return;
         }
-        const clamped = pickSessionEffort(nextEfforts, effort);
+        const clamped = resolution.supported
+          ? pickSessionEffort(resolution.options, effort)
+          : effort;
         const providerChanged =
           (providerId === "official") !== (providerActiveSource === "official") ||
           (providerId !== "official" && providerActiveId !== providerId);
@@ -9175,7 +9178,7 @@ export function AppWorkbench() {
               projectId: activeProject?.id ?? null,
               sessionId: sid,
               modelId: pick.modelId,
-              effort: clamped,
+              effort: resolution.supported ? clamped : null,
               providerId,
             });
             const next = liveHostAfterProviderSwitch(
@@ -9201,11 +9204,15 @@ export function AppWorkbench() {
         await apply;
         if (applyFailed) return;
         setModelId(pick.modelId);
-        setEffort(clamped);
+        if (resolution.supported) setEffort(clamped);
         sessionProviderChip.paint(providerId);
         sessionProviderChip.draftComposerRouteRef.current = sid
           ? null
-          : { providerId, modelId: pick.modelId, effort: clamped };
+          : {
+              providerId,
+              modelId: pick.modelId,
+              effort: resolution.supported ? clamped : effort,
+            };
       } catch (e) {
         showToast(String(e), 4000);
       } finally {

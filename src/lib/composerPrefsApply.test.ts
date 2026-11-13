@@ -592,6 +592,50 @@ describe("resolveComposerPrefsSelection per-model reasoning variants", () => {
       providers: [noThink],
     });
 
-    expect(next).toEqual({ modelId: "plain", effort: "stored" });
+    expect(next).toEqual({ modelId: "plain", effort: "stored", effortSupported: false });
+  });
+});
+
+describe("resolveComposerPrefsSelection unsupported reasoning", () => {
+  const noThink = {
+    id: "nothink",
+    model: "plain",
+    baseUrl: "https://nothink.example/v1",
+    models: [
+      {
+        id: "plain",
+        name: "Plain",
+        supportsReasoningEffort: false,
+        efforts: [{ id: "low", name: "low" }],
+      },
+    ],
+  };
+
+  it("keeps a stored id for a later supporting model without forwarding it", () => {
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: "plain", effort: "vendor-max", providerId: "nothink" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [noThink],
+    });
+
+    expect(next).toEqual({
+      modelId: "plain",
+      effort: "vendor-max",
+      effortSupported: false,
+    });
+  });
+
+  it("does not invent a default when no stored id exists", () => {
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: "plain", effort: null, providerId: "nothink" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [noThink],
+    });
+
+    expect(next).toEqual({
+      modelId: "plain",
+      effort: "",
+      effortSupported: false,
+    });
   });
 });

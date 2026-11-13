@@ -99,6 +99,54 @@ describe("useSessionEffortOptions", () => {
     expect(onReconcile).not.toHaveBeenCalled();
   });
 
+  it("does not reconcile or persist when a model flips to unsupported", () => {
+    const setEffort = vi.fn();
+    const onReconcile = vi.fn();
+    const supported: CustomProvider = {
+      ...baseProvider,
+      models: [
+        {
+          id: "m1",
+          name: "M1",
+          supportsReasoningEffort: true,
+          efforts: [
+            { id: "low", name: "low" },
+            { id: "medium", name: "medium", isDefault: true },
+          ],
+        },
+      ],
+    };
+    const unsupported: CustomProvider = {
+      ...baseProvider,
+      models: [
+        {
+          id: "m1",
+          name: "M1",
+          supportsReasoningEffort: false,
+          efforts: [{ id: "low", name: "low" }],
+        },
+      ],
+    };
+    const { rerender } = renderHook(
+      ({ provider }: { provider: CustomProvider }) =>
+        useSessionEffortOptions({
+          source: "custom",
+          provider,
+          modelId: "m1",
+          officialModels: [],
+          effort: "low",
+          setEffort,
+          onReconcile,
+        }),
+      { initialProps: { provider: supported } },
+    );
+
+    rerender({ provider: unsupported });
+
+    expect(setEffort).not.toHaveBeenCalled();
+    expect(onReconcile).not.toHaveBeenCalled();
+  });
+
   it("holds the pick when the model rejects reasoning effort", () => {
     const noThink: CustomProvider = {
       ...baseProvider,

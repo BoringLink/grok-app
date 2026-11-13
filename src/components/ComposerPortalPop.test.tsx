@@ -915,6 +915,52 @@ describe("composer chip portal pops", () => {
     expect(screen.getByRole("button", { name: "Off" })).toBeTruthy();
   });
 
+  it("does not mark Off as the strongest reasoning stop", async () => {
+    const user = userEvent.setup();
+    render(
+      <ComposerModelMenu
+        modelId="m-off"
+        effort="none"
+        efforts={[
+          { id: "low", label: "Low" },
+          { id: "none", label: "none" },
+        ]}
+        labels={{
+          model: "Model",
+          effort: "Effort",
+          effortHigh: "High",
+          effortMedium: "Medium",
+          effortLow: "Low",
+          effortNone: "Off",
+          modelSearchPlaceholder: "Search models",
+          modelSearchEmpty: "No models",
+          modelGroupOfficial: "Official",
+          contextWindow: "Context window",
+          contextWindowOfficial: "official",
+          contextWindowCustom: "custom",
+          contextWindowPlaceholder: "tokens",
+          contextWindowSave: "Save",
+          contextWindowOfficialHint: "unknown",
+          advanced: "Advanced",
+        }}
+        onEffort={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Model" }));
+    const pop = bodyPop();
+    expect(pop).not.toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Off" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(pop!.querySelector(".cmm__simple-title.is-ultra")).toBeNull();
+    expect(
+      document.querySelector(".cmm--model")?.classList.contains("cmm--extra"),
+    ).toBe(false);
+  });
+
   it("hides Off when the model does not advertise it", async () => {
     const user = userEvent.setup();
     render(

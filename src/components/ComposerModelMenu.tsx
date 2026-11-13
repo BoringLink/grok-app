@@ -700,7 +700,9 @@ export function ComposerModelMenu({
     : effortDisplayLabel(effort, effortI18n(labels));
   const strongestId =
     effortOptions.length > 1
-      ? effortOptions[effortOptions.length - 1]?.id
+      ? effortOptions
+          .filter((option) => option.id.trim().toLowerCase() !== "none")
+          .at(-1)?.id
       : undefined;
   const activeIsStrongest =
     !!activeEffort && activeEffort.id === strongestId;
@@ -972,7 +974,12 @@ export function ComposerModelMenu({
                     const active = option.id === effort;
                     const strongest =
                       option.id ===
-                      effortOptions[effortOptions.length - 1]?.id;
+                      effortOptions
+                        .filter(
+                          (candidate) =>
+                            candidate.id.trim().toLowerCase() !== "none",
+                        )
+                        .at(-1)?.id;
                     return (
                       <button
                         key={option.id}

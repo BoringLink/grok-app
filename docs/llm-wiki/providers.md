@@ -77,7 +77,7 @@ Each catalog row owns its context window and reasoning ladder. Settings edits on
 |-------|-----------------|
 | `contextWindow` | Positive integer tokens. Missing API value → **1M** fallback. Empty input in the modal resets to the latest API value, else 1M. Invalid non-empty input blocks save with an in-app error; a parse failure is never treated as a clear. |
 | `efforts` | Ordered ladder of `{ id, name, isDefault }`. Ids are saved **verbatim** (trimmed only) and sent as `reasoning_effort`; App never maps a custom id such as `minimum` or `max`. Missing API ladder → `low`/`medium`/`high`/`xhigh`; the default is `medium`. If the API marks no default, `medium` is chosen when present, else the first valid id. |
-| `supportsReasoningEffort` | Whether the model accepts reasoning levels. Missing → **supported**. Users can turn it off for a model that cannot think or a relay that rejects `reasoning_effort`; the composer hides that model's reasoning options and shows a localized unavailable note. An Off choice is shown only when the model's own ladder advertises `none`. |
+| `supportsReasoningEffort` | Whether the model accepts reasoning levels. Missing → **supported**. Users can turn it off for a model that cannot think or a relay that rejects `reasoning_effort`; the composer hides that model's reasoning options and shows a localized unavailable note, and the Host omits `--reasoning-effort` for that session while keeping the stored id for a later supporting model. An Off choice is shown only when the model's own ladder advertises `none`. |
 
 Provenance (`user` / `remote` / `fallback`) is stored beside `contextWindow`, `efforts`, and `supportsReasoningEffort` so a refresh can apply the agreed precedence:
 

@@ -88,19 +88,23 @@ export function useComposerEffort(opts: {
     [effort, effortOptions, projectId, queueRef, sessionId, setEffort, reportError, showToast, translate],
   );
 
-  /** Persist a reconciled default after a model/catalog change. */
+  /** Persist a reconciled default behind the same per-chat write queue. */
   const persistReconciledEffort = useCallback(
     (next: string) => {
       if (!api.isTauri()) return;
-      void api
-        .composerPrefsSet({
-          projectId: projectId ?? null,
-          sessionId: sessionId ?? null,
-          effort: next,
-        })
-        .catch(reportError);
+      queueRef.current = queueComposerPreferenceApply(
+        queueRef.current,
+        async () => {
+          await api.composerPrefsSet({
+            projectId: projectId ?? null,
+            sessionId: sessionId ?? null,
+            effort: next,
+          });
+        },
+        reportError,
+      );
     },
-    [projectId, sessionId, reportError],
+    [projectId, queueRef, sessionId, reportError],
   );
 
   return { handleEffortPick, persistReconciledEffort };

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { CustomProvider } from "@/lib/api";
 import { GROK_BUILD_MODELS, type ModelOption } from "./grokCatalog";
-import { pickSessionEffort, resolveSessionEffortOptions, saveSessionEffort } from "./sessionEffort";
+import {
+  pickSessionEffort,
+  resolvePickedModelEfforts,
+  resolveSessionEffortOptions,
+  saveSessionEffort,
+} from "./sessionEffort";
 
 function provider(
   patch: Partial<CustomProvider> & Pick<CustomProvider, "id">,
@@ -245,6 +250,30 @@ describe("resolveSessionEffortOptions", () => {
     expect(pickSessionEffort(rawOptions, "high")).toBe("minimal");
   });
 
+  it("never applies preset rewrites to raw model ids", () => {
+    const amux = provider({
+      id: "amux",
+      baseUrl: "https://api.amux.ai/v1",
+      models: [
+        {
+          id: "raw-grok",
+          name: "Raw Grok",
+          supportsReasoningEffort: true,
+          efforts: [{ id: "max", name: "Max" }],
+        },
+      ],
+    });
+
+    const resolution = resolveSessionEffortOptions({
+      source: "custom",
+      provider: amux,
+      modelId: "raw-grok",
+    });
+
+    expect(resolution.options.map((option) => option.id)).toEqual(["max"]);
+    expect(pickSessionEffort(resolution.options, "max")).toBe("max");
+  });
+
   it("reflects provider model metadata changes", () => {
     const before = resolveSessionEffortOptions({
       source: "custom",
@@ -314,6 +343,11 @@ describe("pickSessionEffort", () => {
   it("keeps a stored raw id when the model exposes no options", () => {
     expect(pickSessionEffort([], "keep-me")).toBe("keep-me");
   });
+
+  it("never invents the static fallback for an empty option set", () => {
+    expect(pickSessionEffort([], "")).toBe("");
+    expect(pickSessionEffort([], null)).toBe("");
+  });
 });
 
 describe("saveSessionEffort", () => {
@@ -352,5 +386,38 @@ describe("saveSessionEffort", () => {
       expect(result.error).toBeInstanceOf(Error);
     }
     expect(visible).toBe("balanced");
+  });
+});
+
+describe("resolvePickedModelEfforts", () => {
+  it("resolves a custom pick against that provider's exact model", () => {
+    const resolution = resolvePickedModelEfforts({
+      pick: { kind: "custom", providerId: "relay", modelId: "m-raw" },
+      providers: [relay],
+      officialModels: GROK_BUILD_MODELS,
+    });
+
+    expect(resolution?.options.map((option) => option.id)).toEqual([
+      "minimal",
+      "balanced",
+      "ultra",
+    ]);
+  });
+
+  it("returns null for an unknown provider or invalid official model", () => {
+    expect(
+      resolvePickedModelEfforts({
+        pick: { kind: "custom", providerId: "missing", modelId: "m-raw" },
+        providers: [relay],
+        officialModels: GROK_BUILD_MODELS,
+      }),
+    ).toBeNull();
+    expect(
+      resolvePickedModelEfforts({
+        pick: { kind: "official", modelId: "not-a-model" },
+        providers: [relay],
+        officialModels: GROK_BUILD_MODELS,
+      }),
+    ).toBeNull();
   });
 });

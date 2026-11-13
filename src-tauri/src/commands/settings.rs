@@ -351,11 +351,21 @@ pub async fn composer_prefs_set(
     } else {
         session_id.or(live_sess)
     };
-    let previous_effort = effort.as_ref().map(|_| {
-        store::resolve_composer_prefs(project_id.as_deref(), session_id.as_deref()).effort
-    });
+    let previous_prefs = store::resolve_composer_prefs(project_id.as_deref(), session_id.as_deref());
     let (previous_provider, ssh) =
         session_provider_and_ssh(session_id.as_deref(), project_id.as_deref());
+    let previous_route = crate::providers::existing_session_route(
+        &crate::providers::session_route_provider_id(if ssh {
+            Some(crate::providers::SESSION_PROVIDER_OFFICIAL)
+        } else {
+            previous_provider.as_deref()
+        }),
+    );
+    let previous_effective = crate::providers::effective_reasoning_effort(
+        &previous_route,
+        &previous_prefs.model_id,
+        &previous_prefs.effort,
+    );
     let model_id = model_id.map(|model| {
         if ssh {
             crate::providers::official_model_id_for(&model)
@@ -410,18 +420,34 @@ pub async fn composer_prefs_set(
             tracing::warn!("composer_prefs_set set_model soft-fail: {e}");
         }
     }
-    if let Some(eff) = effort {
-        let effort_changed = previous_effort.as_deref() != Some(eff.trim());
-        if let Err(e) = mgr
-            .set_effort_and_respawn_needed(
-                &app,
-                eff,
-                session_id.as_deref(),
-                effort_changed,
-            )
-            .await
-        {
-            tracing::warn!("composer_prefs_set set_effort soft-fail: {e}");
+    if let Some(sid) = session_id.as_deref() {
+        let (next_provider, _) = session_provider_and_ssh(Some(sid), project_id.as_deref());
+        let next_route = crate::providers::existing_session_route(
+            &crate::providers::session_route_provider_id(if ssh {
+                Some(crate::providers::SESSION_PROVIDER_OFFICIAL)
+            } else {
+                next_provider.as_deref()
+            }),
+        );
+        let next_effective = crate::providers::effective_reasoning_effort(
+            &next_route,
+            &prefs.model_id,
+            &prefs.effort,
+        );
+        let effective_changed = previous_effective != next_effective;
+        if effort.is_some() || effective_changed {
+            if let Err(e) = mgr
+                .apply_effective_effort(
+                    &app,
+                    sid,
+                    &prefs.effort,
+                    next_effective.as_deref(),
+                    effective_changed,
+                )
+                .await
+            {
+                tracing::warn!("composer_prefs_set set_effort soft-fail: {e}");
+            }
         }
     }
     if let Some(m) = mode {

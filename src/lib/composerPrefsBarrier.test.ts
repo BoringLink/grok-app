@@ -83,3 +83,58 @@ describe("composer preference apply barrier", () => {
     ).toBeNull();
   });
 });
+
+describe("reconcile and user effort writes share one queue", () => {
+  it("lets a later user pick land after a slow reconcile write", async () => {
+    let finishReconcile!: () => void;
+    const writes: string[] = [];
+    const reconcileGate = new Promise<void>((resolve) => {
+      finishReconcile = resolve;
+    });
+    const reconcile = queueComposerPreferenceApply(
+      Promise.resolve(),
+      async () => {
+        writes.push("reconcile:medium");
+        await reconcileGate;
+      },
+      () => undefined,
+    );
+    const userPick = queueComposerPreferenceApply(
+      reconcile,
+      async () => {
+        writes.push("user:high");
+      },
+      () => undefined,
+    );
+
+    await Promise.resolve();
+    expect(writes).toEqual(["reconcile:medium"]);
+    finishReconcile();
+    await userPick;
+    expect(writes).toEqual(["reconcile:medium", "user:high"]);
+  });
+
+  it("reports a failed reconcile and still runs the queued user pick", async () => {
+    const errors: string[] = [];
+    const writes: string[] = [];
+    const reconcile = queueComposerPreferenceApply(
+      Promise.resolve(),
+      async () => {
+        writes.push("reconcile");
+        throw new Error("save failed");
+      },
+      (error) => errors.push(String(error)),
+    );
+    const userPick = queueComposerPreferenceApply(
+      reconcile,
+      async () => {
+        writes.push("user");
+      },
+      (error) => errors.push(String(error)),
+    );
+
+    await userPick;
+    expect(writes).toEqual(["reconcile", "user"]);
+    expect(errors).toEqual(["Error: save failed"]);
+  });
+});

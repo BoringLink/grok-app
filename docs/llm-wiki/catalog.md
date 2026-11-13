@@ -46,12 +46,13 @@ Composer 按**当前会话解析出的 provider / model** 读取该模型自己�
 选择与恢复：
 
 - 有 `isDefault` → 用它；否则 `medium` 存在时用 `medium`；否则第一个。见 `src/lib/sessionEffort.ts` 的 `pickSessionEffort` / `src/lib/grokCatalog.ts` 的 `pickDefaultEffort`。
-- 切换模型 / provider / 会话时，新模型仍提供同一原始 id 就保留；否则落到新模型的默认档并写回该会话，避免下一条消息沿用失效 id。**不做**跨模型阶梯映射（不再把 DeepSeek `high` 映射成官方 `medium` 之类）。
-- 模型行 `supportsReasoningEffort = false` → Composer 不展示该模型的档位，并显示本地化的不可用说明；不借用通道或其它模型行。
+- 切换模型 / provider / 会话时，新模型仍提供同一原始 id 就保留；否则落到新模型的默认档。仅在**该模型支持推理**时把这个默认档写回会话，避免下一条消息沿用失效 id；不支持推理的模型保留原来的 stored id，但不展示、不写回、也不作为该模型的 effort 下发。**不做**跨模型阶梯映射（不再把 DeepSeek `high` 映射成官方 `medium` 之类）。
+- 原始 id 直接透传：session effort resolution **不**复用任何 preset 对齐（`max` 保持 `max`，vendor 的 `minimal` / `balanced` / `ultra` 也原样保留）。
+- 模型行 `supportsReasoningEffort = false` → Composer 不展示该模型的档位，并显示本地化的不可用说明；不借用通道或其它模型行。Host 按该会话的 provider + model 解析有效 effort，并在 spawn 时省略 `--reasoning-effort`；进程复用、parked/unpark 和 `session/load` 的 state 同样按有效 effort 对齐。切回支持推理的模型时，之前保留的 stored id 会重新成为候选。
 - `none` 表示关闭思考：只有该模型自己的 catalog 明确列出 `none`（官方 live cache，或自定义模型/通道档位）且模型支持推理时才展示、保存和下发。`supportsReasoningEffort = true` 不能推断所有模型都可关闭；`none` 也不会伪装成最低档。官方资料没有把 `none` 列为 ACP 默认可用值，因此未广告时不出现。
 - 展示标签：已知 id（`low` / `medium` / `high` / `xhigh` / `max` / `none`）走 i18n（`effort.*`）；其它 id 用 catalog 的 name/label，再回退原始 id。
 
-Spawn / 应用：`--reasoning-effort <raw id>`。Host 透传 catalog / 模型 id（含 `max`、`none` 与自定义 id），不硬白名单仅 low/medium/high。当前 Host 没有 `session/set_effort` RPC；若以后接入 ACP `session/set_config_option`（`configId=reasoning_effort`），必须使用同一原始 id。Composer 菜单与手机工具面板共用同一档位列表。
+Spawn / 应用：`--reasoning-effort <raw id>`。Host 透传 catalog / 模型 id（含 `max`、`none` 与自定义 id），不硬白名单仅 low/medium/high；模型不支持推理时完全省略该 flag，`none` 仍是真实参数值而不是 Rust `None`。当前 Host 没有 `session/set_effort` RPC；若以后接入 ACP `session/set_config_option`（`configId=reasoning_effort`），必须使用同一原始 id。Composer 菜单与手机工具面板共用同一档位列表；自动默认 reconciliation 与用户选档走同一个按会话串行的写入队列，慢保存不会覆盖后到的用户选择。
 
 **Live 语义**：更改档位后，live agent 在**回合结束后** soft-respawn，正在运行的回合不会被中断；空闲会话写 prefs，下一条消息 / 下次连接生效。保存或 API 失败时 Composer 选中态保持不变，并按 `classifyModelEffortError` 分类显示本地化提示。
 

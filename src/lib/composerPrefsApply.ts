@@ -117,7 +117,7 @@ function customSelection(
   provider: ComposerPrefsProvider,
   storedModel: string,
   effort: string | null | undefined,
-): { modelId: string; effort: string } | null {
+): { modelId: string; effort: string; effortSupported?: false } | null {
   const nextModelId = resolvedCustomModel(provider, storedModel);
   if (!nextModelId) return null;
   const resolution = resolveSessionEffortOptions({
@@ -129,6 +129,15 @@ function customSelection(
       : provider,
     modelId: nextModelId,
   });
+  if (!resolution.supported) {
+    // Keep the stored id for a later supporting model, but never present or
+    // forward it as this model's effort.
+    return {
+      modelId: nextModelId,
+      effort: (effort ?? "").trim(),
+      effortSupported: false,
+    };
+  }
   return {
     modelId: nextModelId,
     effort: pickSessionEffort(resolution.options, effort),
@@ -138,6 +147,12 @@ function customSelection(
 export type ComposerPrefsSelection = {
   modelId: string;
   effort: string;
+  /**
+   * False when the selected model explicitly rejects reasoning effort. The
+   * stored id stays in `effort` for a later supporting model, but callers must
+   * not present or persist it as this model's pick.
+   */
+  effortSupported?: boolean;
   /**
    * Route override for the composer chip. `null` means the official route;
    * `undefined` means the caller keeps the route it already paints.
@@ -218,7 +233,8 @@ export function resolveComposerPrefsSelection(opts: {
         const storedEffort = (opts.prefs.effort ?? "").trim();
         return {
           modelId: storedModel,
-          effort: storedEffort || pickDefaultEffort(null),
+          effort: storedEffort,
+          effortSupported: false,
         };
       }
       // Provider deleted / empty list: official takes over on both sides.

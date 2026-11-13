@@ -10,10 +10,10 @@
 
 import type { CustomProvider, ProviderEffortEntry } from "@/lib/api";
 import {
-  DEFAULT_EFFORT,
   effortOptionsFromProvider,
   effortsForModel,
   findModel,
+  isValidModelId,
   pickDefaultEffort,
   type EffortOption,
   type ModelOption,
@@ -23,7 +23,6 @@ import {
   effectiveModelSupportsReasoningEffort,
   normalizeModelEfforts,
 } from "@/lib/providerModelConfig";
-import { alignGrokPresetEfforts } from "@/lib/providerPresets";
 
 export type SessionEffortResolution = {
   /** Raw catalog ids in advertised order. Empty when unsupported or loading. */
@@ -46,6 +45,36 @@ export type SessionEffortRoute = {
   officialModels?: ModelOption[];
 };
 
+export type SessionEffortPick =
+  | { kind: "official"; modelId: string }
+  | { kind: "custom"; providerId: string; modelId: string };
+
+/** Options for a composer model pick, or null when the pick is unknown. */
+export function resolvePickedModelEfforts(input: {
+  pick: SessionEffortPick;
+  providers: ReadonlyArray<SessionEffortProvider>;
+  officialModels: ModelOption[];
+}): SessionEffortResolution | null {
+  const pick = input.pick;
+  if (pick.kind === "official") {
+    if (!isValidModelId(pick.modelId, input.officialModels)) return null;
+    return resolveSessionEffortOptions({
+      source: "official",
+      modelId: pick.modelId,
+      officialModels: input.officialModels,
+    });
+  }
+  const provider = input.providers.find(
+    (candidate) => candidate.id === pick.providerId,
+  );
+  if (!provider) return null;
+  return resolveSessionEffortOptions({
+    source: "custom",
+    provider,
+    modelId: pick.modelId,
+  });
+}
+
 function customModelEfforts(
   provider: SessionEffortProvider,
   modelId: string,
@@ -54,16 +83,13 @@ function customModelEfforts(
   const model = id
     ? provider.models?.find((entry) => entry.id.trim() === id) ?? null
     : null;
+  // Session resolution is a raw pass-through: no preset remapping (`max`
+  // must stay `max`, vendor ids stay untouched).
   const raw =
     model?.efforts && model.efforts.length > 0
       ? model.efforts
       : provider.efforts;
-  const aligned = alignGrokPresetEfforts({
-    providerId: provider.id,
-    baseUrl: provider.baseUrl,
-    efforts: raw,
-  });
-  return normalizeModelEfforts(aligned ?? raw ?? []);
+  return normalizeModelEfforts(raw ?? []);
 }
 
 /** Options the composer shows for one session's resolved route. */
@@ -113,7 +139,9 @@ export function pickSessionEffort(
 ): string {
   const id = requested?.trim() ?? "";
   if (id && options.some((option) => option.id === id)) return id;
-  if (options.length === 0) return id || DEFAULT_EFFORT;
+  // No advertised options means no effective effort; an empty ladder must
+  // never fabricate the static fallback as if it were selectable.
+  if (options.length === 0) return id;
   return pickDefaultEffort(null, options);
 }
 

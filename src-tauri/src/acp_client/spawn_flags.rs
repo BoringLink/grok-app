@@ -170,6 +170,21 @@ pub fn is_spawnable_reasoning_effort(id: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
 }
 
+/// Args for the optional `--reasoning-effort` agent option.
+///
+/// `None` omits the flag entirely: the model row rejects reasoning effort, or
+/// the session has no stored pick. `none` is a real Off value and stays in the
+/// args; it is never converted to `None`.
+pub fn reasoning_effort_spawn_flags(effort: Option<&str>) -> Vec<String> {
+    let Some(id) = effort.map(str::trim).filter(|id| !id.is_empty()) else {
+        return Vec::new();
+    };
+    if !is_spawnable_reasoning_effort(id) {
+        return Vec::new();
+    }
+    vec!["--reasoning-effort".into(), id.to_string()]
+}
+
 /// Pure spawn plan for the OS-level sandbox profile.
 ///
 /// `--sandbox` is a **top-level** `grok` flag (not under `agent` / `stdio`),
