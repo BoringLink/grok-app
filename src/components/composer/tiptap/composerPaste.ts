@@ -444,7 +444,15 @@ export const ComposerMarkdownPaste = Extension.create<ComposerPasteOptions>({
             handlePlainTextPaste(editor, options);
             return true;
           },
-          transformPastedText(text: string) {
+          transformPastedText(text: string, _plain: boolean, view: EditorView) {
+            // 代码块路径必须保留剪贴板原始空白，包括首尾换行与缩进。
+            const { selection } = view.state;
+            if (
+              selection.$from.parent.type.spec.code ||
+              selection.$to.parent.type.spec.code
+            ) {
+              return text;
+            }
             return normalizePastedMarkdown(text);
           },
           handlePaste(view: EditorView, event: ClipboardEvent) {
