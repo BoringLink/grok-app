@@ -291,8 +291,10 @@ mod tests {
     /// 共享 home 会让 GUI 进程用到 `env_key` 型 provider 且拿不到环境变量（401）。
     #[test]
     fn title_home_follows_session_data_mode() {
-        let mut settings = store::AppSettings::default();
-        settings.session_data_mode = "shared".into();
+        let mut settings = store::AppSettings {
+            session_data_mode: "shared".into(),
+            ..store::AppSettings::default()
+        };
         assert_eq!(
             title_cli_grok_home(&settings),
             crate::process_util::user_home().join(".grok")
