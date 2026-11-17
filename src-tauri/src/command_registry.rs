@@ -157,7 +157,6 @@ pub fn app_invoke_handler(
         commands::composer_prefs_resolve,
         commands::composer_prefs_set,
         // ── Permission policy, privacy & codebase indexing ──
-        commands::session_set_policy,
         commands::permission_rules_get,
         commands::permission_rules_set,
         commands::agent_config_edit_get,

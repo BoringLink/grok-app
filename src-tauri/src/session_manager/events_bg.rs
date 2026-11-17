@@ -616,13 +616,29 @@ impl SessionManager {
             }
             AcpEvent::ProcessExited { code } => {
                 crate::workflow_followup::disarm(app_session_id);
-                self.pending_soft_respawn.lock().remove(app_session_id);
+                let pending_reason = self.pending_soft_respawn.lock().remove(app_session_id);
                 let mut gate_invalidations: Vec<serde_json::Value> = Vec::new();
                 let mut pending_emits = Vec::new();
                 let mut pending_persists = Vec::new();
                 let runtime_snap = {
                     let mut bg = self.background.lock();
                     if let Some(mut s) = bg.remove(app_session_id) {
+                        if pending_reason
+                            .as_deref()
+                            .is_some_and(super::control::requires_session_id_clear)
+                        {
+                            match crate::store::clear_session_agent_session_id(app_session_id) {
+                                Ok(_) => s.meta.agent_session_id = None,
+                                Err(error) => {
+                                    tracing::error!(
+                                        session = %app_session_id,
+                                        error = %error,
+                                        "failed to clear background agent session id after process exit"
+                                    );
+                                    self.queue_pending_soft_respawn(app_session_id, "effort");
+                                }
+                            }
+                        }
                         // No done flag — crash must not Ready the UI before
                         // Disconnected (P1-10).
                         if let Some(p) = Self::take_pending_stream_emit(&mut s) {

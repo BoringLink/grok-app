@@ -115,6 +115,9 @@ pub struct SessionManager {
     /// Context window chosen on the new-chat composer, before `session/new`.
     /// Applied on the first empty session, then cleared.
     pub(super) pending_context_window: Mutex<Option<u64>>,
+    /// 测试专用：强制 `set_config_option` 热路径的结果，绕过真实 RPC。
+    #[cfg(test)]
+    pub(super) hot_effort_result: Mutex<Option<Result<(), String>>>,
 }
 
 impl Default for SessionManager {
@@ -140,6 +143,8 @@ impl SessionManager {
             post_turn_journal_locks: Mutex::new(HashMap::new()),
             pending_soft_respawn: Mutex::new(HashMap::new()),
             pending_context_window: Mutex::new(None),
+            #[cfg(test)]
+            hot_effort_result: Mutex::new(None),
         }
     }
 

@@ -21,18 +21,39 @@ fn catalog_advertises_context_window(tokens: u64) -> bool {
         .any(|model| crate::models_catalog::model_supports_context_window(model, tokens))
 }
 
-/// What a tracked live slot needs after an effective-effort change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum EffortStage {
-    /// No live process to drop (idle/no ACP); the next connect picks it up.
-    Unchanged,
-    /// Idle live process: caller should soft-respawn now.
-    LiveRespawn,
-    /// Mid-turn live process: queued; flush after the turn ends.
-    LiveDeferred,
+/// 判断该重启原因是否要求放弃 CLI resume id 并创建新会话。
+pub(super) fn requires_session_id_clear(reason: &str) -> bool {
+    matches!(
+        reason,
+        "effort"
+            | "session_provider"
+            | "provider_route"
+            | "session_workspace"
+            | "project_rules"
+            | "session_extra_rules"
+            | "session_system_prompt_override"
+    )
 }
 
 impl SessionManager {
+    /// 合并同一会话的重启原因，effort 失效必须保留到恢复 id 的安全清理点。
+    pub(super) fn queue_pending_soft_respawn(&self, session_id: &str, reason: &str) {
+        let mut pending = self.pending_soft_respawn.lock();
+        let preserve_clear_reason = pending
+            .get(session_id)
+            .is_some_and(|existing| requires_session_id_clear(existing))
+            && !requires_session_id_clear(reason);
+        let next_reason = if preserve_clear_reason {
+            pending
+                .get(session_id)
+                .cloned()
+                .unwrap_or_else(|| reason.to_string())
+        } else {
+            reason.to_string()
+        };
+        pending.insert(session_id.to_string(), next_reason);
+    }
+
     #[allow(dead_code)]
     pub fn set_permission_policy(&self, policy: PermissionPolicy) {
         if let Some(s) = self.inner.lock().as_mut() {
@@ -67,100 +88,16 @@ impl SessionManager {
             .await;
     }
 
-    /// Clear one session's CLI resume id and drop only that session's process.
-    ///
-    /// `app` emits when the live slot actually respawns. Unit tests pass
-    /// `None` (no `AppHandle`); the detach still runs, it just skips the event.
+    /// 排队并统一执行 spawn flag 失效，忙碌会话保留 resume id 到安全清理点。
     async fn invalidate_spawn_flags_inner(
         &self,
         app: Option<&AppHandle>,
         session_id: &str,
         reason: &str,
     ) {
-        let _ = store::clear_session_agent_session_id(session_id);
-        // Keep in-memory meta aligned so a mid-turn no-op connect cannot
-        // resume the pre-change agent id after the turn ends.
-        {
-            let mut guard = self.inner.lock();
-            if let Some(s) = guard.as_mut() {
-                if s.app_session_id == session_id {
-                    s.meta.agent_session_id = None;
-                    s.needs_history_bootstrap = true;
-                }
-            }
-        }
-        if let Some(bg) = self.background.lock().get_mut(session_id) {
-            bg.meta.agent_session_id = None;
-            bg.needs_history_bootstrap = true;
-        }
-        if self.is_live_session(session_id) {
-            // soft_respawn already defers when the live turn is busy.
-            if self.detach_live_for_soft_respawn(reason).await {
-                if let Some(app) = app {
-                    let _ = app.emit(
-                        "session://agent_soft_respawn",
-                        serde_json::json!({ "reason": reason }),
-                    );
-                    Self::emit_state(app, &self.snapshot());
-                }
-            }
-            return;
-        }
-        // Background mid-turn: queue like effort/policy changes. Dropping now
-        // kills an in-flight answer and removes the map entry before
-        // ProcessExited can finish journal / cancel bookkeeping (#1177 follow-up).
-        let bg_busy = self
-            .with_session_mut(session_id, |s| Self::live_session_is_busy(s))
-            .unwrap_or(false);
-        if bg_busy {
-            self.pending_soft_respawn
-                .lock()
-                .insert(session_id.to_string(), reason.to_string());
-            tracing::info!(
-                session = %session_id,
-                reason = %reason,
-                "spawn-flag invalidate deferred: background session mid-turn"
-            );
-            return;
-        }
-        self.drop_idle_agent_for_session(session_id, reason).await;
-    }
-
-    /// Drop background / parked ACP so the next connect cold-spawns.
-    pub async fn drop_idle_agent_for_session(&self, session_id: &str, reason: &str) {
-        let background = self.background.lock().remove(session_id);
-        if let Some(mut s) = background {
-            let process_id = s.process_id.clone();
-            if let Some(acp) = s.acp.take() {
-                if self.has_other_process_tenant(&process_id, session_id) {
-                    tracing::info!(
-                        session = %session_id,
-                        process = %process_id,
-                        reason = %reason,
-                        "invalidate spawn flags detached shared background ACP"
-                    );
-                } else {
-                    Self::kill_acp_bounded(&acp).await;
-                    tracing::info!(
-                        session = %session_id,
-                        reason = %reason,
-                        "dropped background agent after spawn-flag invalidate"
-                    );
-                }
-            }
-            return;
-        }
-        let parked = self.parked.lock().remove(session_id);
-        if let Some(p) = parked {
-            if !self.has_other_process_tenant(&p.process_id, session_id) {
-                Self::kill_acp_bounded(&p.acp).await;
-                tracing::info!(
-                    session = %session_id,
-                    reason = %reason,
-                    "dropped parked agent after spawn-flag invalidate"
-                );
-            }
-        }
+        self.queue_pending_soft_respawn(session_id, reason);
+        self.flush_pending_soft_respawn_inner(app, session_id, false)
+            .await;
     }
 
     /// Soft-respawn and tell the UI why the agent process was reloaded.
@@ -179,21 +116,54 @@ impl SessionManager {
     /// Returns true when a process was detached and the UI should reload.
     /// Mid-turn and already-empty slots return false (no emit).
     async fn detach_live_for_soft_respawn(&self, reason: &str) -> bool {
+        let live_session_id = self
+            .inner
+            .lock()
+            .as_ref()
+            .map(|session| session.app_session_id.clone());
+        let pending_clear_session_id = live_session_id
+            .as_deref()
+            .and_then(|session_id| self.pending_soft_respawn.lock().get(session_id).cloned())
+            .is_some_and(|pending_reason| requires_session_id_clear(&pending_reason));
         let (acp, sid, process_id, deferred) = {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
-                if s.acp.is_none() {
-                    (None, Some(s.app_session_id.clone()), String::new(), false)
-                } else if Self::live_session_is_busy(s) {
+                let sid = s.app_session_id.clone();
+                let clear_session_id = requires_session_id_clear(reason)
+                    || (live_session_id.as_deref() == Some(sid.as_str())
+                        && pending_clear_session_id);
+                if Self::live_session_is_busy(s) {
                     tracing::warn!(
                         "soft_respawn deferred: live session mid-turn sid={} state={:?} reason={}",
                         s.app_session_id,
                         s.fsm.state(),
                         reason
                     );
-                    (None, Some(s.app_session_id.clone()), String::new(), true)
+                    (None, Some(sid), String::new(), true)
+                } else if clear_session_id {
+                    if let Err(error) = store::clear_session_agent_session_id(&sid) {
+                        tracing::error!(
+                            session = %sid,
+                            error = %error,
+                            "failed to clear the agent session id before effort respawn"
+                        );
+                        (None, Some(sid), String::new(), true)
+                    } else {
+                        s.meta.agent_session_id = None;
+                        if s.acp.is_none() {
+                            (None, Some(sid), String::new(), false)
+                        } else {
+                            let process_id = s.process_id.clone();
+                            let acp = s.acp.take();
+                            s.needs_history_bootstrap = false;
+                            s.fsm.soft_disconnect();
+                            s.process_id = String::new();
+                            (acp, Some(sid), process_id, false)
+                        }
+                    }
+                } else if s.acp.is_none() {
+                    (None, Some(sid), String::new(), false)
                 } else {
-                    let sid = s.app_session_id.clone();
                     let process_id = s.process_id.clone();
                     let acp = s.acp.take();
                     // Prefer resume on next connect; bootstrap only if load fails.
@@ -209,9 +179,7 @@ impl SessionManager {
         };
         if let Some(sid) = sid.as_deref() {
             if deferred {
-                self.pending_soft_respawn
-                    .lock()
-                    .insert(sid.to_string(), reason.to_string());
+                self.queue_pending_soft_respawn(sid, reason);
                 return false;
             }
             if acp.is_none() {
@@ -220,6 +188,9 @@ impl SessionManager {
             }
         }
         if let Some(acp) = acp {
+            if let Some(sid) = sid.as_deref() {
+                self.pending_soft_respawn.lock().remove(sid);
+            }
             let kill_allowed = sid
                 .as_deref()
                 .is_none_or(|session_id| !self.has_other_process_tenant(&process_id, session_id));
@@ -231,9 +202,6 @@ impl SessionManager {
                     "soft-respawn detached shared ACP without killing co-tenant"
                 );
             }
-            if let Some(sid) = sid {
-                self.pending_soft_respawn.lock().remove(&sid);
-            }
             return true;
         }
         false
@@ -243,18 +211,78 @@ impl SessionManager {
     /// now that the session is idle (or drop a parked process so next
     /// connect cold-spawns with the new flags).
     pub async fn flush_pending_soft_respawn(&self, app: &AppHandle, session_id: &str) {
+        self.flush_pending_soft_respawn_inner(Some(app), session_id, false)
+            .await;
+    }
+
+    pub(super) async fn flush_pending_soft_respawn_during_connect(
+        &self,
+        app: &AppHandle,
+        session_id: &str,
+    ) {
+        self.flush_pending_soft_respawn_inner(Some(app), session_id, true)
+            .await;
+    }
+
+    async fn flush_pending_soft_respawn_inner(
+        &self,
+        app: Option<&AppHandle>,
+        session_id: &str,
+        connect_lock_held: bool,
+    ) {
         let Some(reason) = self.take_pending_soft_respawn(session_id) else {
             return;
         };
         if self.is_live_session(session_id) {
-            self.soft_respawn_with_reason(app, &reason).await;
+            if self.detach_live_for_soft_respawn(&reason).await {
+                if let Some(app) = app {
+                    let _ = app.emit(
+                        "session://agent_soft_respawn",
+                        serde_json::json!({ "reason": reason }),
+                    );
+                    Self::emit_state(app, &self.snapshot());
+                }
+            }
             return;
         }
+        self.flush_non_live_pending_soft_respawn(session_id, reason, connect_lock_held)
+            .await;
+    }
+
+    async fn flush_non_live_pending_soft_respawn(
+        &self,
+        session_id: &str,
+        reason: String,
+        connect_lock_held: bool,
+    ) {
         // A background session can be idle after its turn completed. Pending
         // respawn flags still belong to that session; leaving its old ACP in
         // `background` lets connect promote it and silently ignore the new
         // process-level settings.
-        let background = self.background.lock().remove(session_id);
+        let background = {
+            let mut guard = self.background.lock();
+            if let Some(session) = guard.get_mut(session_id) {
+                if Self::live_session_is_busy(session) {
+                    self.queue_pending_soft_respawn(session_id, &reason);
+                    return;
+                }
+                if requires_session_id_clear(&reason) {
+                    if let Err(error) = store::clear_session_agent_session_id(session_id) {
+                        tracing::error!(
+                            session = %session_id,
+                            error = %error,
+                            "failed to clear background agent session id before effort respawn"
+                        );
+                        self.queue_pending_soft_respawn(session_id, &reason);
+                        return;
+                    }
+                    session.meta.agent_session_id = None;
+                }
+                guard.remove(session_id)
+            } else {
+                None
+            }
+        };
         if let Some(mut s) = background {
             let process_id = s.process_id.clone();
             if let Some(acp) = s.acp.take() {
@@ -279,7 +307,31 @@ impl SessionManager {
         // Parked: drop the warm entry so the next connect respawns.
         // Take the entry first — parking_lot guards are !Send across await.
         // Do not kill a process that still hosts a mid-turn cohabitant.
-        let parked = self.parked.lock().remove(session_id);
+        let parked = {
+            let mut guard = self.parked.lock();
+            if guard.contains_key(session_id) {
+                let clear_session_id = requires_session_id_clear(&reason)
+                    || self
+                        .pending_soft_respawn
+                        .lock()
+                        .get(session_id)
+                        .is_some_and(|pending_reason| requires_session_id_clear(pending_reason));
+                if clear_session_id {
+                    if let Err(error) = store::clear_session_agent_session_id(session_id) {
+                        tracing::error!(
+                            session = %session_id,
+                            error = %error,
+                            "failed to clear parked agent session id before effort respawn"
+                        );
+                        self.queue_pending_soft_respawn(session_id, &reason);
+                        return;
+                    }
+                }
+                guard.remove(session_id)
+            } else {
+                None
+            }
+        };
         if let Some(p) = parked {
             if !self.has_other_process_tenant(&p.process_id, session_id) {
                 Self::kill_acp_bounded(&p.acp).await;
@@ -295,6 +347,24 @@ impl SessionManager {
                     reason = %reason,
                     "pending soft-respawn: removed parked entry, skip kill (mid-turn cohabitant)"
                 );
+            }
+        } else if requires_session_id_clear(&reason) {
+            let _connect_guard = if connect_lock_held {
+                None
+            } else {
+                self.connect_lock.try_lock().ok()
+            };
+            if !connect_lock_held && _connect_guard.is_none() {
+                self.queue_pending_soft_respawn(session_id, &reason);
+                return;
+            }
+            if let Err(error) = store::clear_session_agent_session_id(session_id) {
+                tracing::error!(
+                    session = %session_id,
+                    error = %error,
+                    "failed to clear untracked agent session id before effort respawn"
+                );
+                self.queue_pending_soft_respawn(session_id, &reason);
             }
         }
     }
@@ -663,9 +733,7 @@ impl SessionManager {
                 .collect()
         };
         for sid in background_respawn_ids {
-            self.pending_soft_respawn
-                .lock()
-                .insert(sid, "permission_policy".into());
+            self.queue_pending_soft_respawn(&sid, "permission_policy");
         }
         {
             let removed: Vec<(String, ParkedAgent)> = {
@@ -798,6 +866,8 @@ impl SessionManager {
         });
         let provider = crate::providers::existing_session_route(
             &crate::providers::session_route_provider_id(stored_provider.as_deref()),
+            &model_id,
+            true,
         );
         let agent_model = crate::providers::session_set_model_id_for(&provider, &model_id);
         let (acp, sid) = {
@@ -849,7 +919,7 @@ impl SessionManager {
             *self.pending_context_window.lock() = Some(tokens);
             return Ok(());
         };
-        let (acp, agent_sid, model_id) = {
+        let (acp, agent_sid, model_id, session_model_is_stored) = {
             let guard = self.inner.lock();
             let Some(s) = guard.as_ref() else {
                 return Err("No active session yet; retry once it starts".into());
@@ -869,6 +939,10 @@ impl SessionManager {
                     .clone()
                     .filter(|sid| !sid.is_empty()),
                 model,
+                s.meta
+                    .model_id
+                    .as_deref()
+                    .is_some_and(|model_id| !model_id.trim().is_empty()),
             )
         };
         let (Some(acp), Some(agent_sid)) = (acp, agent_sid) else {
@@ -883,6 +957,8 @@ impl SessionManager {
             .and_then(|s| s.provider_id);
         let provider = crate::providers::existing_session_route(
             &crate::providers::session_route_provider_id(stored_provider.as_deref()),
+            &model_id,
+            session_model_is_stored,
         );
         let agent_model = crate::providers::session_set_model_id_for(&provider, &model_id);
         let catalog = crate::models_catalog::list_available_models();
@@ -1031,87 +1107,106 @@ impl SessionManager {
         }
     }
 
-    /// Update the tracked slots with one chat's stored / effective effort.
-    ///
-    /// No process is killed here. A busy live slot queues a turn-end respawn;
-    /// an idle live slot asks the caller to soft-respawn; idle background /
-    /// parked slots are updated or dropped so process reuse matches the next
-    /// connect. Other sessions are never touched.
-    pub(super) fn stage_effort_change(
+    /// 更新单会话的存储档位；忙碌中的 Agent session id 保留到 turn-end flush。
+    // 回落路径的记账全部落在 stage_effort_change 内；不再返回"调用方需要
+    // 立即做什么"的阶段值——进程重建由下一次 connect / turn-end flush 消费。
+    fn stage_effort_change(
         &self,
         session_id: &str,
         stored_effort: &str,
         effective_effort: Option<&str>,
         changed: bool,
-    ) -> EffortStage {
+    ) -> Result<(), String> {
         let stored = stored_effort.trim().to_string();
         let effective = effective_effort.map(str::to_string);
-        let mut action = EffortStage::Unchanged;
+        let mut found = false;
 
         {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut().filter(|s| s.app_session_id == session_id) {
-                s.effort = effective.clone();
-                s.meta.effort = Some(stored.clone());
-                if changed {
-                    // `session/load` would restore the old process-level flag.
-                    s.meta.agent_session_id = None;
-                    if Self::live_session_is_busy(s) {
-                        self.pending_soft_respawn
-                            .lock()
-                            .insert(session_id.to_string(), "effort".into());
-                        action = EffortStage::LiveDeferred;
-                    } else if s.acp.is_some() {
-                        action = EffortStage::LiveRespawn;
+                found = true;
+                let needs_respawn = changed || s.effort.as_deref() != effective.as_deref();
+                if needs_respawn {
+                    if Self::live_session_is_busy(s) || s.acp.is_some() {
+                        // mid-turn 或进程仍在：保留 stamp 到 connect / turn-end。
+                        self.queue_pending_soft_respawn(session_id, "effort");
+                    } else {
+                        if let Err(error) = store::clear_session_agent_session_id(session_id) {
+                            tracing::error!(
+                                session = %session_id,
+                                error = %error,
+                                "failed to clear live agent session id for changed effort"
+                            );
+                            return Err(error);
+                        }
+                        s.meta.agent_session_id = None;
                     }
                 }
-                let _ = store::update_session_meta(&s.meta);
+                s.effort = effective.clone();
+                s.meta.effort = Some(stored.clone());
+                if let Err(error) = store::update_session_meta(&s.meta) {
+                    tracing::warn!(
+                        session = %session_id,
+                        error = %error,
+                        "failed to persist live session effort metadata"
+                    );
+                }
             }
         }
 
-        // Background chats own their process and must not keep the old flag.
-        // Queue rather than kill a mid-turn answer (same as soft_respawn).
+        // 背景 turn 忙碌时保留 stamp，直到 turn-end flush 完成路由更新。
         {
             let mut bg = self.background.lock();
             if let Some(s) = bg.get_mut(session_id) {
+                found = true;
+                let needs_respawn = changed || s.effort.as_deref() != effective.as_deref();
+                if needs_respawn {
+                    self.queue_pending_soft_respawn(session_id, "effort");
+                }
                 s.effort = effective.clone();
                 s.meta.effort = Some(stored.clone());
-                if changed {
-                    s.meta.agent_session_id = None;
-                    if s.acp.is_some() || Self::live_session_is_busy(s) {
-                        self.pending_soft_respawn
-                            .lock()
-                            .insert(session_id.to_string(), "effort".into());
-                    }
-                }
-                let _ = store::update_session_meta(&s.meta);
-            }
-        }
-
-        let removed = self.parked.lock().remove(session_id);
-        if let Some(mut p) = removed {
-            if changed && p.effort.as_deref() != effective.as_deref() {
-                if !self.has_other_process_tenant(&p.process_id, session_id) {
-                    let acp = p.acp;
-                    tokio::spawn(async move {
-                        SessionManager::kill_acp_bounded(&acp).await;
-                    });
-                } else {
-                    tracing::info!(
+                if let Err(error) = store::update_session_meta(&s.meta) {
+                    tracing::warn!(
                         session = %session_id,
-                        process = %p.process_id,
-                        "effort change: removed parked entry, skip kill (mid-turn cohabitant)"
+                        error = %error,
+                        "failed to persist background session effort metadata"
                     );
                 }
-            } else {
-                p.effort = effective;
-                p.meta.effort = Some(stored);
-                let _ = store::update_session_meta(&p.meta);
-                self.parked.lock().insert(session_id.to_string(), p);
             }
         }
 
-        action
+        // Parked 进程保持原样（其 effort 字段记录进程真实 spawn 值）；
+        // 档位失配时只排队 pending，由下一次 connect / unpark 门控
+        // 消费并冷启动——不在改档位瞬间杀后台预热进程。
+        {
+            let mut parked = self.parked.lock();
+            if let Some(p) = parked.get_mut(session_id) {
+                found = true;
+                if p.effort.as_deref() != effective.as_deref() {
+                    self.queue_pending_soft_respawn(session_id, "effort");
+                }
+                p.meta.effort = Some(stored.clone());
+                if let Err(error) = store::update_session_meta(&p.meta) {
+                    tracing::warn!(
+                        session = %session_id,
+                        error = %error,
+                        "failed to persist parked session effort metadata"
+                    );
+                }
+            }
+        }
+
+        if changed && !found {
+            if let Err(error) = store::clear_session_agent_session_id(session_id) {
+                tracing::error!(
+                    session = %session_id,
+                    error = %error,
+                    "failed to clear untracked agent session id for changed effort"
+                );
+                return Err(error);
+            }
+        }
+        Ok(())
     }
 
     /// Remove a pending respawn only when the chat is idle. A still-busy turn
@@ -1122,9 +1217,7 @@ impl SessionManager {
             .with_session_mut(session_id, |s| Self::live_session_is_busy(s))
             .unwrap_or(false);
         if busy {
-            self.pending_soft_respawn
-                .lock()
-                .insert(session_id.to_string(), reason);
+            self.queue_pending_soft_respawn(session_id, &reason);
             return None;
         }
         Some(reason)
@@ -1137,7 +1230,6 @@ impl SessionManager {
     /// in session meta so switching back to a supporting model restores it.
     pub async fn apply_effective_effort(
         &self,
-        app: &AppHandle,
         session_id: &str,
         stored_effort: &str,
         effective_effort: Option<&str>,
@@ -1149,21 +1241,127 @@ impl SessionManager {
                 return Err(format!("invalid effort: {effort}"));
             }
         }
-        if effective_changed {
-            // Grok Build's session/load restores the old model / effort and
-            // would ignore the fresh process flags. Force session/new.
-            store::clear_session_agent_session_id(session_id)?;
+        // 热路径：live 空闲会话直接让 CLI 在本进程内换档（标准 ACP
+        // `session/set_config_option`）。成功则保留进程与 resume id。
+        if self
+            .try_hot_effort_apply(session_id, stored_effort, effective_effort)
+            .await
+        {
+            return Ok(());
         }
-        let action = self.stage_effort_change(
+        self.stage_effort_change(
             session_id,
             stored_effort,
             effective_effort,
             effective_changed,
-        );
-        if action == EffortStage::LiveRespawn {
-            self.soft_respawn_with_reason(app, "effort").await;
-        }
+        )?;
         Ok(())
+    }
+
+    /// 尝试通过标准 ACP `session/set_config_option`（`configId:
+    /// reasoning_effort`，纯字符串 value）在本进程内换档。仅作用于当前
+    /// live、空闲、持有 agent id 且档位确实变化的目标会话；其余情况
+    /// （draft / background / parked / mid-turn / 无 agent id / 档位不变 /
+    /// 不支持推理）返回 false，由调用方走 stage 回落路径。
+    ///
+    /// RPC 值与连接补发路径（`connect.rs::push_connected_effort`）保持同一
+    /// canonical 映射（`set_config_wire_effort`）：vendor 原始 id 映射到
+    /// 最近固定档；`none` / `max` 无法经该 RPC 表达，直接返回 false 走
+    /// stage 回落，权威路径仍是 spawn flag。记账（live 槽与 meta）保留
+    /// 原始 effective id，复用门控不感知 wire 映射。
+    async fn try_hot_effort_apply(
+        &self,
+        session_id: &str,
+        stored_effort: &str,
+        effective_effort: Option<&str>,
+    ) -> bool {
+        let Some(effort) = effective_effort.map(str::trim).filter(|e| !e.is_empty()) else {
+            return false;
+        };
+        let (acp, agent_sid, needs_change) = {
+            let guard = self.inner.lock();
+            let Some(s) = guard.as_ref().filter(|s| s.app_session_id == session_id) else {
+                return false;
+            };
+            let Some(acp) = s.acp.clone() else {
+                return false;
+            };
+            if !acp.is_alive() || Self::live_session_is_busy(s) {
+                return false;
+            }
+            let Some(agent_sid) = s.meta.agent_session_id.clone() else {
+                return false;
+            };
+            let needs_change = s.effort.as_deref() != Some(effort);
+            (acp, agent_sid, needs_change)
+        };
+        if !needs_change {
+            // 档位未变：直接记账返回，避免多余 RPC 与重启。
+            self.finish_hot_effort_apply(session_id, stored_effort, effort);
+            return true;
+        }
+        // CLI 1.0.88 的该 RPC 只认固定档集；vendor 原始 id 统一经
+        // `set_config_wire_effort` 映射，`none` / `max` 返回 None 表示
+        // 无法经 RPC 表达，直接回落 stage 路径（spawn flag 为权威）。
+        let Some(wire) = crate::providers::set_config_wire_effort(effort) else {
+            return false;
+        };
+        // 测试接缝：绕过真实 RPC，直接注入 set_config_option 结果。
+        #[cfg(test)]
+        {
+            if let Some(result) = self.hot_effort_result.lock().take() {
+                if result.is_err() {
+                    return false;
+                }
+                self.finish_hot_effort_apply(session_id, stored_effort, effort);
+                return true;
+            }
+        }
+        match acp
+            .set_config_option_str(&agent_sid, "reasoning_effort", wire)
+            .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    session = %session_id,
+                    effort = %effort,
+                    wire = %wire,
+                    "effort hot-applied via session/set_config_option (no respawn)"
+                );
+                self.finish_hot_effort_apply(session_id, stored_effort, effort);
+                true
+            }
+            Err(e) => {
+                tracing::info!(
+                    session = %session_id,
+                    error = %e,
+                    "effort hot apply unavailable — lazy respawn queued"
+                );
+                false
+            }
+        }
+    }
+
+    /// 热路径成功后的记账：对齐 live 槽与持久化 meta，撤销已排队的
+    /// effort 类重启（进程保留，会话连续性不变）。
+    fn finish_hot_effort_apply(&self, session_id: &str, stored_effort: &str, effort: &str) {
+        {
+            let mut guard = self.inner.lock();
+            if let Some(s) = guard.as_mut().filter(|s| s.app_session_id == session_id) {
+                s.effort = Some(effort.to_string());
+                s.meta.effort = Some(stored_effort.to_string());
+                let _ = store::update_session_meta(&s.meta);
+            }
+        }
+        if self
+            .pending_soft_respawn
+            .lock()
+            .get(session_id)
+            .map(String::as_str)
+            == Some("effort")
+        {
+            self.pending_soft_respawn.lock().remove(session_id);
+        }
     }
 
     pub fn current_context_ids(&self) -> (Option<String>, Option<String>) {
@@ -1683,6 +1881,64 @@ mod recycle_tests {
     }
 
     #[test]
+    fn busy_route_invalidation_keeps_agent_session_id_until_turn_end() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-busy-route-invalidation-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = crate::paths::ensure_app_dirs();
+        let mgr = SessionManager::new();
+        let mut live = ready_session("sess-route", "proc-route", "agent-route", "relay");
+        let _ = live.fsm.begin_stream();
+        live.prompt_in_flight = true;
+        crate::store::save_sessions_index(std::slice::from_ref(&live.meta)).expect("seed session");
+        *mgr.inner.lock() = Some(live);
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+
+        runtime.block_on(mgr.invalidate_spawn_flags_inner(None, "sess-route", "session_provider"));
+
+        assert_eq!(
+            mgr.pending_soft_respawn
+                .lock()
+                .get("sess-route")
+                .map(String::as_str),
+            Some("session_provider")
+        );
+        {
+            let guard = mgr.inner.lock();
+            assert_eq!(
+                guard
+                    .as_ref()
+                    .expect("live session")
+                    .meta
+                    .agent_session_id
+                    .as_deref(),
+                Some("agent-route")
+            );
+        }
+        assert_eq!(
+            crate::store::load_sessions_index()[0]
+                .agent_session_id
+                .as_deref(),
+            Some("agent-route")
+        );
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
     fn mid_turn_effort_change_queues_until_turn_end_and_leaves_other_sessions() {
         let _lock = crate::paths::APP_HOME_ENV_LOCK
             .lock()
@@ -1716,10 +1972,10 @@ mod recycle_tests {
         mgr.background.lock().insert("sess-b".into(), other);
 
         // Act — the effective id changes while the live turn is still running
-        let action = mgr.stage_effort_change("sess-a", "low", Some("low"), true);
+        mgr.stage_effort_change("sess-a", "low", Some("low"), true)
+            .expect("stage effort change");
 
         // Assert — the turn is untouched; the respawn waits for turn end
-        assert_eq!(action, EffortStage::LiveDeferred);
         assert!(mgr.session_is_busy("sess-a"));
         {
             let guard = mgr.inner.lock();
@@ -1728,7 +1984,7 @@ mod recycle_tests {
             assert_eq!(s.meta.effort.as_deref(), Some("low"));
             assert!(s.prompt_in_flight);
             assert!(matches!(s.fsm.state(), SessionState::Streaming));
-            assert!(s.meta.agent_session_id.is_none());
+            assert_eq!(s.meta.agent_session_id.as_deref(), Some("agent-a"));
         }
         assert!(mgr.pending_soft_respawn.lock().contains_key("sess-a"));
 
@@ -1745,8 +2001,20 @@ mod recycle_tests {
         // Still busy: the queued respawn stays parked.
         assert!(mgr.take_pending_soft_respawn("sess-a").is_none());
         assert!(mgr.pending_soft_respawn.lock().contains_key("sess-a"));
+        {
+            let guard = mgr.inner.lock();
+            assert_eq!(
+                guard
+                    .as_ref()
+                    .expect("live session")
+                    .meta
+                    .agent_session_id
+                    .as_deref(),
+                Some("agent-a")
+            );
+        }
 
-        // Turn end: the queued respawn is released for the flush caller.
+        // 回合结束后取出原因；若新回合抢先开始，flush 必须保留 session id。
         {
             let mut guard = mgr.inner.lock();
             let s = guard.as_mut().expect("live session");
@@ -1758,12 +2026,142 @@ mod recycle_tests {
             Some("effort")
         );
         assert!(!mgr.pending_soft_respawn.lock().contains_key("sess-a"));
+        {
+            let mut guard = mgr.inner.lock();
+            let s = guard.as_mut().expect("live session");
+            assert_eq!(s.meta.agent_session_id.as_deref(), Some("agent-a"));
+            s.prompt_in_flight = true;
+            let _ = s.fsm.begin_stream();
+        }
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        assert!(!runtime.block_on(mgr.detach_live_for_soft_respawn("effort")));
+        assert!(mgr.pending_soft_respawn.lock().contains_key("sess-a"));
+        {
+            let guard = mgr.inner.lock();
+            assert_eq!(
+                guard
+                    .as_ref()
+                    .expect("live session")
+                    .meta
+                    .agent_session_id
+                    .as_deref(),
+                Some("agent-a")
+            );
+        }
+
+        // 下一回合结束后，在同一空闲检查中清除 agent id 并软重启。
+        {
+            let mut guard = mgr.inner.lock();
+            let s = guard.as_mut().expect("live session");
+            s.prompt_in_flight = false;
+            let _ = s.fsm.end_stream();
+        }
+        assert_eq!(
+            mgr.take_pending_soft_respawn("sess-a").as_deref(),
+            Some("effort")
+        );
+        assert!(!runtime.block_on(mgr.detach_live_for_soft_respawn("effort")));
+        assert!(!mgr.pending_soft_respawn.lock().contains_key("sess-a"));
+        {
+            let guard = mgr.inner.lock();
+            assert!(guard
+                .as_ref()
+                .expect("live session")
+                .meta
+                .agent_session_id
+                .is_none());
+        }
 
         match previous {
             Some(value) => std::env::set_var("GROK_APP_HOME", value),
             None => std::env::remove_var("GROK_APP_HOME"),
         }
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn idle_background_effort_change_flushes_before_reuse() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-background-effort-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = crate::paths::ensure_app_dirs();
+
+        let mgr = SessionManager::new();
+        let background = ready_session("sess-bg", "proc-bg", "agent-bg", "relay");
+        crate::store::save_sessions_index(std::slice::from_ref(&background.meta))
+            .expect("seed session");
+        mgr.background.lock().insert("sess-bg".into(), background);
+
+        mgr.stage_effort_change("sess-bg", "low", Some("low"), true)
+            .expect("stage effort change");
+        assert_eq!(
+            mgr.take_pending_soft_respawn("sess-bg").as_deref(),
+            Some("effort")
+        );
+
+        {
+            let mut background = mgr.background.lock();
+            let session = background.get_mut("sess-bg").expect("background session");
+            session.prompt_in_flight = true;
+            let _ = session.fsm.begin_stream();
+        }
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        runtime.block_on(mgr.flush_non_live_pending_soft_respawn(
+            "sess-bg",
+            "effort".into(),
+            false,
+        ));
+        assert!(mgr.pending_soft_respawn.lock().contains_key("sess-bg"));
+        assert_eq!(
+            mgr.background.lock()["sess-bg"]
+                .meta
+                .agent_session_id
+                .as_deref(),
+            Some("agent-bg")
+        );
+
+        {
+            let mut background = mgr.background.lock();
+            let session = background.get_mut("sess-bg").expect("background session");
+            session.prompt_in_flight = false;
+            let _ = session.fsm.end_stream();
+        }
+        assert_eq!(
+            mgr.take_pending_soft_respawn("sess-bg").as_deref(),
+            Some("effort")
+        );
+        runtime.block_on(mgr.flush_non_live_pending_soft_respawn(
+            "sess-bg",
+            "effort".into(),
+            false,
+        ));
+        assert!(!mgr.pending_soft_respawn.lock().contains_key("sess-bg"));
+        assert!(!mgr.background.lock().contains_key("sess-bg"));
+        assert!(crate::store::load_sessions_index()[0]
+            .agent_session_id
+            .is_none());
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     #[test]
@@ -1818,6 +2216,31 @@ mod recycle_tests {
         assert_eq!(
             map.get("keep").map(String::as_str),
             Some("permission_policy")
+        );
+    }
+
+    #[test]
+    fn queued_effort_reason_survives_other_respawn_reasons() {
+        let mgr = SessionManager::new();
+
+        mgr.queue_pending_soft_respawn("session-a", "effort");
+        mgr.queue_pending_soft_respawn("session-a", "permission_policy");
+        assert_eq!(
+            mgr.pending_soft_respawn
+                .lock()
+                .get("session-a")
+                .map(String::as_str),
+            Some("effort")
+        );
+
+        mgr.queue_pending_soft_respawn("session-b", "permission_policy");
+        mgr.queue_pending_soft_respawn("session-b", "effort");
+        assert_eq!(
+            mgr.pending_soft_respawn
+                .lock()
+                .get("session-b")
+                .map(String::as_str),
+            Some("effort")
         );
     }
 
@@ -1946,6 +2369,180 @@ mod recycle_tests {
 
         std::env::remove_var("GROK_APP_HOME");
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ───────────── set_config_option 热路径（免重启换档） ─────────────
+    // 直接驱动 try_hot_effort_apply / stage_effort_change：apply_effective_effort
+    // 仅做编排（tauri AppHandle 无法在单测中构造，见文件头注释）。
+
+    fn hot_effort_runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime")
+    }
+
+    fn isolated_hot_home(tag: &str) -> std::path::PathBuf {
+        let home =
+            std::env::temp_dir().join(format!("grok-app-hot-effort-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        let _ = std::fs::create_dir_all(&home);
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = crate::paths::ensure_app_dirs();
+        home
+    }
+
+    /// 热路径成功：进程保留、effort 对齐、无 pending 重启、resume id 不清。
+    /// vendor 原始 id（balanced）经 canonical 映射后 RPC 成功，记账保留原始 id。
+    #[test]
+    fn hot_effort_apply_keeps_process_and_clears_pending_effort_marker() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _home = isolated_hot_home("ok");
+        let mgr = SessionManager::new();
+        let mut live = ready_session("hot-ok", "proc-hot", "agent-hot", "relay");
+        live.effort = Some("low".into());
+        live.acp = Some(crate::acp_client::AcpClient::test_stub(true));
+        *mgr.inner.lock() = Some(live);
+        // 预置一个早前排队但尚未消费的 effort 重启，热成功后应撤销。
+        mgr.pending_soft_respawn
+            .lock()
+            .insert("hot-ok".into(), "effort".into());
+        *mgr.hot_effort_result.lock() = Some(Ok(()));
+
+        let rt = hot_effort_runtime();
+        assert!(rt.block_on(mgr.try_hot_effort_apply("hot-ok", "balanced", Some("balanced"))));
+
+        let guard = mgr.inner.lock();
+        let s = guard.as_ref().expect("live kept");
+        assert!(s.acp.as_ref().is_some_and(|c| c.is_alive()), "进程保留");
+        assert_eq!(
+            s.effort.as_deref(),
+            Some("balanced"),
+            "记账保留原始 effective id"
+        );
+        assert_eq!(s.meta.effort.as_deref(), Some("balanced"));
+        assert_eq!(
+            s.meta.agent_session_id.as_deref(),
+            Some("agent-hot"),
+            "resume id 保留"
+        );
+        drop(guard);
+        assert!(
+            !mgr.pending_soft_respawn.lock().contains_key("hot-ok"),
+            "热成功撤销 pending effort 重启"
+        );
+    }
+
+    /// 热路径失败（旧 CLI / 档位不在菜单）：回落惰性失效，同样不杀进程。
+    #[test]
+    fn hot_effort_failure_falls_back_to_lazy_pending_without_kill() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _home = isolated_hot_home("err");
+        let mgr = SessionManager::new();
+        let mut live = ready_session("hot-err", "proc-err", "agent-err", "relay");
+        live.effort = Some("low".into());
+        live.acp = Some(crate::acp_client::AcpClient::test_stub(true));
+        *mgr.inner.lock() = Some(live);
+        *mgr.hot_effort_result.lock() = Some(Err("unknown reasoning_effort value".into()));
+
+        let rt = hot_effort_runtime();
+        assert!(!rt.block_on(mgr.try_hot_effort_apply("hot-err", "high", Some("high"))));
+
+        mgr.stage_effort_change("hot-err", "high", Some("high"), true)
+            .expect("stage");
+        let guard = mgr.inner.lock();
+        let s = guard.as_ref().expect("live kept");
+        assert!(
+            s.acp.as_ref().is_some_and(|c| c.is_alive()),
+            "回落也不杀进程"
+        );
+        drop(guard);
+        assert_eq!(
+            mgr.pending_soft_respawn
+                .lock()
+                .get("hot-err")
+                .map(String::as_str),
+            Some("effort"),
+            "回落路径只排队标记"
+        );
+    }
+
+    /// mid-turn：热路径跳过（即使 RPC 可用），排队等待 turn-end flush。
+    #[test]
+    fn hot_effort_skipped_while_mid_turn() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _home = isolated_hot_home("busy");
+        let mgr = SessionManager::new();
+        let mut live = ready_session("hot-busy", "proc-busy", "agent-busy", "relay");
+        live.effort = Some("low".into());
+        live.acp = Some(crate::acp_client::AcpClient::test_stub(true));
+        let _ = live.fsm.begin_stream();
+        live.prompt_in_flight = true;
+        *mgr.inner.lock() = Some(live);
+        *mgr.hot_effort_result.lock() = Some(Ok(()));
+
+        let rt = hot_effort_runtime();
+        assert!(!rt.block_on(mgr.try_hot_effort_apply("hot-busy", "none", Some("none"))));
+
+        mgr.stage_effort_change("hot-busy", "none", Some("none"), true)
+            .expect("stage");
+        assert_eq!(
+            mgr.pending_soft_respawn
+                .lock()
+                .get("hot-busy")
+                .map(String::as_str),
+            Some("effort"),
+            "mid-turn 排队到 turn end"
+        );
+    }
+
+    /// `none` / `max` 超出 RPC 固定档集：即使 RPC 本身可用也直接回落
+    /// stage 路径（spawn flag 是这两档的权威通道）。
+    #[test]
+    fn hot_effort_unwireable_tiers_fall_back_without_rpc() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _home = isolated_hot_home("wire");
+        let mgr = SessionManager::new();
+        let mut live = ready_session("hot-wire", "proc-wire", "agent-wire", "relay");
+        live.effort = Some("low".into());
+        live.acp = Some(crate::acp_client::AcpClient::test_stub(true));
+        *mgr.inner.lock() = Some(live);
+        // 注入 Ok 结果证明未走到 RPC 接缝即被档集过滤。
+        *mgr.hot_effort_result.lock() = Some(Ok(()));
+
+        let rt = hot_effort_runtime();
+        assert!(!rt.block_on(mgr.try_hot_effort_apply("hot-wire", "none", Some("none"))));
+        assert!(!rt.block_on(mgr.try_hot_effort_apply("hot-wire", "max", Some("max"))));
+        assert!(
+            mgr.hot_effort_result.lock().is_some(),
+            "未消费 RPC 接缝即被档集过滤"
+        );
+    }
+
+    /// 档位不变：不发 RPC，也不产生任何重启标记。
+    #[test]
+    fn hot_effort_no_change_is_a_noop() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _home = isolated_hot_home("same");
+        let mgr = SessionManager::new();
+        let mut live = ready_session("hot-same", "proc-same", "agent-same", "relay");
+        live.effort = Some("low".into());
+        live.acp = Some(crate::acp_client::AcpClient::test_stub(true));
+        *mgr.inner.lock() = Some(live);
+
+        let rt = hot_effort_runtime();
+        assert!(rt.block_on(mgr.try_hot_effort_apply("hot-same", "low", Some("low"))));
+        assert!(mgr.pending_soft_respawn.lock().is_empty());
     }
 
     fn ready_session(id: &str, process_id: &str, agent_id: &str, provider_id: &str) -> LiveSession {

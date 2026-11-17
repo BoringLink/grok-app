@@ -291,21 +291,29 @@ mod tests {
     /// 共享 home 会让 GUI 进程用到 `env_key` 型 provider 且拿不到环境变量（401）。
     #[test]
     fn title_home_follows_session_data_mode() {
-        let mut settings = store::AppSettings::default();
-        settings.session_data_mode = "shared".into();
+        let shared_settings = store::AppSettings {
+            session_data_mode: "shared".into(),
+            ..Default::default()
+        };
         assert_eq!(
-            title_cli_grok_home(&settings),
+            title_cli_grok_home(&shared_settings),
             crate::process_util::user_home().join(".grok")
         );
-        settings.session_data_mode = "independent".into();
+        let independent_settings = store::AppSettings {
+            session_data_mode: "independent".into(),
+            ..Default::default()
+        };
         assert_eq!(
-            title_cli_grok_home(&settings),
+            title_cli_grok_home(&independent_settings),
             crate::paths::agent_home_dir()
         );
         // 未知值按 independent 处理（与 resolve_agent_grok_home 的语义一致）。
-        settings.session_data_mode = "bogus".into();
+        let invalid_settings = store::AppSettings {
+            session_data_mode: "bogus".into(),
+            ..Default::default()
+        };
         assert_eq!(
-            title_cli_grok_home(&settings),
+            title_cli_grok_home(&invalid_settings),
             crate::paths::agent_home_dir()
         );
     }
