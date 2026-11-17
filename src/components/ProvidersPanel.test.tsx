@@ -336,11 +336,12 @@ describe("ProvidersPanel per-model metadata", () => {
         (effort) => effort.id,
       ),
     ).toEqual(["low", "medium"]);
+    // 无 API default 时取首个非 none 档（与 Composer/Host 默认规则一致）。
     expect(
       (remoteRow?.efforts as Array<{ id: string; isDefault?: boolean }>).find(
         (effort) => effort.isDefault,
       )?.id,
-    ).toBe("medium");
+    ).toBe("low");
   });
 
   it("keeps user overrides across repeated refreshes and applies the newest remote value", async () => {

@@ -48,12 +48,43 @@ function hookOptions(
 describe("useComposerEffort session guards", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it("persists only the final pick when the slider drags across stops", async () => {
+    const saveMock = vi
+      .mocked(api.composerPrefsSet)
+      .mockImplementation(async () => ({
+        modelId: "m-raw",
+        effort: "low",
+        mode: "agent",
+        permissionPolicy: "ask",
+        scope: "session",
+        source: "session",
+      }));
+    const setEffort = vi.fn();
+    const queueRef = { current: Promise.resolve() };
+    const { result } = renderHook(() =>
+      useComposerEffort(hookOptions("session-a", setEffort, queueRef)),
+    );
+
+    // 模拟滑杆拖动经过 low → high → low：两次选择同步入队，
+    // 只有最后一次选择应触发 RPC 与界面应用。
+    act(() => {
+      void result.current.handleEffortPick("high");
+      void result.current.handleEffortPick("low");
+    });
+    await act(async () => queueRef.current);
+
+    expect(api.composerPrefsSet).toHaveBeenCalledTimes(1);
+    expect(api.composerPrefsSet).toHaveBeenCalledWith(
+      expect.objectContaining({ effort: "low" }),
+    );
+    expect(setEffort).toHaveBeenCalledOnce();
+    expect(setEffort).toHaveBeenCalledWith("low");
+    saveMock.mockReset();
+  });
+
   it("does not apply an earlier queued pick over a newer choice", async () => {
-    const firstSave = deferred<ComposerPrefs>();
-    const secondSave = deferred<ComposerPrefs>();
-    vi.mocked(api.composerPrefsSet)
-      .mockReturnValueOnce(firstSave.promise)
-      .mockReturnValueOnce(secondSave.promise);
+    const save = deferred<ComposerPrefs>();
+    vi.mocked(api.composerPrefsSet).mockReturnValue(save.promise);
     const setEffort = vi.fn();
     const queueRef = { current: Promise.resolve() };
     const { result } = renderHook(() =>
@@ -61,25 +92,20 @@ describe("useComposerEffort session guards", () => {
     );
 
     act(() => {
-      result.current.handleEffortPick("high");
-      result.current.handleEffortPick("low");
+      void result.current.handleEffortPick("high");
+      void result.current.handleEffortPick("low");
     });
     await act(async () => {
-      firstSave.resolve({
-        modelId: "m-raw",
-        effort: "high",
-        mode: "agent",
-        permissionPolicy: "ask",
-        scope: "session",
-        source: "session",
-      });
       await Promise.resolve();
       await Promise.resolve();
     });
-
-    expect(setEffort).not.toHaveBeenCalled();
+    // 同目标上的更新选择废弃排队中的旧写入：只有 "low" 触发 RPC。
+    expect(api.composerPrefsSet).toHaveBeenCalledTimes(1);
+    expect(api.composerPrefsSet).toHaveBeenCalledWith(
+      expect.objectContaining({ effort: "low" }),
+    );
     await act(async () => {
-      secondSave.resolve({
+      save.resolve({
         modelId: "m-raw",
         effort: "low",
         mode: "agent",
@@ -92,6 +118,7 @@ describe("useComposerEffort session guards", () => {
 
     expect(setEffort).toHaveBeenCalledOnce();
     expect(setEffort).toHaveBeenCalledWith("low");
+    expect(setEffort).not.toHaveBeenCalledWith("high");
   });
 
   it("saves an old session pick without applying it after switching away and back", async () => {

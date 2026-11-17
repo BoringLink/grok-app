@@ -57,6 +57,8 @@ export function useComposerEffort(opts: {
   const committedEffortRef = useRef(effort);
   const currentEffortRef = useRef(effort);
   const pendingEffortWritesRef = useRef(0);
+  /** 单调递增的选择序号：同一目标上出现更新选择时，废弃仍在排队的旧写入。 */
+  const pickSeqRef = useRef(0);
   useLayoutEffect(() => {
     const nextTarget = {
       projectId: projectId ?? null,
@@ -131,6 +133,7 @@ export function useComposerEffort(opts: {
       }
       if (next === latestEffortRef.current) return Promise.resolve(true);
       latestEffortRef.current = next;
+      const nextPickSeq = (pickSeqRef.current += 1);
       pendingEffortWritesRef.current += 1;
       const targetDraftRoute = sessionId == null ? draftRouteRef?.current ?? null : null;
       const targetSessionId = sessionId ?? null;
@@ -160,6 +163,17 @@ export function useComposerEffort(opts: {
             }
             const result = await saveSessionEffort({
               effort: next,
+              // 同一目标上出现更新选择时废弃本次写入（滑杆连续拖动只落盘
+              // 最后一次）；目标已切换（导航到其它会话）则照旧持久化。
+              skip: () =>
+                pickSeqRef.current !== nextPickSeq &&
+                isCurrentTarget(
+                  targetSessionId,
+                  projectId,
+                  targetDraftRoute,
+                  modelId,
+                  providerId,
+                ),
               save: (value) =>
                 api.composerPrefsSet({
                   projectId: projectId ?? null,
