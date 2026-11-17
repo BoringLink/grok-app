@@ -17,7 +17,7 @@
 
 CLI `models_cache.json` 的 `info.context_window` 是目录默认值（Grok 4.7 / Fast / 4.6 / 4.5 当前为 **256000**）。可选长度在 `info.context_windows`（当前 `[256000, 500000]`）。静态兜底与此相同。`initialize` 的 live 覆盖只改默认值，不抹掉列表。
 
-列表多于一项时，Composer 高级菜单列出这些长度。选中后对**当前 live 会话**发 `session/set_model`，只带 `_meta.contextWindow`（正整数 token 数），不带 `reasoningEffort`，CLI 因此保持当前推理档。不改已保存的模型偏好。
+列表多于一项时，用 `/context-window` 命令列出并选择这些长度；Composer 模型菜单只保留模型与推理档，不再嵌入窗口入口。选中后对**当前 live 会话**发 `session/set_model`，只带 `_meta.contextWindow`（正整数 token 数），不带 `reasoningEffort`，CLI 因此保持当前推理档。不改已保存的模型偏好。
 
 `/context-window` 与 Grok Build pager 相同：接受 `256k` / `1m`（大小写不敏感）或原始 token 数；空参数给出用法和当前值；不在列表里则报未知。新对话还没有 `session/new` 时，选择会记在 composer 上并在第一次建会话的 `session/set_model` 里带上 `_meta.contextWindow`，菜单立刻显示新长度。只有一个或没有可选窗口时命令说明该模型不能选。缩到比当前用量更小的窗口时，自动压缩由 CLI 自己做。
 
@@ -37,33 +37,42 @@ Flags **必须在** `stdio` 之前。连接后 `session/set_model` 再对齐一�
 
 Composer 按**当前会话解析出的 provider / model** 读取该模型自己的推理档位，直接展示模型提供的原始 id 与顺序；不同模型不再折叠映射到统一四级滑杆。
 
+新对话首次连接前先保存草稿中的 provider/model/effort。保存失败时中止连接、保留草稿选择并提示错误，同时尝试删除尚未连接的空会话；重试时重新创建会话并先保存路由，再连接 agent。
+
 解析顺序（真实可选值）：
 
 1. **当前会话的官方模型** → CLI `models_cache.json` 的 `info.reasoning_efforts: [{id,value,label,description,default}]`（Host 经 `AvailableModel.reasoningEfforts` 下发，`isDefault` 标记默认档）。
-2. **当前会话的自定义 provider 模型行** → `models[].efforts`（`app_models`）。模型行没有档位时回退该提供商的通道 `efforts`（`app_efforts`）。
-3. 仍无档位时：自定义模型使用 `low` · `medium` · `high` · `xhigh`（默认 `medium`）；官方静态兜底见 `src/lib/grokCatalog.ts`。
+2. **当前会话的自定义 provider 模型行** → `models[].efforts`（`app_models`）。模型行没有档位时使用通用 fallback `low` · `medium` · `high` · `xhigh`；只有旧式单模型 provider 且所选模型等于其 channel model 时，才沿用兼容的 channel `efforts`（`app_efforts`）。多模型配置不会借用 channel 当前模型的档位。
+3. 无模型专属目录时，自定义模型使用通用 `low` · `medium` · `high` · `xhigh`（默认 `medium`）；官方静态兜底见 `src/lib/grokCatalog.ts`。
 
 选择与恢复：
 
-- 有 `isDefault` → 用它；否则 `medium` 存在时用 `medium`；否则第一个。见 `src/lib/sessionEffort.ts` 的 `pickSessionEffort` / `src/lib/grokCatalog.ts` 的 `pickDefaultEffort`。
+- 有 `isDefault` → 用它；否则首个档位（API 提供了档位但未标默认）；完全没有档位信息时回退 `medium`（该值总在 CLI 固定 wire 枚举内）。见 `src/lib/sessionEffort.ts` 的 `pickSessionEffort` / `src/lib/grokCatalog.ts` 的 `pickDefaultEffort`。
 - 切换模型 / provider / 会话时，新模型仍提供同一原始 id 就保留；否则落到新模型的默认档。仅在**该模型支持推理**时把这个默认档写回会话，避免下一条消息沿用失效 id；不支持推理的模型保留原来的 stored id，但不展示、不写回、也不作为该模型的 effort 下发。**不做**跨模型阶梯映射（不再把 DeepSeek `high` 映射成官方 `medium` 之类）。
-- 原始 id 直接透传：session effort resolution **不**复用任何 preset 对齐（`max` 保持 `max`，vendor 的 `minimal` / `balanced` / `ultra` 也原样保留）。
-- 模型行 `supportsReasoningEffort = false` → Composer 不展示该模型的档位，并显示本地化的不可用说明；不借用通道或其它模型行。Host 按该会话的 provider + model 解析有效 effort，并在 spawn 时省略 `--reasoning-effort`；进程复用、parked/unpark 和 `session/load` 的 state 同样按有效 effort 对齐。切回支持推理的模型时，之前保留的 stored id 会重新成为候选。
-- `none` 表示关闭思考：只有该模型自己的 catalog 明确列出 `none`（官方 live cache，或自定义模型/通道档位）且模型支持推理时才展示、保存和下发。`supportsReasoningEffort = true` 不能推断所有模型都可关闭；`none` 也不会伪装成最低档。官方资料没有把 `none` 列为 ACP 默认可用值，因此未广告时不出现。
+- 原始 id 作为 Composer 选项与 `--reasoning-effort` 值透传：session effort resolution **不**复用任何 preset 对齐（`max` 保持 `max`，vendor 的 `minimal` / `balanced` / `ultra` 也原样保留）。
+- CLI 只接受规范 wire 档位，因此 App 为每个 generic 模型的 `[model.<id>]` 同时写入 `reasoning_efforts = [{ id = <raw>, value = <canonical>, label, default }]`。CLI 用 `id` 接收原始值，再把 `value` 发往上游；`instant` / `minimal` 映射 `minimal`，`off` 映射 `none`，`ultra` / `maximum` 映射 `max`，未知自定义 id 映射 `medium`。没有该菜单时 CLI 会拒绝自定义 id 并回落到全局默认档。
+- 模型行 `supportsReasoningEffort = false` 且没有显式配置推理档位或“支持关闭推理”设置时，Composer 隐藏档位并显示本地化不可用说明；模型行配置了 API / 用户推理档位或启用了 Off 时，该配置本身表示支持扩展推理。Host 按该会话的 provider + model 解析有效档位；真正不支持的模型不借用通道或其它模型行，spawn 时省略 `--reasoning-effort`。进程复用、parked/unpark 和 `session/load` 的 state 同样按有效档位对齐。
+- `none` 表示关闭扩展推理：模型目录明确列出 `none`，或设置中的“支持关闭推理”开关启用时，Composer 才提供 Off。开关启用但目录未列出 `none` 时，App 将 `none` 作为该模型的原始档位追加；Host 仅对此模型接受并原样下发。Off 不会伪装成最低档。
 - 展示标签：已知 id（`low` / `medium` / `high` / `xhigh` / `max` / `none`）走 i18n（`effort.*`）；其它 id 用 catalog 的 name/label，再回退原始 id。
 
-Spawn / 应用：`--reasoning-effort <raw id>`。Host 透传 catalog / 模型 id（含 `max`、`none` 与自定义 id），不硬白名单仅 low/medium/high；模型不支持推理时完全省略该 flag，`none` 仍是真实参数值而不是 Rust `None`。当前 Host 没有 `session/set_effort` RPC；若以后接入 ACP `session/set_config_option`（`configId=reasoning_effort`），必须使用同一原始 id。Composer 菜单与手机工具面板共用同一档位列表；自动默认 reconciliation 与用户选档走同一个按会话串行的写入队列，慢保存不会覆盖后到的用户选择。
+Spawn / 应用：`--reasoning-effort <raw id>`，该 id 必须已出现在模型的 CLI `reasoning_efforts` 菜单中。Host 透传 catalog / 模型 id（含 `max`、`none` 与自定义 id），不硬白名单仅 low/medium/high；模型不支持推理时完全省略该 flag，`none` 仍是真实参数值而不是 Rust `None`。Composer 菜单与手机工具面板共用同一档位列表；自动默认 reconciliation 与用户选档进入同一 composer 写入队列，按入队顺序应用；异步结果只更新仍匹配的 session/model，慢响应不会覆盖后到的选择。
+
+档位生效链路（CLI 1.0.88 实测校准）：
+
+- **spawn flag** 是档位的第一传递路径，但会被 agent-home `config.toml` 的用户级 `default_reasoning_effort` **静默覆盖**（仅 `--model` 选中自定义路由模型时发生）。Independent 模式 seal `agent-proc` home 时剔除该键（只动 sealed 副本，规范 agent-home / 共享 `~/.grok` 永不改写）。
+- **连接后补发**：connect 在 `session/set_model` 之后用 ACP `session/set_config_option`（`configId=reasoning_effort`）显式下发有效档位，覆盖 `session/load` 恢复的 CLI 侧存储值与任何 spawn 覆盖（`connect.rs::push_connected_effort`，软失败）。`session/set_config_option` 的 value 是**纯字符串**（CLI 拒绝文档示例的 `{"value": ...}` 嵌套形状）；仅接受 CLI 固定档集 `minimal` / `low` / `medium` / `high` / `xhigh`（`providers::set_config_wire_effort`，canonical 映射后过滤），`none` / `max` 超出该集、跳过补发，spawn flag 是其唯一权威路径。
+- **live 热切换**：空闲 live 会话改档走 `set_config_option` 热路径（`control.rs::try_hot_effort_apply`），RPC 值与连接补发同一 canonical 映射（vendor 原始 id → 最近固定档；`none` / `max` 直接回落 stage），成功保留进程与 resume id（记账仍保留原始 id）；失败回落惰性 pending，由下一次 connect 或 turn-end flush 冷启动。
 
 **Live 语义**：更改档位后，live agent 在**回合结束后** soft-respawn，正在运行的回合不会被中断；空闲会话写 prefs，下一条消息 / 下次连接生效。保存或 API 失败时 Composer 选中态保持不变，并按 `classifyModelEffortError` 分类显示本地化提示。
 
-**产品默认（4.7）：** 官方冷启动与未设 prefs 时 model = **grok-4.7**、effort = **xhigh**。`grok-4.7-build-fast`（Grok 4.7 Fast）在官方菜单里可选，价格约为标准 4.7 的两倍，不进中转预设。CLI cache 可能同时把 `xhigh` 和 `high` 标成 default，Host/前端归一为 **xhigh**。用户可在 Composer 降为 high/medium/low 以缩短 TTFT。旧安装若全局 model 仍为历史产品默认 `grok-4.5`，先一次性抬到 `grok-4.6`；若 CLI `models_cache` 已列出 `grok-4.7`，再把空值或 `grok-4.6` 抬到 `grok-4.7`（显式 `grok-4.5`、Fast、自定义 id 不动；缓存还没有 4.7 时不抬，下次启动再试）。官方路由上旧 effort `high` 一次性抬到 `xhigh`（显式 low/medium/max 不动）。**存量会话 / 项目行**在 `official_effort_xhigh_rows_migrated` 下把 `effort: high` 且 model 为空或 `grok-4.6` 的行抬到 `xhigh`；`grok-4.5` 与自定义 id 不动。切到无 xhigh 的 catalog 时 resolve 层钳到该模型最高档。旧 effort `medium` 仍一次性抬到 high（3 档兜底）。
+**产品默认（4.7）：** 官方冷启动与未设 prefs 时 model = **grok-4.7**、effort = **xhigh**。`grok-4.7-build-fast`（Grok 4.7 Fast）在官方菜单里可选，价格约为标准 4.7 的两倍，不进中转预设。CLI cache 可能同时把 `xhigh` 和 `high` 标成 default，Host/前端归一为 **xhigh**。用户可在 Composer 降为 high/medium/low 以缩短 TTFT。旧安装若全局 model 仍为历史产品默认 `grok-4.5`，先一次性抬到 `grok-4.6`；若 CLI `models_cache` 已列出 `grok-4.7`，再把空值或 `grok-4.6` 抬到 `grok-4.7`（显式 `grok-4.5`、Fast、自定义 id 不动；缓存还没有 4.7 时不抬，下次启动再试）。官方路由上旧 effort `high` 一次性抬到 `xhigh`（显式 low/medium/max 不动）。**官方路由的存量会话 / 项目行**在 `official_effort_xhigh_rows_migrated` 下把 `effort: high` 且 model 为空或 `grok-4.6` 的行抬到 `xhigh`；`grok-4.5` 与自定义 id 不动。切到不提供当前原始 id 的模型时，resolve 层按其 `isDefault` → 首档规则选择默认值（无档位信息时 `medium`）。旧 effort `medium` 仍一次性抬到 high（3 档兜底）。
 
-**Apply honesty（UI）**：纯 helper `src/lib/modelEffortApply.ts`。Composer 改模型 / 推理后 toast + 菜单 footer 说明生效路径：
+**Apply honesty（UI）**：纯 helper `src/lib/modelEffortApply.ts`。模型 / 推理切换均为静默异步应用：无成功横幅、无菜单 footer 说明，只有错误 toast（经 `classifyModelEffortError` 分类，本地化 key `composer.apply.error.*`）：
 
 | 控制 | 无 live Agent | Live Agent |
 |------|---------------|------------|
 | 模型 | `next_message`（下条消息 spawn） | `session/set_model` → `immediate_rpc`；不支持则 `soft_respawn` |
-| 推理 | `next_message` | `soft_respawn`（回合结束后；无 set_effort） |
+| 推理 | `next_message` | 空闲时 `set_config_option` 热路径（保留进程）；`none` / `max` 或热失败 / mid-turn → `soft_respawn`（回合结束后） |
 
 不得静默失败：prefs / set_model 错误经 `classifyModelEffortError` 分类 toast。
 
@@ -88,7 +97,7 @@ Spawn / 应用：`--reasoning-effort <raw id>`。Host 透传 catalog / 模型 id
 
 1. 连接成功后 `session/set_mode`（尝试 `plan` / `ask` / `agent` 等候选 modeId）。  
 2. 中途切换：优先 `set_mode`；失败则 soft-respawn。  
-3. 按 `composerPrefsScope` 记忆。
+3. 模式默认值遵循 `composerPrefsScope`；`plan` 是仅限单会话的临时覆盖，不会写成全局或项目默认值。新对话草稿中的 Plan 会在连接前保存到新会话；保存失败时停止连接、保留草稿选择，并尽可能删除空会话。
 
 ## 后台等待（headless，CLI 0.2.117+）
 
@@ -196,7 +205,7 @@ grok --no-auto-update --permission-mode <mode> agent [--model <id>] [--reasoning
 
 `composerPrefsScope` = `global` | `project` | `session`。
 
-覆盖 model / effort / mode / permission。切换 chip → `composer_prefs_set` / `session_set_policy` / `session_set_model`。
+覆盖 model / effort / mode / permission。Composer 更改由 `composer_prefs_set` 持久化并应用；model 的 live session 另由 `session_set_model` 即时调节。
 
 ## 服务商
 
