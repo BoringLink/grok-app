@@ -1796,6 +1796,14 @@ fn canonical_wire_effort(id: &str) -> &'static str {
 /// `max` 同样超出固定档集——这两档的权威路径是 spawn flag
 /// `--reasoning-effort`（配额 seal 时剔除用户级 `default_reasoning_effort`
 /// 的覆盖）。返回 `None` 表示跳过 RPC 下发。
+///
+/// 同 value 多原始 id 的 ladder 也走本路径：ladder 表
+/// (`model.<id>.reasoning_efforts`) 由 [`encode_cli_reasoning_efforts`] 写入
+/// agent-home，CLI 自己完成 raw id → value 的映射，因此 spawn 腿
+/// `--reasoning-effort <raw>` 与 RPC 腿下发 `canonical_wire_effort(raw)` 在
+/// 线级（API 实际收到的值）完全一致。热切换对该场景是精确的，不需要为
+/// 消除"歧义"而强制 respawn——respawn 会打断运行中的回合，破坏
+/// "下一轮生效"的用户预期。
 pub fn set_config_wire_effort(id: &str) -> Option<&'static str> {
     let tier = canonical_wire_effort(id);
     matches!(tier, "minimal" | "low" | "medium" | "high" | "xhigh").then_some(tier)
@@ -4821,6 +4829,51 @@ mod tests {
         assert_eq!(set_config_wire_effort("max"), None);
         // 未知 id canonical 兜到 medium。
         assert_eq!(set_config_wire_effort("bogus"), Some("medium"));
+    }
+
+    #[test]
+    fn hot_apply_is_wire_exact_for_duplicate_value_ladder_ids() {
+        // 同 value 多原始 id 的 ladder：spawn 腿 `--reasoning-effort <raw>` 由
+        // CLI 按 reasoning_efforts 表映射到 value；RPC 腿下发同一 value。
+        // 两条腿线级一致，热切换精确，不需要为消除"歧义"强制 respawn。
+        let ladder = [
+            ProviderEffortEntry {
+                id: "instant".into(),
+                name: "Instant".into(),
+                is_default: false,
+            },
+            ProviderEffortEntry {
+                id: "balanced".into(),
+                name: "Balanced".into(),
+                is_default: true,
+            },
+            ProviderEffortEntry {
+                id: "deliberate".into(),
+                name: "Deliberate".into(),
+                is_default: false,
+            },
+        ];
+        let table = encode_cli_reasoning_efforts(&ladder);
+        // 表中每个 id 的 value 与热切换下发值必须一致。
+        for effort in &ladder {
+            let needle = format!(
+                "id = \"{}\", value = \"{}\"",
+                effort.id,
+                canonical_wire_effort(&effort.id)
+            );
+            assert!(table.contains(&needle), "missing row: {needle} in {table}");
+            assert_eq!(
+                set_config_wire_effort(&effort.id),
+                Some(canonical_wire_effort(&effort.id)),
+                "RPC tier must equal the value the CLI maps {id} to",
+                id = effort.id
+            );
+        }
+        // balanced 与 deliberate 共享 value = medium：线级无差异。
+        assert_eq!(
+            set_config_wire_effort("balanced"),
+            set_config_wire_effort("deliberate")
+        );
     }
 
     #[test]
