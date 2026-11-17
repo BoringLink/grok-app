@@ -410,13 +410,27 @@ describe("normalizeModelEfforts", () => {
     expect(efforts.find((effort) => effort.isDefault)?.id).toBe("maximum");
   });
 
-  it("picks medium when the API marks no default", () => {
+  it("picks the first non-none id when the API marks no default", () => {
     const efforts = normalizeModelEfforts([
       { id: "low" },
       { id: "medium" },
       { id: "high" },
     ]);
-    expect(efforts.find((effort) => effort.isDefault)?.id).toBe("medium");
+    expect(efforts.find((effort) => effort.isDefault)?.id).toBe("low");
+  });
+
+  it("skips a leading none when picking the fallback default", () => {
+    const efforts = normalizeModelEfforts([
+      { id: "none" },
+      { id: "balanced" },
+      { id: "maximum" },
+    ]);
+    expect(efforts.find((effort) => effort.isDefault)?.id).toBe("balanced");
+  });
+
+  it("falls back to the first row when every id is none", () => {
+    const efforts = normalizeModelEfforts([{ id: "none" }]);
+    expect(efforts.find((effort) => effort.isDefault)?.id).toBe("none");
   });
 
   it("picks the first valid id when medium is absent", () => {
@@ -619,7 +633,7 @@ describe("mergeRemoteModelMetadata", () => {
     });
   });
 
-  it("chooses medium when the API ladder has no default", () => {
+  it("chooses the first non-none id when the API ladder has no default", () => {
     const merged = mergeRemoteModelMetadata(
       { id: "ox", name: "Ox" },
       {
@@ -627,9 +641,7 @@ describe("mergeRemoteModelMetadata", () => {
         reasoningEfforts: [{ id: "low" }, { id: "medium" }, { id: "high" }],
       },
     );
-    expect(merged.efforts?.find((effort) => effort.isDefault)?.id).toBe(
-      "medium",
-    );
+    expect(merged.efforts?.find((effort) => effort.isDefault)?.id).toBe("low");
   });
 
   it("keeps legacy vision/video flags untouched", () => {

@@ -83,9 +83,9 @@ function positiveWindow(n: number | null | undefined): number | null {
  * Normalize a reasoning ladder.
  *
  * Ids are preserved (trimmed only), blank/duplicate ids are dropped, and
- * exactly one row is marked default: the first API-marked row, else `medium`,
- * else the first valid row. That keeps `isDefault` pointing at an id that is
- * actually in the list.
+ * exactly one row is marked default: the first API-marked row, else the first
+ * non-`none` row (matching Composer/Host default semantics), else the first
+ * row. That keeps `isDefault` pointing at an id that is actually in the list.
  */
 export function normalizeModelEfforts(
   efforts: ProviderEffortEntry[] | null | undefined,
@@ -109,9 +109,8 @@ export function normalizeModelEfforts(
   const defaultId =
     apiDefault && seen.has(apiDefault)
       ? apiDefault
-      : seen.has("medium")
-        ? "medium"
-        : out[0].id;
+      : (out.find((effort) => effort.id.toLowerCase() !== "none")?.id ??
+        out[0].id);
   return out.map((effort) => ({
     ...effort,
     isDefault: effort.id === defaultId,
