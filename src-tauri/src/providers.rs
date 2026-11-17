@@ -27,18 +27,31 @@ pub struct ProviderModelEntry {
     /// Composer chip / menu display label. Missing → the id.
     #[serde(default)]
     pub name: String,
-    /// Per-model context window (tokens). Missing → channel `context_window`.
+    /// Per-model context window (tokens). Missing → 1M fallback.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window: Option<u64>,
-    /// Per-model image-pixel capability. Missing → channel `app_supports_vision`.
+    /// Which layer produced `context_window`: `user`, `remote`, or `fallback`.
+    /// A legacy row without this marker keeps a non-empty window as user-set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window_source: Option<String>,
+    /// Legacy per-model image-pixel flag. No Settings control; kept verbatim.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_vision: Option<bool>,
-    /// Per-model video-input capability. Missing → unset (not a channel flag).
+    /// Legacy per-model video-input flag. No Settings control; kept verbatim.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_video: Option<bool>,
-    /// Per-model reasoning ladder. Empty → channel `app_efforts`.
+    /// Per-model reasoning ladder. Empty → channel `efforts`, then App default.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub efforts: Vec<ProviderEffortEntry>,
+    /// Which layer produced `efforts`: `user`, `remote`, or `fallback`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub efforts_source: Option<String>,
+    /// Whether this model accepts reasoning levels. Missing → supported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_reasoning_effort: Option<bool>,
+    /// Which layer produced `supports_reasoning_effort`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_reasoning_effort_source: Option<String>,
 }
 
 impl ProviderModelEntry {
@@ -153,6 +166,11 @@ pub struct UpsertProviderInput {
     #[serde(default)]
     pub extra_headers: Option<Vec<ProviderHeaderEntry>>,
 }
+
+/// Provenance markers for the per-model metadata that Settings may override.
+const MODEL_SOURCE_USER: &str = "user";
+const MODEL_SOURCE_REMOTE: &str = "remote";
+const MODEL_SOURCE_FALLBACK: &str = "fallback";
 
 /// TOML field (ignored by Grok Build) storing JSON array of `{id,name}`.
 const APP_MODELS_KEY: &str = "app_models";
@@ -280,6 +298,12 @@ pub struct RemoteModel {
     pub supports_vision: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supports_video: Option<bool>,
+    /// Structured reasoning ladder advertised by an extended `/models` row.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reasoning_efforts: Vec<ProviderEffortEntry>,
+    /// Reasoning support advertised by an extended `/models` row.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub supports_reasoning_effort: Option<bool>,
 }
 
 /// Process-only native Grok Build relay binding. Deliberately not Debug or
@@ -1566,6 +1590,26 @@ fn encode_app_models(models: &[ProviderModelEntry]) -> Result<String, String> {
     encode_model_catalog(models).map_err(|error| format!("failed to encode app_models: {error}"))
 }
 
+/// Keep only the three provenance markers the App writes. Unknown values are
+/// ignored: an existing non-empty value is then treated as user-set, which can
+/// never cause a refresh to overwrite it.
+fn normalize_model_source(raw: Option<&str>) -> Option<&'static str> {
+    match raw?.trim().to_ascii_lowercase().as_str() {
+        MODEL_SOURCE_USER => Some(MODEL_SOURCE_USER),
+        MODEL_SOURCE_REMOTE => Some(MODEL_SOURCE_REMOTE),
+        MODEL_SOURCE_FALLBACK => Some(MODEL_SOURCE_FALLBACK),
+        _ => None,
+    }
+}
+
+fn model_source_for_value(raw: Option<&str>, has_value: bool) -> Option<String> {
+    has_value.then(|| {
+        normalize_model_source(raw)
+            .unwrap_or(MODEL_SOURCE_USER)
+            .to_string()
+    })
+}
+
 /// Normalize a models catalog; drop empty ids; default blank names to id.
 pub fn normalize_provider_models(models: &[ProviderModelEntry]) -> Vec<ProviderModelEntry> {
     let mut out = Vec::new();
@@ -1576,6 +1620,10 @@ pub fn normalize_provider_models(models: &[ProviderModelEntry]) -> Vec<ProviderM
             continue;
         }
         let name = m.name.trim();
+        let context_window = m.context_window.filter(|n| *n > 0);
+        let efforts = normalize_provider_efforts(&m.efforts);
+        let efforts_source =
+            model_source_for_value(m.efforts_source.as_deref(), !efforts.is_empty());
         out.push(ProviderModelEntry {
             name: if name.is_empty() {
                 id.clone()
@@ -1583,10 +1631,20 @@ pub fn normalize_provider_models(models: &[ProviderModelEntry]) -> Vec<ProviderM
                 name.to_string()
             },
             id,
-            context_window: m.context_window.filter(|n| *n > 0),
+            context_window,
+            context_window_source: model_source_for_value(
+                m.context_window_source.as_deref(),
+                context_window.is_some(),
+            ),
             supports_vision: m.supports_vision,
             supports_video: m.supports_video,
-            efforts: normalize_provider_efforts(&m.efforts),
+            efforts,
+            efforts_source,
+            supports_reasoning_effort: m.supports_reasoning_effort,
+            supports_reasoning_effort_source: model_source_for_value(
+                m.supports_reasoning_effort_source.as_deref(),
+                m.supports_reasoning_effort.is_some(),
+            ),
         });
     }
     out
@@ -3383,6 +3441,7 @@ fn parse_remote_models_response(
             .filter(|s| !s.is_empty());
         let Some(id) = id else { continue };
         let (supports_vision, supports_video) = remote_modalities(&item);
+        let reasoning_efforts = remote_reasoning_efforts(&item);
         models.push(RemoteModel {
             id: id.to_string(),
             owned_by: item
@@ -3395,9 +3454,17 @@ fn parse_remote_models_response(
             context_window: remote_context_window(&item),
             supports_vision,
             supports_video,
+            supports_reasoning_effort: remote_supports_reasoning_effort(
+                &item,
+                !reasoning_efforts.is_empty(),
+            ),
+            reasoning_efforts,
         });
     }
     models.sort_by(|a, b| a.id.cmp(&b.id));
+    // A model id is the picker and routing identity; the first advertised row
+    // wins so a duplicated id cannot appear twice with different metadata.
+    models.dedup_by(|a, b| a.id == b.id);
     Ok(RemoteModelsResult { endpoint, models })
 }
 
@@ -3489,6 +3556,73 @@ fn collect_modality_tokens(item: &serde_json::Value) -> String {
         }
     }
     bits
+}
+
+/// Upper bounds for vendor-provided reasoning metadata. These fields are
+/// extensions, not part of the OpenAI `/models` shape, so a long or repeated
+/// list must not be able to grow the stored catalog without limit.
+const MAX_REMOTE_REASONING_EFFORTS: usize = 32;
+const MAX_REMOTE_EFFORT_ID_CHARS: usize = 64;
+const MAX_REMOTE_EFFORT_NAME_CHARS: usize = 80;
+
+fn bounded_remote_text(raw: &str, max_chars: usize) -> String {
+    raw.trim().chars().take(max_chars).collect()
+}
+
+fn remote_effort_text(
+    entry: &serde_json::Value,
+    keys: &[&str],
+    max_chars: usize,
+) -> Option<String> {
+    keys.iter()
+        .find_map(|key| entry.get(*key).and_then(|value| value.as_str()))
+        .map(|raw| bounded_remote_text(raw, max_chars))
+        .filter(|value| !value.is_empty())
+}
+
+fn remote_reasoning_efforts(item: &serde_json::Value) -> Vec<ProviderEffortEntry> {
+    let Some(entries) = ["reasoning_efforts", "reasoningEfforts"]
+        .iter()
+        .find_map(|key| item.get(*key).and_then(|value| value.as_array()))
+    else {
+        return Vec::new();
+    };
+    let efforts: Vec<ProviderEffortEntry> = entries
+        .iter()
+        .take(MAX_REMOTE_REASONING_EFFORTS)
+        .filter_map(|entry| {
+            let id = entry
+                .as_str()
+                .map(|raw| bounded_remote_text(raw, MAX_REMOTE_EFFORT_ID_CHARS))
+                .filter(|value| !value.is_empty())
+                .or_else(|| {
+                    remote_effort_text(
+                        entry,
+                        &["id", "value", "effort"],
+                        MAX_REMOTE_EFFORT_ID_CHARS,
+                    )
+                })?;
+            let name = remote_effort_text(entry, &["name", "label"], MAX_REMOTE_EFFORT_NAME_CHARS)
+                .unwrap_or_else(|| id.clone());
+            let is_default = ["isDefault", "is_default", "default"]
+                .iter()
+                .find_map(|key| entry.get(*key).and_then(|value| value.as_bool()))
+                .unwrap_or(false);
+            Some(ProviderEffortEntry {
+                id,
+                name,
+                is_default,
+            })
+        })
+        .collect();
+    normalize_provider_efforts(&efforts)
+}
+
+fn remote_supports_reasoning_effort(item: &serde_json::Value, has_ladder: bool) -> Option<bool> {
+    ["supports_reasoning_effort", "supportsReasoningEffort"]
+        .iter()
+        .find_map(|key| item.get(*key).and_then(|value| value.as_bool()))
+        .or(has_ladder.then_some(true))
 }
 
 fn remote_modalities(item: &serde_json::Value) -> (Option<bool>, Option<bool>) {
@@ -4873,11 +5007,14 @@ base_url = \"http://127.0.0.1:8080/v1\"
                 name: "high".into(),
                 is_default: true,
             }],
+            ..Default::default()
         }]);
         assert_eq!(list[0].context_window, Some(128_000));
         assert_eq!(list[0].supports_vision, Some(true));
         assert_eq!(list[0].supports_video, Some(true));
         assert_eq!(list[0].efforts[0].id, "high");
+        assert_eq!(list[0].context_window_source.as_deref(), Some("user"));
+        assert_eq!(list[0].efforts_source.as_deref(), Some("user"));
         let json = encode_app_models(&list).expect("encode app models");
         let decoded = decode_app_models(Some(&json), "fallback", "Fallback");
         assert_eq!(decoded, list);
@@ -4889,6 +5026,87 @@ base_url = \"http://127.0.0.1:8080/v1\"
         assert_eq!(legacy[0].id, "plain");
         assert_eq!(legacy[0].context_window, None);
         assert!(legacy[0].efforts.is_empty());
+        assert_eq!(legacy[0].context_window_source, None);
+        assert_eq!(legacy[0].efforts_source, None);
+    }
+
+    #[test]
+    fn model_source_markers_are_validated_and_kept_with_their_values() {
+        let list = normalize_provider_models(&[
+            ProviderModelEntry {
+                id: "remote".into(),
+                name: "Remote".into(),
+                context_window: Some(1_000_000),
+                context_window_source: Some(" REMOTE ".into()),
+                efforts: vec![ProviderEffortEntry {
+                    id: "low".into(),
+                    name: "low".into(),
+                    is_default: true,
+                }],
+                efforts_source: Some("fallback".into()),
+                supports_reasoning_effort: Some(false),
+                supports_reasoning_effort_source: Some("remote".into()),
+                ..Default::default()
+            },
+            ProviderModelEntry {
+                id: "unknown".into(),
+                name: "Unknown".into(),
+                context_window: Some(8_000),
+                context_window_source: Some("vendor-specific".into()),
+                supports_reasoning_effort: Some(true),
+                supports_reasoning_effort_source: Some("vendor-specific".into()),
+                ..Default::default()
+            },
+        ]);
+        assert_eq!(list[0].context_window_source.as_deref(), Some("remote"));
+        assert_eq!(list[0].efforts_source.as_deref(), Some("fallback"));
+        assert_eq!(list[0].supports_reasoning_effort, Some(false));
+        assert_eq!(
+            list[0].supports_reasoning_effort_source.as_deref(),
+            Some("remote")
+        );
+        assert_eq!(
+            list[1].context_window_source.as_deref(),
+            Some("user"),
+            "an unknown marker must fall back to user so refresh cannot overwrite it"
+        );
+        assert_eq!(
+            list[1].supports_reasoning_effort_source.as_deref(),
+            Some("user")
+        );
+        let orphan = normalize_provider_models(&[ProviderModelEntry {
+            id: "empty".into(),
+            name: "Empty".into(),
+            context_window_source: Some("remote".into()),
+            efforts_source: Some("remote".into()),
+            ..Default::default()
+        }]);
+        assert_eq!(orphan[0].context_window_source, None);
+        assert_eq!(orphan[0].efforts_source, None);
+    }
+
+    #[test]
+    fn legacy_model_values_without_sources_are_read_as_user_and_round_trip() {
+        let raw = r#"[{
+            "id": "legacy",
+            "name": "Legacy",
+            "contextWindow": 128000,
+            "efforts": [{"id": "maximum", "name": "Maximum", "isDefault": true}],
+            "supportsReasoningEffort": false
+        }]"#;
+        let decoded = decode_app_models(Some(raw), "fallback", "Fallback");
+        assert_eq!(decoded.len(), 1);
+        assert_eq!(decoded[0].context_window, Some(128_000));
+        assert_eq!(decoded[0].context_window_source.as_deref(), Some("user"));
+        assert_eq!(decoded[0].efforts_source.as_deref(), Some("user"));
+        assert_eq!(
+            decoded[0].supports_reasoning_effort_source.as_deref(),
+            Some("user")
+        );
+
+        let encoded = encode_app_models(&decoded).expect("encode app models");
+        let reloaded = decode_app_models(Some(&encoded), "fallback", "Fallback");
+        assert_eq!(reloaded, decoded);
     }
 
     #[test]
@@ -5224,6 +5442,170 @@ app_models = "not-json {MARKER}"
         let vid = got.models.iter().find(|m| m.id == "video-model").unwrap();
         assert_eq!(vid.context_window, Some(32_000));
         assert_eq!(vid.supports_video, Some(true));
+    }
+
+    #[test]
+    fn parse_remote_models_reads_extended_reasoning_metadata() {
+        let body = r#"{
+            "data": [
+                {
+                    "id": "xhigh-model",
+                    "context_window": 2000000,
+                    "reasoning_efforts": [
+                        {"id": "low", "name": "Low"},
+                        {"value": "medium", "label": "Medium", "default": true},
+                        {"id": "xhigh"}
+                    ],
+                    "supports_reasoning_effort": true
+                },
+                {
+                    "id": "no-thinking",
+                    "supportsReasoningEffort": false
+                },
+                {
+                    "id": "ladder-only",
+                    "reasoningEfforts": ["minimum", {"effort": "maximum", "isDefault": true}]
+                }
+            ]
+        }"#;
+        let got = parse_remote_models_response("https://ex/v1/models".into(), body).unwrap();
+        let rich = got.models.iter().find(|m| m.id == "xhigh-model").unwrap();
+        assert_eq!(
+            rich.reasoning_efforts
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["low", "medium", "xhigh"]
+        );
+        assert_eq!(rich.reasoning_efforts[1].name, "Medium");
+        assert!(rich.reasoning_efforts[1].is_default);
+        assert_eq!(rich.supports_reasoning_effort, Some(true));
+
+        let off = got.models.iter().find(|m| m.id == "no-thinking").unwrap();
+        assert!(off.reasoning_efforts.is_empty());
+        assert_eq!(off.supports_reasoning_effort, Some(false));
+
+        let ladder = got.models.iter().find(|m| m.id == "ladder-only").unwrap();
+        assert_eq!(
+            ladder
+                .reasoning_efforts
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["minimum", "maximum"]
+        );
+        assert!(ladder.reasoning_efforts[1].is_default);
+        assert_eq!(
+            ladder.supports_reasoning_effort,
+            Some(true),
+            "a structured ladder implies reasoning support"
+        );
+    }
+
+    #[test]
+    fn parse_remote_models_bounds_and_ignores_malformed_reasoning_metadata() {
+        let mut efforts = Vec::new();
+        for index in 0..40 {
+            efforts.push(serde_json::json!({
+                "id": format!("level-{index}"),
+                "name": "x".repeat(200),
+            }));
+        }
+        let body = serde_json::json!({
+            "data": [
+                {
+                    "id": "bounded",
+                    "reasoning_efforts": efforts,
+                    "supports_reasoning_effort": "yes"
+                },
+                {
+                    "id": "wrong-shape",
+                    "reasoning_efforts": {"id": "high"},
+                    "supports_reasoning_effort": 1
+                },
+                {
+                    "id": "junk-rows",
+                    "reasoning_efforts": [null, 7, {}, {"id": "  "}, {"id": "low"}]
+                }
+            ]
+        })
+        .to_string();
+        let got = parse_remote_models_response("https://ex/v1/models".into(), &body).unwrap();
+        let bounded = got.models.iter().find(|m| m.id == "bounded").unwrap();
+        assert_eq!(bounded.reasoning_efforts.len(), 32);
+        assert_eq!(bounded.reasoning_efforts[0].name.chars().count(), 80);
+        assert_eq!(
+            bounded.supports_reasoning_effort,
+            Some(true),
+            "a wrong-typed flag is ignored, but the ladder still supports reasoning"
+        );
+        let shape = got.models.iter().find(|m| m.id == "wrong-shape").unwrap();
+        assert!(shape.reasoning_efforts.is_empty());
+        assert_eq!(shape.supports_reasoning_effort, None);
+        let junk = got.models.iter().find(|m| m.id == "junk-rows").unwrap();
+        assert_eq!(
+            junk.reasoning_efforts
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["low"]
+        );
+        assert_eq!(junk.supports_reasoning_effort, Some(true));
+    }
+
+    #[test]
+    fn parse_remote_models_handles_failure_empty_and_partial_rows() {
+        let error = parse_remote_models_response("https://ex/v1/models".into(), "this is not json")
+            .unwrap_err();
+        assert_eq!(error, "models response is not JSON");
+
+        let empty =
+            parse_remote_models_response("https://ex/v1/models".into(), r#"{"data":[]}"#).unwrap();
+        assert!(empty.models.is_empty());
+
+        let body = r#"{
+            "data": [
+                {"id": "plain"},
+                {
+                    "id": "nulled",
+                    "context_window": null,
+                    "reasoningEfforts": null,
+                    "supportsReasoningEffort": null
+                },
+                {
+                    "id": "wrong-typed",
+                    "context_window": "128k",
+                    "reasoningEfforts": "low",
+                    "supportsReasoningEffort": "yes"
+                }
+            ]
+        }"#;
+        let got = parse_remote_models_response("https://ex/v1/models".into(), body).unwrap();
+        assert_eq!(got.models.len(), 3);
+        for model in &got.models {
+            assert_eq!(model.context_window, None, "{}", model.id);
+            assert!(model.reasoning_efforts.is_empty(), "{}", model.id);
+            assert_eq!(model.supports_reasoning_effort, None, "{}", model.id);
+        }
+    }
+
+    #[test]
+    fn parse_remote_models_keeps_the_first_row_for_a_duplicated_id() {
+        let body = r#"{
+            "data": [
+                {"id": "same", "context_window": 64000},
+                {"id": "same", "context_window": 128000, "supports_reasoning_effort": false},
+                {"id": "other", "context_window": 32000}
+            ]
+        }"#;
+        let got = parse_remote_models_response("https://ex/v1/models".into(), body).unwrap();
+        assert_eq!(
+            got.models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["other", "same"]
+        );
+        let same = got.models.iter().find(|m| m.id == "same").unwrap();
+        assert_eq!(same.context_window, Some(64_000));
+        assert_eq!(same.supports_reasoning_effort, None);
     }
 
     #[test]
@@ -6181,9 +6563,11 @@ app_models = {}
                 id: "m1".into(),
                 name: "M1".into(),
                 context_window: Some(128_000),
+                context_window_source: Some("user".into()),
                 supports_vision: None,
                 supports_video: None,
                 efforts: Vec::new(),
+                ..Default::default()
             }],
             "an unrelated save must not change what the catalog reads back"
         );
@@ -6746,6 +7130,7 @@ app_models = {}
                     id: "vision".into(),
                     name: "Vision".into(),
                     context_window: Some(1_048_576),
+                    context_window_source: Some("remote".into()),
                     supports_vision: Some(true),
                     supports_video: Some(true),
                     efforts: vec![
@@ -6760,6 +7145,10 @@ app_models = {}
                             is_default: true,
                         },
                     ],
+                    efforts_source: Some("user".into()),
+                    supports_reasoning_effort: Some(false),
+                    supports_reasoning_effort_source: Some("remote".into()),
+                    ..Default::default()
                 },
                 ProviderModelEntry {
                     id: "text".into(),
@@ -6768,6 +7157,7 @@ app_models = {}
                     supports_vision: Some(false),
                     supports_video: None,
                     efforts: Vec::new(),
+                    ..Default::default()
                 },
             ];
             upsert_custom_provider(UpsertProviderInput {
@@ -6831,8 +7221,26 @@ app_models = {}
         assert_eq!(first_provider.models[0].id, "vision");
         assert_eq!(first_provider.models[0].name, "Vision");
         assert_eq!(first_provider.models[0].context_window, Some(1_048_576));
+        assert_eq!(
+            first_provider.models[0].context_window_source.as_deref(),
+            Some("remote")
+        );
         assert_eq!(first_provider.models[0].supports_vision, Some(true));
         assert_eq!(first_provider.models[0].supports_video, Some(true));
+        assert_eq!(
+            first_provider.models[0].efforts_source.as_deref(),
+            Some("user")
+        );
+        assert_eq!(
+            first_provider.models[0].supports_reasoning_effort,
+            Some(false)
+        );
+        assert_eq!(
+            first_provider.models[0]
+                .supports_reasoning_effort_source
+                .as_deref(),
+            Some("remote")
+        );
         assert_eq!(
             first_provider.models[0]
                 .efforts

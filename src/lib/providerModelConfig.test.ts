@@ -1,15 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { CustomProvider, ProviderModelEntry } from "@/lib/api";
 import {
+  DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW,
+  defaultProviderModelEfforts,
+  effectiveModelContextWindow,
+  effectiveModelEfforts,
+  effectiveModelSupportsReasoningEffort,
   findProviderModel,
   materializeActiveModelChannel,
-  mergeRemoteModelCaps,
+  mergeRemoteModelMetadata,
   modelsForContextWindow,
+  normalizeModelEfforts,
   resolveProviderContextWindow,
   resolveProviderEfforts,
   resolveProviderSupportsVideo,
   resolveProviderSupportsVision,
   withModelContextWindow,
+  withResolvedModelMetadata,
 } from "./providerModelConfig";
 
 const channelEfforts = [
@@ -123,6 +130,145 @@ describe("resolveProviderContextWindow / vision", () => {
   });
 });
 
+describe("default per-model metadata", () => {
+  it("uses a 1M context window and the approved four-level ladder", () => {
+    const context = effectiveModelContextWindow({});
+    expect(context).toEqual({
+      value: DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW,
+      source: "fallback",
+    });
+    expect(DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW).toBe(1_000_000);
+
+    const efforts = effectiveModelEfforts({});
+    expect(efforts.source).toBe("fallback");
+    expect(efforts.value.map((effort) => effort.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+    expect(efforts.value.find((effort) => effort.isDefault)?.id).toBe("medium");
+    expect(defaultProviderModelEfforts()).toEqual(efforts.value);
+  });
+
+  it("treats an existing value without a source marker as user-set", () => {
+    expect(
+      effectiveModelContextWindow({ contextWindow: 128_000 }),
+    ).toEqual({ value: 128_000, source: "user" });
+    expect(
+      effectiveModelEfforts({ efforts: [{ id: "max", isDefault: true }] }),
+    ).toMatchObject({
+      source: "user",
+      value: [{ id: "max", isDefault: true }],
+    });
+    expect(
+      effectiveModelSupportsReasoningEffort({ supportsReasoningEffort: false }),
+    ).toEqual({ value: false, source: "user" });
+  });
+
+  it("keeps an explicit marker when the value exists", () => {
+    expect(
+      effectiveModelContextWindow({
+        contextWindow: 64_000,
+        contextWindowSource: "remote",
+      }),
+    ).toEqual({ value: 64_000, source: "remote" });
+    expect(
+      effectiveModelContextWindow({
+        contextWindow: 64_000,
+        contextWindowSource: "fallback",
+      }),
+    ).toEqual({ value: 64_000, source: "fallback" });
+    expect(
+      effectiveModelSupportsReasoningEffort({
+        supportsReasoningEffort: true,
+        supportsReasoningEffortSource: "fallback",
+      }),
+    ).toEqual({ value: true, source: "fallback" });
+  });
+
+  it("falls back to the 1M default when the API value is missing or invalid", () => {
+    for (const window of [null, 0, -5, Number.NaN]) {
+      expect(effectiveModelContextWindow({ contextWindow: window })).toEqual({
+        value: 1_000_000,
+        source: "fallback",
+      });
+    }
+  });
+
+  it("defaults reasoning support to true when the API says nothing", () => {
+    expect(effectiveModelSupportsReasoningEffort({})).toEqual({
+      value: true,
+      source: "fallback",
+    });
+  });
+});
+
+describe("normalizeModelEfforts", () => {
+  it("keeps API-marked defaults and original custom ids", () => {
+    const efforts = normalizeModelEfforts([
+      { id: "minimum", name: "Min" },
+      { id: "maximum", name: "Max", isDefault: true },
+    ]);
+    expect(efforts.map((effort) => effort.id)).toEqual(["minimum", "maximum"]);
+    expect(efforts.find((effort) => effort.isDefault)?.id).toBe("maximum");
+  });
+
+  it("picks medium when the API marks no default", () => {
+    const efforts = normalizeModelEfforts([
+      { id: "low" },
+      { id: "medium" },
+      { id: "high" },
+    ]);
+    expect(efforts.find((effort) => effort.isDefault)?.id).toBe("medium");
+  });
+
+  it("picks the first valid id when medium is absent", () => {
+    const efforts = normalizeModelEfforts([
+      { id: "minimum" },
+      { id: "maximum" },
+    ]);
+    expect(efforts.find((effort) => effort.isDefault)?.id).toBe("minimum");
+  });
+
+  it("drops blank and duplicate ids and keeps only one default", () => {
+    const efforts = normalizeModelEfforts([
+      { id: " low ", name: " " },
+      { id: "low", isDefault: true },
+      { id: "  " },
+      { id: "high", isDefault: true },
+    ]);
+    expect(efforts).toEqual([
+      { id: "low", name: "low", isDefault: true },
+      { id: "high", name: "high", isDefault: false },
+    ]);
+  });
+});
+
+describe("withResolvedModelMetadata", () => {
+  it("materializes fallback values and markers without touching legacy caps", () => {
+    expect(
+      withResolvedModelMetadata({
+        id: "m1",
+        name: "M1",
+        supportsVision: true,
+        supportsVideo: false,
+      }),
+    ).toEqual({
+      id: "m1",
+      name: "M1",
+      contextWindow: 1_000_000,
+      contextWindowSource: "fallback",
+      supportsVision: true,
+      supportsVideo: false,
+      efforts: defaultProviderModelEfforts(),
+      effortsSource: "fallback",
+      supportsReasoningEffort: true,
+      supportsReasoningEffortSource: "fallback",
+    });
+  });
+});
+
 describe("materializeActiveModelChannel", () => {
   it("copies the picked model's extras onto channel fields for Host", () => {
     const p = provider({
@@ -148,44 +294,168 @@ describe("materializeActiveModelChannel", () => {
   });
 });
 
-describe("mergeRemoteModelCaps", () => {
-  it("applies API context / modality when the live catalog provides them", () => {
+describe("mergeRemoteModelMetadata", () => {
+  it("applies API context and reasoning metadata when the model has no override", () => {
     const model: ProviderModelEntry = { id: "ox", name: "Ox" };
     expect(
-      mergeRemoteModelCaps(model, {
+      mergeRemoteModelMetadata(model, {
         id: "ox",
         contextWindow: 1_048_576,
-        supportsVision: true,
-        supportsVideo: false,
+        reasoningEfforts: [
+          { id: "low", name: "Low" },
+          { id: "high", name: "High", isDefault: true },
+        ],
+        supportsReasoningEffort: true,
       }),
     ).toEqual({
       id: "ox",
       name: "Ox",
       contextWindow: 1_048_576,
-      supportsVision: true,
-      supportsVideo: false,
+      contextWindowSource: "remote",
+      efforts: [
+        { id: "low", name: "Low", isDefault: false },
+        { id: "high", name: "High", isDefault: true },
+      ],
+      effortsSource: "remote",
+      supportsReasoningEffort: true,
+      supportsReasoningEffortSource: "remote",
     });
   });
 
-  it("does not invent caps when the live row omits them", () => {
+  it("uses the approved fallback when the live row omits metadata", () => {
+    const model: ProviderModelEntry = { id: "ox", name: "Ox" };
+    expect(mergeRemoteModelMetadata(model, { id: "ox" })).toEqual({
+      id: "ox",
+      name: "Ox",
+      contextWindow: 1_000_000,
+      contextWindowSource: "fallback",
+      efforts: defaultProviderModelEfforts(),
+      effortsSource: "fallback",
+      supportsReasoningEffort: true,
+      supportsReasoningEffortSource: "fallback",
+    });
+  });
+
+  it("preserves user-set context, ladder and support flag on refresh", () => {
     const model: ProviderModelEntry = {
       id: "ox",
       name: "Ox",
-      contextWindow: 8000,
-      supportsVision: true,
+      contextWindow: 64_000,
+      contextWindowSource: "user",
+      efforts: [{ id: "maximum", name: "Max", isDefault: true }],
+      effortsSource: "user",
+      supportsReasoningEffort: false,
+      supportsReasoningEffortSource: "user",
     };
-    expect(mergeRemoteModelCaps(model, { id: "ox" })).toEqual(model);
+    expect(
+      mergeRemoteModelMetadata(model, {
+        id: "ox",
+        contextWindow: 1_048_576,
+        reasoningEfforts: [{ id: "low", isDefault: true }],
+        supportsReasoningEffort: true,
+      }),
+    ).toEqual(model);
+  });
+
+  it("updates API-sourced values and drops a value the API no longer has", () => {
+    const model: ProviderModelEntry = {
+      id: "ox",
+      name: "Ox",
+      contextWindow: 128_000,
+      contextWindowSource: "remote",
+      efforts: [{ id: "high", name: "High", isDefault: true }],
+      effortsSource: "remote",
+      supportsReasoningEffort: true,
+      supportsReasoningEffortSource: "remote",
+    };
+    expect(
+      mergeRemoteModelMetadata(model, {
+        id: "ox",
+        contextWindow: 1_048_576,
+        reasoningEfforts: [{ id: "low", name: "Low" }],
+        supportsReasoningEffort: false,
+      }),
+    ).toEqual({
+      id: "ox",
+      name: "Ox",
+      contextWindow: 1_048_576,
+      contextWindowSource: "remote",
+      efforts: [{ id: "low", name: "Low", isDefault: true }],
+      effortsSource: "remote",
+      supportsReasoningEffort: false,
+      supportsReasoningEffortSource: "remote",
+    });
+    expect(mergeRemoteModelMetadata(model, { id: "ox" })).toMatchObject({
+      contextWindow: 1_000_000,
+      contextWindowSource: "fallback",
+      efforts: defaultProviderModelEfforts(),
+      effortsSource: "fallback",
+      supportsReasoningEffort: true,
+      supportsReasoningEffortSource: "fallback",
+    });
+  });
+
+  it("keeps a preset/fallback value when the API does not provide one", () => {
+    const model: ProviderModelEntry = {
+      id: "ox",
+      name: "Ox",
+      contextWindow: 1_048_576,
+      contextWindowSource: "fallback",
+      efforts: [{ id: "max", name: "Max", isDefault: true }],
+      effortsSource: "fallback",
+    };
+    expect(mergeRemoteModelMetadata(model, { id: "ox" })).toEqual({
+      ...model,
+      supportsReasoningEffort: true,
+      supportsReasoningEffortSource: "fallback",
+    });
+  });
+
+  it("chooses medium when the API ladder has no default", () => {
+    const merged = mergeRemoteModelMetadata(
+      { id: "ox", name: "Ox" },
+      {
+        id: "ox",
+        reasoningEfforts: [{ id: "low" }, { id: "medium" }, { id: "high" }],
+      },
+    );
+    expect(merged.efforts?.find((effort) => effort.isDefault)?.id).toBe(
+      "medium",
+    );
+  });
+
+  it("keeps legacy vision/video flags untouched", () => {
+    const model: ProviderModelEntry = {
+      id: "ox",
+      name: "Ox",
+      supportsVision: false,
+      supportsVideo: true,
+    };
+    const merged = mergeRemoteModelMetadata(model, {
+      id: "ox",
+      supportsVision: true,
+      supportsVideo: false,
+    });
+    expect(merged.supportsVision).toBe(false);
+    expect(merged.supportsVideo).toBe(true);
+  });
+
+  it("ignores a remote row for a different model id", () => {
+    const model: ProviderModelEntry = { id: "ox", name: "Ox" };
+    expect(mergeRemoteModelMetadata(model, { id: "other" })).toBe(model);
+    expect(mergeRemoteModelMetadata(model, null)).toBe(model);
   });
 });
 
 describe("withModelContextWindow", () => {
-  it("updates the active catalog row", () => {
+  it("updates the active catalog row and marks it user-set", () => {
     const next = withModelContextWindow(
       [{ id: "a", name: "A" }, { id: "b", name: "B" }],
       "b",
       32000,
     );
     expect(next.find((m) => m.id === "b")?.contextWindow).toBe(32000);
+    expect(next.find((m) => m.id === "b")?.contextWindowSource).toBe("user");
     expect(next.find((m) => m.id === "a")?.contextWindow).toBeUndefined();
   });
 });
@@ -201,17 +471,14 @@ describe("modelsForContextWindow", () => {
     );
     expect(next).toEqual([
       { id: "a", name: "A" },
-      { id: "b", name: "B", contextWindow: 32000 },
+      { id: "b", name: "B", contextWindow: 32000, contextWindowSource: "user" },
     ]);
   });
 
   it("keeps an explicitly empty catalog empty", () => {
     // An empty `app_models` list is a real user choice; re-adding the channel
     // model would revive a catalog the user deliberately cleared.
-    const next = modelsForContextWindow(
-      { model: "m1", models: [] },
-      32000,
-    );
+    const next = modelsForContextWindow({ model: "m1", models: [] }, 32000);
     expect(next).toEqual([]);
   });
 

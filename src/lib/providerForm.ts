@@ -6,6 +6,7 @@
  */
 import * as api from "@/lib/api";
 import type { MessageKey } from "@/i18n";
+import { withResolvedModelMetadata } from "@/lib/providerModelConfig";
 import {
   alignGrokPresetEfforts,
   applyPresetEndpoint,
@@ -25,9 +26,15 @@ export type FormModel = {
   /** Display name shown on composer chip / menu. */
   name: string;
   contextWindow?: number | null;
+  contextWindowSource?: api.ProviderModelFieldSource;
+  /** Legacy flag; kept for a lossless save but not exposed in Settings. */
   supportsVision?: boolean;
+  /** Legacy flag; kept for a lossless save but not exposed in Settings. */
   supportsVideo?: boolean;
   efforts?: FormEffort[];
+  effortsSource?: api.ProviderModelFieldSource;
+  supportsReasoningEffort?: boolean;
+  supportsReasoningEffortSource?: api.ProviderModelFieldSource;
 };
 
 export function toFormEfforts(
@@ -42,13 +49,18 @@ export function toFormEfforts(
 }
 
 export function asFormModel(m: api.ProviderModelEntry): FormModel {
+  const resolved = withResolvedModelMetadata(m);
   return {
-    id: m.id,
-    name: m.name,
-    contextWindow: m.contextWindow ?? null,
-    supportsVision: m.supportsVision,
-    supportsVideo: m.supportsVideo,
-    efforts: toFormEfforts(m.efforts),
+    id: resolved.id,
+    name: resolved.name,
+    contextWindow: resolved.contextWindow ?? null,
+    contextWindowSource: resolved.contextWindowSource,
+    supportsVision: resolved.supportsVision,
+    supportsVideo: resolved.supportsVideo,
+    efforts: toFormEfforts(resolved.efforts),
+    effortsSource: resolved.effortsSource,
+    supportsReasoningEffort: resolved.supportsReasoningEffort ?? true,
+    supportsReasoningEffortSource: resolved.supportsReasoningEffortSource,
   };
 }
 
@@ -65,7 +77,7 @@ export type FormState = {
   efforts: FormEffort[];
   /** Extra rules appended to the system prompt on this channel. */
   appendPrompt: string;
-  /** Explicit: this relay accepts image pixels. */
+  /** Legacy channel image flag; preserved but no longer editable. */
   supportsVision: boolean;
   /** External signup URL for “Get API Key” (from preset). */
   apiKeyUrl: string | null;
@@ -102,22 +114,16 @@ export function modelsFromProvider(p: api.CustomProvider): FormModel[] {
   // The host always emits the App catalog, including an explicit empty clear
   // (`[]`). Only a missing array means a legacy single-model provider.
   if (Array.isArray(p.models)) {
-    return p.models.map((m) => ({
-      id: m.id,
-      name: m.name?.trim() || m.id,
-      contextWindow: m.contextWindow ?? null,
-      supportsVision: m.supportsVision,
-      supportsVideo: m.supportsVideo,
-      efforts: m.efforts?.map((e) => ({
-        id: e.id,
-        name: e.name?.trim() || e.id,
-        isDefault: !!e.isDefault,
-      })),
-    }));
+    return p.models.map((m) =>
+      asFormModel({
+        ...m,
+        name: m.name?.trim() || m.id,
+      }),
+    );
   }
   const id = p.model?.trim() ?? "";
   if (!id) return [];
-  return [{ id, name: id }];
+  return [asFormModel({ id, name: id })];
 }
 
 /**
@@ -142,20 +148,40 @@ export function formModelsPayload(models: FormModel[]): api.ProviderModelEntry[]
   if (blankModelIdIndex(models) >= 0) {
     throw new Error("model rows require a non-empty id");
   }
-  return models.map((m) => ({
-    id: m.id.trim(),
-    name: m.name.trim() || m.id.trim(),
-    contextWindow: m.contextWindow ?? null,
-    supportsVision: m.supportsVision,
-    supportsVideo: m.supportsVideo,
-    efforts: (m.efforts ?? [])
-      .map((e) => ({
-        id: e.id.trim(),
-        name: e.name.trim() || e.id.trim(),
-        isDefault: !!e.isDefault,
-      }))
-      .filter((e) => e.id),
-  }));
+  return models.map((m) => {
+    const resolved = withResolvedModelMetadata({
+      id: m.id.trim(),
+      name: m.name.trim() || m.id.trim(),
+      contextWindow: m.contextWindow ?? null,
+      contextWindowSource: m.contextWindowSource,
+      supportsVision: m.supportsVision,
+      supportsVideo: m.supportsVideo,
+      efforts: (m.efforts ?? [])
+        .map((e) => ({
+          id: e.id.trim(),
+          name: e.name.trim() || e.id.trim(),
+          isDefault: !!e.isDefault,
+        }))
+        .filter((e) => e.id),
+      effortsSource: m.effortsSource,
+      supportsReasoningEffort: m.supportsReasoningEffort,
+      supportsReasoningEffortSource: m.supportsReasoningEffortSource,
+    });
+    return {
+      id: resolved.id,
+      name: resolved.name,
+      contextWindow: resolved.contextWindow ?? null,
+      contextWindowSource: resolved.contextWindowSource,
+      supportsVision: resolved.supportsVision,
+      supportsVideo: resolved.supportsVideo,
+      efforts: resolved.efforts ?? [],
+      effortsSource: resolved.effortsSource,
+      // An absent field preserves the legacy default (supported).
+      supportsReasoningEffort: resolved.supportsReasoningEffort ?? true,
+      supportsReasoningEffortSource:
+        resolved.supportsReasoningEffortSource ?? "fallback",
+    };
+  });
 }
 
 /** Order-sensitive equality for canonical catalog rows. */
@@ -185,7 +211,7 @@ function sameCatalogRows(
  * `models` to send on save. `undefined` leaves the stored `app_models` alone,
  * which is the only safe choice when the stored value is unreadable and the
  * user changed another field: re-sending the read fallback row would overwrite
- * it. Metadata-only changes (context window, caps, efforts) also stay out of a
+ * it. Metadata-only changes (context window, legacy caps, efforts) also stay out of a
  * corrupt provider's payload for the same reason. A create that collides with
  * an existing id is an update, so it follows the same comparison. Without a
  * stored provider there is no baseline to compare against, so the rows
@@ -282,18 +308,25 @@ export function formFromPreset(preset: ProviderPreset, endpointId?: string): For
     // Presets carry no channel rules — opt-in per provider.
     appendPrompt: "",
     supportsVision: !!preset.supportsVision,
-    models: preset.models.map((m) => ({
-      id: m.id,
-      name: m.name || m.id,
-      contextWindow: m.contextWindow ?? preset.contextWindow ?? null,
-      supportsVision: m.supportsVision ?? preset.supportsVision,
-      supportsVideo: m.supportsVideo,
-      efforts: (m.efforts?.length ? m.efforts : preset.efforts).map((e) => ({
-        id: e.id,
-        name: e.name || e.id,
-        isDefault: !!e.isDefault,
-      })),
-    })),
+    models: preset.models.map((m) =>
+      asFormModel({
+        id: m.id,
+        name: m.name || m.id,
+        contextWindow: m.contextWindow ?? preset.contextWindow ?? null,
+        // Preset metadata is a non-user default: a live fetch may replace it.
+        contextWindowSource: "fallback",
+        supportsVision: m.supportsVision ?? preset.supportsVision,
+        supportsVideo: m.supportsVideo,
+        efforts: (m.efforts?.length ? m.efforts : preset.efforts).map((e) => ({
+          id: e.id,
+          name: e.name || e.id,
+          isDefault: !!e.isDefault,
+        })),
+        effortsSource: "fallback",
+        supportsReasoningEffort: true,
+        supportsReasoningEffortSource: "fallback",
+      }),
+    ),
     efforts: preset.efforts.map((e) => ({
       id: e.id,
       name: e.name || e.id,

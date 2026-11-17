@@ -35,7 +35,7 @@ describe("toFormEfforts", () => {
 });
 
 describe("asFormModel", () => {
-  it("normalizes contextWindow null and passes flags through", () => {
+  it("materializes the 1M / four-level defaults and keeps legacy flags", () => {
     const out = asFormModel({
       id: "m1",
       name: "M1",
@@ -43,9 +43,34 @@ describe("asFormModel", () => {
       supportsVision: true,
       supportsVideo: false,
     } as Parameters<typeof asFormModel>[0]);
-    expect(out.contextWindow).toBeNull();
+    expect(out.contextWindow).toBe(1_000_000);
+    expect(out.contextWindowSource).toBe("fallback");
     expect(out.supportsVision).toBe(true);
-    expect(out.efforts).toBeUndefined();
+    expect(out.supportsVideo).toBe(false);
+    expect(out.efforts?.map((effort) => effort.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+    expect(out.efforts?.find((effort) => effort.isDefault)?.id).toBe("medium");
+    expect(out.effortsSource).toBe("fallback");
+    expect(out.supportsReasoningEffort).toBe(true);
+    expect(out.supportsReasoningEffortSource).toBe("fallback");
+  });
+
+  it("keeps an existing value without a source marker as user-set", () => {
+    const out = asFormModel({
+      id: "m1",
+      name: "M1",
+      contextWindow: 128_000,
+      efforts: [{ id: "maximum", name: "Maximum", isDefault: true }],
+      supportsReasoningEffort: false,
+    });
+    expect(out.contextWindowSource).toBe("user");
+    expect(out.effortsSource).toBe("user");
+    expect(out.supportsReasoningEffort).toBe(false);
+    expect(out.supportsReasoningEffortSource).toBe("user");
   });
 });
 
@@ -59,12 +84,26 @@ describe("modelsFromProvider", () => {
     expect(out[1]?.name).toBe("B");
   });
 
-  it("falls back to the legacy single model field", () => {
+  it("falls back to the legacy single model field with metadata defaults", () => {
     const out = modelsFromProvider({
       id: "p",
       model: "legacy-id",
     } as Parameters<typeof modelsFromProvider>[0]);
-    expect(out).toEqual([{ id: "legacy-id", name: "legacy-id" }]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      id: "legacy-id",
+      name: "legacy-id",
+      contextWindow: 1_000_000,
+      contextWindowSource: "fallback",
+      supportsReasoningEffort: true,
+      supportsReasoningEffortSource: "fallback",
+    });
+    expect(out[0]?.efforts?.map((effort) => effort.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
   });
 
   it("keeps an explicitly cleared catalog empty", () => {
@@ -115,23 +154,24 @@ describe("formModelsPayload", () => {
       { id: " m1 ", name: "  " },
       { id: "m2", name: "M2" },
     ] as Parameters<typeof formModelsPayload>[0]);
+    const defaults = {
+      contextWindow: 1_000_000,
+      contextWindowSource: "fallback",
+      supportsVision: undefined,
+      supportsVideo: undefined,
+      efforts: [
+        { id: "low", name: "low", isDefault: false },
+        { id: "medium", name: "medium", isDefault: true },
+        { id: "high", name: "high", isDefault: false },
+        { id: "xhigh", name: "xhigh", isDefault: false },
+      ],
+      effortsSource: "fallback",
+      supportsReasoningEffort: true,
+      supportsReasoningEffortSource: "fallback",
+    };
     expect(out).toEqual([
-      {
-        id: "m1",
-        name: "m1",
-        contextWindow: null,
-        supportsVision: undefined,
-        supportsVideo: undefined,
-        efforts: [],
-      },
-      {
-        id: "m2",
-        name: "M2",
-        contextWindow: null,
-        supportsVision: undefined,
-        supportsVideo: undefined,
-        efforts: [],
-      },
+      { id: "m1", name: "m1", ...defaults },
+      { id: "m2", name: "M2", ...defaults },
     ]);
   });
 
@@ -474,5 +514,51 @@ describe("ccSwitchStatusKey", () => {
     expect(ccSwitchStatusKey("proxy_managed")).toBe("prov.ccSwitch.status.proxy_managed");
     expect(ccSwitchStatusKey("exists")).toBe("prov.ccSwitch.status.exists");
     expect(ccSwitchStatusKey("whatever")).toBe("prov.ccSwitch.status.invalid");
+  });
+});
+
+describe("per-model metadata persistence", () => {
+  it("keeps legacy vision/video flags while saving metadata", () => {
+    const out = formModelsPayload([
+      {
+        id: "m1",
+        name: "M1",
+        contextWindow: 128000,
+        contextWindowSource: "user",
+        supportsVision: true,
+        supportsVideo: false,
+        efforts: [{ id: "high", name: "High", isDefault: true }],
+        effortsSource: "user",
+        supportsReasoningEffort: false,
+        supportsReasoningEffortSource: "user",
+      },
+    ]);
+    expect(out).toEqual([
+      {
+        id: "m1",
+        name: "M1",
+        contextWindow: 128000,
+        contextWindowSource: "user",
+        supportsVision: true,
+        supportsVideo: false,
+        efforts: [{ id: "high", name: "High", isDefault: true }],
+        effortsSource: "user",
+        supportsReasoningEffort: false,
+        supportsReasoningEffortSource: "user",
+      },
+    ]);
+  });
+
+  it("seeds preset rows with the approved fallbacks for API refresh", () => {
+    const preset = PROVIDER_PRESETS[0];
+    const form = formFromPreset(preset);
+    expect(form.models.length).toBeGreaterThan(0);
+    expect(form.models[0]?.contextWindow).toBe(
+      preset.contextWindow ?? 1_000_000,
+    );
+    expect(form.models[0]?.contextWindowSource).toBe("fallback");
+    expect(form.models[0]?.effortsSource).toBe("fallback");
+    expect(form.models[0]?.supportsReasoningEffort).toBe(true);
+    expect(form.models[0]?.supportsReasoningEffortSource).toBe("fallback");
   });
 });

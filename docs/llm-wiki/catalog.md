@@ -23,7 +23,7 @@ CLI `models_cache.json` 的 `info.context_window` 是目录默认值（Grok 4.7 
 
 `/context-window` 与 Grok Build pager 相同：接受 `256k` / `1m`（大小写不敏感）或原始 token 数；空参数给出用法和当前值；不在列表里则报未知。新对话还没有 `session/new` 时，选择会记在 composer 上并在第一次建会话的 `session/set_model` 里带上 `_meta.contextWindow`，菜单立刻显示新长度。只有一个或没有可选窗口时命令说明该模型不能选。缩到比当前用量更小的窗口时，自动压缩由 CLI 自己做。
 
-自定义提供商仍在同一行手填 token，写入通道配置，不走这条 ACP。
+自定义提供商的上下文窗口在提供商设置 → 模型齿轮里按模型编辑（写入 `app_models` 与通道配置，不走这条 ACP）。API 未提供时使用 **1M** 默认；用户显式值优先于 `/models` 元数据。
 
 `/context` 读取 live 会话的 `x.ai/session/info`（先 `_x.ai/session/info`）。用量菜单按 pager 拆成系统提示、消息、推理/开销、空闲，工具定义、技能、工作流、MCP 标成已经算进上面的行。自动压缩阈值和剩余 token 用快照里的 `autoCompactThresholdPercent`。没有活动会话时命令报错，不把这行发给模型。会话信息拿不到时，菜单仍用原来的角色估算。
 
@@ -56,7 +56,9 @@ Composer **UI 阶梯**统一为 4 档（低 → 高）：**低 / 中 / 高 / 极
 2. 否则官方 catalog 的 `reasoningEfforts`（**以 CLI `models_cache` / `isDefault` 为准**）
 3. 再回退：`grok-4.7` / `grok-4.7-build-fast` / `grok-4.6` → `GROK_4_6_EFFORTS`（`low` · `medium` · `high` · `xhigh`，默认 **xhigh**）；其余 → `GROK_BUILD_EFFORTS`（`low` · `medium` · `high`，默认 **high**）
 
-自定义通道默认档（`GROK_CHANNEL_EFFORTS`，空白自定义点「恢复 Grok 默认」得到）：`low` · `medium` · `high` · `max`——4 档，`max` 映射极高 UI 槽（catalog kind `tier4`）。**Grok 中转预设**（Amux / 云驿 / AI98PRO）列出公开 API 的 `grok-4.7`、`grok-4.6`、`grok-4.5`（不含 Fast），思考档 `low` · `medium` · `high` · `xhigh`（默认 **xhigh**；显示名 Low / Medium / High / Extra high）。官方 `GROK_BUILD_EFFORTS` 仍为 3 档。
+自定义通道默认档（`GROK_CHANNEL_EFFORTS`，空白自定义点「恢复 Grok 默认」得到）：`low` · `medium` · `high` · `max`——4 档，`max` 映射极高 UI 槽（catalog kind `tier4`）。
+
+自定义提供商**模型级**默认档（`/models` 未提供 reasoning 元数据、用户未覆盖时）：`low` · `medium` · `high` · `xhigh`，默认 `medium`；按原始 id 保存，不做 DeepSeek 或官方阶梯映射。模型可关闭「支持推理」，Composer 在下游据此不展示该模型的推理档位。**Grok 中转预设**（Amux / 云驿 / AI98PRO）列出公开 API 的 `grok-4.7`、`grok-4.6`、`grok-4.5`（不含 Fast），思考档 `low` · `medium` · `high` · `xhigh`（默认 **xhigh**；显示名 Low / Medium / High / Extra high）。官方 `GROK_BUILD_EFFORTS` 仍为 3 档。
 
 展示标签走 UI 阶梯 i18n（`effort.low|medium|high|xhigh`），不直接用上游 id 文案。
 

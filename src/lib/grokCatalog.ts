@@ -160,7 +160,7 @@ export const DEFAULT_MODEL_ID =
  * Fallback context window (tokens) for custom providers that have not set one.
  * Official models prefer the live `contextWindow` from `initialize` / cache.
  */
-export const DEFAULT_CUSTOM_CONTEXT_WINDOW = 200000;
+export const DEFAULT_CUSTOM_CONTEXT_WINDOW = 1_000_000;
 
 /**
  * Cold-start default reasoning depth when no live catalog is loaded yet.
@@ -661,7 +661,7 @@ export function findModel(
  * 1. Agent-reported CLI denominator (`auto_compact_started.context_window` /
  *    occupancy usage) when positive — matches `/session-info`.
  * 2. Custom provider route: channel `contextWindow`, else
- *    {@link DEFAULT_CUSTOM_CONTEXT_WINDOW} (200k). **Custom only.**
+ *    {@link DEFAULT_CUSTOM_CONTEXT_WINDOW} (1M). **Custom only.**
  * 3. Official route: live model `contextWindow` from `models_cache` /
  *    `initialize` merge. Never invent 200k when live says 500k (or any
  *    other catalog value). `null` when unknown (chip hides the % row).
@@ -673,7 +673,7 @@ export function resolveContextWindow(opts: {
   /**
    * Agent-reported context window (tokens). When set and positive, wins
    * over catalog so Grok Build 1.0 occupancy (500k) is never replaced by a
-   * stale catalog or the custom-channel 200k default.
+   * stale catalog or the custom-channel 1M default.
    */
   agentContextWindow?: number | null;
 }): number | null {

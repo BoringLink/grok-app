@@ -52,7 +52,7 @@ export type ProvidersEmptyState = {
 
 export type RemoteProviderModelCapability = {
   id: string;
-  supportsBackendSearch?: boolean;
+  supportsBackendSearch?: boolean | null;
 };
 
 /**
