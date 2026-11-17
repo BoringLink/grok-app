@@ -46,11 +46,11 @@ export const enProviders = {
   "prov.fetchedCapsApplied":
     "Loaded {n} models. Applied available context window and reasoning metadata from the API.",
   "prov.effortsModelHint":
-    "Reasoning levels for this model, saved by their original ids. Values are sent as reasoning_effort. When the API advertises none, low/medium/high/xhigh is used with medium as the default.",
+    "Reasoning levels keep their original ids and are sent as reasoning_effort. Without an API ladder, App uses low/medium/high/xhigh (medium default). Enable Off to add none to Composer for faster responses.",
   "prov.modelContextWindowInvalid": "Enter a positive whole number of tokens, or leave empty to use the API value or the 1M default.",
-  "prov.modelSupportsReasoning": "Supports reasoning levels",
-  "prov.modelSupportsReasoningHint": "Turn off when this model cannot think or the relay rejects reasoning_effort. The composer then hides reasoning levels for this model.",
-  "prov.modelSupportsReasoningOn": "Reasoning supported",
+  "prov.modelSupportsReasoning": "Reasoning Off",
+  "prov.modelSupportsReasoningHint": "A configured reasoning ladder means this model supports extended reasoning. Enable Off so Composer can disable it for faster responses.",
+  "prov.modelSupportsReasoningOn": "Allow Off in Composer",
   "prov.modelUseApiDefault": "Use API / default",
   "prov.mode": "Provider mode",
   "prov.mode.generic": "Generic OpenAI-compatible relay",

@@ -331,4 +331,5 @@ export const zhTWSession = {
   "session.journalLoadTimedOut": "聊天記錄載入逾時。已盡量顯示快取內容，可再次開啟對話重試。",
   "session.journalLoadFailed": "無法載入聊天記錄。已盡量顯示快取內容，可再次開啟對話重試。",
   "session.connectClaimTimedOut": "此對話仍有一次連線進行中，請稍後再試。",
+  "session.pendingSettingsRetry": "無法套用待處理的工作階段設定。請重新連線再試一次。",
 };

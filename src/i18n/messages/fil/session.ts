@@ -331,4 +331,5 @@ export const filSession = {
   "session.journalLoadTimedOut": "Masyadong matagal ang pag-load ng history. Ipinapakita ang cache kung meron — buksan ulit ang chat para subukan.",
   "session.journalLoadFailed": "Hindi ma-load ang history. Ipinapakita ang cache kung meron — buksan ulit ang chat para subukan.",
   "session.connectClaimTimedOut": "May ibang connect pa para sa chat na ito. Subukan ulit sandali.",
+  "session.pendingSettingsRetry": "Hindi mailapat ang mga nakabinbing setting ng session. Kumonekta muli para subukan ulit.",
 };

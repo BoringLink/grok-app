@@ -45,11 +45,11 @@ export const taProviders = {
   "prov.fetchedCapsApplied":
     "{n} மாடல்கள் ஏற்றப்பட்டன. API-யில் கிடைத்த context window மற்றும் சிந்தனை மெட்டாடேட்டா பயன்படுத்தப்பட்டது.",
   "prov.effortsModelHint":
-    "இந்த மாடலின் சிந்தனை நிலைகள் அசல் id-களுடன் சேமிக்கப்படும். மதிப்புகள் reasoning_effort ஆக அனுப்பப்படும். API எதுவும் வழங்கவில்லை என்றால் low/medium/high/xhigh பயன்படுத்தப்படும், medium இயல்புநிலை.",
+    "சிந்தனை நிலைகள் அவற்றின் அசல் id-களைத் தக்கவைத்து reasoning_effort ஆக அனுப்பப்படும். API ladder இல்லையெனில் App low/medium/high/xhigh பயன்படுத்தும்; medium இயல்புநிலை. விரைவான பதில்களுக்கு Composer-இல் none சேர்க்க Off-ஐ இயக்கவும்.",
   "prov.modelContextWindowInvalid": "டோக்கன் எண்ணிக்கையை நேர்மறை முழு எண்ணாக உள்ளிடவும், அல்லது காலியாக விட்டால் API மதிப்பு அல்லது 1M இயல்புநிலை பயன்படுத்தப்படும்.",
-  "prov.modelSupportsReasoning": "சிந்தனை நிலைகளை ஆதரிக்கிறது",
-  "prov.modelSupportsReasoningHint": "இந்த மாடல் சிந்திக்க முடியாவிட்டால் அல்லது relay reasoning_effort-ஐ நிராகரித்தால் அணைக்கவும். Composer இந்த மாடலுக்கான சிந்தனை நிலைகளை மறைக்கும்.",
-  "prov.modelSupportsReasoningOn": "சிந்தனை ஆதரவு",
+  "prov.modelSupportsReasoning": "சிந்தனையை முடக்கு",
+  "prov.modelSupportsReasoningHint": "சிந்தனை நிலைகள் அமைக்கப்பட்டிருந்தால், இந்த மாடல் விரிவான சிந்தனையை ஆதரிக்கிறது. வேகமான பதில்களுக்கு Composer அதை முடக்க Off-ஐ இயக்கவும்.",
+  "prov.modelSupportsReasoningOn": "Composer-இல் Off-ஐ அனுமதி",
   "prov.modelUseApiDefault": "API / இயல்புநிலையைப் பயன்படுத்து",
   "prov.mode": "வழங்குநர் முறை",
   "prov.mode.generic": "பொதுவான OpenAI-இணக்கமான ரிலே",

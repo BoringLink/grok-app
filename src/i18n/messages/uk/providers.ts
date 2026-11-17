@@ -45,11 +45,11 @@ export const ukProviders = {
   "prov.fetchedCapsApplied":
     "Завантажено моделей: {n}. Доступні метадані контексту й міркування застосовано з API.",
   "prov.effortsModelHint":
-    "Рівні міркування цієї моделі зберігаються з їхніми початковими id. Значення надсилаються як reasoning_effort. Якщо API їх не надає, використовуються low/medium/high/xhigh із типовим medium.",
+    "Рівні зберігають початкові id і надсилаються як reasoning_effort. Якщо API не надає ladder, App використовує low/medium/high/xhigh із типовим medium. Увімкніть Off, щоб додати none до Composer і пришвидшити відповіді.",
   "prov.modelContextWindowInvalid": "Введіть додатне ціле число токенів або залиште поле порожнім, щоб використати значення API чи типове значення 1M.",
-  "prov.modelSupportsReasoning": "Підтримує рівні міркування",
-  "prov.modelSupportsReasoningHint": "Вимкніть, якщо ця модель не вміє міркувати або релей відхиляє reasoning_effort. Composer тоді приховає рівні міркування для цієї моделі.",
-  "prov.modelSupportsReasoningOn": "Міркування підтримується",
+  "prov.modelSupportsReasoning": "Вимкнути міркування",
+  "prov.modelSupportsReasoningHint": "Налаштовані рівні означають, що модель підтримує розширені міркування. Увімкніть Off, щоб Composer вимикав їх для швидшої відповіді.",
+  "prov.modelSupportsReasoningOn": "Дозволити Off у Composer",
   "prov.modelUseApiDefault": "Використати API / типове",
   "prov.mode": "Режим провайдера",
   "prov.mode.generic": "Універсальне OpenAI-сумісне реле",

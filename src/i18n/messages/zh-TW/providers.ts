@@ -46,11 +46,11 @@ export const zhTWProviders = {
   "prov.fetchedCapsApplied":
     "已載入 {n} 個模型；已採用 API 提供的上下文視窗與推理中繼資料。",
   "prov.effortsModelHint":
-    "該模型的推理檔位，依原始 id 儲存；值作為 reasoning_effort 傳送。API 未提供時使用 low/medium/high/xhigh，預設 medium。",
+    "推理檔位保留原始 id，並作為 reasoning_effort 傳送。API 未提供檔位時，App 使用 low/medium/high/xhigh，預設 medium。啟用 Off 會在 Composer 中加入 none，以關閉擴展推理並加快回應。",
   "prov.modelContextWindowInvalid": "請輸入正整數 token 數；留空則使用 API 值或 1M 預設值。",
-  "prov.modelSupportsReasoning": "支援推理檔位",
-  "prov.modelSupportsReasoningHint": "當模型無法思考或中轉拒絕 reasoning_effort 時關閉。關閉後 Composer 不再為該模型顯示推理檔位。",
-  "prov.modelSupportsReasoningOn": "支援推理",
+  "prov.modelSupportsReasoning": "關閉推理",
+  "prov.modelSupportsReasoningHint": "已設定推理檔位代表此模型支援擴展推理。啟用 Off 後，Composer 可關閉擴展推理以加快回應。",
+  "prov.modelSupportsReasoningOn": "支援關閉推理",
   "prov.modelUseApiDefault": "使用 API / 預設值",
   "prov.mode": "供應商模式",
   "prov.mode.generic": "通用 OpenAI 相容中轉",

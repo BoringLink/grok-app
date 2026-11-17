@@ -45,11 +45,11 @@ export const itProviders = {
   "prov.fetchedCapsApplied":
     "Caricati {n} modelli. Applicati i metadati disponibili di contesto e ragionamento dall’API.",
   "prov.effortsModelHint":
-    "Livelli di ragionamento per questo modello, salvati con i loro id originali. I valori vengono inviati come reasoning_effort. Se l’API non ne annuncia nessuno, si usano low/medium/high/xhigh con medium predefinito.",
+    "I livelli mantengono gli id originali e vengono inviati come reasoning_effort. Senza una ladder API, App usa low/medium/high/xhigh con medium come valore predefinito. Attiva Off per aggiungere none a Composer e ottenere risposte più rapide.",
   "prov.modelContextWindowInvalid": "Inserisci un numero intero positivo di token oppure lascia vuoto per usare il valore dell’API o il valore predefinito di 1M.",
-  "prov.modelSupportsReasoning": "Supporta livelli di ragionamento",
-  "prov.modelSupportsReasoningHint": "Disattiva se questo modello non può ragionare o il relay rifiuta reasoning_effort. Il compositore nasconde i livelli di ragionamento per questo modello.",
-  "prov.modelSupportsReasoningOn": "Ragionamento supportato",
+  "prov.modelSupportsReasoning": "Disattiva il ragionamento",
+  "prov.modelSupportsReasoningHint": "Una scala di ragionamento configurata indica che questo modello supporta il ragionamento esteso. Attiva Off per consentire a Composer di disattivarlo e ottenere risposte più rapide.",
+  "prov.modelSupportsReasoningOn": "Consenti Off in Composer",
   "prov.modelUseApiDefault": "Usa API / predefinito",
   "prov.mode": "Modalità provider",
   "prov.mode.generic": "Relay generico compatibile OpenAI",

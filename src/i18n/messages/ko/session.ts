@@ -331,4 +331,5 @@ export const koSession = {
   "session.journalLoadTimedOut": "채팅 기록 로드가 시간 초과되었습니다. 캐시가 있으면 표시합니다. 다시 열어 재시도하세요.",
   "session.journalLoadFailed": "채팅 기록을 불러오지 못했습니다. 캐시가 있으면 표시합니다. 다시 열어 재시도하세요.",
   "session.connectClaimTimedOut": "이 채팅의 다른 연결이 아직 진행 중입니다. 잠시 후 다시 시도하세요.",
+  "session.pendingSettingsRetry": "대기 중인 세션 설정을 적용하지 못했습니다. 다시 연결해 재시도하세요.",
 };

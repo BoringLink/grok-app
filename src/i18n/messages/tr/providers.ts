@@ -44,11 +44,11 @@ export const trProviders = {
   "prov.fetchedCapsApplied":
     "{n} model yüklendi. API’de bulunan bağlam penceresi ve akıl yürütme üst verileri uygulandı.",
   "prov.effortsModelHint":
-    "Bu modelin akıl yürütme düzeyleri özgün id’leriyle kaydedilir. Değerler reasoning_effort olarak gönderilir. API hiç sunmazsa low/medium/high/xhigh kullanılır ve medium varsayılandır.",
+    "Akıl yürütme düzeyleri özgün id’lerini korur ve reasoning_effort olarak gönderilir. API ladder sağlamazsa App low/medium/high/xhigh kullanır; varsayılan medium’dur. Daha hızlı yanıtlar için Composer’a none eklemek üzere Off’u etkinleştirin.",
   "prov.modelContextWindowInvalid": "Pozitif bir tam token sayısı girin veya boş bırakarak API değerini ya da 1M varsayılanını kullanın.",
-  "prov.modelSupportsReasoning": "Akıl yürütme düzeylerini destekler",
-  "prov.modelSupportsReasoningHint": "Bu model düşünemiyorsa veya relay reasoning_effort değerini reddediyorsa kapatın. Composer bu model için akıl yürütme düzeylerini gizler.",
-  "prov.modelSupportsReasoningOn": "Akıl yürütme destekleniyor",
+  "prov.modelSupportsReasoning": "Akıl yürütmeyi kapat",
+  "prov.modelSupportsReasoningHint": "Yapılandırılmış akıl yürütme düzeyleri, modelin genişletilmiş akıl yürütmeyi desteklediğini gösterir. Composer'ın daha hızlı yanıt için bunu kapatmasına izin vermek üzere Off'u etkinleştirin.",
+  "prov.modelSupportsReasoningOn": "Composer'da Off'a izin ver",
   "prov.modelUseApiDefault": "API / varsayılanı kullan",
   "prov.mode": "Sağlayıcı modu",
   "prov.mode.generic": "Genel OpenAI uyumlu aktarıcı",

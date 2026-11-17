@@ -45,11 +45,11 @@ export const frProviders = {
   "prov.fetchedCapsApplied":
     "{n} modèles chargés. Les métadonnées de contexte et de raisonnement disponibles ont été appliquées depuis l’API.",
   "prov.effortsModelHint":
-    "Niveaux de raisonnement de ce modèle, enregistrés avec leurs ids d’origine. Les valeurs sont envoyées comme reasoning_effort. Si l’API n’en annonce aucun, low/medium/high/xhigh s’appliquent avec medium par défaut.",
+    "Les niveaux gardent leurs ids d’origine et sont envoyés comme reasoning_effort. Sans ladder fournie par l’API, App utilise low/medium/high/xhigh avec medium par défaut. Activez Off pour ajouter none à Composer et obtenir des réponses plus rapides.",
   "prov.modelContextWindowInvalid": "Saisissez un nombre entier positif de tokens, ou laissez vide pour utiliser la valeur de l’API ou la valeur par défaut de 1 M.",
-  "prov.modelSupportsReasoning": "Prend en charge les niveaux de raisonnement",
-  "prov.modelSupportsReasoningHint": "Désactivez si ce modèle ne peut pas réfléchir ou si le relais refuse reasoning_effort. Le compositeur masque alors les niveaux de raisonnement de ce modèle.",
-  "prov.modelSupportsReasoningOn": "Raisonnement pris en charge",
+  "prov.modelSupportsReasoning": "Désactiver le raisonnement",
+  "prov.modelSupportsReasoningHint": "Une liste de niveaux configurée signifie que ce modèle prend en charge le raisonnement étendu. Activez Off pour que Composer le désactive et réponde plus vite.",
+  "prov.modelSupportsReasoningOn": "Autoriser Off dans Composer",
   "prov.modelUseApiDefault": "Utiliser l’API / par défaut",
   "prov.mode": "Mode du fournisseur",
   "prov.mode.generic": "Relais générique compatible OpenAI",

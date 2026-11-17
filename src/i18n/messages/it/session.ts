@@ -331,4 +331,5 @@ export const itSession = {
   "session.journalLoadTimedOut": "Caricamento cronologia troppo lento. Mostro la cache se disponibile: riapri la chat per riprovare.",
   "session.journalLoadFailed": "Impossibile caricare la cronologia. Mostro la cache se disponibile: riapri la chat per riprovare.",
   "session.connectClaimTimedOut": "Un’altra connessione per questa chat è ancora in corso. Riprova tra poco.",
+  "session.pendingSettingsRetry": "Impossibile applicare le impostazioni di sessione in sospeso. Riconnettiti per riprovare.",
 };

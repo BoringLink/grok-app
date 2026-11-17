@@ -45,11 +45,11 @@ export const idProviders = {
   "prov.fetchedCapsApplied":
     "Memuat {n} model. Metadata context window dan penalaran yang tersedia diterapkan dari API.",
   "prov.effortsModelHint":
-    "Tingkat penalaran untuk model ini, disimpan dengan id aslinya. Nilai dikirim sebagai reasoning_effort. Jika API tidak menyediakan, low/medium/high/xhigh dipakai dengan medium sebagai default.",
+    "Level penalaran mempertahankan id aslinya dan dikirim sebagai reasoning_effort. Tanpa ladder dari API, App menggunakan low/medium/high/xhigh dengan medium sebagai default. Aktifkan Off untuk menambahkan none ke Composer agar respons lebih cepat.",
   "prov.modelContextWindowInvalid": "Masukkan jumlah token bilangan bulat positif, atau biarkan kosong untuk memakai nilai API atau default 1M.",
-  "prov.modelSupportsReasoning": "Mendukung tingkat penalaran",
-  "prov.modelSupportsReasoningHint": "Matikan jika model ini tidak bisa berpikir atau relay menolak reasoning_effort. Composer lalu menyembunyikan tingkat penalaran untuk model ini.",
-  "prov.modelSupportsReasoningOn": "Penalaran didukung",
+  "prov.modelSupportsReasoning": "Matikan penalaran",
+  "prov.modelSupportsReasoningHint": "Tangga penalaran yang dikonfigurasi berarti model ini mendukung penalaran lanjutan. Aktifkan Off agar Composer dapat menonaktifkannya untuk respons yang lebih cepat.",
+  "prov.modelSupportsReasoningOn": "Izinkan Off di Composer",
   "prov.modelUseApiDefault": "Pakai API / default",
   "prov.mode": "Mode penyedia",
   "prov.mode.generic": "Relai generik kompatibel OpenAI",

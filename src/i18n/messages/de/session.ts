@@ -331,4 +331,5 @@ export const deSession = {
   "session.journalLoadTimedOut": "Chatverlauf hat zu lange gedauert. Zwischengespeicherter Verlauf wird gezeigt, falls vorhanden — Chat erneut öffnen zum Wiederholen.",
   "session.journalLoadFailed": "Chatverlauf konnte nicht geladen werden. Zwischengespeicherter Verlauf wird gezeigt, falls vorhanden — Chat erneut öffnen zum Wiederholen.",
   "session.connectClaimTimedOut": "Für diesen Chat läuft noch eine Verbindung. Bitte gleich erneut versuchen.",
+  "session.pendingSettingsRetry": "Ausstehende Sitzungseinstellungen konnten nicht angewendet werden. Verbinde erneut, um es erneut zu versuchen.",
 };
