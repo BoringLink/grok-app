@@ -4,6 +4,7 @@ import {
   composerMenuProviders,
   filterComposerModelGroups,
   isComposerModelEntryActive,
+  pinComposerModelPickToOfficial,
   type ComposerModelEntry,
 } from "./composerModelGroups";
 import type { ModelOption } from "./grokCatalog";
@@ -32,6 +33,31 @@ const providers = [
 ];
 
 describe("buildComposerModelGroups", () => {
+  it("normalizes a custom SSH pick to a matching official model", () => {
+    expect(
+      pinComposerModelPickToOfficial(
+        { kind: "custom", providerId: "relay", modelId: "grok-4.5" },
+        true,
+        official,
+      ),
+    ).toEqual({ kind: "official", modelId: "grok-4.5" });
+  });
+
+  it("falls back to the official default for a custom-only SSH model", () => {
+    expect(
+      pinComposerModelPickToOfficial(
+        { kind: "custom", providerId: "relay", modelId: "deepseek-v4-flash" },
+        true,
+        official,
+      ),
+    ).toEqual({ kind: "official", modelId: "grok-4.5" });
+  });
+
+  it("leaves local custom picks unchanged", () => {
+    const pick = { kind: "custom" as const, providerId: "relay", modelId: "deepseek-v4-flash" };
+    expect(pinComposerModelPickToOfficial(pick, false, official)).toBe(pick);
+  });
+
   it("builds official group plus multi-model provider groups", () => {
     const groups = buildComposerModelGroups({
       officialModels: official,
@@ -78,6 +104,34 @@ describe("buildComposerModelGroups", () => {
       title: "llama3",
       subtitle: undefined,
     });
+  });
+
+  it("keeps the same model id distinct under each provider", () => {
+    const groups = buildComposerModelGroups({
+      officialModels: [],
+      providers: [
+        {
+          id: "relay-a",
+          name: "Relay A",
+          model: "shared-model",
+          models: [{ id: "shared-model", name: "Shared Model" }],
+        },
+        {
+          id: "relay-b",
+          name: "Relay B",
+          model: "shared-model",
+          models: [{ id: "shared-model", name: "Shared Model" }],
+        },
+      ],
+      officialGroupTitle: "Official",
+    });
+
+    expect(groups.map((g) => g.title)).toEqual(["Relay A", "Relay B"]);
+    expect(groups.map((g) => g.entries[0].pick)).toEqual([
+      { kind: "custom", providerId: "relay-a", modelId: "shared-model" },
+      { kind: "custom", providerId: "relay-b", modelId: "shared-model" },
+    ]);
+    expect(groups[0].entries[0].key).not.toBe(groups[1].entries[0].key);
   });
 
   it("omits provider groups when providers empty", () => {
@@ -307,6 +361,16 @@ describe("isComposerModelEntryActive", () => {
         modelId: "grok-4.5",
       }),
     ).toBe(true);
+  });
+
+  it("does not mark a custom model active when its request model is unknown", () => {
+    expect(
+      isComposerModelEntryActive(customEntry, {
+        activeSource: "custom",
+        activeProviderId: "yunyi",
+        modelId: "grok-4.5",
+      }),
+    ).toBe(false);
   });
 
   it("does not match a different request model on same provider", () => {

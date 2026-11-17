@@ -370,8 +370,6 @@ pub fn app_invoke_handler(
         commands::providers_list,
         commands::providers_upsert,
         commands::providers_remove,
-        commands::providers_set_default,
-        commands::providers_activate,
         commands::providers_ping,
         commands::providers_list_models,
         commands::providers_test_model,

@@ -121,21 +121,8 @@ export function useVoiceDictation(opts: {
   }, []);
 
   const refreshVoiceGate = useCallback(async () => {
-    let customActive = false;
-    if (api.isTauri()) {
-      try {
-        const list = await api.providersList();
-        customActive = list.activeSource === "custom";
-      } catch {
-        /* ignore */
-      }
-    }
     try {
       if (api.isTauri() || isMirrorClient()) {
-        if (customActive && sttEngine !== "custom") {
-          setVoiceGate({ available: false, reason: "not_available" });
-          return;
-        }
         const st = await api.voiceStatus();
         setVoiceGate({
           available: !!st.available,
@@ -162,7 +149,6 @@ export function useVoiceDictation(opts: {
       hasRelayOnly: hasRelay && !hasOfficial && !signedIn,
       sttCustomConfigured:
         sttEngine === "custom" && sttCustomBaseUrl.trim().length > 0,
-      activeProviderIsCustom: customActive,
     });
     setVoiceGate({
       available: gate.available,

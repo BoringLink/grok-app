@@ -39,6 +39,7 @@ export const esDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "Relé personalizado",
   "setup.account.relayHint": "URL base compatible con OpenAI + clave",
+  "setup.account.relayPerChatHint": "Los chats nuevos empiezan con el modelo oficial. Elige un modelo del relay en el compositor para cada chat.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "Clave de API",
   "setup.account.protocol": "Formato de mensaje",

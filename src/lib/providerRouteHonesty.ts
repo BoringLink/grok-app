@@ -3,21 +3,16 @@
  *
  * Product truth:
  * - Custom providers write agent-home `config.toml` via Host `providers_upsert`.
- * - When the mutated provider is the **active** route (or set as default), Host
- *   recycles warm agents (`provider_route`) so the next message reloads
- *   base_url / api_key / auth — **soft_respawn**, not a full app restart.
- * - Editing a non-active provider only updates disk → **saved_disk_only**
- *   (next activate / Use applies it).
+ * - A provider edit or import invalidates only chats that use the changed
+ *   provider. They reconnect with the updated config on their next turn.
+ * - New model selections are stored per chat by `composer_prefs_set`.
  * - Browser / non-Tauri cannot call Host → **host_only** (never claim live apply).
  *
  * Pure helpers — no I/O. UI translates returned message keys via `t()`.
  */
 
 /** How a successful provider save takes effect. */
-export type ProviderApplyEffect =
-  | "soft_respawn"
-  | "saved_disk_only"
-  | "host_only";
+export type ProviderApplyEffect = "saved_disk_only" | "host_only";
 
 /** Soft-fail kinds for provider upsert / save host errors. */
 export type ProviderSaveErrorKind =
@@ -84,29 +79,24 @@ export function unsupportedGrokBuildProxyModels(input: {
 /**
  * Resolve when a successful upsert apply path takes effect.
  *
- * - `!isTauri` → host_only (no Host IPC; never claim reload)
- * - `needsReload` (active route / setAsDefault) → soft_respawn
- * - otherwise → saved_disk_only
+ * - `!isTauri` → host_only (no Host IPC)
+ * - otherwise → saved_disk_only (sessions pick it up on their next turn)
  */
 export function resolveProviderApplyEffect(input: {
-  needsReload: boolean;
   isTauri: boolean;
 }): ProviderApplyEffect {
   if (!input.isTauri) return "host_only";
-  if (input.needsReload) return "soft_respawn";
   return "saved_disk_only";
 }
 
 /**
  * Stable i18n key for a post-save apply toast / inline banner.
- * Keys live under `prov.apply.*` (en/zh/zh-TW).
+ * Keys live under `prov.apply.*`.
  */
 export function buildProviderApplyToastKey(
   effect: ProviderApplyEffect,
 ): string {
   switch (effect) {
-    case "soft_respawn":
-      return "prov.apply.softRespawn";
     case "saved_disk_only":
       return "prov.apply.savedDiskOnly";
     case "host_only":

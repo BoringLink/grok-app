@@ -111,14 +111,14 @@ export const ptBRProviders = {
   "prov.fetching": "Buscando…",
   "prov.loaded": "{n} modelos carregados",
   "prov.emptyList": "Nenhum modelo retornado",
-  "prov.setDefault": "Definir como padrão",
+
   "prov.save": "Salvar",
   "prov.add": "Adicionar",
   "prov.saving": "Salvando…",
   "prov.saved": "Provedor salvo.",
   "prov.savedReplaced": "O mesmo id já existia — substituído por este formulário (a entrada anterior ainda estava no disco).",
   "prov.err.recreateNeedKey": "Este id ainda existe no disco. Digite uma chave de API para substituí-lo, ou exclua primeiro o provedor restante.",
-  "prov.savedHotReload": "Provedor salvo. Agentes recarregados — a próxima mensagem usa a nova config (sem reiniciar o app).",
+
   "prov.savedApplyFailed": "Provedor salvo no disco, mas a aplicação ao vivo falhou ({detail}). Tente enviar uma mensagem, ou reinicie o app se o chat permanecer offline.",
   "prov.err.saveTimeout": "O salvamento está demorando demais. A config ainda pode ter sido gravada — feche e reabra este painel, ou reinicie se o chat não funcionar.",
   "prov.confirmDelete": "Excluir o provedor “{id}”?",
@@ -146,14 +146,14 @@ export const ptBRProviders = {
   "prov.officialKeySaved": "Chave de API oficial salva. Os controles de voz aparecerão quando estiverem prontos.",
   "prov.officialKeyCleared": "Chave de API oficial removida.",
   "prov.officialKeyPresent": "Uma chave está armazenada (não mostrada). Cole uma nova para substituí-la.",
-  "prov.officialVoiceHint": "A ditação por voz do compositor precisa de login oficial (Conta) ou desta chave de API, e o provedor ativo deve ser o Grok Oficial. Provedores personalizados/de terceiros e voz ao vivo ainda não são suportados.",
+  "prov.officialVoiceHint": "A digitação por voz do compositor precisa de login oficial (Conta) ou desta chave de API; o provedor de modelo do chat não interfere.",
   "prov.officialLoginHint": "Ou entre em Configurações → Conta para os recursos completos de assinatura.",
   "prov.officialAuthOk": "Conectado ou chave pronta",
   "prov.officialKeyOnly": "Chave de API armazenada",
-  "prov.active": "Ativo",
+
   "prov.customProvider": "Provedor personalizado",
-  "prov.useThis": "Usar",
-  "prov.switchedHotReload": "Provedor aplicado. A próxima mensagem reconecta com a nova config — sem precisar reiniciar o app por completo.",
+
+
   "prov.ccSwitch.importBtn": "Importar do CC Switch",
   "prov.ccSwitch.importBtnHint": "Ler provedores Grok Build do CC Switch local e adicioná-los aqui",
   "prov.ccSwitch.title": "Importar do CC Switch",
@@ -179,8 +179,8 @@ export const ptBRProviders = {
   "prov.empty.hostOnly": "Provedores personalizados precisam do app de desktop (Tauri). Abra o Grok App para adicionar relays.",
   "prov.empty.noCustom": "Ainda não há relays personalizados — adicione um provedor compatível com OpenAI, ou use o Grok Oficial acima.",
   "prov.empty.loadError": "Não foi possível carregar os provedores. Corrija o erro do host acima e tente de novo.",
-  "prov.apply.softRespawn": "Provedor salvo. Agentes recarregados — a próxima mensagem usa a nova config (sem reiniciar o app).",
-  "prov.apply.savedDiskOnly": "Provedor salvo no disco. Ative com Usar (ou escolha-o no compositor) para aplicar a rota.",
+
+  "prov.apply.savedDiskOnly": "Provedor salvo. As conversas que usam este provedor aplicam a nova configuração no próximo turno.",
   "prov.apply.hostOnly": "Mudanças de provedor precisam do app de desktop. Abra o Grok App para salvar relays.",
   "prov.err.validation": "Não foi possível salvar: campos de provedor inválidos (id, URL, chave ou modelos). Verifique o formulário e tente de novo.",
   "prov.err.network": "Não foi possível salvar: erro de rede ou IPC do host. Verifique a conectividade e tente de novo.",

@@ -172,46 +172,46 @@ export const ptBRFeatures = {
   "managedSetup.error.rejected": "A chave de implantação foi rejeitada ou expirou. Confirme-a com o administrador.",
   "managedSetup.error.signatureRejectedTitle": "Assinatura gerenciada rejeitada",
   "managedSetup.error.signatureRejected": "A CLI rejeitou a assinatura ou o envelope da config gerenciada. Contate o administrador; o App não gravará política não verificada.",
-  "modelAux.title": "Roteamento de modelo auxiliar",
-  "modelAux.desc": "O modelo principal cuida do loop do chat. Tarefas laterais podem usar um modelo multimodal mais forte (como slots auxiliares Hermes). Grava só as chaves de tarefa [models] — nunca muda a sua rota principal.",
-  "modelAux.loading": "Carregando camadas de modelo…",
-  "modelAux.refresh": "Recarregar",
-  "modelAux.saved": "Modelo auxiliar salvo. Os agentes reconectarão no próximo turno.",
-  "modelAux.sharedReadOnly": "Modo de sessão compartilhado: o App não reescreve ~/.grok. Mude para o modo independente ou edite o config.toml na CLI.",
-  "modelAux.mainDefault": "Principal [models].default",
-  "modelAux.activeSource": "Rota ativa",
-  "modelAux.option.auto": "Auto (padrão da CLI)",
-  "modelAux.slot.imageDescription": "Descrição de imagem",
-  "modelAux.slot.imageDescriptionDesc": "Quando o modelo principal não vê imagens, o Grok Build descreve os anexos com este modelo.",
-  "modelAux.slot.webSearch": "Busca na web",
-  "modelAux.slot.webSearchDesc": "Modelo usado pela ferramenta web_search (a busca no backend funciona melhor em modelos da classe Grok).",
-  "modelAux.slot.sessionSummary": "Resumo da sessão",
-  "modelAux.slot.sessionSummaryDesc": "Modelo de tarefa lateral para resumos da sessão / texto relacionado à compactação.",
-  "modelAux.slot.promptSuggestion": "Sugestão de prompt",
-  "modelAux.slot.promptSuggestionDesc": "Modelo usado para sugestões de prompt do compositor quando a CLI as ativa.",
-  "modelAux.saveGrok": "Salvar Grok",
-  "modelAux.saveGrokHint": "Apontar os quatro slots para {model}. Modelo principal inalterado.",
-  "modelAux.saveGrokNoTarget": "Ainda sem alvo multimodal. Adicione uma chave de API oficial (Conta → Provedores personalizados → Oficial) ou um relay compatível com Grok (Amux / Yun) e tente de novo.",
-  "modelAux.saveGrokConfirmTitle": "Aplicar o preset Salvar Grok?",
-  "modelAux.saveGrokConfirmBody": "Definir descrição de imagem, busca na web, resumo da sessão e sugestão de prompt para {model}. Seu modelo principal / rota ativa permanece como está.",
-  "modelAux.saveGrokDone": "Todos os slots auxiliares → {model}",
-  "modelAux.resetDefaults": "Restaurar padrões oficiais",
-  "modelAux.resetConfirmTitle": "Restaurar os padrões da CLI?",
-  "modelAux.resetConfirmBody": "Remover as substituições personalizadas dos quatro slots auxiliares. Os padrões embutidos do Grok Build voltam a valer. O modelo principal e os provedores personalizados não mudam. Para voltar a rota principal ao oficial, use Provedores personalizados → Oficial → Usar.",
-  "modelAux.resetDone": "Slots auxiliares restaurados para os padrões da CLI.",
-  "modelAux.footnote": "Dica: depois de voltar para a assinatura oficial, use “Restaurar padrões oficiais” aqui para as tarefas laterais pararem de usar um relay personalizado.",
-  "modelAux.pathLabel": "Configuração",
-  "modelAux.needOfficialKey": "Para usar o Grok Oficial como modelo aux enquanto a rota principal é um relay personalizado, cole uma chave de API oficial em Provedores personalizados → Oficial (auth.json é limpo em rotas personalizadas).",
-  "modelAux.health.officialIncomplete": "Os slots aux apontam para o Grok oficial, mas não há uma seção de modelo oficial completa nem chave de API. Imagens não serão enviadas como pixels (evita DeepSeek image_url 400). Correção: cole uma chave de API oficial em Provedores personalizados → Oficial, ou limpe os slots com “Restaurar padrões oficiais”, ou adicione Amux/Yun e execute de novo Salvar Grok.",
-  "modelAux.health.textOnlyNoVision": "O modelo principal é só texto e o aux de visão não está pronto. Imagens anexadas são enviadas só como notas de caminho até você configurar um modelo de visão aqui.",
-  "modelAux.nextStepsTitle": "Como ativar visão num modelo principal só texto",
-  "modelAux.nextStep1": "Opção A — Oficial: Conta → Provedores personalizados → Oficial → cole a chave de API da xAI e defina Descrição de imagem como Oficial · grok-4.7 (ou Salvar Grok).",
-  "modelAux.nextStep2": "Opção B — Relay: adicione Amux / Yun com grok-4.7 e defina todos os slots aux para esse provedor (ou Salvar Grok).",
-  "modelAux.nextStep3": "Se os slots estiverem presos num id oficial do Grok quebrado, clique primeiro em “Restaurar padrões oficiais” e depois reconfigure.",
-  "modelAux.goProviders": "Abrir Provedores personalizados",
-  "modelAux.officialAuxTitle": "Canal lateral oficial",
-  "modelAux.officialAuxReady": "Canal lateral oficial do Grok pronto ({reason}). O MCP de sessão “official-aux” expõe web_search + x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe via grok -p isolado (não usa auth DeepSeek).",
-  "modelAux.officialAuxMissing": "Canal lateral oficial offline. Entre no Grok Build (auth da CLI) ou cole uma chave de API oficial em Provedores personalizados → Oficial — depois reconecte a sessão.",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "Consolidado de custo",
   "costRollup.settingsDesc": "Uso conhecido de tokens por projeto ou sessão e dia (do uso ao vivo e dos diários da sessão, quando disponíveis). Filtre por projeto/sessão, exporte um resumo em texto simples, ou limpe o anel de amostras local. Só estimativas — não é faturamento.",
   "costRollup.lead": "Visão móvel de {days} dias das contagens de tokens relatadas pelo agente. Alterne a granularidade Projeto / Sessão e os chips de filtro abaixo. Sessões sem uso conhecido permanecem Desconhecido.",

@@ -4,7 +4,7 @@
 
 ## 模型
 
-**UI 只展示官方真正可用的模型。服务商是后端渠道，只在设置 → 账户 → 自定义提供商切换。**
+**UI 只展示官方真正可用的模型。服务商是 Composer 模型菜单里的按会话选择，不存在全局启用路由。**
 
 | 来源 | 说明 |
 |------|------|
@@ -52,7 +52,7 @@ Composer **UI 阶梯**统一为 4 档（低 → 高）：**低 / 中 / 高 / 极
 
 解析顺序（真实可选值）：
 
-1. **自定义通道 active** → 该提供商的 `efforts`（`app_efforts`）
+1. **当前会话路由到自定义 provider** → 该提供商的 `efforts`（`app_efforts`）
 2. 否则官方 catalog 的 `reasoningEfforts`（**以 CLI `models_cache` / `isDefault` 为准**）
 3. 再回退：`grok-4.7` / `grok-4.7-build-fast` / `grok-4.6` → `GROK_4_6_EFFORTS`（`low` · `medium` · `high` · `xhigh`，默认 **xhigh**）；其余 → `GROK_BUILD_EFFORTS`（`low` · `medium` · `high`，默认 **high**）
 
@@ -213,7 +213,7 @@ grok --no-auto-update --permission-mode <mode> agent [--model <id>] [--reasoning
 1. **官方**分组：catalog 模型（`availableModels`）
 2. **每个已配置提供商**一组：列出该提供商 catalog 中的全部请求模型（`models[]`，每项含 **展示名称** + model id），**不**在菜单里拉远程 `/v1/models`
 
-选择一条模型只写入这条对话（`composer_prefs_set` 的 `provider_id` / `modelId`）。不调用 `providers_activate`，也不改全局 `[models].default`。Settings → **Use** 才是全局路由，会回收所有 warm agent。
+选择一条模型只写入这条对话（`composer_prefs_set` 的 `provider_id` / `modelId`）。没有全局激活路由，也不改 `[models].default`；其他会话的 provider / 进程不受影响。没有适用偏好的会话使用官方路由。
 
 芯片文案：官方用 catalog label；自定义路由用 **当前选中模型的展示名称**（`models[].name`，空则回退 model id）。
 

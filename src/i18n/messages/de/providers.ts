@@ -111,14 +111,14 @@ export const deProviders = {
   "prov.fetching": "Holen…",
   "prov.loaded": "{n} Modelle geladen",
   "prov.emptyList": "Keine Modelle zurückgegeben",
-  "prov.setDefault": "Als Standard setzen",
+
   "prov.save": "Speichern",
   "prov.add": "Hinzufügen",
   "prov.saving": "Speichern…",
   "prov.saved": "Anbieter gespeichert.",
   "prov.savedReplaced": "Dieselbe ID existierte bereits — durch dieses Formular ersetzt (vorheriger Eintrag war noch auf der Festplatte).",
   "prov.err.recreateNeedKey": "Diese ID existiert noch auf der Festplatte. API-Schlüssel eingeben, um sie zu ersetzen, oder den Rest-Anbieter zuerst löschen.",
-  "prov.savedHotReload": "Anbieter gespeichert. Agenten neu geladen — nächste Nachricht nutzt die neue Config (kein App-Neustart).",
+
   "prov.savedApplyFailed": "Anbieter auf der Festplatte gespeichert, aber Live-Anwenden fehlgeschlagen ({detail}). Nachricht senden versuchen oder App neu starten, wenn Chat offline bleibt.",
   "prov.err.saveTimeout": "Speichern dauert zu lange. Config wurde möglicherweise trotzdem geschrieben — Panel schließen und öffnen oder neu starten, wenn Chat nicht funktioniert.",
   "prov.confirmDelete": "Anbieter „{id}“ löschen?",
@@ -146,14 +146,14 @@ export const deProviders = {
   "prov.officialKeySaved": "Offizieller API-Schlüssel gespeichert. Voice-Steuerung erscheint, wenn bereit.",
   "prov.officialKeyCleared": "Offizieller API-Schlüssel entfernt.",
   "prov.officialKeyPresent": "Ein Schlüssel ist gespeichert (nicht gezeigt). Neuen einfügen, um ihn zu ersetzen.",
-  "prov.officialVoiceHint": "Composer-Spracheingabe braucht offizielles Login (Konto) oder diesen API-Schlüssel, und der aktive Anbieter muss Official Grok sein. Custom-/Drittanbieter und Live Voice werden noch nicht unterstützt.",
+  "prov.officialVoiceHint": "Die Spracheingabe im Composer benötigt die offizielle Anmeldung (Konto) oder diesen API-Schlüssel; der Modellanbieter des Chats hat darauf keinen Einfluss.",
   "prov.officialLoginHint": "Oder unter Einstellungen → Konto anmelden für volle Mitgliedschaftsfunktionen.",
   "prov.officialAuthOk": "Angemeldet oder Schlüssel bereit",
   "prov.officialKeyOnly": "API-Schlüssel gespeichert",
-  "prov.active": "Aktiv",
+
   "prov.customProvider": "Custom-Anbieter",
-  "prov.useThis": "Verwenden",
-  "prov.switchedHotReload": "Anbieter angewendet. Nächste Nachricht verbindet mit der neuen Config neu — kein voller App-Neustart nötig.",
+
+
   "prov.ccSwitch.importBtn": "Aus CC Switch importieren",
   "prov.ccSwitch.importBtnHint": "Grok-Build-Anbieter aus lokalem CC Switch lesen und hier hinzufügen",
   "prov.ccSwitch.title": "Aus CC Switch importieren",
@@ -179,8 +179,8 @@ export const deProviders = {
   "prov.empty.hostOnly": "Custom-Anbieter brauchen die Desktop-App (Tauri). Grok App öffnen, um Relays hinzuzufügen.",
   "prov.empty.noCustom": "Noch keine Custom-Relays — OpenAI-kompatiblen Anbieter hinzufügen oder Official Grok oben nutzen.",
   "prov.empty.loadError": "Anbieter konnten nicht geladen werden. Host-Fehler oben beheben, dann erneut.",
-  "prov.apply.softRespawn": "Anbieter gespeichert. Agenten neu geladen — nächste Nachricht nutzt die neue Config (kein App-Neustart).",
-  "prov.apply.savedDiskOnly": "Anbieter auf der Festplatte gespeichert. Mit Verwenden aktivieren (oder im Composer wählen), um die Route anzuwenden.",
+
+  "prov.apply.savedDiskOnly": "Anbieter gespeichert. Chats mit diesem Anbieter übernehmen die neue Konfiguration beim nächsten Turn.",
   "prov.apply.hostOnly": "Anbieteränderungen brauchen die Desktop-App. Grok App öffnen, um Relays zu speichern.",
   "prov.err.validation": "Speichern fehlgeschlagen: ungültige Anbieterfelder (ID, URL, Schlüssel oder Modelle). Formular prüfen und erneut.",
   "prov.err.network": "Speichern fehlgeschlagen: Netzwerk- oder Host-IPC-Fehler. Konnektivität prüfen und erneut.",

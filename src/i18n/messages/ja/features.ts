@@ -172,46 +172,46 @@ export const jaFeatures = {
   "managedSetup.error.rejected": "デプロイキーが拒否されたか期限切れです。管理者に確認してください。",
   "managedSetup.error.signatureRejectedTitle": "マネージド署名が拒否されました",
   "managedSetup.error.signatureRejected": "CLI がマネージド構成の署名またはエンベロープを拒否しました。管理者に連絡してください。アプリは未検証のポリシーを書き込みません。",
-  "modelAux.title": "補助モデルのルーティング",
-  "modelAux.desc": "メインモデルがチャットループを担当します。サイドタスクはより強いマルチモーダルモデル（Hermes 補助スロットなど）を使えます。[models] のタスクキーだけを書き、メインルートは変更しません。",
-  "modelAux.loading": "モデルレイヤーを読み込み中…",
-  "modelAux.refresh": "再読み込み",
-  "modelAux.saved": "補助モデルを保存しました。次のターンでエージェントが再接続します。",
-  "modelAux.sharedReadOnly": "共有セッションモード: アプリは ~/.grok を書き換えません。独立モードに切り替えるか、CLI で config.toml を編集してください。",
-  "modelAux.mainDefault": "メイン [models].default",
-  "modelAux.activeSource": "現在のルート",
-  "modelAux.option.auto": "自動（CLI 既定）",
-  "modelAux.slot.imageDescription": "画像説明",
-  "modelAux.slot.imageDescriptionDesc": "メインモデルが画像を見られないとき、Grok Build はこのモデルで添付を説明します。",
-  "modelAux.slot.webSearch": "ウェブ検索",
-  "modelAux.slot.webSearchDesc": "web_search ツールが使うモデル（バックエンド検索は Grok クラスのモデルが最適です）。",
-  "modelAux.slot.sessionSummary": "セッション要約",
-  "modelAux.slot.sessionSummaryDesc": "セッション要約 / 圧縮関連テキスト用のサイドジョブモデル。",
-  "modelAux.slot.promptSuggestion": "プロンプト提案",
-  "modelAux.slot.promptSuggestionDesc": "CLI が有効なときの、コンポーザーのプロンプト提案に使うモデル。",
-  "modelAux.saveGrok": "Grok を保存",
-  "modelAux.saveGrokHint": "4 つのスロットすべてを {model} に向けます。メインモデルは変わりません。",
-  "modelAux.saveGrokNoTarget": "マルチモーダルの対象がまだありません。公式 API キー（アカウント → カスタムプロバイダー → 公式）または Grok 対応リレー（Amux / Yun）を追加してから再試行してください。",
-  "modelAux.saveGrokConfirmTitle": "Save Grok プリセットを適用しますか？",
-  "modelAux.saveGrokConfirmBody": "画像説明、ウェブ検索、セッション要約、プロンプト提案を {model} に設定します。メインモデル / 現在のルートはそのままです。",
-  "modelAux.saveGrokDone": "すべての補助スロット → {model}",
-  "modelAux.resetDefaults": "公式の既定に戻す",
-  "modelAux.resetConfirmTitle": "CLI の既定に戻しますか？",
-  "modelAux.resetConfirmBody": "4 つの補助スロットのカスタム上書きを削除します。Grok Build 組み込みの既定が再び適用されます。メインモデルとカスタムプロバイダーは変わりません。メインルートを公式に戻すには、カスタムプロバイダー → 公式 → 使う を使ってください。",
-  "modelAux.resetDone": "補助スロットを CLI の既定に戻しました。",
-  "modelAux.footnote": "ヒント: 公式サブスクリプションに戻したあとは、ここで「公式の既定に戻す」を使い、サイドタスクがカスタムリレーを使い続けないようにしてください。",
-  "modelAux.pathLabel": "設定",
-  "modelAux.needOfficialKey": "メインルートがカスタムリレーのときに公式 Grok を補助モデルとして使うには、カスタムプロバイダー → 公式 に公式 API キーを貼り付けてください（カスタムルートでは auth.json がクリアされます）。",
-  "modelAux.health.officialIncomplete": "補助スロットは公式 Grok を指していますが、完全な公式モデルセクションまたは API キーがありません。画像はピクセルとして送られません（DeepSeek の image_url 400 を避けるため）。対処: カスタムプロバイダー → 公式 に公式 API キーを貼り付けるか、「公式の既定に戻す」でスロットをクリアするか、Amux/Yun を追加して Save Grok を再実行してください。",
-  "modelAux.health.textOnlyNoVision": "メインモデルはテキストのみで、ビジョン補助の準備ができていません。ビジョンモデルをここで設定するまで、添付画像はパスのメモとしてだけ送られます。",
-  "modelAux.nextStepsTitle": "テキストメインモデルでビジョンを有効にする方法",
-  "modelAux.nextStep1": "方法 A — 公式: アカウント → カスタムプロバイダー → 公式 → xAI API キーを貼り付け、画像説明を Official · grok-4.7 にする（または Save Grok）。",
-  "modelAux.nextStep2": "方法 B — リレー: grok-4.7 付きの Amux / Yun を追加し、すべての補助スロットをそのプロバイダーにする（または Save Grok）。",
-  "modelAux.nextStep3": "スロットが壊れた公式 Grok ID のままなら、先に「公式の既定に戻す」をクリックしてから再設定してください。",
-  "modelAux.goProviders": "カスタムプロバイダーを開く",
-  "modelAux.officialAuxTitle": "公式サイドチャネル",
-  "modelAux.officialAuxReady": "公式 Grok サイドチャネルの準備完了（{reason}）。セッション MCP「official-aux」は隔離された grok -p 経由で web_search + x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe を公開します（DeepSeek 認証は使いません）。",
-  "modelAux.officialAuxMissing": "公式サイドチャネルがオフラインです。Grok Build（CLI 認証）でサインインするか、カスタムプロバイダー → 公式 に公式 API キーを貼り付けてから、セッションを再接続してください。",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "コストロールアップ",
   "costRollup.settingsDesc": "プロジェクトまたはセッションと日ごとの既知トークン使用量（ライブ使用量と、あればセッションジャーナル）。プロジェクト / セッションで絞り込み、プレーンテキスト要約を書き出すか、ローカルサンプルリングを消去します。見積もりのみ — 請求ではありません。",
   "costRollup.lead": "エージェント報告のトークン数を {days} 日のローリングで表示します。下のプロジェクト / セッション粒度とフィルターチップを切り替えてください。既知の使用量がないセッションは不明のままです。",

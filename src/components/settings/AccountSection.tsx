@@ -98,7 +98,7 @@ export function AccountSection() {
                   )
                 }
                 onProvidersChanged={onProvidersChanged}
-                onProviderActivated={onProviderActivated}
+                onOfficialKeyChanged={onProviderActivated}
                 onBalanceLoaded={onProviderBalanceLoaded}
               />
             ) : activeTab === "extras" ? (

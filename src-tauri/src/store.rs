@@ -53,7 +53,7 @@ pub struct ComposerPrefs {
     pub scope: String,
     /// Which layer actually supplied the values (global | project | session).
     pub source: String,
-    /// `official` or a custom provider section id. Missing → global route.
+    /// `official` or a custom provider section id. Missing → official.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_id: Option<String>,
 }
@@ -324,7 +324,7 @@ pub struct SessionMeta {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace_capability: Option<String>,
     /// Provider this chat was last used with. `official`, or a custom section id.
-    /// Missing on older rows → follow the global route until the user picks one.
+    /// Missing on older rows → official until the user picks one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_id: Option<String>,
     /// Origin tag from `POST /v1/sessions` (`source`). At most 32 chars of
@@ -2999,7 +2999,7 @@ pub struct Automation {
     pub project_id: Option<String>,
     pub model_id: Option<String>,
     /// `official` or a custom provider id. When missing, legacy rows infer the
-    /// official route from `model_id`; otherwise they follow the active route.
+    /// official route from `model_id`; otherwise they run on official.
     pub provider_id: Option<String>,
     pub effort: Option<String>,
     /// `new` (fresh chat per run) | `reuse` (send into `session_id`).
@@ -3520,10 +3520,34 @@ pub(crate) fn non_plan_mode(mode: &str) -> String {
     m.to_string()
 }
 
-/// Persist `model_id` on the session row.
-///
-/// Returns the value back when there is no row yet (a draft) so the caller
-/// can seed the global default. A real chat keeps the model it was given.
+/// Move chats from a deleted provider to an official model route.
+pub fn fallback_sessions_for_provider(
+    provider_id: &str,
+    official_model_id: &str,
+) -> Result<Vec<String>, String> {
+    let provider_id = provider_id.trim().to_string();
+    if provider_id.is_empty() {
+        return Err("provider id empty".into());
+    }
+    let official_model_id = official_model_id.trim().to_string();
+    if official_model_id.is_empty() {
+        return Err("official model id empty".into());
+    }
+    update_sessions_index(move |sessions| {
+        Ok(sessions
+            .iter_mut()
+            .filter(|session| session.provider_id.as_deref() == Some(provider_id.as_str()))
+            .map(|session| {
+                session.provider_id = Some("official".into());
+                session.model_id = Some(official_model_id.clone());
+                session.updated_at = Utc::now();
+                session.id.clone()
+            })
+            .collect())
+    })
+}
+
+/// Persist a provider identity on an existing session row.
 fn save_provider_on_session(session_id: Option<&str>, provider_id: String) -> Result<(), String> {
     let Some(sid) = session_id.filter(|s| !s.is_empty()) else {
         return Ok(());
@@ -3538,6 +3562,10 @@ fn save_provider_on_session(session_id: Option<&str>, provider_id: String) -> Re
     })
 }
 
+/// Persist `model_id` on the session row.
+///
+/// Returns the value back when there is no row yet (a draft) so the caller
+/// can seed the global default. A real chat keeps the model it was given.
 fn save_model_on_session(
     session_id: Option<&str>,
     model_id: String,
@@ -5450,7 +5478,7 @@ mod tests {
             resolve_composer_prefs(None, Some(&a.id)).model_id,
             "deepseek-v4-flash"
         );
-        // A chat that never picked still has no provider and follows the global route.
+        // A chat that never picked has no provider and therefore runs official.
         let fresh = create_session(None, Some("fresh".into()), false).expect("fresh");
         assert_eq!(
             resolve_composer_prefs(None, Some(&fresh.id)).provider_id,
@@ -5472,6 +5500,17 @@ mod tests {
                 .provider_id
                 .as_deref(),
             Some("official")
+        );
+
+        let fallback_ids = fallback_sessions_for_provider("yunyi", "grok-4.7")
+            .expect("fallback deleted provider sessions");
+        assert_eq!(fallback_ids, vec![a.id.clone()]);
+        let recovered = resolve_composer_prefs(None, Some(&a.id));
+        assert_eq!(recovered.provider_id.as_deref(), Some("official"));
+        assert_eq!(recovered.model_id, "grok-4.7");
+        assert_eq!(
+            resolve_composer_prefs(None, Some(&b.id)).model_id,
+            "grok-4.7"
         );
 
         let _ = delete_session(&a.id);

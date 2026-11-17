@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::account;
-use crate::providers::{self, ActiveRoute};
 use crate::secrets;
 use crate::voice_auth;
 
@@ -74,15 +73,8 @@ pub fn voice_status() -> VoiceStatusDto {
             auth_source: None,
         };
     }
-    // Official xAI STT: custom / third-party providers cannot use xAI speech
-    // endpoints (relay keys are not enough).
-    if matches!(providers::active_route(), ActiveRoute::Custom { .. }) {
-        return VoiceStatusDto {
-            available: false,
-            reason: Some("not_available".into()),
-            auth_source: None,
-        };
-    }
+    // Official xAI STT: only official credentials can call it. A chat's route
+    // is per-session, so voice availability does not depend on a global one.
     match speech_auth_token() {
         Some((_, src)) => VoiceStatusDto {
             available: true,

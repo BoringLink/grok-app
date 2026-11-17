@@ -110,14 +110,14 @@ export const trProviders = {
   "prov.fetching": "Getiriliyor…",
   "prov.loaded": "{n} model yüklendi",
   "prov.emptyList": "Model dönmedi",
-  "prov.setDefault": "Varsayılan yap",
+
   "prov.save": "Kaydet",
   "prov.add": "Ekle",
   "prov.saving": "Kaydediliyor…",
   "prov.saved": "Sağlayıcı kaydedildi.",
   "prov.savedReplaced": "Aynı kimlik zaten vardı; bu formla değiştirildi (önceki kayıt hâlâ diskteydi).",
   "prov.err.recreateNeedKey": "Bu kimlik diskte hâlâ var. Değiştirmek için bir API anahtarı girin ya da önce kalan sağlayıcıyı silin.",
-  "prov.savedHotReload": "Sağlayıcı kaydedildi. Ajanlar yeniden yüklendi; sonraki mesaj yeni yapılandırmayı kullanır (uygulamayı yeniden başlatmaya gerek yok).",
+
   "prov.savedApplyFailed": "Sağlayıcı diske kaydedildi ama canlı uygulama başarısız ({detail}). Bir mesaj göndermeyi deneyin ya da sohbet çevrimdışı kalırsa uygulamayı yeniden başlatın.",
   "prov.err.saveTimeout": "Kaydetme çok uzun sürüyor. Yapılandırma yine de yazılmış olabilir; bu paneli kapatıp yeniden açın ya da sohbet çalışmazsa yeniden başlatın.",
   "prov.confirmDelete": "“{id}” sağlayıcısı silinsin mi?",
@@ -145,14 +145,14 @@ export const trProviders = {
   "prov.officialKeySaved": "Resmî API anahtarı kaydedildi. Ses denetimleri hazır olunca görünecek.",
   "prov.officialKeyCleared": "Resmî API anahtarı kaldırıldı.",
   "prov.officialKeyPresent": "Bir anahtar kayıtlı (gösterilmiyor). Değiştirmek için yenisini yapıştırın.",
-  "prov.officialVoiceHint": "Yazma kutusunda sesle dikte resmî giriş (Hesap) ya da bu API anahtarını gerektirir ve etkin sağlayıcı Resmî Grok olmalıdır. Özel/üçüncü taraf sağlayıcılar ve canlı ses henüz desteklenmiyor.",
+  "prov.officialVoiceHint": "Yazma alanında sesle dikte için resmî giriş (Hesap) ya da bu API anahtarı gerekir; sohbetin model sağlayıcısı bunu etkilemez.",
   "prov.officialLoginHint": "Ya da tam üyelik özellikleri için Ayarlar → Hesap altından giriş yapın.",
   "prov.officialAuthOk": "Giriş yapıldı ya da anahtar hazır",
   "prov.officialKeyOnly": "API anahtarı kayıtlı",
-  "prov.active": "Etkin",
+
   "prov.customProvider": "Özel sağlayıcı",
-  "prov.useThis": "Kullan",
-  "prov.switchedHotReload": "Sağlayıcı uygulandı. Sonraki mesaj yeni yapılandırmayla yeniden bağlanır; uygulamayı tamamen yeniden başlatmaya gerek yok.",
+
+
   "prov.ccSwitch.importBtn": "CC Switch'ten içe aktar",
   "prov.ccSwitch.importBtnHint": "Yerel CC Switch'teki Grok Build sağlayıcılarını okuyup buraya ekler",
   "prov.ccSwitch.title": "CC Switch'ten içe aktar",
@@ -178,8 +178,8 @@ export const trProviders = {
   "prov.empty.hostOnly": "Özel sağlayıcılar masaüstü uygulamasını (Tauri) gerektirir. Aktarıcı eklemek için Grok uygulamasını açın.",
   "prov.empty.noCustom": "Henüz özel aktarıcı yok; OpenAI uyumlu bir sağlayıcı ekleyin ya da yukarıdaki Resmî Grok'u kullanın.",
   "prov.empty.loadError": "Sağlayıcılar yüklenemedi. Yukarıdaki ana makine hatasını düzeltip tekrar deneyin.",
-  "prov.apply.softRespawn": "Sağlayıcı kaydedildi. Ajanlar yeniden yüklendi; sonraki mesaj yeni yapılandırmayı kullanır (uygulamayı yeniden başlatmaya gerek yok).",
-  "prov.apply.savedDiskOnly": "Sağlayıcı diske kaydedildi. Rotayı uygulamak için Kullan ile etkinleştirin (ya da yazma kutusunda seçin).",
+
+  "prov.apply.savedDiskOnly": "Sağlayıcı kaydedildi. Bu sağlayıcıyı kullanan sohbetler yeni yapılandırmayı sonraki turda uygular.",
   "prov.apply.hostOnly": "Sağlayıcı değişiklikleri masaüstü uygulamasını gerektirir. Aktarıcıları kaydetmek için Grok uygulamasını açın.",
   "prov.err.validation": "Kaydedilemedi: geçersiz sağlayıcı alanları (kimlik, adres, anahtar ya da modeller). Formu kontrol edip tekrar deneyin.",
   "prov.err.network": "Kaydedilemedi: ağ ya da ana makine IPC hatası. Bağlantıyı kontrol edip tekrar deneyin.",

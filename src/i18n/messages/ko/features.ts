@@ -172,46 +172,46 @@ export const koFeatures = {
   "managedSetup.error.rejected": "배포 키가 거부되었거나 만료되었습니다. 관리자에게 확인하세요.",
   "managedSetup.error.signatureRejectedTitle": "관리형 서명이 거부됨",
   "managedSetup.error.signatureRejected": "CLI가 관리형 구성 서명 또는 엔벨로프를 거부했습니다. 관리자에게 문의하세요. 앱은 검증되지 않은 정책을 쓰지 않습니다.",
-  "modelAux.title": "보조 모델 라우팅",
-  "modelAux.desc": "메인 모델이 채팅 루프를 담당합니다. 부수 작업은 더 강한 멀티모달 모델(Hermes auxiliary 슬롯처럼)을 쓸 수 있습니다. [models] 작업 키만 쓰며 메인 라우트는 절대 바꾸지 않습니다.",
-  "modelAux.loading": "모델 레이어 불러오는 중…",
-  "modelAux.refresh": "다시 불러오기",
-  "modelAux.saved": "보조 모델을 저장했습니다. 에이전트는 다음 턴에 다시 연결됩니다.",
-  "modelAux.sharedReadOnly": "공유 세션 모드: 앱은 ~/.grok를 다시 쓰지 않습니다. 독립 모드로 바꾸거나 CLI에서 config.toml을 편집하세요.",
-  "modelAux.mainDefault": "메인 [models].default",
-  "modelAux.activeSource": "활성 라우트",
-  "modelAux.option.auto": "자동(CLI 기본값)",
-  "modelAux.slot.imageDescription": "이미지 설명",
-  "modelAux.slot.imageDescriptionDesc": "메인 모델이 이미지를 볼 수 없을 때 Grok Build가 이 모델로 첨부를 설명합니다.",
-  "modelAux.slot.webSearch": "웹 검색",
-  "modelAux.slot.webSearchDesc": "web_search 도구가 쓰는 모델입니다(백엔드 검색은 Grok 계열 모델에서 가장 잘 동작합니다).",
-  "modelAux.slot.sessionSummary": "세션 요약",
-  "modelAux.slot.sessionSummaryDesc": "세션 요약 / 압축 관련 텍스트용 부수 작업 모델입니다.",
-  "modelAux.slot.promptSuggestion": "프롬프트 제안",
-  "modelAux.slot.promptSuggestionDesc": "CLI가 켤 때 작성기 프롬프트 제안에 쓰는 모델입니다.",
-  "modelAux.saveGrok": "Grok 저장",
-  "modelAux.saveGrokHint": "네 슬롯 모두를 {model}에 연결합니다. 메인 모델은 바뀌지 않습니다.",
-  "modelAux.saveGrokNoTarget": "아직 멀티모달 대상이 없습니다. 공식 API 키(계정 → 사용자 지정 공급자 → 공식) 또는 Grok 가능 릴레이(Amux / Yun)를 추가한 뒤 다시 시도하세요.",
-  "modelAux.saveGrokConfirmTitle": "Save Grok 프리셋을 적용할까요?",
-  "modelAux.saveGrokConfirmBody": "이미지 설명, 웹 검색, 세션 요약, 프롬프트 제안을 {model}(으)로 설정합니다. 메인 모델 / 활성 라우트는 그대로입니다.",
-  "modelAux.saveGrokDone": "모든 보조 슬롯 → {model}",
-  "modelAux.resetDefaults": "공식 기본값 복원",
-  "modelAux.resetConfirmTitle": "CLI 기본값을 복원할까요?",
-  "modelAux.resetConfirmBody": "네 보조 슬롯의 사용자 지정 덮어쓰기를 제거합니다. Grok Build 내장 기본값이 다시 적용됩니다. 메인 모델과 사용자 지정 공급자는 바뀌지 않습니다. 메인 라우트를 공식으로 되돌리려면 사용자 지정 공급자 → 공식 → 사용을 쓰세요.",
-  "modelAux.resetDone": "보조 슬롯을 CLI 기본값으로 복원했습니다.",
-  "modelAux.footnote": "팁: 공식 구독으로 되돌린 뒤 여기서 “공식 기본값 복원”을 쓰면 부수 작업이 사용자 지정 릴레이를 쓰지 않습니다.",
-  "modelAux.pathLabel": "구성",
-  "modelAux.needOfficialKey": "메인 라우트가 사용자 지정 릴레이일 때 공식 Grok을 보조 모델로 쓰려면 사용자 지정 공급자 → 공식에 공식 API 키를 붙여넣으세요(사용자 지정 라우트에서는 auth.json이 지워집니다).",
-  "modelAux.health.officialIncomplete": "보조 슬롯이 공식 Grok을 가리키지만 완전한 공식 모델 섹션이나 API 키가 없습니다. 이미지는 픽셀로 보내지지 않습니다(DeepSeek image_url 400 방지). 해결: 사용자 지정 공급자 → 공식에 공식 API 키를 붙여넣거나, “공식 기본값 복원”으로 슬롯을 지우거나, Amux/Yun을 추가한 뒤 Save Grok을 다시 실행하세요.",
-  "modelAux.health.textOnlyNoVision": "메인 모델은 텍스트 전용이고 비전 보조가 준비되지 않았습니다. 비전 모델을 여기에서 구성할 때까지 첨부 이미지는 경로 메모로만 보내집니다.",
-  "modelAux.nextStepsTitle": "텍스트 메인 모델에서 비전을 켜는 방법",
-  "modelAux.nextStep1": "옵션 A — 공식: 계정 → 사용자 지정 공급자 → 공식 → xAI API 키를 붙여넣은 뒤 이미지 설명을 Official · grok-4.7으로 설정하세요(또는 Save Grok).",
-  "modelAux.nextStep2": "옵션 B — 릴레이: grok-4.7이 있는 Amux / Yun을 추가한 뒤 모든 보조 슬롯을 해당 공급자로 설정하세요(또는 Save Grok).",
-  "modelAux.nextStep3": "슬롯이 깨진 공식 Grok id에 멈춰 있으면 먼저 “공식 기본값 복원”을 누른 뒤 다시 구성하세요.",
-  "modelAux.goProviders": "사용자 지정 공급자 열기",
-  "modelAux.officialAuxTitle": "공식 사이드 채널",
-  "modelAux.officialAuxReady": "공식 Grok 사이드 채널 준비됨({reason}). 세션 MCP “official-aux”가 격리된 grok -p를 통해 web_search와 x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe를 제공합니다(DeepSeek 인증을 쓰지 않음).",
-  "modelAux.officialAuxMissing": "공식 사이드 채널이 오프라인입니다. Grok Build로 로그인(CLI 인증)하거나 사용자 지정 공급자 → 공식에 공식 API 키를 붙여넣은 뒤 세션을 다시 연결하세요.",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "비용 롤업",
   "costRollup.settingsDesc": "프로젝트 또는 세션과 날짜별 알려진 토큰 사용량입니다(가능한 경우 실시간 사용량과 세션 저널). 프로젝트/세션으로 필터하고, 일반 텍스트 요약을 내보내거나 로컬 샘플 링을 지울 수 있습니다. 추정일 뿐 — 청구가 아닙니다.",
   "costRollup.lead": "에이전트가 보고한 토큰 수의 {days}일 롤링 보기입니다. 아래 프로젝트 / 세션 단위와 필터 칩을 전환하세요. 알려진 사용량이 없는 세션은 알 수 없음으로 유지됩니다.",

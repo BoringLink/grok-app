@@ -23,9 +23,6 @@ export function OfficialAuxPanel({
   const tr = useMemo(() => createT(locale), [locale]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeSource, setActiveSource] = useState<"official" | "custom">(
-    "official",
-  );
   const [hasOfficialKey, setHasOfficialKey] = useState(false);
   const [officialAuxInject, setOfficialAuxInject] = useState(true);
   const [officialAuxWithUserMcp, setOfficialAuxWithUserMcp] = useState(false);
@@ -36,16 +33,13 @@ export function OfficialAuxPanel({
     setError(null);
     try {
       if (!api.isTauri()) {
-        setActiveSource("official");
         setHasOfficialKey(false);
         return;
       }
-      const [list, masked, settings] = await Promise.all([
-        api.providersList().catch(() => null),
+      const [masked, settings] = await Promise.all([
         api.secretsGetMasked().catch(() => null),
         api.settingsGet().catch(() => null),
       ]);
-      setActiveSource(list?.activeSource === "custom" ? "custom" : "official");
       setHasOfficialKey(!!masked?.hasOfficialKey);
       if (settings) {
         setOfficialAuxInject(settings.officialAuxInject !== false);
@@ -63,9 +57,8 @@ export function OfficialAuxPanel({
   }, [reload]);
 
   const officialCredsOk = !!(officialAvailable || hasOfficialKey);
-  const officialActive = activeSource === "official";
-  /** Host only injects on custom main; official subscription uses native tools. */
-  const injectAllowed = officialCredsOk && !officialActive;
+  /** Host injects per chat: custom routes get it, official chats keep native tools. */
+  const injectAllowed = officialCredsOk;
 
   const setOfficialAuxInjectPref = async (on: boolean) => {
     if (!api.isTauri() || !injectAllowed) return;
@@ -134,9 +127,7 @@ export function OfficialAuxPanel({
           <p className="prov-official-aux__desc">
             {!officialCredsOk
               ? tr("prov.officialAuxInjectDisabled")
-              : officialActive
-                ? tr("prov.officialAuxInjectOfficialRoute")
-                : tr("prov.officialAuxInjectDesc")}
+              : tr("prov.officialAuxInjectDesc")}
           </p>
         </div>
         <label className="prov-official-aux__switch">

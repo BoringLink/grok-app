@@ -186,10 +186,6 @@
   background: var(--accent-muted);
 }
 
-.prov-item.is-active:not(.is-selected) {
-  border-color: color-mix(in srgb, var(--success) 40%, var(--border-subtle));
-}
-
 .prov-item__main {
   flex: 1;
   min-width: 0;
@@ -257,23 +253,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.prov-item__use {
-  flex-shrink: 0;
-  margin-right: 8px;
-  color: var(--accent) !important;
-  border-color: transparent !important;
-}
-
-.prov-item__using {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  margin-right: 8px;
-  color: var(--success);
 }
 
 .prov-split__detail.overlay-scroll {

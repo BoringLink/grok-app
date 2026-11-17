@@ -214,7 +214,7 @@ export const taComposer = {
   "composer.projectBound": "அமர்வு “{name}”க்குக் கட்டுப்பட்டது",
   "composer.projectCleared": "இயல்புநிலை பணியிடத்திற்கு மாறியது",
   "composer.model": "மாதிரி",
-  "composer.modelViaProvider": "தனிப்பயன் வழங்குநர் வழியாக",
+
   "composer.modelGroupOfficial": "அதிகாரப்பூர்வ",
   "composer.modelSearchPlaceholder": "தேடல் மாதிரிகள்…",
   "composer.modelSearchEmpty": "எந்த மாதிரியும் பொருந்தவில்லை",

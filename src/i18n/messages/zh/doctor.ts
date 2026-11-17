@@ -39,6 +39,7 @@ export const zhDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "自定义中转",
   "setup.account.relayHint": "OpenAI 兼容 base URL + Key",
+  "setup.account.relayPerChatHint": "新聊天默认使用官方模型。请在输入框中选择中转模型，将其用于当前会话。",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "API Key",
   "setup.account.protocol": "消息格式",

@@ -172,46 +172,46 @@ export const zhFeatures = {
   "managedSetup.error.rejected": "部署密钥无效或已过期，请与管理员确认。",
   "managedSetup.error.signatureRejectedTitle": "托管签名被拒绝",
   "managedSetup.error.signatureRejected": "CLI 拒绝了托管配置签名或信封。请联系管理员；App 不会写入未验证策略。",
-  "modelAux.title": "辅助模型路由",
-  "modelAux.desc": "主模型负责对话与工具决策；侧任务可指到更强的多模态模型（类似 Hermes 的 auxiliary 槽）。只写入 [models] 任务键，绝不改主路由。",
-  "modelAux.loading": "正在加载模型分层…",
-  "modelAux.refresh": "刷新",
-  "modelAux.saved": "辅助模型已保存。下一回合将重连 Agent。",
-  "modelAux.sharedReadOnly": "当前为共享会话模式：应用不会改写 ~/.grok。请切换到独立模式，或在 CLI 中编辑 config.toml。",
-  "modelAux.mainDefault": "主模型 [models].default",
-  "modelAux.activeSource": "当前路由",
-  "modelAux.option.auto": "自动（CLI 默认）",
-  "modelAux.slot.imageDescription": "图片识别",
-  "modelAux.slot.imageDescriptionDesc": "主模型不支持视觉时，由该模型描述附件图片。",
-  "modelAux.slot.webSearch": "网页搜索",
-  "modelAux.slot.webSearchDesc": "web_search 工具使用的模型（Grok 系对 backend search 支持更好）。",
-  "modelAux.slot.sessionSummary": "会话摘要",
-  "modelAux.slot.sessionSummaryDesc": "会话摘要 / 压缩相关侧任务使用的模型。",
-  "modelAux.slot.promptSuggestion": "提示建议",
-  "modelAux.slot.promptSuggestionDesc": "CLI 启用提示建议时使用的模型。",
-  "modelAux.saveGrok": "省 Grok",
-  "modelAux.saveGrokHint": "四个辅助槽全部指向 {model}。主模型不变。",
-  "modelAux.saveGrokNoTarget": "尚无可用的多模态目标。请先配置官方 API Key（账户 → 自定义提供商 → 官方）或 Grok 能力中转（Amux / 云驿），再试。",
-  "modelAux.saveGrokConfirmTitle": "应用「省 Grok」预设？",
-  "modelAux.saveGrokConfirmBody": "将把图片识别、网页搜索、会话摘要、提示建议全部设为 {model}。主模型与当前路由保持不变。",
-  "modelAux.saveGrokDone": "辅助槽已全部指向 {model}",
-  "modelAux.resetDefaults": "还原官方默认",
-  "modelAux.resetConfirmTitle": "还原 CLI 默认？",
-  "modelAux.resetConfirmBody": "将清除四个辅助槽的自定义覆盖，恢复 Grok Build 内置默认。主模型与自定义提供商不会改动。若要主路由也回官方，请到「自定义提供商」对官方点 Use。",
-  "modelAux.resetDone": "辅助槽已恢复为 CLI 默认。",
-  "modelAux.footnote": "提示：切回官方订阅后，可在此点「还原官方默认」，让侧任务不再走自定义中转。",
-  "modelAux.pathLabel": "配置文件",
-  "modelAux.needOfficialKey": "主路由为自定义中转时，若要用官方 Grok 做辅助识图/搜索，请在「自定义提供商 → 官方」填写官方 API Key（自定义路由下不会挂 auth.json）。",
-  "modelAux.health.officialIncomplete": "辅助槽指向了官方 Grok，但官方模型配置不完整或缺少 API Key。图片不会按像素注入（避免 DeepSeek image_url 400）。处理：在「自定义提供商 → 官方」填写 xAI API Key；或点「还原官方默认」清空坏配置；或添加 Amux/云驿 后点「省 Grok」。",
-  "modelAux.health.textOnlyNoVision": "主模型为纯文本，且识图辅助尚未就绪。附件图片目前只会作为路径说明发送，配置好多模态辅助槽后即可识图。",
-  "modelAux.nextStepsTitle": "纯文本主模型如何启用识图",
-  "modelAux.nextStep1": "方案 A — 官方：账户 → 自定义提供商 → 官方 → 粘贴 xAI API Key，再把「图片识别」设为 Official · grok-4.7（或点「省 Grok」）。",
-  "modelAux.nextStep2": "方案 B — 中转：添加 Amux / 云驿（模型含 grok-4.7），把辅助槽指到该通道（或点「省 Grok」）。",
-  "modelAux.nextStep3": "若辅助槽卡在无效的官方 Grok id，请先点「还原官方默认」清空，再重新配置。",
-  "modelAux.goProviders": "打开自定义提供商",
-  "modelAux.officialAuxTitle": "官方侧信道",
-  "modelAux.officialAuxReady": "官方 Grok 侧信道就绪（{reason}）。会话 MCP「official-aux」提供 web_search 与 x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe，经隔离 grok -p 调用（不走 DeepSeek 鉴权）。",
-  "modelAux.officialAuxMissing": "官方侧信道未就绪。请先 Grok 官方登录（CLI auth）或在「自定义提供商 → 官方」填写 API Key，然后重新连接会话。",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "费用汇总",
   "costRollup.settingsDesc": "按项目或会话与日期汇总已知 token 用量（来自实时 usage 与会话 journal，若有）。可按项目/会话筛选、导出纯文本摘要，或清除本机样本环。仅为估算 — 非账单。",
   "costRollup.lead": "近 {days} 天 agent 上报 token。下方可切换按项目 / 按会话，并用筛选芯片收窄范围。无已知用量的会话记为「未知」。",

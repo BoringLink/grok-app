@@ -214,7 +214,7 @@ export const jaComposer = {
   "composer.projectBound": "セッションを「{name}」に紐づけました",
   "composer.projectCleared": "デフォルトワークスペースに切り替えました",
   "composer.model": "モデル",
-  "composer.modelViaProvider": "カスタムプロバイダー経由",
+
   "composer.modelGroupOfficial": "公式",
   "composer.modelSearchPlaceholder": "モデルを検索…",
   "composer.modelSearchEmpty": "一致するモデルはありません",

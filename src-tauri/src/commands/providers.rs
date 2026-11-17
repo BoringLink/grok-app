@@ -22,8 +22,9 @@ pub async fn providers_cc_switch_import(
     })
     .await
     .map_err(|e| e.to_string())??;
-    if result.imported > 0 {
-        mgr.recycle_all_agents(&app, "provider_route").await;
+    for provider_id in &result.affected_provider_ids {
+        mgr.invalidate_sessions_for_provider(&app, provider_id, "provider_route")
+            .await;
     }
     Ok(result)
 }
@@ -53,74 +54,6 @@ pub async fn providers_list() -> Result<crate::providers::ProvidersListResult, S
     .map_err(|e| e.to_string())?
 }
 
-/// Activate official Grok Build or a custom provider; returns updated list.
-///
-/// Recycles warm agents so the next send spawns with rebound auth / config
-/// (no full app restart).
-#[tauri::command]
-pub async fn providers_activate(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-    source: String,
-    provider_id: Option<String>,
-    recycle_agents: Option<bool>,
-) -> Result<crate::providers::ProvidersListResult, String> {
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let result =
-            crate::providers::activate_provider(&source, provider_id.as_deref())?;
-        // Composer model stays a catalog id (UI). Channel is `[models].default`.
-        // When leaving a custom route, drop stale provider ids from settings.
-        let mut settings = store::load_settings();
-        let cur = settings.model_id.clone().unwrap_or_default();
-        if result.active_source == "official" {
-            if cur.is_empty()
-                || crate::providers::is_custom_provider_id(&cur)
-                || cur == crate::providers::OFFICIAL_DEFAULT_MODEL
-            {
-                settings.model_id =
-                    Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
-                let _ = store::save_settings(&settings);
-            }
-        } else if result.active_source == "custom" {
-            // Keep catalog model in settings for the model picker; spawn resolves route id.
-            if cur.is_empty() || crate::providers::is_custom_provider_id(&cur) {
-                if let Some(p) = result
-                    .active_provider_id
-                    .as_ref()
-                    .and_then(|id| result.providers.iter().find(|x| x.id == *id))
-                {
-                    let upstream = p.model.trim();
-                    settings.model_id = Some(if upstream.is_empty() {
-                        crate::providers::OFFICIAL_CATALOG_MODEL.into()
-                    } else {
-                        upstream.to_string()
-                    });
-                } else {
-                    settings.model_id =
-                        Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
-                }
-                let _ = store::save_settings(&settings);
-            }
-        }
-        Ok::<_, String>(result)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    let mode = store::load_settings_async().await.session_data_mode.clone();
-    let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
-    let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    // Settings: drop every warm process so none keeps the old route.
-    // Composer: reload only the live chat. Background and parked processes
-    // on another provider stay up.
-    if recycle_agents.unwrap_or(true) {
-        mgr.recycle_all_agents(&app, "provider_route").await;
-    } else {
-        mgr.soft_respawn_with_reason(&app, "provider_route").await;
-    }
-    Ok(result)
-}
-
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn providers_upsert(
@@ -133,7 +66,6 @@ pub async fn providers_upsert(
     api_key: Option<String>,
     api_backend: Option<String>,
     provider_mode: Option<String>,
-    set_as_default: Option<bool>,
     create_only: Option<bool>,
     models: Option<Vec<crate::providers::ProviderModelEntry>>,
     efforts: Option<Vec<crate::providers::ProviderEffortEntry>>,
@@ -161,7 +93,6 @@ pub async fn providers_upsert(
         )
         .await?;
     }
-    let set_default_flag = set_as_default.unwrap_or(false);
     let mutated_id = id.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let result =
@@ -173,7 +104,6 @@ pub async fn providers_upsert(
                 api_key,
                 api_backend,
                 provider_mode: Some(normalized_provider_mode),
-                set_as_default,
                 create_only,
                 models,
                 efforts,
@@ -195,32 +125,16 @@ pub async fn providers_upsert(
             secrets.default_model = result.default_model.clone();
             // Do not copy api_key into secrets (stays only in config.toml).
             let _ = store::save_secrets(&secrets);
-            if set_as_default.unwrap_or(false) {
-                let mut settings = store::load_settings();
-                // Composer shows upstream request model, not the route slug.
-                let upstream = p.model.trim();
-                settings.model_id = Some(if upstream.is_empty() {
-                    crate::providers::OFFICIAL_CATALOG_MODEL.into()
-                } else {
-                    upstream.to_string()
-                });
-                let _ = store::save_settings(&settings);
-            }
         }
         Ok::<_, String>(result)
     })
     .await
     .map_err(|e| e.to_string())??;
 
-    // Apply active-route / active-provider edits without requiring app restart.
-    // Recycle (not mere park) so parked shells cannot reopen with stale OIDC.
-    if crate::providers::provider_mutation_needs_agent_reload(
-        set_default_flag,
-        &mutated_id,
-        &result,
-    ) {
-        mgr.recycle_all_agents(&app, "provider_route").await;
-    }
+    // Only chats already routed to this provider must cold-spawn. Dropping
+    // every warm agent would interrupt unrelated sessions for one edit.
+    mgr.invalidate_sessions_for_provider(&app, &mutated_id, "provider_route")
+        .await;
     Ok(result)
 }
 
@@ -278,62 +192,24 @@ pub async fn providers_remove(
     mgr: State<'_, Arc<SessionManager>>,
     id: String,
 ) -> Result<crate::providers::ProvidersListResult, String> {
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        crate::providers::remove_custom_provider(&id)
+    let affected_id = crate::providers::sanitize_provider_id(&id)?;
+    let (result, affected_sessions) = tauri::async_runtime::spawn_blocking(move || {
+        let result = crate::providers::remove_custom_provider(&id)?;
+        let sessions = store::fallback_sessions_for_provider(
+            &affected_id,
+            crate::providers::OFFICIAL_CATALOG_MODEL,
+        )?;
+        Ok::<_, String>((result, sessions))
     })
     .await
     .map_err(|e| e.to_string())??;
-    // Removing a provider (esp. the active one) must not leave warm agents on
-    // a deleted route id.
-    let mode = store::load_settings_async().await.session_data_mode.clone();
-    let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
-    let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    mgr.recycle_all_agents(&app, "provider_route").await;
-    Ok(result)
-}
-
-#[tauri::command]
-pub async fn providers_set_default(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-    model_id: String,
-) -> Result<crate::providers::ProvidersListResult, String> {
-    // Prefer activate_provider so auth material is rebound correctly.
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let id = model_id.trim().to_string();
-        let list = crate::providers::list_custom_providers()?;
-        let result = if list.providers.iter().any(|p| p.id == id) {
-            crate::providers::activate_provider("custom", Some(&id))?
-        } else {
-            crate::providers::activate_provider("official", None)?
-        };
-        let mut settings = store::load_settings();
-        if result.active_source == "custom" {
-            if let Some(p) = result
-                .active_provider_id
-                .as_ref()
-                .and_then(|pid| result.providers.iter().find(|x| x.id == *pid))
-            {
-                let upstream = p.model.trim();
-                settings.model_id = Some(if upstream.is_empty() {
-                    crate::providers::OFFICIAL_CATALOG_MODEL.into()
-                } else {
-                    upstream.to_string()
-                });
-            }
-        } else {
-            settings.model_id = Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
-        }
-        let _ = store::save_settings(&settings);
-        Ok::<_, String>(result)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    let mode = store::load_settings_async().await.session_data_mode.clone();
-    let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
-    let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    mgr.recycle_all_agents(&app, "provider_route").await;
+    // A deleted route must not keep a warm process. Chats on other providers
+    // stay connected; its saved route and model already point to official.
+    for session_id in affected_sessions {
+        mgr.invalidate_spawn_flags_for_session(&app, &session_id, "provider_route")
+            .await;
+    }
+    mgr.retire_prewarm().await;
     Ok(result)
 }
 

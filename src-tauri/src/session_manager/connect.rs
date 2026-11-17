@@ -396,26 +396,17 @@ impl SessionManager {
         let prefs =
             store::resolve_composer_prefs(meta.project_id.as_deref(), Some(meta.id.as_str()));
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
-        let route =
-            crate::providers::connect_route_id(ssh_alias.is_some(), meta.provider_id.as_deref());
-        let agent_model = if ssh_alias.is_some() {
-            let m = prefs.model_id.trim();
-            if m.is_empty() || crate::providers::is_custom_provider_id(m) {
-                crate::providers::OFFICIAL_CATALOG_MODEL.to_string()
-            } else {
-                m.to_string()
-            }
-        } else {
-            crate::providers::spawn_model_for_provider(&route, &prefs.model_id)
-        };
-        // Generic custom set_model repeats the section id. Official and
-        // Grok Build-compatible relays send a catalog id. Spawn `--model`
-        // is the section id, or that catalog id for those two routes.
-        let session_model = if ssh_alias.is_some() {
-            agent_model.clone()
-        } else {
-            crate::providers::session_set_model_id_for(&route, &prefs.model_id)
-        };
+        let route = crate::providers::existing_session_route(&crate::providers::connect_route_id(
+            ssh_alias.is_some(),
+            meta.provider_id.as_deref(),
+        ));
+        let agent_model = crate::providers::session_model_id_for_route(
+            meta.provider_id.as_deref(),
+            &route,
+            &prefs.model_id,
+        );
+        // Spawn and `session/set_model` must use the same section/model identity.
+        let session_model = agent_model.clone();
 
         // Pending CLI --fork-session: must cold-spawn so open can call session/fork.
         // Never no-op / unpark a warm process that still holds the source agent id.
@@ -839,8 +830,8 @@ impl SessionManager {
                 // Only an ownerless prewarm process may cross a session boundary.
                 // Mid-turn background keeps exclusive ownership of its process
                 // so session/load on a peer cannot poison that journal.
-                // Route class must follow active_route(), not prefs.model_id.
-                // Custom channels store the *upstream* model in session prefs
+                // Route class follows this chat's stored provider, not
+                // prefs.model_id. Custom channels store the *upstream* model
                 // (e.g. deepseek-v4-flash), which is_custom_provider_id rejects
                 // — processes were mis-labeled official and reused after
                 // auth.json was stripped (#528 intermittent re-login).
@@ -1120,8 +1111,8 @@ impl SessionManager {
                         // model while the composer and live shell showed the
                         // resolved one.
                         let session_model = connect_set_model_argument(
-                            ssh_alias.is_some(),
                             &route,
+                            meta.provider_id.as_deref(),
                             &session_model,
                             disk_session_model_id(&meta.id).as_deref(),
                         );
@@ -1331,6 +1322,8 @@ impl SessionManager {
                         .as_ref()
                         .map(|s| s.trim())
                         .filter(|s| !s.is_empty()),
+                    !crate::providers::is_session_provider_official(&route),
+                    &route,
                 )
             },
             max_agent_turns: meta.max_agent_turns,
@@ -1642,8 +1635,8 @@ impl SessionManager {
                 // per-model section when one exists (same id as spawn). Official
                 // and proxy relays send the catalog id (#1000, #1394).
                 let session_model = connect_set_model_argument(
-                    ssh_alias.is_some(),
                     &route,
+                    meta.provider_id.as_deref(),
                     &session_model,
                     disk_session_model_id(&meta.id).as_deref(),
                 );
@@ -1841,6 +1834,24 @@ impl SessionManager {
         self.prewarm_inner(app, true).await;
     }
 
+    /// Drop the ownerless prewarm process. A provider edit can change the
+    /// config.toml that process already read, and its reuse gate only compares
+    /// policy / effort / sandbox / route.
+    pub async fn retire_prewarm(&self) {
+        self.prewarm_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let ready = {
+            let mut pw = self.prewarm.lock();
+            match std::mem::replace(&mut *pw, PrewarmState::None) {
+                PrewarmState::Ready(p) => Some(p.acp),
+                PrewarmState::Spawning { .. } | PrewarmState::None => None,
+            }
+        };
+        if let Some(acp) = ready {
+            Self::kill_acp_bounded(&acp).await;
+        }
+    }
+
     fn clear_prewarm_if_current(&self, epoch: u64) {
         let mut pw = self.prewarm.lock();
         if self.prewarm_epoch.load(std::sync::atomic::Ordering::SeqCst) == epoch
@@ -1917,14 +1928,23 @@ impl SessionManager {
         // the global defaults when no session exists yet. A global-default
         // prewarm (policy=ask) never matched this user's always-approve(YOLO)
         // sessions, so connect cold-spawned every time.
-        let last_sid = store::load_sessions_index()
+        let last_session = store::load_sessions_index()
             .into_iter()
             .filter(|s| !s.archived)
-            .max_by_key(|s| s.updated_at)
-            .map(|s| s.id.clone());
+            .max_by_key(|s| s.updated_at);
+        let last_sid = last_session.as_ref().map(|s| s.id.clone());
         let prefs = store::resolve_composer_prefs(None, last_sid.as_deref());
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
-        let agent_model = crate::providers::agent_spawn_model_id(&prefs.model_id);
+        // Warm process must match the route the next chat is likely to open.
+        let prewarm_route =
+            crate::providers::existing_session_route(&crate::providers::session_route_provider_id(
+                last_session.as_ref().and_then(|s| s.provider_id.as_deref()),
+            ));
+        let agent_model = crate::providers::session_model_id_for_route(
+            last_session.as_ref().and_then(|s| s.provider_id.as_deref()),
+            &prewarm_route,
+            &prefs.model_id,
+        );
         // Default-workspace cwd only. Project sessions with a non-off OS
         // sandbox must cold-spawn (#986) — Seatbelt locks write roots here.
         // Must exist for Command::current_dir (spawn fails silently otherwise).
@@ -1937,7 +1957,12 @@ impl SessionManager {
             permission_policy: Some(prefs.permission_policy.clone()),
             product_mode: Some(prefs.mode.clone()),
             sandbox_profile: Some(effective_sandbox.clone()),
-            extra_rules: crate::official_aux::merge_extra_rules(None),
+            route_provider_id: Some(prewarm_route.clone()),
+            extra_rules: crate::official_aux::merge_extra_rules(
+                None,
+                !crate::providers::is_session_provider_official(&prewarm_route),
+                &prewarm_route,
+            ),
             // Director stays on this default. session/new reads the setting
             // later, so toggling it does not require a new process.
             ..Default::default()
@@ -2235,28 +2260,21 @@ pub(crate) fn should_kill_parked_after_flag_mismatch(
 
 /// Route id stored on a cold-started ACP process.
 ///
-/// SSH sessions are official-only. `None` follows `active_route()` and would
-/// prepare a custom global relay's auth for a remote official chat.
+/// SSH sessions are official-only; a missing route is official too.
 /// `session/set_model` id for a connect that already spawned.
 ///
 /// A model saved on the row after spawn wins. Empty disk keeps the id this
 /// handshake already resolved.
 pub(crate) fn connect_set_model_argument(
-    ssh: bool,
     route: &str,
+    stored_provider: Option<&str>,
     spawned: &str,
     disk_model: Option<&str>,
 ) -> String {
     let Some(raw) = disk_model.map(str::trim).filter(|s| !s.is_empty()) else {
         return spawned.to_string();
     };
-    if ssh {
-        if crate::providers::is_custom_provider_id(raw) {
-            return crate::providers::OFFICIAL_CATALOG_MODEL.to_string();
-        }
-        return raw.to_string();
-    }
-    crate::providers::session_set_model_id_for(route, raw)
+    crate::providers::session_model_id_for_route(stored_provider, route, raw)
 }
 
 /// CLI `allowed_models` rejection. Other `session/set_model` failures stay soft.
@@ -2405,18 +2423,29 @@ mod connect_preserve_tests {
         let _ = crate::paths::ensure_app_dirs();
 
         assert_eq!(
-            connect_set_model_argument(false, "official", "grok-4.7", None),
+            connect_set_model_argument("official", None, "grok-4.7", None),
             "grok-4.7",
             "no disk model keeps the spawn-time id"
         );
         assert_eq!(
-            connect_set_model_argument(false, "official", "grok-4.7", Some("  ")),
+            connect_set_model_argument("official", None, "grok-4.7", Some("  ")),
             "grok-4.7"
         );
         assert_eq!(
-            connect_set_model_argument(false, "official", "grok-4.7", Some("grok-4.5")),
+            connect_set_model_argument("official", None, "grok-4.7", Some("grok-4.5")),
             "grok-4.5",
             "a model saved after Ready replaces the spawn-time id"
+        );
+
+        assert_eq!(
+            connect_set_model_argument(
+                "official",
+                Some("deleted-relay"),
+                "grok-4.7",
+                Some("grok-4.6"),
+            ),
+            crate::providers::OFFICIAL_CATALOG_MODEL,
+            "a deleted relay's model cannot override the official fallback after spawn",
         );
 
         let session =
@@ -2434,7 +2463,7 @@ mod connect_preserve_tests {
         let disk = disk_session_model_id(&session.id);
         assert_eq!(disk.as_deref(), Some("grok-4.5"));
         assert_eq!(
-            connect_set_model_argument(false, "official", "grok-4.7", disk.as_deref()),
+            connect_set_model_argument("official", None, "grok-4.7", disk.as_deref()),
             "grok-4.5"
         );
 

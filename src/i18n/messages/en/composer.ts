@@ -216,7 +216,7 @@ export const enComposer = {
   "composer.projectBound": "Session bound to “{name}”",
   "composer.projectCleared": "Switched to default workspace",
   "composer.model": "Model",
-  "composer.modelViaProvider": "via custom provider",
+
   "composer.modelGroupOfficial": "Official",
   "composer.modelSearchPlaceholder": "Search models…",
   "composer.modelSearchEmpty": "No models match",

@@ -172,46 +172,46 @@ export const enFeatures = {
   "managedSetup.error.rejected": "The deployment key was rejected or expired. Confirm it with your administrator.",
   "managedSetup.error.signatureRejectedTitle": "Managed signature rejected",
   "managedSetup.error.signatureRejected": "The CLI rejected the managed config signature or envelope. Contact your administrator; the App will not write unverified policy.",
-  "modelAux.title": "Auxiliary model routing",
-  "modelAux.desc": "Main model handles the chat loop. Side tasks can use a stronger multimodal model (like Hermes auxiliary slots). Writes only [models] task keys — never changes your main route.",
-  "modelAux.loading": "Loading model layers…",
-  "modelAux.refresh": "Reload",
-  "modelAux.saved": "Auxiliary model saved. Agents will reconnect on next turn.",
-  "modelAux.sharedReadOnly": "Shared session mode: the App does not rewrite ~/.grok. Switch to independent mode or edit config.toml in the CLI.",
-  "modelAux.mainDefault": "Main [models].default",
-  "modelAux.activeSource": "Active route",
-  "modelAux.option.auto": "Auto (CLI default)",
-  "modelAux.slot.imageDescription": "Image description",
-  "modelAux.slot.imageDescriptionDesc": "When the main model cannot see images, Grok Build describes attachments with this model.",
-  "modelAux.slot.webSearch": "Web search",
-  "modelAux.slot.webSearchDesc": "Model used by the web_search tool (backend search works best on Grok-class models).",
-  "modelAux.slot.sessionSummary": "Session summary",
-  "modelAux.slot.sessionSummaryDesc": "Side-job model for session summaries / compact-related text.",
-  "modelAux.slot.promptSuggestion": "Prompt suggestion",
-  "modelAux.slot.promptSuggestionDesc": "Model used for composer prompt suggestions when the CLI enables them.",
-  "modelAux.saveGrok": "Save Grok",
-  "modelAux.saveGrokHint": "Point all four slots at {model}. Main model unchanged.",
-  "modelAux.saveGrokNoTarget": "No multimodal target yet. Add an official API key (Account → Custom providers → Official) or a Grok-capable relay (Amux / Yun), then try again.",
-  "modelAux.saveGrokConfirmTitle": "Apply Save Grok preset?",
-  "modelAux.saveGrokConfirmBody": "Set image description, web search, session summary, and prompt suggestion to {model}. Your main model / active route stays as-is.",
-  "modelAux.saveGrokDone": "All auxiliary slots → {model}",
-  "modelAux.resetDefaults": "Restore official defaults",
-  "modelAux.resetConfirmTitle": "Restore CLI defaults?",
-  "modelAux.resetConfirmBody": "Remove custom overrides for the four auxiliary slots. Grok Build built-in defaults apply again. Main model and custom providers are not changed. To switch the main route back to official, use Custom providers → Official → Use.",
-  "modelAux.resetDone": "Auxiliary slots restored to CLI defaults.",
-  "modelAux.footnote": "Tip: after switching back to the official subscription, use “Restore official defaults” here so side tasks stop using a custom relay.",
-  "modelAux.pathLabel": "Config",
-  "modelAux.needOfficialKey": "To use Official Grok as an aux model while the main route is a custom relay, paste an official API key under Custom providers → Official (auth.json is cleared on custom routes).",
-  "modelAux.health.officialIncomplete": "Aux slots point at official Grok, but there is no complete official model section or API key. Images will not be sent as pixels (avoids DeepSeek image_url 400). Fix: paste an official API key under Custom providers → Official, or clear slots with “Restore official defaults”, or add Amux/Yun and re-run Save Grok.",
-  "modelAux.health.textOnlyNoVision": "Main model is text-only and vision aux is not ready. Attached images are sent as path notes only until you configure a vision model here.",
-  "modelAux.nextStepsTitle": "How to enable vision on a text main model",
-  "modelAux.nextStep1": "Option A — Official: Account → Custom providers → Official → paste xAI API key, then set Image description to Official · grok-4.7 (or Save Grok).",
-  "modelAux.nextStep2": "Option B — Relay: add Amux / Yun with grok-4.7, then set all aux slots to that provider (or Save Grok).",
-  "modelAux.nextStep3": "If slots are stuck on a broken official Grok id, click “Restore official defaults” first, then reconfigure.",
-  "modelAux.goProviders": "Open Custom providers",
-  "modelAux.officialAuxTitle": "Official side-channel",
-  "modelAux.officialAuxReady": "Official Grok side-channel ready ({reason}). Session MCP “official-aux” exposes web_search + x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe via isolated grok -p (does not use DeepSeek auth).",
-  "modelAux.officialAuxMissing": "Official side-channel offline. Sign in with Grok Build (CLI auth) or paste an official API key under Custom providers → Official — then reconnect the session.",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "Cost rollup",
   "costRollup.settingsDesc": "Known token usage by project or session and day (from live usage and session journals when available). Filter by project/session, export a plain-text summary, or clear the local sample ring. Estimates only — not billing.",
   "costRollup.lead": "Rolling {days}-day view of agent-reported token counts. Switch Project / Session grain and filter chips below. Sessions without known usage stay Unknown.",

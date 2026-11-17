@@ -236,23 +236,36 @@ impl SessionManager {
                 mid,
                 turn_id,
                 user_row,
+                s.meta
+                    .provider_id
+                    .clone()
+                    .unwrap_or_else(|| crate::providers::SESSION_PROVIDER_OFFICIAL.into()),
             ))
         });
         drop(journal_guard);
-        let (backend, app_sid, acp, agent_sid, agent_prompt, message_id, turn_id, user_row) =
-            match open {
-                Some(Ok(v)) => v,
-                Some(Err(e)) => {
-                    self.emit_for_session(&app, &app_sid);
-                    return Err(e);
-                }
-                None => {
-                    return Err(format!(
-                        "{}: chat {app_sid} has no live agent process — reconnect and retry",
-                        AgentErrorCode::ConnectFailed.as_str()
-                    ));
-                }
-            };
+        let (
+            backend,
+            app_sid,
+            acp,
+            agent_sid,
+            agent_prompt,
+            message_id,
+            turn_id,
+            user_row,
+            provider_id,
+        ) = match open {
+            Some(Ok(v)) => v,
+            Some(Err(e)) => {
+                self.emit_for_session(&app, &app_sid);
+                return Err(e);
+            }
+            None => {
+                return Err(format!(
+                    "{}: chat {app_sid} has no live agent process — reconnect and retry",
+                    AgentErrorCode::ConnectFailed.as_str()
+                ));
+            }
+        };
         // The session slot is now in `Streaming` and owns its ACP client. Do
         // not hold the global connect/park lock while host vision or another
         // side-channel performs network/CLI work (official vision can take
@@ -284,7 +297,7 @@ impl SessionManager {
         // ── Host vision (custom text-only main + @image only) ──────────────
         // Official Grok route: never Host-describe (native multimodal).
         // X/web: tools-first via official-aux MCP — no Host keyword pre-search.
-        let host_vision = crate::models_aux::host_vision_will_run(&agent_prompt);
+        let host_vision = crate::models_aux::host_vision_will_run(&agent_prompt, &provider_id);
         let host_tool_id = if host_vision {
             let id = format!("host-vision-{}", Uuid::new_v4());
             let (title, detail_run) = if zh {
@@ -352,6 +365,7 @@ impl SessionManager {
         let prep = crate::models_aux::prepare_agent_prompt_for_main_detailed(
             &agent_prompt,
             vision_progress,
+            &provider_id,
         )
         .await;
         // CLI slash commands run only at byte 0. Put this send's `/goal`

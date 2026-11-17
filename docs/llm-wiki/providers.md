@@ -28,7 +28,7 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 
 | Field | Role |
 |-------|------|
-| `id` | Config section slug (`[model.<id>]`). **Reserved:** `grok` and `official` (Official Use writes `[models].default = "grok"`; a custom section with that id must not steal the official route). |
+| `id` | Config section slug (`[model.<id>]`). **Reserved:** `grok` and `official` (legacy `[models].default = "grok"` official key; a custom section with that id must not steal the official route). |
 | `name` | Channel display label (provider card / menu group) |
 | `baseUrl` | OpenAI-compatible root, usually ends with `/v1` |
 | `baseUrlFullPath` | When **true**, host stores the URL as typed and **does not** auto-append `/v1` (App TOML `app_base_url_full_path`). Default **false** = legacy auto-`/v1` for CPA/sub2api. Use for gateways like Volcengine Ark Coding Plan (`…/api/coding`, `…/api/coding/v3`). Settings UI: switch **完整路径 / Full path** next to Base URL label. |
@@ -41,7 +41,7 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 | `supportsVision` | **Legacy compatibility only.** Channel-level App field `app_supports_vision`; per-model `supportsVision` / `supportsVideo` in `app_models` still win when set. Settings no longer exposes image/video capability controls, and a live `/models` refresh never changes these flags. Host `custom_provider_is_text_only` keeps its existing read path (active row, then channel flag, then name / id heuristics); unknown relays stay text-only so DeepSeek-style APIs do not 400 on `image_url`. |
 | `extraHeaders` | Extra HTTP headers written as Grok Build `[model.<id>].extra_headers` (inline TOML table, sent verbatim on inference). Settings → Account → Providers editor. Use for gateways that WAF-check `User-Agent` / `Originator` (e.g. AgentRouter) or Anthropic `x-api-key`. Empty = omit the field. Newlines in values are rejected. |
 | `providerMode` | Explicit transport semantics: `generic` (default) or `grok_build_proxy`. Never infer this from a provider id or hostname. |
-| `isDefault` | Maps to `[models].default` (set only via Settings **Use** / `providers_activate`, not a composer model pick or a form checkbox) |
+| `isDefault` | Legacy read of `[models].default`. The App no longer writes it for activation; a chat's provider comes from its own composer preference. |
 
 **Integer TOML fields:** Host writes `context_window = 1000000` (CLI-compatible). On `providers_list`, legacy quoted string forms are repaired in place. Other model edits must not drop or re-quote this field.
 
@@ -165,7 +165,7 @@ separate from ordinary `[model.<id>]` relays:
 | Child environment | Only the target `grok agent stdio` process receives `GROK_MODELS_BASE_URL`, `GROK_MODELS_LIST_URL`, `GROK_CLI_CHAT_PROXY_BASE_URL`, and `XAI_API_KEY` |
 | Generic compatibility | Generic providers keep the channel `[model.<id>]` plus one `[model.<id>__<slug>]` per catalog row. Spawn and `session/set_model` use the selected row's section. The stream sanitizer is unchanged |
 | Composer id vs CLI id (#1000, #1294, #1337, #1394) | The picker stores `app_models[].id` (request-body id). For a **generic** relay, each catalog id is its own `[model.<providerId>__<slug>]` section (`model` = that upstream id). Host sends that section name for both `--model` and `session/set_model`, and the menu lists every catalog row. CLI 1.0.70 accepts the section name (`matched by map key`) and puts that section's `model` field in the request body, so picking A does not send B. An id that is neither a section nor some section's `model` field returns `unknown model id`. `_meta.model` does not change the request body. Do not rewrite the shared parent `[model.<providerId>].model` per chat. Old single-section configs still resolve to the provider id until migration writes the child sections. Migration rewrites only App agent-home (independent mode), is idempotent, and leaves hand-written sections and comment order alone. A **Grok Build-compatible relay** still sends the real catalog id on both, matching spawn, still lists each catalog row, and does not get per-model sections; when its stored catalog is unreadable or explicitly cleared, spawn and `session/set_model` repeat the chat's stored id instead of the channel alias. Cold connect also applies `session/set_model` after `session/new` (same as unpark) so turn 1 and turn 2 cannot diverge. Official catalog ids (`grok-4.7`, `grok-4.7-build-fast`, `grok-4.6`, `grok-4.5`) are never remapped through a relay that also lists them. |
-| Apply | Editing the active provider recycles warm ACP processes; the next send starts with the new catalog and capability contract |
+| Apply | Editing a provider invalidates only chats routed to that provider; the next turn uses its new catalog and capability contract |
 | Attachments | Unchanged: App still sends `@absolute/path` inside ACP text content; this mode does not claim or add native ACP image blocks |
 
 The key stays write-only from the UI and is never included in spawn logs.
@@ -183,27 +183,23 @@ Left / right split (`ProvidersPanel`):
 | Left | **Add provider** on top; list of cards. Official Grok card first **only if** signed in / CLI auth / official key; otherwise list starts empty. |
 | Right | Create/edit form when adding or selecting a custom card; official detail when selecting the official card; empty placeholder otherwise. |
 
-Each card has **Use** to activate that route (`providers_activate`). Clicking a card opens detail/edit. No long intro copy, agent-home path, or separate “active route” switcher.
+Clicking a card opens detail/edit. There is **no “Use” button and no global active route**: the composer model menu selects a provider for one chat. No long intro copy, agent-home path, or separate “active route” switcher.
 
 ### Custom route requires independent data mode (#557)
 
 Custom providers are written only under App **agent-home** `config.toml`. Default `session_data_mode=shared` uses `GROK_HOME=~/.grok`, where those sections are invisible — so third-party channels would fail without official login.
 
-| Event | Host action |
-|-------|-------------|
-| `providers_activate(custom)` / set custom as default | Force `session_data_mode=independent` when still `shared`; set `switchedToIndependent` on the result |
-| `prepare_route_auth_for_agent` on custom | Heal the same way before spawn |
-| UI | Toast `prov.switchedToIndependent`; refresh Settings session-data control |
+Custom chats do **not** require `session_data_mode=independent`. Spawn resolves `GROK_HOME=agent-home` for a custom route and prepares that home as independent, even while the app-wide mode stays `shared`. Official chats keep `~/.grok` in shared mode and agent-home in independent mode. The Settings session-data control therefore no longer locks shared mode when providers exist.
 
-Official route does **not** force mode back to shared.
+API keys stay in agent-home `config.toml`, are never returned by `providers_list`, and never appear in spawn logs.
 
 ## Official tool injection
 
 Settings → Account → **Extras** → toggle **Inject official tools** (`official_aux_inject`).
 
-**Only while the active main route is a custom provider.** Official Grok subscription sessions never inject `official-aux` (native tools only).
+**Only for chats whose own provider is custom.** The gate is the session route passed at spawn, not a global default. Official Grok subscription chats never inject `official-aux` (native tools only), even while another chat uses a relay.
 
-When the toggle is on, credentials exist, and the route is custom: MCP **official-aux** (`web_search`, all `x_*`, `vision_describe`) under `agent-home-official`. Default does **not** also load extension MCPs (`official_aux_with_user_mcp` off) so tools are not stuck behind 30s Playwright timeouts. Does **not** put `auth.json` back into the custom main agent-home. See [model-routing.md](./model-routing.md).
+When the toggle is on, credentials exist, and the chat's route is custom: MCP **official-aux** (`web_search`, all `x_*`, `vision_describe`) under `agent-home-official`. Default does **not** also load extension MCPs (`official_aux_with_user_mcp` off) so tools are not stuck behind 30s Playwright timeouts. Does **not** put `auth.json` back into the custom main agent-home. See [model-routing.md](./model-routing.md).
 
 ## Route switching (auth isolation)
 
@@ -213,24 +209,24 @@ Grok Build 0.2.x will send **OIDC** when `auth.json` is present — even if the 
 
 Verified working combinations:
 
-| Route | `[models].default` | agent `--model` | agent-home `auth.json` |
-|-------|--------------------|-----------------|------------------------|
-| Custom relay | provider id (`yunyi`) | **provider id** | **removed** (api_key only) |
-| Official | `grok` | catalog id (`grok-4.7`) | **synced** from `~/.grok` |
+| Chat route | agent `--model` | sealed `GROK_HOME` auth |
+|------------|-----------------|-------------------------|
+| Custom relay | per-model section id, or the catalog id for `grok_build_proxy` | **absent** (api_key only) |
+| Official (no provider preference) | catalog id (`grok-4.7`) | **synced** from `~/.grok` |
 
-Host must rebind both sides on every switch and before each ACP spawn (`prepare_route_auth` + `agent_spawn_model_id`). After official login / account switch, call `prepare_route_auth_for_agent` instead of blindly copying `auth.json` into agent-home — a custom main must stay api_key-only. A live ACP process does not read that shared file: spawn seals a private `GROK_HOME` under `agent-proc/` (#1293). Custom ACP processes also **skip** `authenticate(cached_token)` because that RPC reads `~/.grok/auth.json` even when `GROK_HOME` is agent-home. Composer catalog `modelId` remains the official selection preference; spawn resolves the channel id separately.
+A chat's stored `provider_id` is the single route authority. `[models].default` is a legacy CLI key and never decides a session route. Host prepares auth before each ACP spawn from that chat's route (`prepare_route_auth(custom)`); after official login / account switch the canonical agent-home mirror is refreshed, and a custom spawn still seals a private home without `auth.json`. A live ACP process does not read that shared file: spawn seals a private `GROK_HOME` under `agent-proc/` (#1293). Custom ACP processes also **skip** `authenticate(cached_token)` because that RPC reads `~/.grok/auth.json` even when `GROK_HOME` is agent-home.
 
-**Composer pick is not an activate entry.** The composer model menu does not call `providers_activate`. Only Settings → Custom providers → **Use** switches the global route (auth rebind, `[models].default`, `recycle_all_agents`). A menu pick writes that chat through `composer_prefs_set`. When that chat's provider changes, Host clears **only** its `agent_session_id` and soft-respawns that chat, so the new process cannot `session/load` the previous route. Other chats keep their process and CLI session id. SSH cold start always passes route `official`, so a custom global default cannot prepare relay auth for a remote session.
+**Composer pick is the only switch.** The composer model menu writes that chat through `composer_prefs_set` (`provider_id` + request model). It does not touch a global route and does not call `recycle_all_agents`. When the chat's provider changes, Host clears **only** its `agent_session_id` and soft-respawns it, so the new process cannot `session/load` the previous route. Other chats keep their process and CLI session id. SSH projects list official models only, and the Host normalizes stale custom picks to an official model.
+
+**Recovery.** Missing provider preference → official. App removal rewrites chats on that provider to official + `grok-4.7`; if a provider disappears outside the App, connect-time resolution still falls back to the official default. An official model id the live catalog no longer lists also resolves to the official default. An explicitly cleared custom catalog keeps child sections for existing chats; when a readable catalog removes a saved model, the chat resolves to the provider's current channel model.
 
 ## Host commands
 
 | Command | Role |
 |---------|------|
-| `providers_list` | Providers + default (no raw keys); blocking pool |
-| `providers_upsert` | Create/update; empty key keeps previous; recycles warm agents when default/active route changes (`provider_route`) so next send applies without app restart |
-| `providers_remove` | Delete section; recycles warm agents |
-| `providers_set_default` | Set default model id; recycles warm agents |
-| `providers_activate` | Switch official/custom route + rebind auth; recycles warm agents |
+| `providers_list` | Providers + legacy default read (no raw keys); blocking pool |
+| `providers_upsert` | Create/update; empty key keeps previous; invalidates only chats already on that provider so their next send uses the new config |
+| `providers_remove` | Delete section; invalidates only chats on that provider (they fall back to official on connect) |
 | `providers_ping` | `GET {base}/models` RTT |
 | `providers_list_models` | Fetch remote model ids |
 | `providers_test_model` | Per-model probe: one tiny non-streaming inference request to `{base}/chat/completions` (\| `/responses` \| `/v1/messages` by `api_backend`); success = HTTP 2xx |
@@ -269,7 +265,7 @@ Wire shape (confirmed):
 
 Future providers (Coding Plan quotas, etc.) add adapters under the same `providers_balance` command.
 
-**Live apply (#376):** Do **not** only park the live agent (`session_disconnect`) after provider edits — parked processes keep old OIDC/`config.toml` in memory. Host `recycle_all_agents(..., "provider_route")` after route-affecting writes. Settings UI always clears “Saving…” in `finally` and soft-fails apply errors with a toast (config is already on disk).
+**Provider edits.** Upserts and CC Switch imports invalidate only chats that use an affected provider. Removal sends those chats to the official default and invalidates their warm process; unrelated chats stay connected. A busy turn finishes under its current process and applies the change on reconnect.
 
 ## Import from CC Switch (#167)
 
@@ -282,7 +278,7 @@ Settings → Account → Custom providers → **Import from CC Switch**.
 | Preview | Multi-select list (no full API keys; status badges) |
 | Import | Map TOML → current agent-home `config.toml`; **same id overwrites** (no UI toggle); does not auto-activate route |
 | Native capability | An explicit `app_provider_mode` is honored. Otherwise a Responses provider is promoted to `grok_build_proxy` only when its selected real model advertises `supports_backend_search = true` in the live `/models` response |
-| Apply | Any successful import recycles warm ACP children so the next send cannot reuse stale provider semantics |
+| Apply | Successfully imported provider ids invalidate only their routed chats; other sessions stay connected |
 
 ### CC Switch data paths (cross-platform)
 

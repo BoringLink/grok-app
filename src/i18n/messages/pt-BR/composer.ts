@@ -214,7 +214,7 @@ export const ptBRComposer = {
   "composer.projectBound": "Sessão vinculada a “{name}”",
   "composer.projectCleared": "Mudou para o espaço de trabalho padrão",
   "composer.model": "Modelo",
-  "composer.modelViaProvider": "via provedor personalizado",
+
   "composer.modelGroupOfficial": "Oficial",
   "composer.modelSearchPlaceholder": "Buscar modelos…",
   "composer.modelSearchEmpty": "Nenhum modelo correspondente",

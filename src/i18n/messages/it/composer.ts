@@ -214,7 +214,7 @@ export const itComposer = {
   "composer.projectBound": "Sessione associata a «{name}»",
   "composer.projectCleared": "Passato all’area di lavoro predefinita",
   "composer.model": "Modello",
-  "composer.modelViaProvider": "via provider personalizzato",
+
   "composer.modelGroupOfficial": "Ufficiale",
   "composer.modelSearchPlaceholder": "Cerca modelli…",
   "composer.modelSearchEmpty": "Nessun modello corrispondente",
