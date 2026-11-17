@@ -8999,6 +8999,7 @@ export function AppWorkbench() {
       setCustomProviders(list.providers);
       sessionProviderChip.noteProviderList(list);
     } catch {
+      sessionProviderChip.noteProviderListError();
       /* keep previous */
     }
   }, [sessionProviderChip]);
@@ -9119,6 +9120,7 @@ export function AppWorkbench() {
   const {
     options: effortOptions,
     pending: effortOptionsPending,
+    failed: effortOptionsFailed,
     handleEffortPick,
     getLatestEffort,
     isCurrentTarget,
@@ -9129,6 +9131,7 @@ export function AppWorkbench() {
     officialModels: availableModels,
     effort,
     reconcileEnabled: composerPrefsReady,
+    catalogFailed: sessionProviderChip.providersLoadFailed,
     setEffort,
     updateDraftEffort: sessionProviderChip.updateDraftEffort,
     draftRouteRef: sessionProviderChip.draftComposerRouteRef,
@@ -12606,6 +12609,7 @@ export function AppWorkbench() {
             canGuideQueuedMessage={canGuideQueuedMessage}
             effortOptions={effortOptions}
             effortOptionsPending={effortOptionsPending}
+            effortOptionsFailed={effortOptionsFailed}
             chatAttachments={chatAttachments}
             clearSlashFilters={clearSlashFilters}
             cliWorktrees={cliWorktrees}
@@ -12897,6 +12901,7 @@ export function AppWorkbench() {
               effortMax: tr("effort.max"),
               effortNone: tr("effort.none"),
               effortUnavailable: tr("composer.effortUnavailable"),
+              effortLoadError: tr("composer.effortLoadError"),
               contextCurrent: tr("context.current"),
               contextUnknown: tr("phone.contextUnknown"),
               contextCompact: tr("context.compactAction"),
@@ -12921,6 +12926,7 @@ export function AppWorkbench() {
             activeProviderId={providerActiveId}
             efforts={effortOptions}
             effortOptionsPending={effortOptionsPending}
+            effortOptionsFailed={effortOptionsFailed}
             mode={mode}
             policy={policy}
             contextDisplay={contextUsageDisplay}

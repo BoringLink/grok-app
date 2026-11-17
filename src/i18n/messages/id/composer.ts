@@ -220,6 +220,7 @@ export const idComposer = {
   "composer.modelSearchEmpty": "Tidak ada model yang cocok",
   "composer.effort": "Penalaran",
   "composer.effortUnavailable": "Model ini tidak menyediakan pilihan penalaran.",
+  "composer.effortLoadError": "Gagal memuat opsi penalaran.",
   "composer.effortFaster": "Lebih cepat",
   "composer.effortSmarter": "Lebih cerdas",
   "composer.mode": "Mode",

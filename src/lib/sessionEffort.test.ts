@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CustomProvider } from "@/lib/api";
 import { GROK_BUILD_MODELS, type ModelOption } from "./grokCatalog";
 import {
@@ -273,6 +273,31 @@ describe("resolveSessionEffortOptions", () => {
 
     expect(resolution.pending).toBe(true);
     expect(resolution.options).toEqual([]);
+  });
+
+  it("reports a failed catalog load instead of a neutral pending state", () => {
+    const resolution = resolveSessionEffortOptions({
+      source: "custom",
+      provider: null,
+      modelId: "m-raw",
+      catalogFailed: true,
+    });
+
+    expect(resolution.pending).toBe(false);
+    expect(resolution.failed).toBe(true);
+    expect(resolution.options).toEqual([]);
+  });
+
+  it("clears the failed flag once the catalog loads", () => {
+    const resolution = resolveSessionEffortOptions({
+      source: "custom",
+      provider: null,
+      modelId: "m-raw",
+      catalogFailed: false,
+    });
+
+    expect(resolution.pending).toBe(true);
+    expect(resolution.failed).toBe(false);
   });
 
   it("offers Off from an explicit model setting and honors an explicit disable", () => {
@@ -574,6 +599,21 @@ describe("saveSessionEffort", () => {
       expect(result.error).toBeInstanceOf(Error);
     }
     expect(visible).toBe("balanced");
+  });
+
+  it("skips persistence for a write superseded by a newer pick", async () => {
+    const save = vi.fn();
+    const apply = vi.fn();
+    const result = await saveSessionEffort({
+      effort: "ultra",
+      save,
+      apply,
+      skip: () => true,
+    });
+
+    expect(result).toEqual({ ok: true, effort: "ultra" });
+    expect(save).not.toHaveBeenCalled();
+    expect(apply).not.toHaveBeenCalled();
   });
 });
 

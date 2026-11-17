@@ -220,6 +220,7 @@ export const jaComposer = {
   "composer.modelSearchEmpty": "一致するモデルはありません",
   "composer.effort": "推論",
   "composer.effortUnavailable": "このモデルには推論レベルがありません。",
+  "composer.effortLoadError": "推論オプションを読み込めませんでした。",
   "composer.effortFaster": "高速",
   "composer.effortSmarter": "高精度",
   "composer.mode": "モード",

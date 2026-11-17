@@ -18,6 +18,8 @@ export function useSessionEffortOptions(opts: {
   modelId: string;
   officialModels: ModelOption[];
   effort: string;
+  /** 自定义 provider 目录加载失败（区别于仍在加载）。 */
+  catalogFailed?: boolean;
   /** 等待当前会话偏好恢复后，再协调目录中已不存在的档位。 */
   reconcileEnabled?: boolean;
   setEffort: (effort: string) => void;
@@ -33,8 +35,9 @@ export function useSessionEffortOptions(opts: {
         provider: opts.provider,
         modelId: opts.modelId,
         officialModels: opts.officialModels,
+        catalogFailed: opts.catalogFailed,
       }),
-    [opts.source, opts.provider, opts.modelId, opts.officialModels],
+    [opts.source, opts.provider, opts.modelId, opts.officialModels, opts.catalogFailed],
   );
   const { options, pending, supported } = resolution;
   const { effort, setEffort, onReconcile } = opts;

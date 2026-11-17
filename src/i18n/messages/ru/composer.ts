@@ -220,6 +220,7 @@ export const ruComposer = {
   "composer.modelSearchEmpty": "Модели не найдены",
   "composer.effort": "Рассуждение",
   "composer.effortUnavailable": "Эта модель не поддерживает уровни рассуждения.",
+  "composer.effortLoadError": "Не удалось загрузить параметры рассуждения.",
   "composer.effortFaster": "Быстрее",
   "composer.effortSmarter": "Умнее",
   "composer.mode": "Режим",

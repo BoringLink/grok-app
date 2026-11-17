@@ -48,6 +48,32 @@ function mountChip() {
   return { chip: result.current, setters };
 }
 
+describe("useSessionProviderChip provider catalog failures", () => {
+  it("flags a failed catalog load and clears the flag on the next success", () => {
+    const setters = {
+      setProviderActiveSource: vi.fn(),
+      setProviderActiveId: vi.fn(),
+      setActiveCustomProvider: vi.fn(),
+    };
+    const { result } = renderHook(() => useSessionProviderChip());
+    act(() => {
+      result.current.bind(setters);
+    });
+
+    expect(result.current.providersLoadFailed).toBe(false);
+
+    act(() => {
+      result.current.noteProviderListError();
+    });
+    expect(result.current.providersLoadFailed).toBe(true);
+
+    act(() => {
+      result.current.noteProviderList({ providers: [relay] });
+    });
+    expect(result.current.providersLoadFailed).toBe(false);
+  });
+});
+
 describe("useSessionProviderChip applyPrefsRoute", () => {
   it("updates an unsaved draft's raw effort pick and leaves saved sessions alone", () => {
     const { chip } = mountChip();

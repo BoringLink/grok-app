@@ -19,6 +19,8 @@ export function useSessionComposerEffort(opts: {
   modelId: string;
   officialModels: ModelOption[];
   effort: string;
+  /** 自定义 provider 目录加载失败（区别于仍在加载）。 */
+  catalogFailed?: boolean;
   reconcileEnabled: boolean;
   setEffort: (effort: string) => void;
   updateDraftEffort: (sessionId: string | null | undefined, effort: string) => void;
@@ -31,6 +33,7 @@ export function useSessionComposerEffort(opts: {
 }): {
   options: EffortOption[];
   pending: boolean;
+  failed: boolean;
   getLatestEffort: () => string;
   handleEffortPick: (nextEffort: string) => Promise<boolean>;
   persistReconciledEffort: (next: string) => Promise<boolean>;
@@ -81,6 +84,7 @@ export function useSessionComposerEffort(opts: {
     effort: opts.effort,
     setEffort: applyEffort,
     reconcileEnabled: opts.reconcileEnabled,
+    catalogFailed: opts.catalogFailed,
     onReconcile: persistReconciled,
     onReconcileError: reportReconcileError,
   });
@@ -105,5 +109,6 @@ export function useSessionComposerEffort(opts: {
     ...composerEffort,
     options: resolution.options,
     pending: resolution.pending,
+    failed: resolution.failed,
   };
 }

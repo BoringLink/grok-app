@@ -220,6 +220,7 @@ export const koComposer = {
   "composer.modelSearchEmpty": "일치하는 모델이 없습니다",
   "composer.effort": "추론",
   "composer.effortUnavailable": "이 모델은 추론 수준을 제공하지 않습니다.",
+  "composer.effortLoadError": "추론 옵션을 불러오지 못했습니다.",
   "composer.effortFaster": "더 빠르게",
   "composer.effortSmarter": "더 똑똑하게",
   "composer.mode": "모드",

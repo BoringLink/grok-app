@@ -222,6 +222,7 @@ export const enComposer = {
   "composer.modelSearchEmpty": "No models match",
   "composer.effort": "Reasoning",
   "composer.effortUnavailable": "This model has no reasoning options.",
+  "composer.effortLoadError": "Reasoning options failed to load.",
   "composer.effortFaster": "Faster",
   "composer.effortSmarter": "Smarter",
   "composer.mode": "Mode",

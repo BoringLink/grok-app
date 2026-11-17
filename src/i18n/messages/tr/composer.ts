@@ -222,6 +222,7 @@ export const trComposer = {
   "composer.modelSearchEmpty": "Eşleşen model yok",
   "composer.effort": "Akıl yürütme",
   "composer.effortUnavailable": "Bu model akıl yürütme düzeyi sunmuyor.",
+  "composer.effortLoadError": "Muhakeme seçenekleri yüklenemedi.",
   "composer.effortFaster": "Daha hızlı",
   "composer.effortSmarter": "Daha akıllı",
   "composer.mode": "Mod",

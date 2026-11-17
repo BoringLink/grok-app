@@ -220,6 +220,7 @@ export const frComposer = {
   "composer.modelSearchEmpty": "Aucun modèle correspondant",
   "composer.effort": "Raisonnement",
   "composer.effortUnavailable": "Ce modèle ne propose aucun niveau de raisonnement.",
+  "composer.effortLoadError": "Impossible de charger les options de raisonnement.",
   "composer.effortFaster": "Plus rapide",
   "composer.effortSmarter": "Plus intelligent",
   "composer.mode": "Mode",

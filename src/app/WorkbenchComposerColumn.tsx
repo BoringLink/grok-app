@@ -98,6 +98,8 @@ export type WorkbenchComposerColumnProps = {
   canGuideQueuedMessage: boolean;
   effortOptions: EffortOption[] | null;
   effortOptionsPending?: boolean;
+  /** 自定义 provider 目录加载失败时，档位区显示错误而非中性加载态。 */
+  effortOptionsFailed?: boolean;
   chatAttachments: ChatRef[];
   clearSlashFilters: () => void;
   cliWorktrees: CliWorktreeEntry[];
@@ -360,6 +362,7 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
     providerActiveId,
     effortOptions,
     effortOptionsPending = false,
+    effortOptionsFailed = false,
     handleModelPick,
     handleEffortPick,
   } = p;
@@ -1004,6 +1007,7 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                   activeProviderId={providerActiveId}
                   efforts={effortOptions}
                   effortOptionsPending={effortOptionsPending}
+                  effortOptionsFailed={effortOptionsFailed}
                   labels={{
                     model: tr("composer.model"),
                     modelGroupOfficial: tr("composer.modelGroupOfficial"),
@@ -1015,6 +1019,7 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                     effortMax: tr("effort.max"),
                     effortNone: tr("effort.none"),
                     effortUnavailable: tr("composer.effortUnavailable"),
+                    effortLoadError: tr("composer.effortLoadError"),
                     effortFaster: tr("composer.effortFaster"),
                     effortSmarter: tr("composer.effortSmarter"),
                     modelSearchPlaceholder: tr(

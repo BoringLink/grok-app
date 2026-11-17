@@ -220,6 +220,7 @@ export const itComposer = {
   "composer.modelSearchEmpty": "Nessun modello corrispondente",
   "composer.effort": "Ragionamento",
   "composer.effortUnavailable": "Questo modello non offre livelli di ragionamento.",
+  "composer.effortLoadError": "Impossibile caricare le opzioni di ragionamento.",
   "composer.effortFaster": "Più veloce",
   "composer.effortSmarter": "Più intelligente",
   "composer.mode": "Modalità",

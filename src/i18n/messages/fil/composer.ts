@@ -220,6 +220,7 @@ export const filComposer = {
   "composer.modelSearchEmpty": "Walang tumutugmang modelo",
   "composer.effort": "Pangangatwiran",
   "composer.effortUnavailable": "Walang opsyon sa pag-iisip ang modelong ito.",
+  "composer.effortLoadError": "Nabigong i-load ang mga opsyon sa pag-iisip.",
   "composer.effortFaster": "Mas mabilis",
   "composer.effortSmarter": "Mas matalino",
   "composer.mode": "Mode",

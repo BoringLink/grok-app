@@ -220,6 +220,7 @@ export const ukComposer = {
   "composer.modelSearchEmpty": "Немає відповідних моделей",
   "composer.effort": "Міркування",
   "composer.effortUnavailable": "Ця модель не підтримує рівні міркування.",
+  "composer.effortLoadError": "Не вдалося завантажити параметри міркування.",
   "composer.effortFaster": "Швидше",
   "composer.effortSmarter": "Розумніше",
   "composer.mode": "Режим",

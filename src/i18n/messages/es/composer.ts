@@ -220,6 +220,7 @@ export const esComposer = {
   "composer.modelSearchEmpty": "Ningún modelo coincide",
   "composer.effort": "Razonamiento",
   "composer.effortUnavailable": "Este modelo no ofrece niveles de razonamiento.",
+  "composer.effortLoadError": "No se pudieron cargar las opciones de razonamiento.",
   "composer.effortFaster": "Más rápido",
   "composer.effortSmarter": "Más inteligente",
   "composer.mode": "Modo",

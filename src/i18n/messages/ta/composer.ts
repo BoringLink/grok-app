@@ -220,6 +220,7 @@ export const taComposer = {
   "composer.modelSearchEmpty": "எந்த மாதிரியும் பொருந்தவில்லை",
   "composer.effort": "பகுத்தறிவு",
   "composer.effortUnavailable": "இந்த மாடலுக்கு சிந்தனை நிலைகள் இல்லை.",
+  "composer.effortLoadError": "பகுத்தறிதல் விருப்பங்களை ஏற்ற முடியவில்லை.",
   "composer.effortFaster": "வேகமாக",
   "composer.effortSmarter": "புத்திசாலித்தனமாக",
   "composer.mode": "பயன்முறை",

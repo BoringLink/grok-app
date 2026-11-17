@@ -27,6 +27,8 @@ export type SessionEffortResolution = {
   supported: boolean;
   /** True while the custom provider catalog has not loaded yet. */
   pending: boolean;
+  /** True when the custom provider catalog failed to load (not still loading). */
+  failed: boolean;
 };
 
 /** 解析推理档位所需的 provider 模型配置视图。 */
@@ -41,6 +43,8 @@ export type SessionEffortRoute = {
   provider?: SessionEffortProvider | null;
   modelId: string;
   officialModels?: ModelOption[];
+  /** 自定义 provider 目录加载失败（区别于仍在加载）。 */
+  catalogFailed?: boolean;
 };
 
 /** Composer 模型菜单中的官方或自定义模型选择。 */
@@ -53,6 +57,8 @@ export function resolvePickedModelEfforts(input: {
   pick: SessionEffortPick;
   providers: ReadonlyArray<SessionEffortProvider>;
   officialModels: ModelOption[];
+  /** 自定义 provider 目录加载失败（区别于仍在加载）。 */
+  catalogFailed?: boolean;
 }): SessionEffortResolution | null {
   const pick = input.pick;
   if (pick.kind === "official") {
@@ -71,6 +77,7 @@ export function resolvePickedModelEfforts(input: {
     source: "custom",
     provider,
     modelId: pick.modelId,
+    catalogFailed: input.catalogFailed,
   });
 }
 
@@ -86,11 +93,15 @@ export function resolveSessionEffortOptions(
       ),
       supported: true,
       pending: false,
+      failed: false,
     };
   }
   const provider = input.provider;
   if (!provider) {
-    return { options: [], supported: true, pending: true };
+    // 目录加载失败与仍在加载区分开：失败态不显示中性 pending，而是错误反馈。
+    return input.catalogFailed
+      ? { options: [], supported: true, pending: false, failed: true }
+      : { options: [], supported: true, pending: true, failed: false };
   }
   const id = input.modelId.trim();
   const model = id
@@ -105,6 +116,7 @@ export function resolveSessionEffortOptions(
     options,
     supported,
     pending: false,
+    failed: false,
   };
 }
 
@@ -131,12 +143,15 @@ export type SessionEffortSaveResult =
 
 /**
  * 先持久化再更新 Composer；保存拒绝时保留原选中态并返回错误。
+ * `skip` 返回 true 时跳过持久化（用于废弃被后续选择取代的排队写入）。
  */
 export async function saveSessionEffort(opts: {
   effort: string;
   save: (effort: string) => Promise<unknown>;
   apply: (effort: string) => void;
+  skip?: () => boolean;
 }): Promise<SessionEffortSaveResult> {
+  if (opts.skip?.()) return { ok: true, effort: opts.effort };
   try {
     await opts.save(opts.effort);
     opts.apply(opts.effort);

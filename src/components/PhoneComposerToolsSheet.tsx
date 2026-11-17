@@ -98,6 +98,8 @@ export type PhoneComposerToolsSheetProps = {
     effortNone?: string;
     /** Shown in place of the ladder when the model rejects reasoning effort. */
     effortUnavailable?: string;
+    /** Shown when the provider catalog failed to load (not still loading). */
+    effortLoadError?: string;
     contextCurrent: string;
     contextUnknown: string;
     contextCompact: string;
@@ -126,6 +128,8 @@ export type PhoneComposerToolsSheetProps = {
   /** Reasoning options for this chat's exact model; `undefined` uses official catalog. */
   efforts?: EffortOption[] | null;
   effortOptionsPending?: boolean;
+  /** 自定义 provider 目录加载失败时，档位区显示错误而非中性加载态。 */
+  effortOptionsFailed?: boolean;
   mode: string;
   policy: string;
   contextDisplay: ContextUsageDisplay;
@@ -231,6 +235,7 @@ export function PhoneComposerToolsSheet({
   activeProviderId = null,
   efforts,
   effortOptionsPending = false,
+  effortOptionsFailed = false,
   mode,
   policy,
   contextDisplay,
@@ -274,7 +279,9 @@ export function PhoneComposerToolsSheet({
   const effortDisplay = effortOptionsPending
     ? labels.effort
     : effortOptions.length === 0
-      ? labels.effortUnavailable ?? labels.effort
+      ? effortOptionsFailed
+        ? labels.effortLoadError ?? labels.effort
+        : labels.effortUnavailable ?? labels.effort
       : activeEffortOption
         ? effortLabel(activeEffortOption, labels)
         : labels.effort;
@@ -557,7 +564,9 @@ export function PhoneComposerToolsSheet({
                 <span className="phone-sheet__row-label">
                   {effortOptionsPending
                     ? labels.effort
-                    : labels.effortUnavailable}
+                    : effortOptionsFailed
+                      ? labels.effortLoadError
+                      : labels.effortUnavailable}
                 </span>
               </div>
             ))}

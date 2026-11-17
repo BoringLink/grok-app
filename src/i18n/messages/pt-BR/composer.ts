@@ -220,6 +220,7 @@ export const ptBRComposer = {
   "composer.modelSearchEmpty": "Nenhum modelo correspondente",
   "composer.effort": "Raciocínio",
   "composer.effortUnavailable": "Este modelo não oferece níveis de raciocínio.",
+  "composer.effortLoadError": "Falha ao carregar as opções de raciocínio.",
   "composer.effortFaster": "Mais rápido",
   "composer.effortSmarter": "Mais inteligente",
   "composer.mode": "Modo",

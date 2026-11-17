@@ -222,6 +222,7 @@ export const zhComposer = {
   "composer.modelSearchEmpty": "没有匹配的模型",
   "composer.effort": "推理强度",
   "composer.effortUnavailable": "此模型没有推理等级。",
+  "composer.effortLoadError": "推理档位加载失败。",
   "composer.effortFaster": "更快",
   "composer.effortSmarter": "更聪明",
   "composer.mode": "模式",

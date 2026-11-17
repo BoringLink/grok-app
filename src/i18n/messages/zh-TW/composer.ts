@@ -222,6 +222,7 @@ export const zhTWComposer = {
   "composer.modelSearchEmpty": "沒有符合的模型",
   "composer.effort": "推理強度",
   "composer.effortUnavailable": "此模型沒有推理等級。",
+  "composer.effortLoadError": "推理檔位載入失敗。",
   "composer.effortFaster": "更快",
   "composer.effortSmarter": "更聰明",
   "composer.mode": "模式",

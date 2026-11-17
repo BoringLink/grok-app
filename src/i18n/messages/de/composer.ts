@@ -220,6 +220,7 @@ export const deComposer = {
   "composer.modelSearchEmpty": "Keine Modelle passen",
   "composer.effort": "Denkleistung",
   "composer.effortUnavailable": "Dieses Modell bietet keine Denkstufen.",
+  "composer.effortLoadError": "Rechenoptionen konnten nicht geladen werden.",
   "composer.effortFaster": "Schneller",
   "composer.effortSmarter": "Klüger",
   "composer.mode": "Modus",

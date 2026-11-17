@@ -207,4 +207,35 @@ describe("composer model effort menu", () => {
     expect(bodyPop()!.textContent ?? "").toContain("No reasoning options");
     expect(screen.queryByRole("slider", { name: "Effort" })).toBeNull();
   });
+
+  it("shows the load-error note when the provider catalog failed to load", async () => {
+    const user = userEvent.setup();
+    render(
+      <ComposerModelMenu
+        modelId="m-raw"
+        effort="high"
+        efforts={[]}
+        effortOptionsFailed
+        labels={{
+          ...baseLabels,
+          effortUnavailable: "No reasoning options",
+          effortLoadError: "Reasoning options failed to load",
+        }}
+        onEffort={vi.fn()}
+      />,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Model" });
+    expect(trigger.textContent).toContain(
+      "Reasoning options failed to load",
+    );
+
+    await user.click(trigger);
+    const pop = bodyPop();
+    expect(pop!.textContent ?? "").toContain(
+      "Reasoning options failed to load",
+    );
+    expect(pop!.textContent ?? "").not.toContain("No reasoning options");
+    expect(screen.queryByRole("slider", { name: "Effort" })).toBeNull();
+  });
 });

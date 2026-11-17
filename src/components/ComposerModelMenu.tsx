@@ -352,6 +352,8 @@ export interface ComposerModelMenuProps {
     effortNone?: string;
     /** Shown in place of the ladder when the model rejects reasoning effort. */
     effortUnavailable?: string;
+    /** Shown when the provider catalog failed to load (not still loading). */
+    effortLoadError?: string;
     /** Slider axis labels: faster responses ↔ smarter reasoning. */
     effortFaster?: string;
     effortSmarter?: string;
@@ -369,6 +371,8 @@ export interface ComposerModelMenuProps {
    */
   efforts?: EffortOption[] | null;
   effortOptionsPending?: boolean;
+  /** 自定义 provider 目录加载失败时，档位区显示错误而非中性加载态。 */
+  effortOptionsFailed?: boolean;
   /** Prefer over onModel when provided. */
   onModelPick?: (pick: ComposerModelPick) => void;
   onModel?: (id: string) => void;
@@ -534,6 +538,7 @@ export function ComposerModelMenu({
   activeProviderId = null,
   efforts,
   effortOptionsPending = false,
+  effortOptionsFailed = false,
   labels,
   onModelPick,
   onModel,
@@ -689,7 +694,9 @@ export function ComposerModelMenu({
   const eLabel = effortOptionsPending
     ? labels.effort
     : effortOptions.length === 0
-      ? labels.effortUnavailable ?? labels.effort
+      ? effortOptionsFailed
+        ? labels.effortLoadError ?? labels.effort
+        : labels.effortUnavailable ?? labels.effort
       : activeEffort
         ? stopLabelFor(activeEffort)
         : labels.effort;
@@ -757,7 +764,11 @@ export function ComposerModelMenu({
           <div className="cmm__opt cmm__opt--muted" role="status">
             <span className="cmm__opt-main">
               <span className="cmm__opt-title">
-                {effortOptionsPending ? labels.effort : labels.effortUnavailable}
+                {effortOptionsPending
+                  ? labels.effort
+                  : effortOptionsFailed
+                    ? labels.effortLoadError
+                    : labels.effortUnavailable}
               </span>
             </span>
           </div>
