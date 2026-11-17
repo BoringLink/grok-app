@@ -1,6 +1,6 @@
 /**
  * Per-model metadata for a custom provider: context window, reasoning levels,
- * and whether the model supports reasoning at all. Legacy image/video flags
+ * and the explicit option to expose Off in Composer. Legacy image/video flags
  * stay on the stored row but are not editable here.
  */
 
@@ -21,6 +21,7 @@ import {
   effectiveModelContextWindow,
   effectiveModelEfforts,
   effectiveModelSupportsReasoningEffort,
+  effectiveModelSupportsReasoningOff,
   normalizeModelEfforts,
   type RemoteModelMetadata,
 } from "@/lib/providerModelConfig";
@@ -32,6 +33,7 @@ export type ProviderModelSettingsValue = {
   effortsSource: ProviderModelFieldSource;
   supportsReasoningEffort: boolean;
   supportsReasoningEffortSource: ProviderModelFieldSource;
+  supportsReasoningOff?: boolean;
 };
 
 type DraftEffort = { id: string; name: string; isDefault: boolean };
@@ -109,10 +111,9 @@ export function ProviderModelSettingsModal({
   const [effortsSource, setEffortsSource] =
     useState<ProviderModelFieldSource>("fallback");
   const [effortsDirty, setEffortsDirty] = useState(false);
-  const [supportsReasoning, setSupportsReasoning] = useState(true);
-  const [supportsReasoningSource, setSupportsReasoningSource] =
-    useState<ProviderModelFieldSource>("fallback");
-  const [supportsReasoningDirty, setSupportsReasoningDirty] = useState(false);
+  const [supportsReasoningOff, setSupportsReasoningOff] = useState(false);
+  const [supportsReasoningOffDirty, setSupportsReasoningOffDirty] =
+    useState(false);
   const [draftEffortId, setDraftEffortId] = useState("");
   const [draftEffortName, setDraftEffortName] = useState("");
 
@@ -120,7 +121,6 @@ export function ProviderModelSettingsModal({
     if (!open || !model) return;
     const window = effectiveModelContextWindow(model);
     const modelEfforts = effectiveModelEfforts(model);
-    const reasoning = effectiveModelSupportsReasoningEffort(model);
     setWindowDraft(String(window.value));
     setWindowSource(window.source);
     setWindowDirty(false);
@@ -128,9 +128,8 @@ export function ProviderModelSettingsModal({
     setEfforts(toDraftEfforts(modelEfforts.value));
     setEffortsSource(modelEfforts.source);
     setEffortsDirty(false);
-    setSupportsReasoning(reasoning.value);
-    setSupportsReasoningSource(reasoning.source);
-    setSupportsReasoningDirty(false);
+    setSupportsReasoningOff(effectiveModelSupportsReasoningOff(model));
+    setSupportsReasoningOffDirty(false);
     setDraftEffortId("");
     setDraftEffortName("");
   }, [open, model]);
@@ -200,15 +199,24 @@ export function ProviderModelSettingsModal({
       nextEffortsSource = effortsDirty ? "user" : effortsSource;
     }
 
+    const nextSupportsReasoningOff = supportsReasoningOffDirty
+      ? supportsReasoningOff
+      : model?.supportsReasoningOff;
+    const reasoning = effectiveModelSupportsReasoningEffort({
+      efforts: nextEfforts,
+      effortsSource: nextEffortsSource,
+      supportsReasoningOff: nextSupportsReasoningOff,
+      supportsReasoningEffort: model?.supportsReasoningEffort,
+      supportsReasoningEffortSource: model?.supportsReasoningEffortSource,
+    });
     onSave({
       contextWindow: nextWindow,
       contextWindowSource: nextWindowSource,
       efforts: nextEfforts,
       effortsSource: nextEffortsSource,
-      supportsReasoningEffort: supportsReasoning,
-      supportsReasoningEffortSource: supportsReasoningDirty
-        ? "user"
-        : supportsReasoningSource,
+      supportsReasoningEffort: reasoning.value,
+      supportsReasoningEffortSource: reasoning.source,
+      supportsReasoningOff: nextSupportsReasoningOff,
     });
   };
 
@@ -279,10 +287,10 @@ export function ProviderModelSettingsModal({
           />
           <div className="prov-model-settings__caps">
             <UiCheck
-              checked={supportsReasoning}
+              checked={supportsReasoningOff}
               onChange={(checked) => {
-                setSupportsReasoning(checked);
-                setSupportsReasoningDirty(true);
+                setSupportsReasoningOff(checked);
+                setSupportsReasoningOffDirty(true);
               }}
               label={tr("prov.modelSupportsReasoningOn")}
             />

@@ -3,7 +3,7 @@
  * Draft/queue chrome lives in WorkbenchComposerShell.
  */
 import { useMemo, type Dispatch, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, type SetStateAction } from "react";
-import { createT, type MessageKey } from "@/i18n";
+import { createT } from "@/i18n";
 import type { AccountStatus } from "@/lib/api/account";
 import type { Project, SessionRow } from "@/lib/app/sidebarModels";
 import type { ComposerAtFileEntry } from "@/components/ComposerAtPanel";
@@ -61,7 +61,6 @@ import {
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ComposerModelMenu } from "@/components/ComposerModelMenu";
-import { buildApplyFooterNote, sessionHasLiveAgent } from "@/lib/modelEffortApply";
 import { WorkbenchComposerShell } from "@/app/WorkbenchComposerShell";
 import { MultiRootWorkspaceModal } from "@/components/MultiRootWorkspaceModal";
 import { useMultiRootWorkspace } from "@/hooks/useMultiRootWorkspace";
@@ -98,6 +97,7 @@ export type WorkbenchComposerColumnProps = {
   setLocalError: Dispatch<SetStateAction<string | null>>;
   canGuideQueuedMessage: boolean;
   effortOptions: EffortOption[] | null;
+  effortOptionsPending?: boolean;
   chatAttachments: ChatRef[];
   clearSlashFilters: () => void;
   cliWorktrees: CliWorktreeEntry[];
@@ -122,7 +122,6 @@ export type WorkbenchComposerColumnProps = {
   connecting: boolean;
   contextUsageDisplay: ContextUsageDisplay;
   refreshContextInfo: () => void;
-  currentModelWindow: number | null;
   customRouteActive: boolean;
   cycleAttachedChatScope: (id: string) => void;
   effectiveCanSend: boolean;
@@ -142,8 +141,7 @@ export type WorkbenchComposerColumnProps = {
   goalMode: boolean;
   guideQueuedMessage: (item: QueuedSend) => Promise<void>;
   guidingQueueItemId: string | null;
-  handleContextWindow: (tokens: number) => Promise<boolean>;
-  handleEffortPick: (nextEffort: string) => void;
+  handleEffortPick: (nextEffort: string) => Promise<boolean>;
   handleModelPick: (pick: ComposerModelPick) => Promise<void>;
   layout: LayoutPrefs;
   liveAt: LiveTokenQuery;
@@ -218,7 +216,7 @@ export type WorkbenchComposerColumnProps = {
   setCompactNote: Dispatch<SetStateAction<string>>;
   setGoalMode: Dispatch<SetStateAction<boolean>>;
   setJsonSchemaDraft: Dispatch<SetStateAction<string>>;
-  setMode: Dispatch<SetStateAction<string>>;
+  persistComposerMode: (mode: string) => void;
   setPhoneToolsOpen: Dispatch<SetStateAction<boolean>>;
   setPromptHistoryActive: Dispatch<SetStateAction<number>>;
   setPromptHistoryClearOpen: Dispatch<SetStateAction<boolean>>;
@@ -361,15 +359,10 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
     providerActiveSource,
     providerActiveId,
     effortOptions,
-    currentModelWindow,
-    handleContextWindow,
+    effortOptionsPending = false,
     handleModelPick,
     handleEffortPick,
   } = p;
-  const effortApplyNote = buildApplyFooterNote({
-    kind: "effort",
-    hasLiveAgent: sessionHasLiveAgent(session.state),
-  });
   const multiRoot = useMultiRootWorkspace();
   const [permBusy, setPermBusy] = useState(false);
   const [permError, setPermError] = useState<string | null>(null);
@@ -1003,7 +996,6 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                 aria-label={tr("composer.model")}
               >
                 <ComposerModelMenu
-                  locale={locale}
                   modelId={modelId}
                   effort={effort}
                   models={availableModels}
@@ -1011,14 +1003,7 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                   activeSource={providerActiveSource}
                   activeProviderId={providerActiveId}
                   efforts={effortOptions}
-                  applyNotes={{
-                    effort: effortApplyNote
-                      ? tr(effortApplyNote.messageKey as MessageKey, effortApplyNote.vars)
-                      : null,
-                  }}
-                  contextWindow={currentModelWindow}
-                  contextWindowEditable={customRouteActive}
-                  onContextWindow={handleContextWindow}
+                  effortOptionsPending={effortOptionsPending}
                   labels={{
                     model: tr("composer.model"),
                     modelGroupOfficial: tr("composer.modelGroupOfficial"),
@@ -1030,23 +1015,12 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                     effortMax: tr("effort.max"),
                     effortNone: tr("effort.none"),
                     effortUnavailable: tr("composer.effortUnavailable"),
+                    effortFaster: tr("composer.effortFaster"),
+                    effortSmarter: tr("composer.effortSmarter"),
                     modelSearchPlaceholder: tr(
                       "composer.modelSearchPlaceholder",
                     ),
                     modelSearchEmpty: tr("composer.modelSearchEmpty"),
-                    contextWindow: tr("composer.contextWindow"),
-                    contextWindowOfficial: tr(
-                      "composer.contextWindowOfficial",
-                    ),
-                    contextWindowCustom: tr("composer.contextWindowCustom"),
-                    contextWindowPlaceholder: tr(
-                      "composer.contextWindowPlaceholder",
-                    ),
-                    contextWindowSave: tr("composer.contextWindowSave"),
-                    contextWindowOfficialHint: tr(
-                      "composer.contextWindowOfficialHint",
-                    ),
-                    advanced: tr("composer.advanced"),
                   }}
                   onModelPick={(pick) => {
                     void handleModelPick(pick);

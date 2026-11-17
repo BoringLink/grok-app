@@ -125,6 +125,7 @@ export type PhoneComposerToolsSheetProps = {
   activeProviderId?: string | null;
   /** Reasoning options for this chat's exact model; `undefined` uses official catalog. */
   efforts?: EffortOption[] | null;
+  effortOptionsPending?: boolean;
   mode: string;
   policy: string;
   contextDisplay: ContextUsageDisplay;
@@ -229,6 +230,7 @@ export function PhoneComposerToolsSheet({
   activeSource = "official",
   activeProviderId = null,
   efforts,
+  effortOptionsPending = false,
   mode,
   policy,
   contextDisplay,
@@ -269,9 +271,13 @@ export function PhoneComposerToolsSheet({
     efforts != null ? efforts : effortsForModel(findModel(modelId, modelList));
   const activeEffortOption =
     effortOptions.find((option) => option.id === effort) ?? null;
-  const effortDisplay = activeEffortOption
-    ? effortLabel(activeEffortOption, labels)
-    : effortLabel(effort, labels);
+  const effortDisplay = effortOptionsPending
+    ? labels.effort
+    : effortOptions.length === 0
+      ? labels.effortUnavailable ?? labels.effort
+      : activeEffortOption
+        ? effortLabel(activeEffortOption, labels)
+        : labels.effort;
   const officialLabel =
     modelList.find((m) => m.id === modelId)?.label ?? modelId;
   const modelLabel = composerModelChipLabel({
@@ -549,7 +555,9 @@ export function PhoneComposerToolsSheet({
             ) : (
               <div className="phone-sheet__row phone-sheet__row--muted" role="status">
                 <span className="phone-sheet__row-label">
-                  {labels.effortUnavailable}
+                  {effortOptionsPending
+                    ? labels.effort
+                    : labels.effortUnavailable}
                 </span>
               </div>
             ))}

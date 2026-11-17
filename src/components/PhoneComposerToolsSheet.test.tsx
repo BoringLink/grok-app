@@ -67,6 +67,7 @@ const labels = {
 function renderSheet(opts: {
   effort: string;
   efforts: Array<{ id: string; label?: string }>;
+  effortOptionsPending?: boolean;
   onEffort?: (id: string) => void;
 }) {
   render(
@@ -79,6 +80,7 @@ function renderSheet(opts: {
       modelId="m-raw"
       effort={opts.effort}
       efforts={opts.efforts}
+      effortOptionsPending={opts.effortOptionsPending}
       mode="agent"
       policy="ask"
       contextDisplay={contextDisplay}
@@ -140,25 +142,41 @@ describe("PhoneComposerToolsSheet reasoning options", () => {
     expect(screen.getByRole("button", { name: "Off" })).toBeTruthy();
   });
 
-  it("hides Off when the model does not advertise it", async () => {
+  it("does not label a stale stored Off value as supported", async () => {
     renderSheet({
-      effort: "low",
+      effort: "none",
       efforts: [
         { id: "low", label: "Low" },
         { id: "high", label: "High" },
       ],
     });
 
+    const modelRow = screen.getByRole("button", { name: /^Model/ });
+    expect(modelRow.textContent).toContain("Effort");
+    expect(modelRow.textContent).not.toContain("Off");
     await openEffortPanel();
     expect(screen.queryByRole("button", { name: "Off" })).toBeNull();
   });
 
   it("shows the unavailable note for a model without reasoning options", async () => {
-    renderSheet({ effort: "", efforts: [] });
+    renderSheet({ effort: "high", efforts: [] });
 
+    const modelRow = screen.getByRole("button", { name: /^Model/ });
+    expect(modelRow.textContent).toContain("No reasoning options");
+    expect(modelRow.textContent).not.toContain("High");
     await openEffortPanel();
     expect(screen.getByRole("status").textContent).toContain(
       "No reasoning options",
     );
+  });
+
+  it("does not label a loading model catalog as unavailable", async () => {
+    renderSheet({ effort: "high", efforts: [], effortOptionsPending: true });
+
+    const modelRow = screen.getByRole("button", { name: /^Model/ });
+    expect(modelRow.textContent).toContain("Effort");
+    expect(modelRow.textContent).not.toContain("No reasoning options");
+    await openEffortPanel();
+    expect(screen.getByRole("status").textContent).toBe("Effort");
   });
 });

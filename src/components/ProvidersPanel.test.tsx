@@ -329,7 +329,7 @@ describe("ProvidersPanel per-model metadata", () => {
     const remoteRow = rows.find((row) => row.id === "m2");
     expect(remoteRow?.contextWindow).toBe(640_000);
     expect(remoteRow?.contextWindowSource).toBe("remote");
-    expect(remoteRow?.supportsReasoningEffort).toBe(false);
+    expect(remoteRow?.supportsReasoningEffort).toBe(true);
     expect(remoteRow?.supportsReasoningEffortSource).toBe("remote");
     expect(
       (remoteRow?.efforts as Array<{ id: string; isDefault?: boolean }>).map(
@@ -456,7 +456,7 @@ describe("ProvidersPanel per-model metadata", () => {
     await user.clear(contextWindow);
     await user.type(contextWindow, "256000");
     await user.click(
-      screen.getByRole("checkbox", { name: "Reasoning supported" }),
+      screen.getByRole("checkbox", { name: "Allow Off in Composer" }),
     );
     await user.click(
       within(screen.getByRole("dialog")).getByRole("button", { name: "Save" }),
@@ -468,8 +468,9 @@ describe("ProvidersPanel per-model metadata", () => {
     const edited = rows.find((row) => row.id === "m1");
     expect(edited?.contextWindow).toBe(256000);
     expect(edited?.contextWindowSource).toBe("user");
-    expect(edited?.supportsReasoningEffort).toBe(false);
+    expect(edited?.supportsReasoningEffort).toBe(true);
     expect(edited?.supportsReasoningEffortSource).toBe("user");
+    expect(edited?.supportsReasoningOff).toBe(true);
     expect(edited?.supportsVision).toBe(true);
     expect(payload?.contextWindow).toBe(256000);
   });

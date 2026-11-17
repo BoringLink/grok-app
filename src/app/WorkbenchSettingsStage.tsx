@@ -3,6 +3,7 @@
  * prefs hydrate in useAppSettingsPrefs. This file owns the SettingsPage
  * prop surface.
  */
+import { useRef } from "react";
 import { SettingsPage } from "@/components/SettingsPage";
 import { UiErrorBoundary } from "@/components/UiErrorBoundary";
 import { saveMessageTimestampsPref } from "@/lib/messageTimestampsPref";
@@ -36,6 +37,7 @@ import {
   resolveLocalePreference,
 } from "@/i18n";
 import { isValidPolicy, isValidPrefsScope } from "@/lib/grokCatalog";
+import { queueComposerPreferenceApply } from "@/lib/composerPrefsBarrier";
 import { appDisplayVersion } from "@/lib/appDisplayVersion";
 import { mapProbeToCliInfo } from "@/lib/cliVersionStatus";
 import type { SessionRow } from "@/lib/app/sidebarModels";
@@ -43,11 +45,13 @@ import type { WorkbenchSettingsStageProps } from "@/app/workbenchSettingsStagePr
 
 
 
+/** 渲染设置页，并将设置范围状态绑定到成功写入后的值。 */
 export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
+  const prefsScopeWriteRef = useRef(Promise.resolve());
   const {
     account, accountBusy, accountHeatmapError, accountLoading, accountProbeError, acpServerAddr,
-    activeAccountId, activeProject, agentCatalog, agentIdleMinutes, agentProfilePath, agentsJson,
-    allowUnverifiedCliInstall, allowedTools, applyComposerPrefs, applyGlobalSandboxProfile, applyPermissionPolicy, applySkinChoice,
+    activeAccountId, agentCatalog, agentIdleMinutes, agentProfilePath, agentsJson,
+    allowUnverifiedCliInstall, allowedTools, applyGlobalSandboxProfile, applyPermissionPolicy, applySkinChoice,
     applyThemeChoice, applyThemeScheduleChoice, applyWallpaperAdjustChoice, applyWallpaperChoice, applyWallpaperMediaSize, applyWallpaperScrimChoice, applyWallpaperBlurChoice,
     archivedGroups, askUserTimeoutSec, auditLedgerRetentionDays, autoWakeEnabled, availableModels, backgroundWaitPolicy,
     backgroundWaitTimeoutSec, cancelAccountLogin, cliAgentSkewRepairing, cliInfo, closeToTray, compactionDetail,
@@ -61,7 +65,7 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
     prefsScope, projects, proxyMode, proxyNoProxy, proxyUrl, refreshAccount,
     refreshProviderRoute, refreshSessions, refreshVoiceGate, reopenLastSession, replaceProviderBrandLogo, restoreSessions,
     runAccountLogin, runAccountLogout, runAddAccount, runRemoveAccount, runSaveAccount, runSwitchAccount,
-    sandboxProfile, savedAccounts, session, sessionDataMode, sessions, setAcpServerAddr,
+    sandboxProfile, savedAccounts, sessionDataMode, sessions, setAcpServerAddr,
     setAgentIdleMinutes, setAgentProfilePath, setAgentsJson, setAllowUnverifiedCliInstall, setAllowedTools, setAppDialog,
     setAskUserTimeoutSec, setAuditLedgerRetentionDays, setAutoWakeEnabled, setBackgroundWaitPolicy, setBackgroundWaitTimeoutSec, setCliAgentSkewRepairing,
     setCliInfo, setCloseToTray, setCompactionDetail, setCompactionMode, setComposerEditor, setDefaultOpenTarget, setDisableWebSearch,
@@ -247,17 +251,18 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
           prefsScope={prefsScope}
           onPrefsScope={(v) => {
           if (!isValidPrefsScope(v)) return;
-          setPrefsScope(v);
-          void api.settingsGet().then((s) =>
-          api.settingsSet({ ...s, composerPrefsScope: v }),
+          prefsScopeWriteRef.current = queueComposerPreferenceApply(
+            prefsScopeWriteRef.current,
+            async () => {
+              const settings = await api.settingsGet();
+              await api.settingsSet({ ...settings, composerPrefsScope: v });
+              setPrefsScope(v);
+            },
+            (error) => {
+              console.warn("composer prefs scope save failed", error);
+              showToast(tr("error.deck.generic.problem"), 4000);
+            },
           );
-          void api
-          .composerPrefsResolve({
-          projectId: activeProject?.id ?? null,
-          sessionId: session.sessionId ?? null,
-          })
-          .then((prefs) => applyComposerPrefs(prefs, availableModels, { sessionId: session.sessionId, forceOfficial: !!activeProject?.sshAlias?.trim() }))
-          .catch(() => {});
           }}
           availableModels={availableModels}
           manualCliPath={manualCliPath}

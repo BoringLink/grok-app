@@ -105,7 +105,6 @@
 }
 
 .cmm__pop--model .cmm__opt,
-.cmm__pop--effort .cmm__opt,
 .cmm__pop--flyout .cmm__opt {
   align-items: center;
   gap: 8px;
@@ -117,7 +116,7 @@
   color: var(--text-primary);
 }
 
-/* Combined model chip: Effort popover (Claude desktop) + Advanced. */
+/* Combined model chip: flat model row + Claude desktop effort slider. */
 .cmm__stage {
   display: flex;
   flex-direction: column;
@@ -125,49 +124,12 @@
   padding: 10px 12px 8px;
 }
 
-.cmm__simple-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.cmm__hub-body {
-  display: none;
-  flex-direction: column;
-}
-
-.cmm__stage.is-hub .cmm__simple-body {
-  display: none;
-}
-
-.cmm__stage.is-hub .cmm__hub-body {
-  display: flex;
-  animation: cmm-hub-in var(--motion-pane) var(--motion-pane-ease);
-}
-
-.cmm__stage.is-hub .cmm__advanced {
-  order: -1;
-  align-self: flex-end;
-}
-
-@keyframes cmm-hub-in {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
 /*
- * Tertiary flyout sits on the same floating layer as the Advanced hub.
+ * Model picker flyout sits on the same floating layer as the model panel.
  * Shadows are biased away from the hub so the two cards do not stain
  * each other. Left placement pins the inner edge (CSS `right`) so the
  * gap matches the right-side layout.
  */
-.cmm__pop.cmm__pop--model.cmm__pop--hub,
 .cmm__pop.cmm__pop--portal.cmm__pop--flyout {
   isolation: auto;
   /* Downward-biased shadow so hub + flyout stay coplanar (no side stain). */
@@ -190,11 +152,7 @@
     8px 10px 22px color-mix(in srgb, #000 16%, transparent);
 }
 
-/* Context-window editor: keep input + Save on one readable row. */
-.cmm__pop.cmm__pop--portal.cmm__pop--flyout[data-kind="window"] {
-  min-width: 220px;
-  max-width: 280px;
-}
+
 
 .cmm__pop.cmm__pop--portal.cmm__pop--flyout[data-side="left"] {
   animation-name: cmm-fly-in-left;
@@ -298,26 +256,6 @@
   color: #7c4dff;
 }
 
-.cmm__advanced {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  align-self: flex-end;
-  height: 28px;
-  padding: 0 6px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 550;
-  cursor: pointer;
-}
-
-.cmm__advanced:hover {
-  color: var(--text-primary);
-}
-
 .cmm__row-val-text.is-ultra,
 .cmm__opt-title.is-ultra {
   color: #c4a0ff;
@@ -329,30 +267,120 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .cmm__stops-rail,
+  .cmm__stops-thumb,
   .composer__model-bar {
     transition: none;
   }
   .cmm__pop.cmm__pop--model,
-  .cmm__pop.cmm__pop--flyout,
-  .cmm__stage.is-hub .cmm__hub-body {
+  .cmm__pop.cmm__pop--flyout {
     animation: none;
   }
-  .cmm__advanced {
-    transition: none;
-  }
 }
 
-/* Raw model reasoning variants: catalog order, scroll for long ladders. */
-.cmm__effort-list {
+/* Claude desktop effort popover: capsule track, dots, sliding pill. */
+.cmm__stops {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  max-height: 240px;
-  overflow-y: auto;
+  gap: 8px;
 }
 
-.cmm__effort-list .cmm__opt {
-  flex-shrink: 0;
+.cmm__stops-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+@property --cmm-stop-t {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+.cmm__stops-rail {
+  --cmm-thumb: 28px;
+  position: relative;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  cursor: pointer;
+  touch-action: none;
+  transition: --cmm-stop-t var(--motion-pane) var(--motion-pane-ease);
+}
+
+.cmm__stops-dots {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  padding: 0 8px;
+  pointer-events: none;
+}
+
+.cmm__stops-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text-primary) 28%, transparent);
+}
+
+.cmm__stops-dot.is-active {
+  opacity: 0;
+}
+
+.cmm__stops-dot.is-ultra {
+  background: #c4a0ff;
+}
+
+.cmm__stops-thumb {
+  position: absolute;
+  z-index: 2;
+  top: 4px;
+  height: 20px;
+  width: var(--cmm-thumb);
+  border-radius: 12px;
+  background: var(--bg-elevated, #fff);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.16);
+  left: calc(
+    6px + (100% - 12px - var(--cmm-thumb)) * var(--cmm-stop-t, 0)
+  );
+  pointer-events: none;
+  transition: background var(--motion-fast) ease;
+}
+
+.cmm__stops-thumb.is-ultra {
+  background: #c4a0ff;
+}
+
+.cmm__stops-hit {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+[data-theme="light"] .cmm__stops-rail {
+  background: #e6e4df;
+}
+
+[data-theme="light"] .cmm__stops-thumb {
+  background: #fff;
+}
+
+[data-theme="light"] .cmm__stops-dot.is-ultra,
+[data-theme="light"] .cmm__stops-thumb.is-ultra {
+  background: #7c4dff;
 }
 
 /*
@@ -492,71 +520,6 @@
   -webkit-appearance: none;
 }
 
-.cmm__window-edit {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 4px 6px 6px;
-  min-width: 0;
-  box-sizing: border-box;
-}
-
-.cmm__window-edit__label {
-  font-size: 12px;
-  line-height: 1.3;
-  color: var(--text-secondary);
-  padding: 0 2px;
-}
-
-.cmm__inline-edit {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-}
-.cmm__inline-edit input {
-  flex: 1 1 0;
-  min-width: 0;
-  /* type=number carries an intrinsic minimum width in some engines (notably
-     WKWebView); width:0 lets flex ignore it so the Save button always fits. */
-  width: 0;
-  min-height: 32px;
-  padding: 6px 10px;
-  font-size: 13px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  color: inherit;
-  outline: none;
-  box-sizing: border-box;
-}
-.cmm__inline-edit input:focus {
-  border-color: var(--border-focus, var(--accent, #6b8cff));
-}
-.cmm__inline-save {
-  flex: 0 0 auto;
-  min-width: 52px;
-  min-height: 32px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 550;
-  line-height: 1;
-  background: var(--accent, #6b8cff);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.cmm__inline-save:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.cmm__inline-save:hover:not(:disabled) {
-  filter: brightness(1.06);
-}
 
 
 .cmm__opt {
@@ -574,6 +537,17 @@
 .cmm__opt:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.cmm__opt--muted,
+.cmm__opt--muted:hover {
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.cmm__opt--muted .cmm__opt-title {
+  color: inherit;
 }
 
 .cmm__opt.is-active {

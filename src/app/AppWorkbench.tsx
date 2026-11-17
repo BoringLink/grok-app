@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useLayoutEffect,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -178,6 +179,7 @@ import * as api from "@/lib/api";
 import {
   liveHostAfterProviderSwitch,
   queueComposerPreferenceApply,
+  resolveComposerPrefsAfterBarrier,
 } from "@/lib/composerPrefsBarrier";
 import {
   isDangerousSandboxProfile,
@@ -713,8 +715,13 @@ import { useComposerSend } from "@/hooks/useComposerSend";
 import { useComposerEndPad } from "@/hooks/useComposerEndPad";
 import { useRewindComposerRestore } from "@/hooks/useRewindComposerRestore";
 import { useSessionCatalog } from "@/hooks/useSessionCatalog";
-import { useComposerEffort } from "@/hooks/useComposerEffort";
-import { useSessionEffortOptions } from "@/hooks/useSessionEffortOptions";
+import { useSessionComposerEffort } from "@/hooks/useSessionComposerEffort";
+import { useComposerPrefsResolver } from "@/hooks/useComposerPrefsResolver";
+import { useComposerPrefWrites } from "@/hooks/useComposerPrefWrites";
+import {
+  resolveComposerModeForView,
+  resolveComposerPrefsDraftEffort,
+} from "@/lib/composerPrefsApply";
 import {
   createSessionNavHost,
   useSessionNavigation,
@@ -1204,6 +1211,8 @@ export function AppWorkbench() {
     sessions,
   });
   const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const activeProjectIdRef = useRef<string | null>(null);
+  useLayoutEffect(() => { activeProjectIdRef.current = activeProject?.id ?? null; }, [activeProject?.id]);
   const mcpDoctorHostRef = useRef(createMcpDoctorChromeHost());
   const {
     showMcpModal,
@@ -2086,6 +2095,29 @@ export function AppWorkbench() {
   /** Queue item open in the edit dialog (`null` when closed). */
   /** Effort changes respawn the CLI; sends must wait for that write to settle. */
   const effortApplyRef = useRef<Promise<void>>(Promise.resolve());
+  const composerPrefToast = useCallback(
+    (message: string, ms?: number) => showToastRef.current(message, ms),
+    [],
+  );
+  const composerPrefTranslate = useCallback(
+    (key: MessageKey) => trRef.current(key),
+    [],
+  );
+  const {
+    draftModeRef,
+    resetDraftMode,
+    persistMode: persistComposerMode,
+    persistPolicy: persistComposerPolicy,
+  } = useComposerPrefWrites({
+    projectId: activeProject?.id,
+    sessionId: session.sessionId,
+    mode,
+    setMode,
+    setPolicy,
+    queueRef: effortApplyRef,
+    showToast: composerPrefToast,
+    translate: composerPrefTranslate,
+  });
   /** Live provider retry progress — store lives outside the shell (Thinking reads it). */
   const setRetryStatus = setProviderRetryStatus;
   /** Epoch ms when the current agent turn became busy (for elapsed UI). */
@@ -2400,42 +2432,28 @@ export function AppWorkbench() {
     ) => {
       const next = sessionProviderChip.resolvePrefs(prefs, catalog, chipFor);
       setModelId(next.modelId);
-      setEffort(next.effort);
-      setMode(prefs.mode || "agent");
+      const draftRouteCandidate = chipFor?.sessionId ? null : sessionProviderChip.draftComposerRouteRef.current;
+      const draftEffort = resolveComposerPrefsDraftEffort({
+        selection: next,
+        storedEffort: prefs.effort,
+        draftRoute: draftRouteCandidate,
+        forceOfficial: !!chipFor?.forceOfficial,
+      });
+      if (draftRouteCandidate && !draftEffort.draftRouteMatches) {
+        sessionProviderChip.clearDraftRouteIfCurrent(draftRouteCandidate);
+      }
+      setEffort(draftEffort.effort);
+      setMode(
+        resolveComposerModeForView({
+          prefsMode: prefs.mode,
+          draftMode: draftModeRef.current,
+          sessionId: chipFor?.sessionId,
+        }),
+      );
       setPolicy(
         isValidPolicy(prefs.permissionPolicy) ? prefs.permissionPolicy : "ask",
       );
       if (isValidPrefsScope(prefs.scope)) setPrefsScope(prefs.scope);
-      // The chip now shows this model's default; persist it so the next spawn
-      // does not reuse an id the model no longer advertises. Unsupported models
-      // keep their stored id and never write it as this model's effort.
-      if (
-        api.isTauri() &&
-        next.effortSupported !== false &&
-        next.effort.trim() !== "" &&
-        next.effort !== (prefs.effort ?? "").trim()
-      ) {
-        effortApplyRef.current = queueComposerPreferenceApply(
-          effortApplyRef.current,
-          async () => {
-            await api.composerPrefsSet({
-              sessionId: chipFor?.sessionId ?? null,
-              effort: next.effort,
-            });
-          },
-          (error) => {
-            console.warn("composer effort reconcile save failed", error);
-            showToastRef.current(
-              tr(
-                modelEffortErrorMessageKey(
-                  classifyModelEffortError(error),
-                ) as MessageKey,
-              ),
-              4000,
-            );
-          },
-        );
-      }
       if (chipFor) {
         sessionProviderChip.applyPrefsRoute({
           routeProviderId: next.providerId,
@@ -2444,7 +2462,7 @@ export function AppWorkbench() {
         });
       }
     },
-    [sessionProviderChip, tr],
+    [sessionProviderChip, draftModeRef],
   );
 
   const refreshLists = useCallback(async () => {
@@ -2664,13 +2682,16 @@ export function AppWorkbench() {
             })
           : GROK_BUILD_MODELS;
       setAvailableModels(catalog);
-      // Bootstrap: global-effective prefs (context re-resolved when project/session changes).
+      const bootstrapBarrier = effortApplyRef.current;
       const prefs = await api
         .composerPrefsResolve({ projectId: null, sessionId: null })
         .catch(() => null);
-      if (prefs) {
+      const bootstrapStillCurrent =
+        effortApplyRef.current === bootstrapBarrier && session.sessionId == null &&
+        viewingSessionIdRef.current == null;
+      if (prefs && bootstrapStillCurrent) {
         applyComposerPrefs(prefs, catalog);
-      } else {
+      } else if (bootstrapStillCurrent) {
         setPolicy(
           isValidPolicy(settings.permissionPolicy || "")
             ? settings.permissionPolicy
@@ -2837,38 +2858,21 @@ export function AppWorkbench() {
     void refreshLists();
   }, [refreshLists, bootRetryNonce]);
 
-  // Re-resolve model/permission when project or chat changes.
-  // Permission always cascades project/session tiers (L10), even when model
-  // memory scope is global — so project-level tiers apply after a switch.
-  useEffect(() => {
-    if (!api.isTauri()) return;
-    let cancelled = false;
-    const run = () => {
-      void api
-        .composerPrefsResolve({
-          projectId: activeProject?.id ?? null,
-          sessionId: session.sessionId ?? null,
-        })
-        .then((prefs) => {
-          if (cancelled) return;
-          applyComposerPrefs(prefs, availableModels, { sessionId: session.sessionId, forceOfficial: !!activeProject?.sshAlias?.trim() });
-        })
-        .catch(() => {});
-    };
-    sessionProviderChip.setAfterProviderList(run);
-    run();
-    return () => {
-      cancelled = true;
-      sessionProviderChip.setAfterProviderList(null);
-    };
-  }, [
-    activeProject?.id,
-    session.sessionId,
+  const reportComposerPrefsResolveError = useCallback((error: unknown) => {
+    console.warn("composer prefs session resolve failed", error);
+    showToastRef.current(trRef.current("error.deck.generic.problem"), 4000);
+  }, []);
+  const composerPrefsReady = useComposerPrefsResolver({
+    projectId: activeProject?.id,
+    sessionId: session.sessionId,
+    forceOfficial: !!activeProject?.sshAlias?.trim(),
     prefsScope,
-    applyComposerPrefs,
-    availableModels,
-    sessionProviderChip,
-  ]);
+    models: availableModels,
+    barrierRef: effortApplyRef,
+    setAfterProviderList: sessionProviderChip.setAfterProviderList,
+    apply: applyComposerPrefs,
+    onError: reportComposerPrefsResolveError,
+  });
 
   // Prompt history browse is per viewed session — leave browse mode on switch / new chat.
   // Cross-session recent ring is not cleared (lives in localStorage).
@@ -3463,6 +3467,7 @@ export function AppWorkbench() {
         turnStartedAtBySessionRef.current.delete(resolveTurnClockKey(null));
       }
     };
+    host.draft.resetComposerMode = resetDraftMode;
     host.draft.resetPlanAndGates = () => {
       setPlan(emptySessionPlan(tr("plan.ready")));
       setPerm(null);
@@ -4239,14 +4244,33 @@ export function AppWorkbench() {
                 }
               : p,
           );
-          const prefs = await api.composerPrefsResolve({
-            projectId: proj.id,
-            sessionId: session.sessionId ?? null,
+          const viewedSessionId =
+            viewingSessionIdRef.current ?? session.sessionId ?? null;
+          await resolveComposerPrefsAfterBarrier({
+            barrier: effortApplyRef.current,
+            currentBarrier: () => effortApplyRef.current,
+            isActive: () =>
+              activeProjectIdRef.current === proj.id &&
+              viewingSessionIdRef.current === viewedSessionId,
+            resolve: () =>
+              api.composerPrefsResolve({
+                projectId: proj.id,
+                sessionId: viewedSessionId,
+              }),
+            apply: (prefs) =>
+              applyComposerPrefs(prefs, availableModels, {
+                sessionId: viewedSessionId,
+                forceOfficial: !!activeProject?.sshAlias?.trim(),
+              }),
+            onError: (error) => {
+              console.warn("project permission prefs resolve failed", error);
+              setLocalError(tr("error.deck.generic.problem"));
+            },
           });
-          applyComposerPrefs(prefs, availableModels, { sessionId: session.sessionId, forceOfficial: !!activeProject?.sshAlias?.trim() });
         }
-      } catch (e) {
-        setLocalError(String(e));
+      } catch (error) {
+        console.warn("project permission update failed", error);
+        setLocalError(tr("error.deck.generic.problem"));
       }
     };
 
@@ -6944,15 +6968,8 @@ export function AppWorkbench() {
           composerMode: modeRef.current,
         })
       ) {
-        setMode("agent");
         setGoalMode(false);
-        void api
-          .composerPrefsSet({
-            projectId: activeProject?.id ?? null,
-            sessionId: session.sessionId ?? null,
-            mode: "agent",
-          })
-          .catch((e) => showToast(String(e), 4000));
+        persistComposerMode("agent");
       }
     } catch (e) {
       showToast(String(e), 4500);
@@ -7136,16 +7153,9 @@ export function AppWorkbench() {
    */
   const exitPlanMode = useCallback(() => {
     if (modeRef.current !== "plan") return;
-    setMode("agent");
     setGoalMode(false);
-    void api
-      .composerPrefsSet({
-        projectId: activeProject?.id ?? null,
-        sessionId: session.sessionId ?? null,
-        mode: "agent",
-      })
-      .catch((e) => showToast(String(e), 4000));
-  }, [activeProject?.id, session.sessionId, showToast]);
+    persistComposerMode("agent");
+  }, [persistComposerMode]);
 
   const sendQueue = useSendQueue({
     sessionId: session.sessionId,
@@ -8420,13 +8430,7 @@ export function AppWorkbench() {
       if (!isValidPolicy(next)) return;
 
       const commit = () => {
-        setPolicy(next);
-        void api
-          .sessionSetPolicy(next, {
-            projectId: activeProject?.id ?? null,
-            sessionId: session.sessionId ?? null,
-          })
-          .catch((e) => showToast(String(e), 4000));
+        persistComposerPolicy(next);
       };
 
       if (next !== "always_approve") {
@@ -8453,7 +8457,7 @@ export function AppWorkbench() {
         },
       });
     },
-    [activeProject?.id, session.sessionId, showToast, tr],
+    [persistComposerPolicy, tr],
   );
 
   const applyCreateVideo = useCallback(() => {
@@ -8665,19 +8669,12 @@ export function AppWorkbench() {
       if (item.kind === "mode") {
         if (item.mode === "goal") {
           setGoalMode(true);
-          if (mode === "plan") setMode("agent");
+          if (mode === "plan") persistComposerMode("agent");
           return;
         }
         if (item.mode === "plan") {
           setGoalMode(false);
-          setMode("plan");
-          void api
-            .composerPrefsSet({
-              projectId: activeProject?.id ?? null,
-              sessionId: session.sessionId ?? null,
-              mode: "plan",
-            })
-            .catch((e) => showToast(String(e), 4000));
+          persistComposerMode("plan");
           return;
         }
       }
@@ -9119,28 +9116,28 @@ export function AppWorkbench() {
     void refreshVoiceGate();
   }, [customRouteActive, refreshVoiceGate]);
 
-  const persistReconciledEffortRef = useRef<(next: string) => void>(() => {});
-  const effortOptions = useSessionEffortOptions({
+  const {
+    options: effortOptions,
+    pending: effortOptionsPending,
+    handleEffortPick,
+    getLatestEffort,
+    isCurrentTarget,
+  } = useSessionComposerEffort({
     source: providerActiveSource,
     provider: activeCustomProvider,
     modelId,
     officialModels: availableModels,
     effort,
+    reconcileEnabled: composerPrefsReady,
     setEffort,
-    onReconcile: (next) => persistReconciledEffortRef.current(next),
-  }).options;
-
-  const { handleEffortPick, persistReconciledEffort } = useComposerEffort({
-    effort,
-    effortOptions,
-    setEffort,
+    updateDraftEffort: sessionProviderChip.updateDraftEffort,
+    draftRouteRef: sessionProviderChip.draftComposerRouteRef,
     projectId: activeProject?.id,
     sessionId: session.sessionId,
     queueRef: effortApplyRef,
     showToast,
     translate: tr,
   });
-  persistReconciledEffortRef.current = persistReconciledEffort;
 
   const handleModelPick = useCallback(
     async (requestedPick: ComposerModelPick) => {
@@ -9164,16 +9161,25 @@ export function AppWorkbench() {
           return;
         }
         const clamped = resolution.supported
-          ? pickSessionEffort(resolution.options, effort)
-          : effort;
+          ? pickSessionEffort(resolution.options, getLatestEffort())
+          : getLatestEffort();
         const providerChanged =
           (providerId === "official") !== (providerActiveSource === "official") ||
           (providerId !== "official" && providerActiveId !== providerId);
         const sid = session.sessionId;
+        const draftRouteAtStart = sid
+          ? null
+          : sessionProviderChip.draftComposerRouteRef.current;
         let applyFailed = false;
         const apply = queueComposerPreferenceApply(
           effortApplyRef.current,
           async () => {
+            if (
+              sid == null &&
+              !isCurrentTarget(sid, activeProject?.id, draftRouteAtStart)
+            ) {
+              return;
+            }
             await api.composerPrefsSet({
               projectId: activeProject?.id ?? null,
               sessionId: sid,
@@ -9195,14 +9201,14 @@ export function AppWorkbench() {
             applyFailed = true;
             console.warn("composer model save failed", error);
             showToast(
-              tr(modelEffortErrorMessageKey(classifyModelEffortError(error)) as MessageKey),
+              tr(modelEffortErrorMessageKey(classifyModelEffortError(error))),
               4000,
             );
           },
         );
         effortApplyRef.current = apply;
         await apply;
-        if (applyFailed) return;
+        if (applyFailed || !isCurrentTarget(sid, activeProject?.id, draftRouteAtStart)) return;
         setModelId(pick.modelId);
         if (resolution.supported) setEffort(clamped);
         sessionProviderChip.paint(providerId);
@@ -9211,10 +9217,14 @@ export function AppWorkbench() {
           : {
               providerId,
               modelId: pick.modelId,
-              effort: resolution.supported ? clamped : effort,
+              effort: resolution.supported ? clamped : null,
             };
-      } catch (e) {
-        showToast(String(e), 4000);
+      } catch (error) {
+        console.warn("composer model pick failed", error);
+        showToast(
+          tr(modelEffortErrorMessageKey(classifyModelEffortError(error)) as MessageKey),
+          4000,
+        );
       } finally {
         modelPickBusyRef.current = false;
         setModelPickBusy(false);
@@ -9226,10 +9236,11 @@ export function AppWorkbench() {
       activeProject?.id,
       activeProject?.sshAlias,
       session.sessionId,
-      effort,
+      getLatestEffort,
       providerActiveSource,
       providerActiveId,
       sessionProviderChip,
+      isCurrentTarget,
       showToast,
       tr,
     ],
@@ -11904,14 +11915,12 @@ export function AppWorkbench() {
         accountProbeError={accountProbeError}
         acpServerAddr={acpServerAddr}
         activeAccountId={activeAccountId}
-        activeProject={activeProject}
         agentCatalog={agentCatalog}
         agentIdleMinutes={agentIdleMinutes}
         agentProfilePath={agentProfilePath}
         agentsJson={agentsJson}
         allowUnverifiedCliInstall={allowUnverifiedCliInstall}
         allowedTools={allowedTools}
-        applyComposerPrefs={applyComposerPrefs}
         applyGlobalSandboxProfile={applyGlobalSandboxProfile}
         applyPermissionPolicy={applyPermissionPolicy}
         applySkinChoice={applySkinChoice}
@@ -12001,7 +12010,6 @@ export function AppWorkbench() {
         runSwitchAccount={runSwitchAccount}
         sandboxProfile={sandboxProfile}
         savedAccounts={savedAccounts}
-        session={session}
         sessionDataMode={sessionDataMode}
         sessions={sessions}
         setAcpServerAddr={setAcpServerAddr}
@@ -12597,6 +12605,7 @@ export function AppWorkbench() {
             setLocalError={setLocalError}
             canGuideQueuedMessage={canGuideQueuedMessage}
             effortOptions={effortOptions}
+            effortOptionsPending={effortOptionsPending}
             chatAttachments={chatAttachments}
             clearSlashFilters={clearSlashFilters}
             cliWorktrees={cliWorktrees}
@@ -12623,7 +12632,6 @@ export function AppWorkbench() {
             refreshContextInfo={() => {
               contextSlashRef.current(false);
             }}
-            currentModelWindow={currentModelWindow}
             customRouteActive={customRouteActive}
             cycleAttachedChatScope={cycleAttachedChatScope}
             effectiveCanSend={effectiveCanSend && !modelPickBusy}
@@ -12643,7 +12651,6 @@ export function AppWorkbench() {
             goalMode={goalMode}
             guideQueuedMessage={guideQueuedMessage}
             guidingQueueItemId={guidingQueueItemId}
-            handleContextWindow={handleContextWindow}
             handleEffortPick={handleEffortPick}
             handleModelPick={handleModelPick}
             layout={layout}
@@ -12719,7 +12726,7 @@ export function AppWorkbench() {
             setCompactNote={compact.setNote}
             setGoalMode={setGoalMode}
             setJsonSchemaDraft={setJsonSchemaDraft}
-            setMode={setMode}
+            persistComposerMode={persistComposerMode}
             setPhoneToolsOpen={setPhoneToolsOpen}
             setPromptHistoryActive={setPromptHistoryActive}
             setPromptHistoryClearOpen={setPromptHistoryClearOpen}
@@ -12913,6 +12920,7 @@ export function AppWorkbench() {
             activeSource={providerActiveSource}
             activeProviderId={providerActiveId}
             efforts={effortOptions}
+            effortOptionsPending={effortOptionsPending}
             mode={mode}
             policy={policy}
             contextDisplay={contextUsageDisplay}
@@ -12936,15 +12944,8 @@ export function AppWorkbench() {
             }}
             onEffort={handleEffortPick}
             onMode={(v) => {
-              setMode(v);
               if (v === "plan") setGoalMode(false);
-              void api
-                .composerPrefsSet({
-                  projectId: activeProject?.id ?? null,
-                  sessionId: session.sessionId ?? null,
-                  mode: v,
-                })
-                .catch((e) => showToast(String(e), 4000));
+              persistComposerMode(v);
             }}
             onPolicy={(v: PermissionPolicyId) => {
               applyPermissionPolicy(v);

@@ -2138,6 +2138,7 @@ export function ProvidersPanel({
                     supportsReasoningEffort: next.supportsReasoningEffort,
                     supportsReasoningEffortSource:
                       next.supportsReasoningEffortSource,
+                    supportsReasoningOff: next.supportsReasoningOff,
                     efforts: toFormEfforts(next.efforts),
                     effortsSource: next.effortsSource,
                   }
