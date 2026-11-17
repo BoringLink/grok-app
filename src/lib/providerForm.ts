@@ -35,6 +35,7 @@ export type FormModel = {
   effortsSource?: api.ProviderModelFieldSource;
   supportsReasoningEffort?: boolean;
   supportsReasoningEffortSource?: api.ProviderModelFieldSource;
+  supportsReasoningOff?: boolean;
 };
 
 export function toFormEfforts(
@@ -61,6 +62,7 @@ export function asFormModel(m: api.ProviderModelEntry): FormModel {
     effortsSource: resolved.effortsSource,
     supportsReasoningEffort: resolved.supportsReasoningEffort ?? true,
     supportsReasoningEffortSource: resolved.supportsReasoningEffortSource,
+    supportsReasoningOff: resolved.supportsReasoningOff,
   };
 }
 
@@ -166,6 +168,7 @@ export function formModelsPayload(models: FormModel[]): api.ProviderModelEntry[]
       effortsSource: m.effortsSource,
       supportsReasoningEffort: m.supportsReasoningEffort,
       supportsReasoningEffortSource: m.supportsReasoningEffortSource,
+      supportsReasoningOff: m.supportsReasoningOff,
     });
     return {
       id: resolved.id,
@@ -180,6 +183,7 @@ export function formModelsPayload(models: FormModel[]): api.ProviderModelEntry[]
       supportsReasoningEffort: resolved.supportsReasoningEffort ?? true,
       supportsReasoningEffortSource:
         resolved.supportsReasoningEffortSource ?? "fallback",
+      supportsReasoningOff: resolved.supportsReasoningOff,
     };
   });
 }

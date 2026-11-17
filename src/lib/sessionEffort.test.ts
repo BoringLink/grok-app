@@ -65,6 +65,7 @@ const relay = provider({
       name: "No reasoning",
       supportsReasoningEffort: false,
       efforts: [{ id: "low", name: "Low" }],
+      effortsSource: "fallback",
     },
   ],
 });
@@ -134,7 +135,34 @@ describe("resolveSessionEffortOptions", () => {
     expect(resolution.options.map((option) => option.id)).not.toContain("low");
   });
 
-  it("keeps the channel ladder for a model row the catalog omits", () => {
+  it("does not borrow the channel ladder for a model without its own ladder", () => {
+    const multiModelProvider = provider({
+      ...relay,
+      models: [
+        ...(relay.models ?? []),
+        {
+          id: "m-empty",
+          name: "No model ladder",
+          supportsReasoningEffort: true,
+          efforts: [],
+        },
+      ],
+    });
+    const resolution = resolveSessionEffortOptions({
+      source: "custom",
+      provider: multiModelProvider,
+      modelId: "m-empty",
+    });
+
+    expect(resolution.options.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+  });
+
+  it("uses the generic fallback for an id absent from a multi-model catalog", () => {
     const resolution = resolveSessionEffortOptions({
       source: "custom",
       provider: relay,
@@ -142,9 +170,98 @@ describe("resolveSessionEffortOptions", () => {
     });
 
     expect(resolution.options.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+  });
+
+  it("uses channel efforts only for the matching legacy single-model route", () => {
+    const legacy = provider({
+      id: "legacy",
+      model: "m-default",
+      efforts: [
+        { id: "channel-low", name: "Channel low" },
+        { id: "channel-high", name: "Channel high", isDefault: true },
+      ],
+    });
+
+    const matching = resolveSessionEffortOptions({
+      source: "custom",
+      provider: legacy,
+      modelId: "m-default",
+    });
+    const mismatched = resolveSessionEffortOptions({
+      source: "custom",
+      provider: legacy,
+      modelId: "other-model",
+    });
+
+    expect(matching.options.map((option) => option.id)).toEqual([
       "channel-low",
       "channel-high",
     ]);
+    expect(mismatched.options.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+  });
+
+  it("does not use channel efforts when the only catalog row is another model", () => {
+    const providerWithMismatchedRow = provider({
+      id: "legacy-with-row",
+      model: "m-default",
+      models: [{ id: "other-model", name: "Other" }],
+      efforts: [{ id: "channel-only", name: "Channel only" }],
+    });
+    const resolution = resolveSessionEffortOptions({
+      source: "custom",
+      provider: providerWithMismatchedRow,
+      modelId: "m-default",
+    });
+
+    expect(resolution.options.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+  });
+
+  it("uses the documented fallback ladder when the provider advertises none", () => {
+    const noLadder = provider({
+      id: "empty-relay",
+      model: "m1",
+      models: [
+        {
+          id: "m1",
+          name: "Unspecified",
+          supportsReasoningEffort: true,
+          efforts: [],
+        },
+      ],
+    });
+    const resolution = resolveSessionEffortOptions({
+      source: "custom",
+      provider: noLadder,
+      modelId: "m1",
+    });
+
+    expect(resolution.options.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+    expect(resolution.options.find((option) => option.isDefault)?.id).toBe(
+      "medium",
+    );
+    expect(pickSessionEffort(resolution.options, "vendor-tier")).toBe(
+      "medium",
+    );
   });
 
   it("holds the stored pick while the provider list is still loading", () => {
@@ -158,7 +275,7 @@ describe("resolveSessionEffortOptions", () => {
     expect(resolution.options).toEqual([]);
   });
 
-  it("advertises off only when the model itself lists none", () => {
+  it("offers Off from an explicit model setting and honors an explicit disable", () => {
     const withOff = resolveSessionEffortOptions({
       source: "custom",
       provider: relay,
@@ -169,9 +286,55 @@ describe("resolveSessionEffortOptions", () => {
       provider: relay,
       modelId: "m-default",
     });
+    const enabledBySetting = resolveSessionEffortOptions({
+      source: "custom",
+      provider: provider({
+        ...relay,
+        model: "m-fast",
+        models: [
+          {
+            id: "m-fast",
+            name: "Fast",
+            supportsReasoningEffort: false,
+            supportsReasoningOff: true,
+            efforts: [{ id: "high", name: "High", isDefault: true }],
+            effortsSource: "fallback",
+          },
+        ],
+      }),
+      modelId: "m-fast",
+    });
+    const explicitlyDisabled = resolveSessionEffortOptions({
+      source: "custom",
+      provider: provider({
+        ...relay,
+        model: "m-disabled",
+        models: [
+          {
+            id: "m-disabled",
+            name: "Disabled",
+            supportsReasoningOff: false,
+            efforts: [
+              { id: "high", name: "High", isDefault: true },
+              { id: "none", name: "Off" },
+            ],
+            effortsSource: "remote",
+          },
+        ],
+      }),
+      modelId: "m-disabled",
+    });
 
     expect(withOff.options.map((option) => option.id)).toContain("none");
     expect(withoutOff.options.map((option) => option.id)).not.toContain("none");
+    expect(enabledBySetting.options.map((option) => option.id)).toEqual([
+      "none",
+      "high",
+    ]);
+    expect(enabledBySetting.supported).toBe(true);
+    expect(explicitlyDisabled.options.map((option) => option.id)).toEqual([
+      "high",
+    ]);
   });
 
   it("offers official model ladders by raw id, including xhigh", () => {
@@ -187,6 +350,22 @@ describe("resolveSessionEffortOptions", () => {
       "high",
       "xhigh",
     ]);
+  });
+
+  it("uses the official model identity when its live catalog is temporarily empty", () => {
+    const resolution = resolveSessionEffortOptions({
+      source: "official",
+      modelId: "grok-4.7",
+      officialModels: [],
+    });
+
+    expect(resolution.options.map((option) => option.id)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+    expect(pickSessionEffort(resolution.options, "xhigh")).toBe("xhigh");
   });
 
   it("offers off on an official model only when its live catalog lists none", () => {
@@ -317,18 +496,27 @@ describe("pickSessionEffort", () => {
     expect(pickSessionEffort(options, "balanced")).toBe("balanced");
   });
 
+  it("keeps a stored Off id when the model advertises it", () => {
+    expect(
+      pickSessionEffort(
+        [{ id: "none" }, { id: "low" }, { id: "high" }],
+        "none",
+      ),
+    ).toBe("none");
+  });
+
   it("falls back to the first option when none is marked default", () => {
     expect(pickSessionEffort(options, "missing")).toBe("minimal");
     expect(pickSessionEffort(options, null)).toBe("minimal");
   });
 
-  it("prefers medium when the ladder has no explicit default", () => {
+  it("falls back to the first option when the ladder has no explicit default", () => {
     expect(
       pickSessionEffort(
         [{ id: "low" }, { id: "medium" }, { id: "high" }],
         "missing",
       ),
-    ).toBe("medium");
+    ).toBe("low");
   });
 
   it("uses the advertised default flag first", () => {

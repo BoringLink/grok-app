@@ -49,6 +49,42 @@ function mountChip() {
 }
 
 describe("useSessionProviderChip applyPrefsRoute", () => {
+  it("updates an unsaved draft's raw effort pick and leaves saved sessions alone", () => {
+    const { chip } = mountChip();
+    chip.draftComposerRouteRef.current = {
+      providerId: "relay",
+      modelId: "grok-4.6",
+      effort: "medium",
+    };
+
+    act(() => chip.updateDraftEffort(null, "ultra"));
+    expect(chip.draftComposerRouteRef.current?.effort).toBe("ultra");
+
+    act(() => chip.updateDraftEffort("saved-session", "low"));
+    expect(chip.draftComposerRouteRef.current?.effort).toBe("ultra");
+  });
+
+  it("clears only the draft route instance that was resolved", () => {
+    const { chip } = mountChip();
+    const oldRoute = {
+      providerId: "relay",
+      modelId: "grok-4.6",
+      effort: "high",
+    };
+    const nextRoute = {
+      providerId: "relay",
+      modelId: "grok-4.7",
+      effort: "xhigh",
+    };
+    chip.draftComposerRouteRef.current = oldRoute;
+    chip.draftComposerRouteRef.current = nextRoute;
+
+    act(() => chip.clearDraftRouteIfCurrent(oldRoute));
+    expect(chip.draftComposerRouteRef.current).toBe(nextRoute);
+    act(() => chip.clearDraftRouteIfCurrent(nextRoute));
+    expect(chip.draftComposerRouteRef.current).toBeNull();
+  });
+
   it("does not apply a new-chat draft while resolving a saved session", () => {
     // Arrange — a draft relay pick belongs to the new chat, not this session
     const { chip } = mountChip();
@@ -99,7 +135,12 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
     // Arrange — a saved model keeps routing on its own child section
     const { chip, setters } = mountChip();
     const next = chip.resolvePrefs(
-      { modelId: "deepseek-reasoner", effort: null, providerId: "cleared" },
+      {
+        modelId: "deepseek-reasoner",
+        effort: null,
+        providerId: "cleared",
+        sessionModelId: "deepseek-reasoner",
+      },
       GROK_BUILD_MODELS,
     );
     expect(next.providerId).toBeUndefined();

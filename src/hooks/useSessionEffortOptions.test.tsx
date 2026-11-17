@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, expect, it, vi } from "vitest";
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { useSessionEffortOptions } from "./useSessionEffortOptions";
 import type { CustomProvider } from "@/lib/api";
 
@@ -53,6 +53,27 @@ describe("useSessionEffortOptions", () => {
     expect(onReconcile).not.toHaveBeenCalled();
   });
 
+  it("waits for the session prefs restore before reconciling a stored pick", () => {
+    const setEffort = vi.fn();
+    const onReconcile = vi.fn(async () => true);
+
+    renderHook(() =>
+      useSessionEffortOptions({
+        source: "custom",
+        provider: baseProvider,
+        modelId: "m1",
+        officialModels: [],
+        effort: "removed-tier",
+        reconcileEnabled: false,
+        setEffort,
+        onReconcile,
+      }),
+    );
+
+    expect(setEffort).not.toHaveBeenCalled();
+    expect(onReconcile).not.toHaveBeenCalled();
+  });
+
   it("moves to the model default and persists it when metadata changes", () => {
     const setEffort = vi.fn();
     const onReconcile = vi.fn();
@@ -90,6 +111,70 @@ describe("useSessionEffortOptions", () => {
     // Assert — default is applied and persisted for the next spawn
     expect(setEffort).toHaveBeenCalledWith("medium");
     expect(onReconcile).toHaveBeenCalledWith("medium");
+  });
+
+  it("keeps the stored pick when persisting a reconciled default fails", async () => {
+    const setEffort = vi.fn();
+    const provider: CustomProvider = {
+      ...baseProvider,
+      models: [
+        {
+          id: "m1",
+          name: "M1",
+          supportsReasoningEffort: true,
+          efforts: [{ id: "medium", name: "medium", isDefault: true }],
+        },
+      ],
+    };
+    const onReconcile = vi.fn(async () => false);
+
+    renderHook(() =>
+      useSessionEffortOptions({
+        source: "custom",
+        provider,
+        modelId: "m1",
+        officialModels: [],
+        effort: "low",
+        setEffort,
+        onReconcile,
+      }),
+    );
+    await act(async () => Promise.resolve());
+
+    expect(onReconcile).toHaveBeenCalledWith("medium");
+    expect(setEffort).not.toHaveBeenCalled();
+  });
+
+  it("reports synchronous reconciliation failures to the composer", () => {
+    const onReconcileError = vi.fn();
+    const error = new Error("write failed");
+
+    renderHook(() =>
+      useSessionEffortOptions({
+        source: "custom",
+        provider: {
+          ...baseProvider,
+          models: [
+            {
+              id: "m1",
+              name: "M1",
+              supportsReasoningEffort: true,
+              efforts: [{ id: "medium", name: "medium", isDefault: true }],
+            },
+          ],
+        },
+        modelId: "m1",
+        officialModels: [],
+        effort: "removed-tier",
+        setEffort: vi.fn(),
+        onReconcile: () => {
+          throw error;
+        },
+        onReconcileError,
+      }),
+    );
+
+    expect(onReconcileError).toHaveBeenCalledWith(error);
   });
 
   it("holds the pick while the provider catalog is loading", () => {

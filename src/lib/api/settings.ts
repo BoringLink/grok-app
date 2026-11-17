@@ -306,6 +306,8 @@ export interface ComposerPrefs {
   source: string;
   /** `official` or a custom provider id. Missing on older chats. */
   providerId?: string | null;
+  /** Model id saved on this session, when it exists independently of defaults. */
+  sessionModelId?: string | null;
 }
 
 export async function settingsGet() {
@@ -354,19 +356,6 @@ export async function composerPrefsSet(body: {
 
 export async function settingsSet(settings: Record<string, unknown>) {
   return invoke<AppSettings>("settings_set", { settings });
-}
-
-/** Update live Host permission policy + persist at configured prefs scope. */
-export async function sessionSetPolicy(
-  policy: string,
-  opts?: { projectId?: string | null; sessionId?: string | null },
-) {
-  if (!isTauri()) return null;
-  return invoke<ComposerPrefs>("session_set_policy", {
-    policy,
-    projectId: opts?.projectId ?? null,
-    sessionId: opts?.sessionId ?? null,
-  });
 }
 
 /** Switch live agent model + persist at configured prefs scope. */

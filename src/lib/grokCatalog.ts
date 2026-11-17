@@ -252,7 +252,9 @@ export function effortsForModel(
       ? model.reasoningEfforts
       : null;
   const raw = fromArg ?? fromModel ?? fallbackEffortsForModelId(model?.id);
-  return normalizeEffortDefaults(raw);
+  return normalizeEffortDefaults(
+    raw.filter((option) => isSpawnableReasoningEffort(option.id)),
+  );
 }
 
 /**
@@ -271,23 +273,10 @@ export function isValidEffort(
 }
 
 /**
- * Composer effort catalog for the active route.
- * Custom channels use their configured efforts; official uses the
- * selected model's live/fallback list (Grok 4.7 / Fast / 4.6 include xhigh).
- */
-export function effortCatalogForRoute(opts: {
-  model?: ModelOption | null;
-  channelEfforts?: EffortOption[] | null;
-}): EffortOption[] {
-  if (opts.channelEfforts && opts.channelEfforts.length > 0) {
-    return effortsForModel(null, opts.channelEfforts);
-  }
-  return effortsForModel(opts.model);
-}
-
-/**
- * Default effort for a model: the catalog's `isDefault` flag, else `medium`
- * when the ladder has it, else the first option, else {@link DEFAULT_EFFORT}.
+ * Default effort for a model: the catalog's `isDefault` flag, else the first
+ * non-Off option (API provided a ladder but no default; Off is never the
+ * implicit default), else `medium` when there is no effort information at
+ * all (medium is always inside the CLI's fixed wire enum).
  */
 export function pickDefaultEffort(
   model?: ModelOption | null,
@@ -296,10 +285,10 @@ export function pickDefaultEffort(
   const list = effortsForModel(model, catalogEfforts);
   const explicit = list.find((e) => e.isDefault)?.id;
   if (explicit) return explicit;
-  const medium = list.find(
-    (e) => e.id.trim().toLowerCase() === "medium",
+  const firstNonOff = list.find(
+    (e) => e.id.trim().toLowerCase() !== "none",
   )?.id;
-  return medium ?? list[0]?.id ?? DEFAULT_EFFORT;
+  return firstNonOff ?? list[0]?.id ?? "medium";
 }
 
 /**
@@ -395,7 +384,7 @@ export function effortOptionsFromProvider(
   const seen = new Set<string>();
   for (const e of efforts) {
     const id = e.id?.trim() ?? "";
-    if (!id || seen.has(id)) continue;
+    if (!isSpawnableReasoningEffort(id) || seen.has(id)) continue;
     seen.add(id);
     const label = (e.name ?? e.label)?.trim();
     out.push({

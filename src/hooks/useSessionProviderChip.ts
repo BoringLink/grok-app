@@ -7,12 +7,7 @@ import {
 } from "@/lib/composerPrefsApply";
 import type { ModelOption } from "@/lib/grokCatalog";
 import { resolveSessionProviderRoute } from "@/lib/sessionProviderRoute";
-
-export type DraftComposerRoute = {
-  providerId: string;
-  modelId: string;
-  effort: string;
-};
+import type { DraftComposerRoute } from "@/lib/draftComposerRoute";
 
 export type ProviderRouteSource = "official" | "custom";
 
@@ -48,6 +43,17 @@ export function useSessionProviderChip() {
   const sessionProviderChipRef = useRef<string | null | undefined>(undefined);
   const draftComposerRouteRef = useRef<DraftComposerRoute | null>(null);
   const afterProviderListRef = useRef<(() => void) | null>(null);
+  const clearDraftRouteIfCurrent = useCallback((route: DraftComposerRoute) => {
+    if (draftComposerRouteRef.current === route) draftComposerRouteRef.current = null;
+  }, []);
+  const updateDraftEffort = useCallback(
+    (sessionId: string | null | undefined, effort: string) => {
+      if (sessionId) return;
+      const draft = draftComposerRouteRef.current;
+      if (draft) draftComposerRouteRef.current = { ...draft, effort };
+    },
+    [],
+  );
 
   /** Paint the effective provider route and selected provider object. */
   const paint = useCallback((providerId: string | null) => {
@@ -140,6 +146,8 @@ export function useSessionProviderChip() {
   return useMemo(
     () => ({
       draftComposerRouteRef,
+      updateDraftEffort,
+      clearDraftRouteIfCurrent,
       paint,
       resolvePrefs,
       applyPrefsRoute,
@@ -154,6 +162,8 @@ export function useSessionProviderChip() {
       paint,
       resolvePrefs,
       setAfterProviderList,
+      updateDraftEffort,
+      clearDraftRouteIfCurrent,
     ],
   );
 }

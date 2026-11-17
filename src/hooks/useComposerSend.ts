@@ -31,7 +31,6 @@ import {
   stripChatTokens,
   type ChatRef,
 } from "@/lib/chatAttach";
-import { awaitComposerSendBarrier } from "@/lib/composerPrefsBarrier";
 import {
   clearComposerProjectDraft,
   loadComposerProjectDraft,
@@ -297,7 +296,7 @@ const executeSend = async (opts: {
   }
   const { storedDisplay, att, goalMode: useGoal, fromQueue } = opts;
   const quotesForSend = opts.quotes ?? [];
-  await awaitComposerSendBarrier(!!fromQueue, effortApplyRef.current);
+  await effortApplyRef.current;
   // Keep [[file:]] / [[url:]] segments so serializeForAgent emits @path.
   // parseStoredContent drops them to literal token text.
   const segments = parseStoredContentWithRefs(storedDisplay);

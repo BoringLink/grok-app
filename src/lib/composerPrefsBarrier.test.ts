@@ -1,28 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  awaitComposerSendBarrier,
   liveHostAfterProviderSwitch,
   queueComposerPreferenceApply,
+  resolveComposerPrefsAfterBarrier,
 } from "./composerPrefsBarrier";
 
 describe("composer preference apply barrier", () => {
-  it("queued flush waits for the provider-switch barrier", async () => {
-    let finish!: () => void;
-    const barrier = new Promise<void>((resolve) => {
-      finish = resolve;
-    });
-    let done = false;
-    const pending = awaitComposerSendBarrier(true, barrier).then(() => {
-      done = true;
-    });
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(done).toBe(false);
-    finish();
-    await pending;
-    expect(done).toBe(true);
-  });
-
   it("holds the next send until the effort change is applied", async () => {
     let finishApply!: () => void;
     const applying = new Promise<void>((resolve) => {
@@ -81,6 +64,52 @@ describe("composer preference apply barrier", () => {
         true,
       ),
     ).toBeNull();
+  });
+});
+
+describe("composer prefs resolve barrier", () => {
+  it("waits for writes and ignores a snapshot when a newer write starts", async () => {
+    let currentBarrier = Promise.resolve();
+    let finishResolve!: (value: string) => void;
+    const resolve = () =>
+      new Promise<string>((accept) => {
+        finishResolve = accept;
+      });
+    const applied: string[] = [];
+    const pending = resolveComposerPrefsAfterBarrier({
+      barrier: currentBarrier,
+      currentBarrier: () => currentBarrier,
+      isActive: () => true,
+      resolve,
+      apply: (value) => applied.push(value),
+      onError: () => undefined,
+    });
+
+    await Promise.resolve();
+    currentBarrier = Promise.resolve();
+    finishResolve("stale");
+    await pending;
+
+    expect(applied).toEqual([]);
+  });
+
+  it("routes resolve failures to the caller while its context remains active", async () => {
+    const error = new Error("prefs unavailable");
+    const errors: unknown[] = [];
+    const barrier = Promise.resolve();
+
+    await resolveComposerPrefsAfterBarrier({
+      barrier,
+      currentBarrier: () => barrier,
+      isActive: () => true,
+      resolve: async () => {
+        throw error;
+      },
+      apply: () => undefined,
+      onError: (value) => errors.push(value),
+    });
+
+    expect(errors).toEqual([error]);
   });
 });
 

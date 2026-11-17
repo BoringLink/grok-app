@@ -22,14 +22,16 @@ export interface ProviderModelEntry {
   supportsVision?: boolean;
   /** Legacy video-input flag. No Settings control; kept verbatim. */
   supportsVideo?: boolean;
-  /** Per-model reasoning ladder. Empty/missing → channel `efforts`, then default. */
+  /** 模型专属档位；空值在显式模型目录中使用通用 fallback。 */
   efforts?: ProviderEffortEntry[];
   /** `efforts` provenance. */
   effortsSource?: ProviderModelFieldSource;
-  /** Whether this model accepts reasoning levels. Missing → supported. */
+  /** Whether this model accepts reasoning levels. A configured ladder also implies support. */
   supportsReasoningEffort?: boolean | null;
   /** `supportsReasoningEffort` provenance. */
   supportsReasoningEffortSource?: ProviderModelFieldSource;
+  /** Explicitly enables Composer's Off stop; an advertised `none` id also enables it. */
+  supportsReasoningOff?: boolean;
 }
 
 export interface ProviderEffortEntry {
@@ -66,7 +68,7 @@ export interface CustomProvider {
    * the raw value or parse detail.
    */
   modelCatalogCorrupt?: boolean;
-  /** Reasoning efforts for this channel (App-managed). Empty → Grok 3-tier fallback. */
+  /** channel `app_efforts`；仅旧式单模型且 id 匹配时作为模型档位。 */
   efforts?: ProviderEffortEntry[];
   /** Per-channel context window (tokens). None → catalog window, then default. */
   contextWindow?: number | null;

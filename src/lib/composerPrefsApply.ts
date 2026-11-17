@@ -5,6 +5,7 @@
  */
 
 import type { CustomProvider } from "@/lib/api/providers";
+import type { DraftComposerRoute } from "@/lib/draftComposerRoute";
 import {
   findModel,
   GROK_BUILD_MODELS,
@@ -17,10 +18,21 @@ import {
 } from "@/lib/grokCatalog";
 import { pickSessionEffort, resolveSessionEffortOptions } from "@/lib/sessionEffort";
 
+/** 未创建会话时保留草稿模式；会话完成物化后使用该会话已保存的模式。 */
+export function resolveComposerModeForView(opts: {
+  prefsMode?: string | null;
+  draftMode?: string | null;
+  sessionId?: string | null;
+}): string {
+  if (opts.sessionId == null && opts.draftMode) return opts.draftMode;
+  return opts.prefsMode || "agent";
+}
+
 export type ComposerPrefsSelectionInput = {
   modelId?: string | null;
   effort?: string | null;
   providerId?: string | null;
+  sessionModelId?: string | null;
 };
 
 export type ComposerPrefsProvider = Pick<
@@ -91,40 +103,55 @@ function draftModelIdIsKnown(
  */
 function keepsUnlistedModelOnCorrupt(
   provider: ComposerPrefsProvider,
-  storedModel: string,
+  modelId: string,
+  sessionModelId: string | null | undefined,
 ): boolean {
-  if (provider.modelCatalogCorrupt !== true || !storedModel) return false;
-  return !providerModelList(provider).some((m) => m.id === storedModel);
+  const persistedModelId = sessionModelId?.trim() ?? "";
+  if (
+    provider.modelCatalogCorrupt !== true ||
+    !persistedModelId ||
+    persistedModelId !== modelId
+  ) {
+    return false;
+  }
+  return !providerModelList(provider).some((model) => model.id === modelId);
 }
 
 function resolvedCustomModel(
   provider: ComposerPrefsProvider,
-  storedModel: string,
+  inheritedModelId: string,
+  sessionModelId?: string | null,
 ): string {
   const selectable = providerModelList(provider);
-  // An explicitly cleared catalog keeps the child sections older sessions
-  // still route on, so a saved pick survives; a chat without one falls
-  // through to the official default instead of the cleared channel `model`.
-  if (provider.models?.length === 0) return storedModel;
-  if (storedModel && selectable.some((m) => m.id === storedModel)) {
-    return storedModel;
+  const requestedModelId = sessionModelId?.trim() || inheritedModelId;
+  // An explicitly cleared catalog keeps child sections only for a saved session.
+  if (provider.models?.length === 0) return sessionModelId?.trim() ?? "";
+  if (requestedModelId && selectable.some((model) => model.id === requestedModelId)) {
+    return requestedModelId;
   }
-  if (keepsUnlistedModelOnCorrupt(provider, storedModel)) return storedModel;
-  return provider.model?.trim() || selectable[0]?.id || "";
+  if (keepsUnlistedModelOnCorrupt(provider, requestedModelId, sessionModelId)) {
+    return requestedModelId;
+  }
+  const activeModel = provider.model?.trim() ?? "";
+  if (activeModel && selectable.some((model) => model.id === activeModel)) {
+    return activeModel;
+  }
+  return selectable[0]?.id || "";
 }
 
 function customSelection(
   provider: ComposerPrefsProvider,
   storedModel: string,
   effort: string | null | undefined,
+  sessionModelId?: string | null,
 ): { modelId: string; effort: string; effortSupported?: false } | null {
-  const nextModelId = resolvedCustomModel(provider, storedModel);
+  const nextModelId = resolvedCustomModel(provider, storedModel, sessionModelId);
   if (!nextModelId) return null;
   const resolution = resolveSessionEffortOptions({
     source: "custom",
-    // A corrupt partial read has no row for the stored id; the channel
-    // ladder stays in charge instead of borrowing another row's efforts.
-    provider: keepsUnlistedModelOnCorrupt(provider, storedModel)
+    // A corrupt partial read has no row for the persisted id. Do not borrow the
+    // channel ladder; that chat keeps the generic fallback for its saved model.
+    provider: keepsUnlistedModelOnCorrupt(provider, nextModelId, sessionModelId)
       ? { ...provider, models: [] }
       : provider,
     modelId: nextModelId,
@@ -159,6 +186,62 @@ export type ComposerPrefsSelection = {
    */
   providerId?: string | null;
 };
+
+/** 按当前生效的会话/草稿路由，解析需要展示的推理档位。 */
+export function resolveComposerPrefsDraftEffort(opts: {
+  selection: ComposerPrefsSelection;
+  storedEffort: string | null | undefined;
+  draftRoute: DraftComposerRoute | null;
+  forceOfficial: boolean;
+}): { effort: string; draftRouteMatches: boolean } {
+  const draftRouteMatches =
+    opts.draftRoute != null &&
+    !opts.forceOfficial &&
+    opts.draftRoute.modelId === opts.selection.modelId &&
+    opts.draftRoute.providerId === (opts.selection.providerId ?? "official");
+  if (draftRouteMatches && opts.draftRoute) {
+    return {
+      effort:
+        opts.draftRoute.effort ??
+        (opts.selection.effortSupported === false ? "" : opts.selection.effort),
+      draftRouteMatches: true,
+    };
+  }
+  return {
+    effort: (opts.storedEffort ?? "").trim(),
+    draftRouteMatches: false,
+  };
+}
+
+/** 当前 official fallback 的模型和 effort 必须来自同一份目录。 */
+function resolveOfficialFallback(
+  effort: string | null | undefined,
+  catalog: ModelOption[],
+): ComposerPrefsSelection {
+  const modelId = pickDefaultModelId(catalog);
+  return {
+    modelId,
+    effort: pickEffort(effort, findModel(modelId, catalog)),
+    providerId: null,
+  };
+}
+
+/** 用继承的官方 model id 回退，同时按该模型校验effort。 */
+function resolveOfficialFallbackForModel(
+  requestedModelId: string | null | undefined,
+  effort: string | null | undefined,
+  catalog: ModelOption[],
+): ComposerPrefsSelection {
+  const requested = requestedModelId?.trim() ?? "";
+  const modelId = isValidModelId(requested, catalog)
+    ? requested
+    : pickDefaultModelId(catalog);
+  return {
+    modelId,
+    effort: pickEffort(effort, findModel(modelId, catalog)),
+    providerId: null,
+  };
+}
 
 export function resolveComposerPrefsSelection(opts: {
   prefs: ComposerPrefsSelectionInput;
@@ -201,11 +284,17 @@ export function resolveComposerPrefsSelection(opts: {
         return {
           modelId: draftModelId,
           effort: draftEffort || pickDefaultEffort(null),
+          providerId: opts.draft?.providerId,
         };
       }
     } else {
-      const picked = customSelection(drafted, draftModelId, opts.draft?.effort);
-      if (picked) return picked;
+      const picked = customSelection(
+        drafted,
+        draftModelId,
+        opts.draft?.effort,
+        draftModelId,
+      );
+      if (picked) return { ...picked, providerId: drafted.id };
     }
   } else if (
     draftModelId &&
@@ -221,6 +310,7 @@ export function resolveComposerPrefsSelection(opts: {
       modelId: draftModelId,
       effort:
         draftEffort || pickDefaultEffort(findModel(draftModelId, catalog) ?? null),
+      providerId: null,
     };
   }
 
@@ -238,13 +328,21 @@ export function resolveComposerPrefsSelection(opts: {
         };
       }
       // Provider deleted / empty list: official takes over on both sides.
-      return {
-        modelId: pickDefaultModelId(catalog),
-        effort: pickEffort(opts.prefs.effort, null),
-        providerId: null,
-      };
+      return resolveOfficialFallback(opts.prefs.effort, catalog);
     }
-    const picked = customSelection(provider, storedModel, opts.prefs.effort);
+    if (provider.models?.length === 0 && !opts.prefs.sessionModelId?.trim()) {
+      return resolveOfficialFallbackForModel(
+        opts.prefs.modelId,
+        opts.prefs.effort,
+        catalog,
+      );
+    }
+    const picked = customSelection(
+      provider,
+      storedModel,
+      opts.prefs.effort,
+      opts.prefs.sessionModelId,
+    );
     if (picked) return picked;
     // Nothing on this provider is selectable, so the official route has to
     // take over; otherwise the chip paints official while the send still

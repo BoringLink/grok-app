@@ -5,8 +5,8 @@ import {
   DEFAULT_MODEL_ID,
   GROK_BUILD_EFFORTS,
   GROK_BUILD_MODELS,
-  effortCatalogForRoute,
   effortDisplayLabel,
+  effortOptionsFromProvider,
   effortsForModel,
   isSpawnableReasoningEffort,
   isValidEffort,
@@ -82,6 +82,24 @@ describe("effortsForModel", () => {
     }
   });
 
+  it("filters catalog effort ids that Host cannot pass to the CLI", () => {
+    const catalog = [
+      { id: "low" },
+      { id: "two words" },
+      { id: "--unsafe" },
+      { id: "xhigh" },
+    ];
+
+    expect(effortsForModel(null, catalog).map((option) => option.id)).toEqual([
+      "low",
+      "xhigh",
+    ]);
+    expect(effortOptionsFromProvider(catalog)?.map((option) => option.id)).toEqual([
+      "low",
+      "xhigh",
+    ]);
+  });
+
   it("prefers explicit catalogEfforts arg over model", () => {
     const override = [{ id: "only" }];
     expect(effortsForModel(modelWithEfforts, override)).toEqual(override);
@@ -125,6 +143,36 @@ describe("pickDefaultEffort", () => {
     expect(pickDefaultEffort({ id: "x", label: "X" })).toBe("high");
   });
 
+  it("falls back to the first option when the ladder has no default flag", () => {
+    const noDefault: EffortOption[] = [
+      { id: "low" },
+      { id: "medium" },
+      { id: "high" },
+    ];
+    expect(pickDefaultEffort(null, noDefault)).toBe("low");
+  });
+
+  it("never picks Off as the implicit default (prepended or advertised first)", () => {
+    // resolveProviderEfforts 会把 Off 前置到滑块最左;默认档必须跳过它。
+    const offPrepended: EffortOption[] = [
+      { id: "none" },
+      { id: "low" },
+      { id: "high" },
+    ];
+    expect(pickDefaultEffort(null, offPrepended)).toBe("low");
+    // 目录自己把 none 排最前且无 default 标记:同样跳过。
+    expect(pickDefaultEffort(null, [{ id: "none" }, { id: "deep" }])).toBe(
+      "deep",
+    );
+    // 整个梯子只有 Off 时才退回 none。
+    expect(pickDefaultEffort(null, [{ id: "none" }])).toBe("none");
+  });
+
+  it("defaults to medium when there is no effort information at all", () => {
+    // 全部 id 不可 spawn 时 effortsForModel 得到空表,视为完全没有档位信息。
+    expect(pickDefaultEffort(null, [{ id: " " }])).toBe("medium");
+  });
+
   it("prefers xhigh when CLI cache marks both xhigh and high as default", () => {
     const dual: EffortOption[] = [
       { id: "xhigh", isDefault: true },
@@ -136,24 +184,6 @@ describe("pickDefaultEffort", () => {
       "xhigh",
     ]);
     expect(pickDefaultEffort(null, dual)).toBe("xhigh");
-  });
-});
-
-describe("effortCatalogForRoute", () => {
-  it("uses grok-4.6 xhigh when official and no channel catalog", () => {
-    const list = effortCatalogForRoute({
-      model: { id: "grok-4.6", label: "Grok 4.6" },
-    });
-    expect(list.map((e) => e.id)).toEqual(["low", "medium", "high", "xhigh"]);
-    expect(isValidEffort("xhigh", list)).toBe(true);
-  });
-
-  it("keeps custom channel efforts when provided", () => {
-    const list = effortCatalogForRoute({
-      model: { id: "grok-4.6", label: "Grok 4.6" },
-      channelEfforts: [{ id: "low" }, { id: "high" }],
-    });
-    expect(list.map((e) => e.id)).toEqual(["low", "high"]);
   });
 });
 

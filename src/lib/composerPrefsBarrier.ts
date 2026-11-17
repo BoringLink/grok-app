@@ -11,16 +11,32 @@ export function liveHostAfterProviderSwitch<
   return { ...live, state: "disconnected" };
 }
 
-/**
- * Direct sends and queued flushes both wait out a provider or effort write.
- * Skipping the queue (`fromQueue`) lets the next message hit a process that
- * `soft_respawn` is about to tear down.
- */
-export async function awaitComposerSendBarrier(
-  _fromQueue: boolean,
-  barrier: Promise<void>,
-): Promise<void> {
-  await barrier;
+/** 仅当写入屏障和当前会话上下文仍匹配时，才应用已解析的偏好快照。 */
+export async function resolveComposerPrefsAfterBarrier<T>(opts: {
+  barrier: Promise<void>;
+  currentBarrier: () => Promise<void>;
+  isActive: () => boolean;
+  resolve: () => Promise<T>;
+  apply: (value: T) => void;
+  onError: (error: unknown) => void;
+}): Promise<boolean> {
+  const isCurrent = () =>
+    opts.isActive() && opts.currentBarrier() === opts.barrier;
+  try {
+    await opts.barrier;
+    if (!isCurrent()) return false;
+    const value = await opts.resolve();
+    if (!isCurrent()) return false;
+    opts.apply(value);
+    return true;
+  } catch (error) {
+    if (isCurrent()) {
+      opts.onError(error);
+    } else {
+      console.warn("stale composer prefs resolution failed", error);
+    }
+    return false;
+  }
 }
 
 /** Serialize a composer preference write so the next send can await it. */

@@ -1,14 +1,10 @@
 /**
- * Reasoning effort options for the model / provider a chat is actually routed
- * to. Options keep the catalog's raw ids and order; the composer never maps a
- * custom variant onto a shared four-level ladder.
- *
- * `none` is an Off state only when the model's own catalog advertises it. A
- * model that merely supports reasoning does not gain an Off row: the CLI can
- * only pass through values the model advertises.
+ * Composer 当前会话实际路由到的模型 / provider 推理档位。
+ * 保留目录中的原始 id 与顺序；配置档位意味着支持扩展推理。
+ * Off 由模型目录中的 `none` 或显式的 supportsReasoningOff 设置控制。
  */
 
-import type { CustomProvider, ProviderEffortEntry } from "@/lib/api";
+import type { CustomProvider } from "@/lib/api";
 import {
   effortOptionsFromProvider,
   effortsForModel,
@@ -19,11 +15,11 @@ import {
   type ModelOption,
 } from "@/lib/grokCatalog";
 import {
-  defaultProviderModelEfforts,
   effectiveModelSupportsReasoningEffort,
-  normalizeModelEfforts,
+  resolveProviderEfforts,
 } from "@/lib/providerModelConfig";
 
+/** 当前 provider/model 对应的可选档位及加载、支持状态。 */
 export type SessionEffortResolution = {
   /** Raw catalog ids in advertised order. Empty when unsupported or loading. */
   options: EffortOption[];
@@ -33,11 +29,13 @@ export type SessionEffortResolution = {
   pending: boolean;
 };
 
+/** 解析推理档位所需的 provider 模型配置视图。 */
 export type SessionEffortProvider = Pick<
   CustomProvider,
-  "id" | "baseUrl" | "model" | "models" | "efforts"
+  "id" | "model" | "models" | "efforts"
 >;
 
+/** 当前会话的 provider/model 路由及官方目录。 */
 export type SessionEffortRoute = {
   source: "official" | "custom";
   provider?: SessionEffortProvider | null;
@@ -45,11 +43,12 @@ export type SessionEffortRoute = {
   officialModels?: ModelOption[];
 };
 
+/** Composer 模型菜单中的官方或自定义模型选择。 */
 export type SessionEffortPick =
   | { kind: "official"; modelId: string }
   | { kind: "custom"; providerId: string; modelId: string };
 
-/** Options for a composer model pick, or null when the pick is unknown. */
+/** 根据 Composer 模型选择解析当前支持的档位，未知选择返回 null。 */
 export function resolvePickedModelEfforts(input: {
   pick: SessionEffortPick;
   providers: ReadonlyArray<SessionEffortProvider>;
@@ -75,31 +74,15 @@ export function resolvePickedModelEfforts(input: {
   });
 }
 
-function customModelEfforts(
-  provider: SessionEffortProvider,
-  modelId: string,
-): ProviderEffortEntry[] {
-  const id = modelId.trim();
-  const model = id
-    ? provider.models?.find((entry) => entry.id.trim() === id) ?? null
-    : null;
-  // Session resolution is a raw pass-through: no preset remapping (`max`
-  // must stay `max`, vendor ids stay untouched).
-  const raw =
-    model?.efforts && model.efforts.length > 0
-      ? model.efforts
-      : provider.efforts;
-  return normalizeModelEfforts(raw ?? []);
-}
-
-/** Options the composer shows for one session's resolved route. */
+/** 返回当前会话所选路由对应的档位选项。 */
 export function resolveSessionEffortOptions(
   input: SessionEffortRoute,
 ): SessionEffortResolution {
   if (input.source === "official") {
+    const model = findModel(input.modelId, input.officialModels);
     return {
       options: effortsForModel(
-        findModel(input.modelId, input.officialModels),
+        model ?? { id: input.modelId, label: input.modelId },
       ),
       supported: true,
       pending: false,
@@ -113,25 +96,21 @@ export function resolveSessionEffortOptions(
   const model = id
     ? provider.models?.find((entry) => entry.id.trim() === id) ?? null
     : null;
-  if (model && !effectiveModelSupportsReasoningEffort(model).value) {
-    return { options: [], supported: false, pending: false };
-  }
-  const efforts = customModelEfforts(provider, input.modelId);
-  const source = efforts.length > 0 ? efforts : defaultProviderModelEfforts();
-  const options =
-    effortOptionsFromProvider(source) ??
-    effortOptionsFromProvider(defaultProviderModelEfforts());
+  const supported =
+    model == null || effectiveModelSupportsReasoningEffort(model).value;
+  const options = effortOptionsFromProvider(
+    resolveProviderEfforts(provider, input.modelId),
+  ) ?? [];
   return {
-    options: options ?? [],
-    supported: true,
+    options,
+    supported,
     pending: false,
   };
 }
 
 /**
- * Exact raw id when the model advertises it, else the catalog default
- * (`isDefault` flag, then `medium`, then the first option). An empty ladder
- * keeps the caller's stored id: the model exposes no choice to reset to.
+ * 保留仍被当前模型广告的原始 id；否则选显式默认值或首档。
+ * 没有选项时保留存储值，等待目录恢复或上层处理失败状态。
  */
 export function pickSessionEffort(
   options: EffortOption[],
@@ -145,13 +124,13 @@ export function pickSessionEffort(
   return pickDefaultEffort(null, options);
 }
 
+/** 保存推理档位后的成功值，或未能保存时的原始错误。 */
 export type SessionEffortSaveResult =
   | { ok: true; effort: string }
   | { ok: false; error: unknown };
 
 /**
- * Persist one effort pick before moving the composer. A rejected save leaves
- * the visible selection untouched so the chip never claims an unsaved value.
+ * 先持久化再更新 Composer；保存拒绝时保留原选中态并返回错误。
  */
 export async function saveSessionEffort(opts: {
   effort: string;
