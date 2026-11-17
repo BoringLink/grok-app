@@ -11,6 +11,10 @@ use crate::paths::{agent_config_toml, agent_home_dir, ensure_app_dirs};
 use crate::provider_headers::{
     decode_extra_headers, encode_extra_headers_toml, normalize_extra_headers, EXTRA_HEADERS_KEY,
 };
+use crate::provider_model_profile::{
+    encode_model_catalog, legacy_model_catalog, read_model_catalog, resolve_catalog_rows,
+    resolve_model_catalog, ModelCatalogRead,
+};
 
 pub use crate::provider_headers::ProviderHeaderEntry;
 
@@ -20,7 +24,8 @@ pub use crate::provider_headers::ProviderHeaderEntry;
 pub struct ProviderModelEntry {
     /// Upstream request body model id.
     pub id: String,
-    /// Composer chip / menu display label.
+    /// Composer chip / menu display label. Missing → the id.
+    #[serde(default)]
     pub name: String,
     /// Per-model context window (tokens). Missing → channel `context_window`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -76,8 +81,16 @@ pub struct CustomProvider {
     pub provider_mode: String,
     pub is_default: bool,
     /// Catalog of selectable models for this channel (App-managed).
+    /// Legacy providers without `app_models` read as one row from `model`.
     #[serde(default)]
     pub models: Vec<ProviderModelEntry>,
+    /// True when `app_models` on disk cannot be read. `models` carries the
+    /// legacy fallback row, or the rows recovered from a partially invalid
+    /// array, so the channel stays usable, but Settings must not resend that
+    /// read-only view as a catalog: an edit that omits `models` keeps the
+    /// stored text. Deliberately opaque — no parse detail or raw value here.
+    #[serde(default)]
+    pub model_catalog_corrupt: bool,
     /// Reasoning efforts for this channel (App-managed). Empty → App falls back to Grok 3.
     #[serde(default)]
     pub efforts: Vec<ProviderEffortEntry>,
@@ -276,6 +289,40 @@ pub struct GrokBuildProxySpawn {
     pub models_url: String,
     pub api_key: String,
     pub model: String,
+}
+
+/// Whether an upsert must re-check its model rows against the live `/models`.
+///
+/// `models: None` keeps whatever catalog is on disk. When that catalog is
+/// unreadable or explicitly empty it fixes no rows, so the channel `model` is
+/// only a display guess: re-checking it would reject an unrelated name / key
+/// edit even though the catalog did not change. `models: Some([])` is the
+/// explicit clear; on an existing section it also fixes no rows, so the Host
+/// writes the empty catalog without a request. A create has no section yet and
+/// must still select a model, so it always hits the live gate. A non-empty
+/// `Some(rows)` keeps the full capability check.
+pub fn grok_build_proxy_upsert_needs_live_models(
+    models: Option<&[ProviderModelEntry]>,
+    stored_catalog: Option<&ModelCatalogRead>,
+) -> bool {
+    match models {
+        Some([]) => stored_catalog.is_none(),
+        Some(_) => true,
+        None => match stored_catalog {
+            Some(catalog) => !catalog_fixes_no_model_rows(catalog),
+            None => true,
+        },
+    }
+}
+
+/// A stored catalog that fixes no rows: unreadable text, or an explicit clear.
+/// Consumers must not substitute the channel `model` for it.
+fn catalog_fixes_no_model_rows(catalog: &ModelCatalogRead) -> bool {
+    match catalog {
+        ModelCatalogRead::Stored(rows) => rows.is_empty(),
+        ModelCatalogRead::Corrupt(_) => true,
+        ModelCatalogRead::LegacyChannel => false,
+    }
 }
 
 pub fn validate_grok_build_proxy_models(
@@ -924,10 +971,16 @@ fn append_section(text: &str, id: &str, fields: &[(String, String)]) -> String {
     }
 }
 
+/// Keys whose blank value is still written as `key = ""`.
+///
+/// A blank `app_models` is a legacy provider, but an edit that omits `models`
+/// must not turn a present field into a missing one.
+const PRESERVED_BLANK_FIELD_KEYS: &[&str] = &[APP_MODELS_KEY];
+
 fn render_section_body(fields: &[(String, String)]) -> String {
     fields
         .iter()
-        .filter(|(_, v)| !v.is_empty())
+        .filter(|(k, v)| !v.is_empty() || PRESERVED_BLANK_FIELD_KEYS.contains(&k.as_str()))
         .map(|(k, v)| format!("{k} = {}", format_toml_field_value(k, v)))
         .collect::<Vec<_>>()
         .join("\n")
@@ -1167,24 +1220,216 @@ fn generic_child_fields(
     fields
 }
 
+/// Channel route fields a generic child mirrors from its parent.
+///
+/// A parent value that is missing or blank drops the child's copy: those keys
+/// belong to the channel, so keeping a stale endpoint or key there would make
+/// old sessions talk to the previous upstream.
+const CHILD_CHANNEL_KEYS: &[&str] = &[
+    "base_url",
+    "api_key",
+    "api_backend",
+    EXTRA_HEADERS_KEY,
+    SUPPORTS_REASONING_EFFORT_KEY,
+    crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY,
+];
+
+/// Rebuild one existing child's fields: channel route fields follow the parent,
+/// while the section keeps its own `model` / `name` / `context_window` and any
+/// model-only or unknown key.
+fn refreshed_child_fields(
+    parent: &Section,
+    child: &Section,
+    parent_id: &str,
+) -> Vec<(String, String)> {
+    let own = |key: &str| {
+        child
+            .fields
+            .get(key)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    let channel = |key: &str| {
+        parent
+            .fields
+            .get(key)
+            .map(|v| v.trim())
+            .filter(|v| !v.is_empty())
+            .map(str::to_string)
+    };
+    // Same order as `generic_child_fields`, so an already synced child keeps its
+    // bytes and a second pass writes nothing.
+    let mut fields: Vec<(String, String)> = Vec::new();
+    if let Some(v) = own("model") {
+        fields.push(("model".into(), v));
+    }
+    if let Some(v) = channel("base_url") {
+        fields.push(("base_url".into(), v));
+    }
+    if let Some(v) = own("name") {
+        fields.push(("name".into(), v));
+    }
+    if let Some(v) = channel("api_key") {
+        fields.push(("api_key".into(), v));
+    }
+    fields.push((
+        "api_backend".into(),
+        channel("api_backend").unwrap_or_else(|| "chat_completions".into()),
+    ));
+    if let Some(v) = own("context_window") {
+        fields.push(("context_window".into(), v));
+    }
+    for key in [EXTRA_HEADERS_KEY, SUPPORTS_REASONING_EFFORT_KEY] {
+        if let Some(v) = channel(key) {
+            fields.push((key.into(), v));
+        }
+    }
+    fields.push((APP_PROVIDER_MODE_KEY.into(), PROVIDER_MODE_GENERIC.into()));
+    fields.push((APP_PARENT_PROVIDER_KEY.into(), parent_id.to_string()));
+    if let Some(v) = channel(crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY) {
+        fields.push((
+            crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY.into(),
+            v,
+        ));
+    }
+
+    let mut handled: std::collections::HashSet<&str> = CHILD_CHANNEL_KEYS.iter().copied().collect();
+    handled.extend([
+        "model",
+        "name",
+        "context_window",
+        APP_PROVIDER_MODE_KEY,
+        APP_PARENT_PROVIDER_KEY,
+    ]);
+    let mut rest: Vec<(String, String)> = child
+        .fields
+        .iter()
+        .filter(|(k, v)| !v.is_empty() && !handled.contains(k.as_str()))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    rest.sort_by(|a, b| a.0.cmp(&b.0));
+    fields.extend(rest);
+    fields
+}
+
+/// Refresh channel route fields on the children that already exist.
+///
+/// Used when the parent has no readable model rows (corrupt `app_models` or an
+/// explicit `app_models = "[]"`): the sections stay because older chats select
+/// those ids, but their key / endpoint / backend must not lag behind the
+/// channel. No child is created or removed here, and the channel `model` row is
+/// never used to guess a catalog.
+fn refresh_child_channel_fields(text: &str, parent: &Section, parent_id: &str) -> String {
+    let children: Vec<Section> = parse_model_sections(text)
+        .into_iter()
+        .filter(|s| {
+            s.fields
+                .get(APP_PARENT_PROVIDER_KEY)
+                .is_some_and(|p| p == parent_id)
+        })
+        .collect();
+    let mut text = text.to_string();
+    for child in children {
+        let fields = refreshed_child_fields(parent, &child, parent_id);
+        text = replace_or_append_section(&text, &child.id, &fields);
+    }
+    text
+}
+
+/// Give every row recovered from a partially invalid `app_models` the child
+/// section that `--model` and `session/set_model` resolve.
+///
+/// `providers_list` exposes those rows, so a row without a section made the
+/// picker's model fall back to the channel section and send the wrong upstream
+/// model. Existing children keep their id, `model`, `name`, `context_window`,
+/// and unknown keys; only channel route fields follow the parent. Children the
+/// corrupt text does not name stay for older chats. Never rewrites the
+/// catalog: `app_models` remains the original corrupt text.
+fn ensure_recovered_child_sections(
+    text: &str,
+    parent: &Section,
+    parent_id: &str,
+    recovered_rows: &[ProviderModelEntry],
+) -> String {
+    let mut text = refresh_child_channel_fields(text, parent, parent_id);
+    let sections = parse_model_sections(&text);
+    let children: Vec<Section> = sections
+        .iter()
+        .filter(|s| {
+            s.fields
+                .get(APP_PARENT_PROVIDER_KEY)
+                .is_some_and(|p| p == parent_id)
+        })
+        .cloned()
+        .collect();
+    let foreign_ids: std::collections::HashSet<String> = sections
+        .iter()
+        .filter(|s| {
+            !s.fields
+                .get(APP_PARENT_PROVIDER_KEY)
+                .is_some_and(|p| p == parent_id)
+        })
+        .map(|s| s.id.clone())
+        .collect();
+    let mut existing_by_model = std::collections::HashMap::new();
+    for child in &children {
+        if let Some(model_id) = child.fields.get("model").filter(|s| !s.is_empty()) {
+            existing_by_model
+                .entry(model_id.clone())
+                .or_insert_with(|| child.id.clone());
+        }
+    }
+    let assigned =
+        assign_generic_sections(parent_id, recovered_rows, &foreign_ids, &existing_by_model);
+    for binding in &assigned {
+        let Some(model) = recovered_rows.iter().find(|m| m.id == binding.model_id) else {
+            continue;
+        };
+        let fields = match children.iter().find(|c| c.id == binding.section_id) {
+            Some(child) => refreshed_child_fields(parent, child, parent_id),
+            None => generic_child_fields(parent, model, parent_id),
+        };
+        text = replace_or_append_section(&text, &binding.section_id, &fields);
+    }
+    text
+}
+
 fn sync_parent_children(text: &str, parent_id: &str) -> String {
     let sections = parse_model_sections(text);
     let Some(parent) = sections.iter().find(|s| s.id == parent_id).cloned() else {
         return text.to_string();
     };
     let model_fallback = parent.fields.get("model").cloned().unwrap_or_default();
-    let name_fallback = parent
-        .fields
-        .get("name")
-        .cloned()
-        .unwrap_or_else(|| parent_id.to_string());
-    let models = decode_app_models(
-        parent.fields.get(APP_MODELS_KEY).map(|s| s.as_str()),
-        &model_fallback,
-        &name_fallback,
-    );
+    // Missing / legacy rows display their request id, never the channel name;
+    // `providers_list` and the child sections must show the same label.
+    let models = match read_model_catalog(parent.fields.get(APP_MODELS_KEY).map(|s| s.as_str())) {
+        ModelCatalogRead::Stored(rows) => rows,
+        ModelCatalogRead::LegacyChannel => legacy_model_catalog(&model_fallback, &model_fallback),
+        // A partially valid array still names selectable rows in
+        // `providers_list`, so each recovered row needs a section the CLI can
+        // route. The stored text stays untouched, and children it does not name
+        // stay for older chats.
+        ModelCatalogRead::Corrupt(corruption) if !corruption.recovered_rows.is_empty() => {
+            return ensure_recovered_child_sections(
+                text,
+                &parent,
+                parent_id,
+                &corruption.recovered_rows,
+            )
+        }
+        // Unreadable: the legacy row is only a display guess, not the stored
+        // catalog. Rewriting children from it would drop sections that an older
+        // session still references.
+        ModelCatalogRead::Corrupt(_) => {
+            return refresh_child_channel_fields(text, &parent, parent_id)
+        }
+    };
     if models.is_empty() {
-        return text.to_string();
+        // `app_models = "[]"` is an explicit clear. Keep existing child sections:
+        // old chats still reference those section ids, and re-seeding rows from
+        // the channel `model` would undo the clear.
+        return refresh_child_channel_fields(text, &parent, parent_id);
     }
     let children: Vec<Section> = sections
         .iter()
@@ -1317,8 +1562,8 @@ fn is_custom(fields: &std::collections::HashMap<String, String>) -> bool {
         .unwrap_or(false)
 }
 
-fn encode_app_models(models: &[ProviderModelEntry]) -> String {
-    serde_json::to_string(models).unwrap_or_else(|_| "[]".into())
+fn encode_app_models(models: &[ProviderModelEntry]) -> Result<String, String> {
+    encode_model_catalog(models).map_err(|error| format!("failed to encode app_models: {error}"))
 }
 
 /// Normalize a models catalog; drop empty ids; default blank names to id.
@@ -1352,23 +1597,7 @@ fn decode_app_models(
     fallback_model: &str,
     fallback_display: &str,
 ) -> Vec<ProviderModelEntry> {
-    if let Some(s) = raw.map(str::trim).filter(|s| !s.is_empty()) {
-        if let Ok(list) = serde_json::from_str::<Vec<ProviderModelEntry>>(s) {
-            let cleaned = normalize_provider_models(&list);
-            if !cleaned.is_empty() {
-                return cleaned;
-            }
-        }
-    }
-    let id = fallback_model.trim();
-    if id.is_empty() {
-        return Vec::new();
-    }
-    let name = fallback_display.trim();
-    vec![ProviderModelEntry::named(
-        id,
-        if name.is_empty() { id } else { name },
-    )]
+    resolve_model_catalog(raw, fallback_model, fallback_display)
 }
 
 /// Ensure `active_model` is in `models`; pick first when missing.
@@ -1885,11 +2114,10 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
         let is_default = def.as_deref() == Some(s.id.as_str());
         // Prefer model display names from catalog; fall back to request id (not
         // channel name) so multi-model rows stay distinct from the provider card.
-        let models = decode_app_models(
-            s.fields.get(APP_MODELS_KEY).map(|x| x.as_str()),
-            &model,
-            &model,
-        );
+        let raw_models = s.fields.get(APP_MODELS_KEY).map(String::as_str);
+        let model_catalog_corrupt =
+            matches!(read_model_catalog(raw_models), ModelCatalogRead::Corrupt(_));
+        let models = decode_app_models(raw_models, &model, &model);
         let efforts = decode_app_efforts(s.fields.get(APP_EFFORTS_KEY).map(|x| x.as_str()));
         let context_window = s
             .fields
@@ -1912,6 +2140,7 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             provider_mode,
             is_default,
             models,
+            model_catalog_corrupt,
             efforts,
             context_window,
             base_url_full_path,
@@ -2022,6 +2251,22 @@ pub fn provider_base_url_full_path_for_id(id: &str) -> bool {
         .and_then(|list| list.providers.into_iter().find(|p| p.id == id))
         .map(|p| p.base_url_full_path)
         .unwrap_or(false)
+}
+
+/// Read one provider's stored `app_models` exactly as it sits on disk.
+///
+/// Read-only: no migration, normalization, or write. `None` means no such
+/// provider section exists (create path). Editing another field must decide
+/// from this value, not from a re-encoded catalog.
+pub fn stored_provider_model_catalog(provider_id: &str) -> Option<ModelCatalogRead> {
+    // Match the section id `upsert_custom_provider` resolves the edit to.
+    let id = sanitize_id(provider_id).ok()?;
+    let text = read_text(&agent_config_toml());
+    let sections = parse_model_sections(&text);
+    let section = sections.iter().find(|s| s.id == id)?;
+    Some(read_model_catalog(
+        section.fields.get(APP_MODELS_KEY).map(String::as_str),
+    ))
 }
 
 /// Extra system-prompt rules configured on the active custom channel.
@@ -2230,7 +2475,8 @@ pub fn composer_provider_pick(
 ///
 /// Official routes spawn with a catalog id. A generic custom route spawns with
 /// the per-model section when one exists, otherwise the provider section.
-/// A Grok Build-compatible relay still resolves to the catalog id.
+/// A Grok Build-compatible relay spawns with the catalog id, with the id the
+/// chat stored when its catalog fixes no rows, or with the active row (#152).
 pub fn spawn_model_for_provider(provider_id: &str, composer_model: &str) -> String {
     session_set_model_id_for(provider_id, composer_model)
 }
@@ -2251,37 +2497,62 @@ pub fn session_set_model_id_for(provider_id: &str, composer_model: &str) -> Stri
     let found = list_custom_providers()
         .ok()
         .and_then(|list| list.providers.into_iter().find(|p| p.id == id));
-    let (models, allow_catalog_id) = match found {
-        Some(p) => {
-            let allow = p.provider_mode == PROVIDER_MODE_GROK_BUILD_PROXY;
-            let mut ids = Vec::new();
-            if !p.model.trim().is_empty() {
-                ids.push(p.model);
-            }
-            ids.extend(p.models.into_iter().map(|entry| entry.id));
-            (ids, allow)
-        }
-        None => (Vec::new(), false),
+    let Some(provider) = found else {
+        return resolve_session_set_model_id(Some(id), composer_model, &[]);
     };
-    let sections = if allow_catalog_id {
-        Vec::new()
-    } else {
-        generic_sections_for_provider(id)
-    };
-    resolve_session_set_model_id(
-        Some(id),
-        composer_model,
-        &models,
-        allow_catalog_id,
-        &sections,
-    )
+    if provider.provider_mode == PROVIDER_MODE_GROK_BUILD_PROXY {
+        // A corrupt or explicitly cleared catalog fixes no rows, which is
+        // exactly when the native spawn keeps the chat's stored id.
+        return resolve_grok_build_proxy_session_model_id(
+            id,
+            composer_model,
+            &provider.models,
+            &provider.model,
+            provider.model_catalog_corrupt || provider.models.is_empty(),
+        );
+    }
+    resolve_session_set_model_id(Some(id), composer_model, &generic_sections_for_provider(id))
 }
 
-/// Pure half of [`session_set_model_id_for`]. `None` route means official; the
-/// caller passes an already resolved official id.
+/// Pure half of [`session_set_model_id_for`] for a Grok Build-compatible relay.
 ///
-/// `allow_catalog_id` is only for a Grok Build-compatible relay, whose spawn
-/// already selected a real catalog id.
+/// Must repeat what [`grok_build_proxy_spawn_from_section`] binds as `--model`,
+/// because one chat cannot switch model between its spawn and its next
+/// `session/set_model`: a listed row passes through verbatim, a stored id
+/// passes through when the catalog fixes no rows, and everything else falls
+/// back to the spawn's active row (the channel `model` when it is a row,
+/// otherwise the first row).
+///
+/// `catalog_rows` is the readable catalog (recovered rows included),
+/// `configured_model` the channel `model`, and `catalog_fixes_no_rows` is true
+/// for an unreadable or explicitly cleared catalog.
+pub fn resolve_grok_build_proxy_session_model_id(
+    provider_id: &str,
+    requested: &str,
+    catalog_rows: &[ProviderModelEntry],
+    configured_model: &str,
+    catalog_fixes_no_rows: bool,
+) -> String {
+    let id = provider_id.trim();
+    let configured = configured_model.trim();
+    // The spawn falls back to the section id when the channel has no model.
+    let configured = if configured.is_empty() {
+        id
+    } else {
+        configured
+    };
+    let requested = requested.trim();
+    if !requested.is_empty() && requested != id && catalog_fixes_no_rows {
+        return requested.to_string();
+    }
+    if !requested.is_empty() && catalog_rows.iter().any(|row| row.id == requested) {
+        return requested.to_string();
+    }
+    resolve_active_model(catalog_rows, configured)
+}
+
+/// Pure half of [`session_set_model_id_for`] for a generic relay. `None` route
+/// means official; the caller passes an already resolved official id.
 ///
 /// A generic relay's request body comes from `[model.<section>].model`.
 /// CLI 1.0.70 accepts `session/set_model` of that section name (`matched by
@@ -2293,8 +2564,6 @@ pub fn session_set_model_id_for(provider_id: &str, composer_model: &str) -> Stri
 pub fn resolve_session_set_model_id(
     custom_provider_id: Option<&str>,
     composer_model: &str,
-    same_provider_models: &[String],
-    allow_catalog_id: bool,
     generic_sections: &[GenericSectionBinding],
 ) -> String {
     let m = composer_model.trim();
@@ -2305,14 +2574,7 @@ pub fn resolve_session_set_model_id(
             m.to_string()
         };
     };
-    if allow_catalog_id
-        && !m.is_empty()
-        && m != id
-        && same_provider_models.iter().any(|got| got == m)
-    {
-        return m.to_string();
-    }
-    if !allow_catalog_id && !m.is_empty() {
+    if !m.is_empty() {
         if let Some(hit) = generic_sections.iter().find(|s| s.section_id == m) {
             return hit.section_id.clone();
         }
@@ -2371,16 +2633,22 @@ fn grok_build_proxy_spawn_from_section(
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .unwrap_or(section.id.as_str());
-    let models = decode_app_models(
-        section.fields.get(APP_MODELS_KEY).map(|s| s.as_str()),
-        configured_model,
-        configured_model,
-    );
+    let catalog = read_model_catalog(section.fields.get(APP_MODELS_KEY).map(|s| s.as_str()));
     let requested = composer_model.trim();
-    let model = if !requested.is_empty() && models.iter().any(|m| m.id == requested) {
+    // The section id is a route name, never an upstream model to send.
+    let requested_model = !requested.is_empty() && requested != section.id;
+    let model = if requested_model && catalog_fixes_no_model_rows(&catalog) {
+        // The catalog cannot confirm the id, but this chat was stored on it.
+        // Falling back to the first row would silently retarget the upstream
+        // request; only an explicit model from the chat is passed here.
         requested.to_string()
     } else {
-        resolve_active_model(&models, configured_model)
+        let models = resolve_catalog_rows(&catalog, configured_model, configured_model);
+        if !requested.is_empty() && models.iter().any(|m| m.id == requested) {
+            requested.to_string()
+        } else {
+            resolve_active_model(&models, configured_model)
+        }
     };
     let models_url = models_list_endpoint(&base_url).ok()?;
     Some(GrokBuildProxySpawn {
@@ -2576,6 +2844,36 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     let mut text = read_text(&path);
     let sections = parse_model_sections(&text);
     let existing = sections.iter().find(|s| s.id == id);
+    let prev_app_models = existing.and_then(|s| s.fields.get(APP_MODELS_KEY)).cloned();
+    let catalog_read = read_model_catalog(prev_app_models.as_deref());
+    // An edit that omits `models` does not repair an unreadable catalog, so the
+    // channel keeps the `model` already on disk. The caller only saw recovery
+    // rows then, and adopting the first of them would silently retarget the
+    // provider on an unrelated save.
+    let model = match (&input.models, &catalog_read) {
+        (None, ModelCatalogRead::Corrupt(_)) => existing
+            .and_then(|s| s.fields.get("model"))
+            .map(|m| m.trim())
+            .filter(|m| !m.is_empty())
+            .map(str::to_string)
+            .unwrap_or(model),
+        _ => model,
+    };
+    let models = match (&input.models, &catalog_read) {
+        (Some(list), _) => {
+            // A blank row is a half-finished form edit, not a clear. Reject it
+            // before normalization can drop it and quietly shrink the catalog
+            // (or turn a single blank row into the explicit-clear path).
+            if list.iter().any(|m| m.id.trim().is_empty()) {
+                return Err("each models row must have a non-empty id".into());
+            }
+            normalize_provider_models(list)
+        }
+        (None, ModelCatalogRead::Stored(rows)) => rows.clone(),
+        (None, ModelCatalogRead::LegacyChannel) => legacy_model_catalog(&model, &model),
+        (None, ModelCatalogRead::Corrupt(_)) => legacy_model_catalog(&model, &model),
+    };
+    let model = resolve_active_model(&models, &model);
     let provider_mode = match input.provider_mode.as_deref() {
         Some(raw) => normalize_provider_mode(Some(raw)),
         None => normalize_provider_mode(
@@ -2608,6 +2906,11 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     } else {
         crate::relay_stream_proxy::rewrite_base_for_cli(&id, &user_base, &api_backend, full_path)?
     };
+    // The key only exists while `base_url` is our loopback sanitize rewrite, so a
+    // re-saved local proxy without a new upstream keeps the previous real host.
+    let keep_prev_upstream = app_upstream.is_none()
+        && provider_mode != PROVIDER_MODE_GROK_BUILD_PROXY
+        && crate::relay_stream_proxy::is_local_sanitize_proxy_url(&base_url);
     let create_only = input.create_only.unwrap_or(false);
     if create_only && existing.is_some() {
         return Err(format!("provider id `{id}` already exists"));
@@ -2645,19 +2948,35 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         .unwrap_or(id.as_str())
         .to_string();
 
-    let prev_app_models = existing.and_then(|s| s.fields.get(APP_MODELS_KEY)).cloned();
-    let models = if let Some(ref list) = input.models {
-        let mut cleaned = normalize_provider_models(list);
-        if cleaned.is_empty() {
-            cleaned = decode_app_models(None, &model, &model);
+    // `models: None` means the caller did not edit the catalog. Whatever the
+    // parent holds is then carried over as the original decoded field value, so
+    // unknown per-row fields and surrounding whitespace survive an unrelated
+    // save; a parent without the key keeps no key. Only an explicit
+    // `models: Some(rows)` writes a normalized catalog (`Some([])` clears).
+    let app_models_field: Option<String> = match &input.models {
+        Some(_) => Some(encode_app_models(&models)?),
+        None => {
+            if let ModelCatalogRead::Corrupt(defect) = &catalog_read {
+                tracing::warn!(
+                    target: "providers",
+                    provider = %id,
+                    category = %defect.kind,
+                    "app_models is unusable; keeping the stored value because this edit omits `models`"
+                );
+            }
+            prev_app_models.clone()
         }
-        cleaned
-    } else {
-        decode_app_models(prev_app_models.as_deref(), &model, &model)
     };
-    let model = resolve_active_model(&models, &model);
-    let app_models_json = encode_app_models(&models);
     let active_model = models.iter().find(|m| m.id == model);
+
+    // Fields the caller explicitly cleared (`Some(0)` / `Some(false)` /
+    // `Some([])` / `Some("")`) must not be copied back from the previous
+    // section during the merge below.
+    let context_window_explicit = input.context_window.is_some();
+    let supports_vision_explicit =
+        input.supports_vision.is_some() || active_model.and_then(|m| m.supports_vision).is_some();
+    let efforts_explicit = input.efforts.is_some();
+    let base_url_full_path_explicit = input.base_url_full_path.is_some();
 
     let prev_app_efforts = existing
         .and_then(|s| s.fields.get(APP_EFFORTS_KEY))
@@ -2730,8 +3049,12 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
         ("api_key".into(), next_key),
         ("api_backend".into(), api_backend),
         (APP_PROVIDER_MODE_KEY.into(), provider_mode),
-        (APP_MODELS_KEY.into(), app_models_json),
     ];
+    // The merge below copies unknown previous fields back; listing the kept
+    // catalog here keeps its line position stable across saves.
+    if let Some(raw) = app_models_field {
+        fields.push((APP_MODELS_KEY.into(), raw));
+    }
     if full_path {
         fields.push((APP_BASE_URL_FULL_PATH_KEY.into(), "true".into()));
     }
@@ -2760,8 +3083,7 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
             crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY.into(),
             up,
         ));
-    } else if crate::relay_stream_proxy::is_local_sanitize_proxy_url(&base_url) {
-        // User re-saved a local proxy URL without retyping upstream: keep previous.
+    } else if keep_prev_upstream {
         if let Some(prev) = existing
             .and_then(|s| {
                 s.fields
@@ -2781,10 +3103,27 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
             fields.iter().map(|(k, _)| k.clone()).collect();
         // Always treated as managed — empty list must not copy the old table back.
         known.insert(EXTRA_HEADERS_KEY.into());
+        // `app_upstream_base_url` belongs to the loopback sanitize rewrite only;
+        // a direct endpoint or the native proxy must not inherit the real host a
+        // previous sanitize save stored. The one kept copy is pushed above.
+        known.insert(crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY.into());
         // Explicit clear (`Some("")` → None) must drop the previous prompt.
         // Omitted (`None`) stays out of `known` so the kept value is copied.
         if append_prompt_explicit {
             known.insert(APP_APPEND_PROMPT_KEY.into());
+        }
+        // Omitted fields keep their previous value; explicit clears drop it.
+        if context_window_explicit {
+            known.insert("context_window".into());
+        }
+        if supports_vision_explicit {
+            known.insert(APP_SUPPORTS_VISION_KEY.into());
+        }
+        if efforts_explicit {
+            known.insert(APP_EFFORTS_KEY.into());
+        }
+        if base_url_full_path_explicit {
+            known.insert(APP_BASE_URL_FULL_PATH_KEY.into());
         }
         for (k, v) in &ex.fields {
             if !known.contains(k) {
@@ -3885,6 +4224,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
             provider_mode: PROVIDER_MODE_GENERIC.into(),
             is_default: false,
             models: vec![],
+            model_catalog_corrupt: false,
             efforts: vec![],
             context_window: None,
             base_url_full_path: false,
@@ -4091,11 +4431,142 @@ base_url = \"http://127.0.0.1:8080/v1\"
     }
 
     #[test]
+    fn native_proxy_upsert_live_gate_skips_a_catalog_it_cannot_recheck() {
+        let readable = ModelCatalogRead::Stored(vec![ProviderModelEntry::named("m1", "M1")]);
+        let corrupt = read_model_catalog(Some("{not json"));
+        let cleared = ModelCatalogRead::Stored(Vec::new());
+
+        // `models: None` keeps the stored catalog: an unreadable or explicitly
+        // cleared one has no row the channel `model` may stand in for.
+        assert!(!grok_build_proxy_upsert_needs_live_models(
+            None,
+            Some(&corrupt)
+        ));
+        assert!(!grok_build_proxy_upsert_needs_live_models(
+            None,
+            Some(&cleared)
+        ));
+        // Create, legacy, and readable catalogs are still checked live.
+        assert!(grok_build_proxy_upsert_needs_live_models(None, None));
+        assert!(grok_build_proxy_upsert_needs_live_models(
+            None,
+            Some(&ModelCatalogRead::LegacyChannel)
+        ));
+        assert!(grok_build_proxy_upsert_needs_live_models(
+            None,
+            Some(&readable)
+        ));
+
+        // A non-empty edit claims capabilities and is checked live.
+        let edited = vec![ProviderModelEntry::named("m2", "M2")];
+        assert!(grok_build_proxy_upsert_needs_live_models(
+            Some(&edited),
+            Some(&corrupt)
+        ));
+        assert!(grok_build_proxy_upsert_needs_live_models(
+            Some(&edited),
+            None
+        ));
+
+        // `Some([])` is the explicit clear: an existing section fixes no rows,
+        // so there is nothing to re-check. A create still has to select one.
+        let no_rows: Vec<ProviderModelEntry> = Vec::new();
+        assert!(!grok_build_proxy_upsert_needs_live_models(
+            Some(&no_rows),
+            Some(&cleared)
+        ));
+        assert!(!grok_build_proxy_upsert_needs_live_models(
+            Some(&no_rows),
+            Some(&corrupt)
+        ));
+        assert!(!grok_build_proxy_upsert_needs_live_models(
+            Some(&no_rows),
+            Some(&readable)
+        ));
+        assert!(grok_build_proxy_upsert_needs_live_models(
+            Some(&no_rows),
+            None
+        ));
+    }
+
+    /// One pick for the native proxy spawn and `session/set_model`, across every
+    /// `app_models` state.
+    #[test]
+    fn proxy_session_model_matches_the_native_spawn_pick() {
+        let readable = ["m2", "m1"].map(|id| ProviderModelEntry::named(id, id));
+        // A listed row passes through; empty, unknown, or channel-alias requests
+        // take the active row.
+        assert_eq!(
+            resolve_grok_build_proxy_session_model_id("relay", "m1", &readable, "m2", false),
+            "m1"
+        );
+        ["", "relay", "m9"].iter().for_each(|requested| {
+            assert_eq!(
+                resolve_grok_build_proxy_session_model_id(
+                    "relay", requested, &readable, "m2", false
+                ),
+                "m2",
+                "a readable catalog falls back to the active row for `{requested}`"
+            );
+        });
+        assert_eq!(
+            resolve_grok_build_proxy_session_model_id("relay", "m9", &readable, "gone", false),
+            "m2",
+            "a channel model outside the catalog falls back to the first row"
+        );
+
+        // A catalog that fixes no rows cannot vet the chat's stored id, so a
+        // non-empty non-alias id is repeated; only empty / alias requests take
+        // the active row.
+        let recovered = [ProviderModelEntry::named("m2", "M2")];
+        assert_eq!(
+            resolve_grok_build_proxy_session_model_id("relay", "m3", &recovered, "m1", true),
+            "m3"
+        );
+        ["", "relay"].iter().for_each(|requested| {
+            assert_eq!(
+                resolve_grok_build_proxy_session_model_id(
+                    "relay", requested, &recovered, "m1", true
+                ),
+                "m2",
+                "corrupt catalog: `{requested}` takes the recovered row"
+            );
+        });
+        let cleared: [ProviderModelEntry; 0] = [];
+        assert_eq!(
+            resolve_grok_build_proxy_session_model_id("relay", "m2", &cleared, "m1", true),
+            "m2"
+        );
+        ["", "relay"].iter().for_each(|requested| {
+            assert_eq!(
+                resolve_grok_build_proxy_session_model_id("relay", requested, &cleared, "m1", true),
+                "m1",
+                "cleared catalog: `{requested}` keeps the channel model"
+            );
+        });
+        assert_eq!(
+            resolve_grok_build_proxy_session_model_id("relay", "", &cleared, "", true),
+            "relay",
+            "a channel without a model falls back to the section id"
+        );
+
+        // Legacy channel singleton: the channel row is the whole catalog.
+        let legacy = [ProviderModelEntry::named("m1", "m1")];
+        ["", "m3"].iter().for_each(|requested| {
+            assert_eq!(
+                resolve_grok_build_proxy_session_model_id("relay", requested, &legacy, "m1", false),
+                "m1"
+            );
+        });
+    }
+
+    #[test]
     fn native_proxy_spawn_uses_real_model_and_process_only_binding() {
         let models = encode_app_models(&[
             ProviderModelEntry::named("grok-4.6", "Grok 4.6"),
             ProviderModelEntry::named("grok-4.5", "Grok 4.5"),
-        ]);
+        ])
+        .expect("encode app models");
         let text = set_models_default(
             &append_section(
                 "",
@@ -4137,6 +4608,119 @@ base_url = \"http://127.0.0.1:8080/v1\"
         assert!(grok_build_proxy_spawn_from_text(&other_default, "grok-4.5").is_none());
     }
 
+    fn grok_build_proxy_text(app_models: Option<&str>) -> String {
+        let mut fields = vec![
+            ("model".into(), "m1".into()),
+            ("base_url".into(), "https://relay.example/v1".into()),
+            ("api_key".into(), "dummy-relay-key".into()),
+            ("api_backend".into(), "responses".into()),
+            (
+                APP_PROVIDER_MODE_KEY.into(),
+                PROVIDER_MODE_GROK_BUILD_PROXY.into(),
+            ),
+        ];
+        if let Some(raw) = app_models {
+            fields.push((APP_MODELS_KEY.into(), raw.to_string()));
+        }
+        set_models_default(&append_section("", "beef-relay", &fields), "beef-relay")
+    }
+
+    #[test]
+    fn native_proxy_spawn_keeps_a_stored_model_the_catalog_cannot_confirm() {
+        // m2 still reads as a row, but the array is corrupt. A chat stored on m3
+        // must keep m3 instead of retargeting to the first row.
+        let corrupt = grok_build_proxy_text(Some(r#"[{"id":"m2","name":"M2"},"oops"]"#));
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&corrupt, "m3")
+                .expect("spawn")
+                .model,
+            "m3"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&corrupt, "m2")
+                .expect("spawn")
+                .model,
+            "m2"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&corrupt, "")
+                .expect("spawn")
+                .model,
+            "m2",
+            "no requested model keeps the readable-row fallback"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&corrupt, "beef-relay")
+                .expect("spawn")
+                .model,
+            "m2",
+            "the provider section alias is not a stored upstream model"
+        );
+
+        // Nothing readable in the value at all: the channel row is the fallback.
+        let unreadable = grok_build_proxy_text(Some(r#"{"id":"m2"}"#));
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&unreadable, "m3")
+                .expect("spawn")
+                .model,
+            "m3"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&unreadable, "")
+                .expect("spawn")
+                .model,
+            "m1"
+        );
+
+        // An explicitly cleared catalog behaves the same way, and keeps the
+        // same fallback when the chat stored no model.
+        let cleared = grok_build_proxy_text(Some("[]"));
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&cleared, "m2")
+                .expect("spawn")
+                .model,
+            "m2"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&cleared, "")
+                .expect("spawn")
+                .model,
+            "m1"
+        );
+    }
+
+    #[test]
+    fn native_proxy_spawn_validates_a_readable_catalog_and_legacy_channel() {
+        let models = encode_app_models(&[
+            ProviderModelEntry::named("m1", "M1"),
+            ProviderModelEntry::named("m2", "M2"),
+        ])
+        .expect("encode app models");
+        let readable = grok_build_proxy_text(Some(&models));
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&readable, "m2")
+                .expect("spawn")
+                .model,
+            "m2"
+        );
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&readable, "m3")
+                .expect("spawn")
+                .model,
+            "m1",
+            "an id outside a readable catalog keeps the active-row fallback"
+        );
+
+        // A legacy provider has no stored catalog; its channel row is the catalog.
+        let legacy = grok_build_proxy_text(None);
+        assert_eq!(
+            grok_build_proxy_spawn_from_text(&legacy, "m3")
+                .expect("spawn")
+                .model,
+            "m1"
+        );
+    }
+
     #[test]
     fn mutation_reload_when_default_or_active() {
         let active = ProvidersListResult {
@@ -4150,6 +4734,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
                 provider_mode: PROVIDER_MODE_GENERIC.into(),
                 is_default: true,
                 models: vec![ProviderModelEntry::named("m", "m")],
+                model_catalog_corrupt: false,
                 efforts: vec![],
                 context_window: None,
                 base_url_full_path: false,
@@ -4167,52 +4752,15 @@ base_url = \"http://127.0.0.1:8080/v1\"
         // Generic relay with no per-model section yet: the API model id is not
         // a CLI section. Sending it falls through to the built-in catalog (#1294).
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("api-top"),
-                "grok-4.6",
-                &["grok-4.6".into(), "grok-4.5".into()],
-                false,
-                &[],
-            ),
+            resolve_session_set_model_id(Some("api-top"), "grok-4.6", &[]),
             "api-top"
         );
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("relay"),
-                "deepseek-v4-pro",
-                &["deepseek-v4-flash".into(), "deepseek-v4-pro".into()],
-                false,
-                &[],
-            ),
-            "relay"
-        );
-        // Grok Build-compatible relay: spawn bound the catalog id, so set_model
-        // repeats it. Per-model sections are not consulted.
-        assert_eq!(
-            resolve_session_set_model_id(
-                Some("beef-relay"),
-                "grok-4.5",
-                &["grok-4.6".into(), "grok-4.5".into()],
-                true,
-                &[GenericSectionBinding {
-                    section_id: "beef-relay__grok-4-5".into(),
-                    model_id: "grok-4.5".into(),
-                }],
-            ),
-            "grok-4.5"
-        );
-        assert_eq!(
-            resolve_session_set_model_id(
-                Some("relay"),
-                "grok-4.7",
-                &["deepseek-v4-flash".into()],
-                true,
-                &[],
-            ),
+            resolve_session_set_model_id(Some("relay"), "deepseek-v4-pro", &[]),
             "relay"
         );
         assert_eq!(
-            resolve_session_set_model_id(None, "grok-4.7", &[], false, &[]),
+            resolve_session_set_model_id(None, "grok-4.7", &[]),
             "grok-4.7"
         );
         // #1337 / #1394: a generic chat names the section whose `model` field
@@ -4233,33 +4781,15 @@ base_url = \"http://127.0.0.1:8080/v1\"
             },
         ];
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("kiro"),
-                "gpt-5.6-luna",
-                &["auto".into(), "gpt-5.6-luna".into(), "gpt-5.6-sol".into()],
-                false,
-                &kiro_sections,
-            ),
+            resolve_session_set_model_id(Some("kiro"), "gpt-5.6-luna", &kiro_sections),
             "kiro__gpt-5-6-luna"
         );
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("kiro"),
-                "kiro__gpt-5-6-luna",
-                &[],
-                false,
-                &kiro_sections,
-            ),
+            resolve_session_set_model_id(Some("kiro"), "kiro__gpt-5-6-luna", &kiro_sections),
             "kiro__gpt-5-6-luna"
         );
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("kiro"),
-                "gpt-5.6-luna",
-                &["auto".into(), "gpt-5.6-luna".into()],
-                false,
-                &[],
-            ),
+            resolve_session_set_model_id(Some("kiro"), "gpt-5.6-luna", &[]),
             "kiro"
         );
         let other_sections = [GenericSectionBinding {
@@ -4267,13 +4797,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
             model_id: "gpt-5.6-sol".into(),
         }];
         assert_eq!(
-            resolve_session_set_model_id(
-                Some("other"),
-                "gpt-5.6-sol",
-                &["sol".into(), "gpt-5.6-sol".into()],
-                false,
-                &other_sections,
-            ),
+            resolve_session_set_model_id(Some("other"), "gpt-5.6-sol", &other_sections),
             "other__gpt-5-6-sol"
         );
         assert!(provider_mutation_needs_agent_reload(true, "other", &active));
@@ -4329,7 +4853,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
                 ProviderModelEntry::named("other", "other"),
             ]
         );
-        let json = encode_app_models(&list);
+        let json = encode_app_models(&list).expect("encode app models");
         let decoded = decode_app_models(Some(&json), "fallback", "Fallback");
         assert_eq!(decoded, list);
         assert_eq!(resolve_active_model(&list, "other"), "other");
@@ -4354,7 +4878,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
         assert_eq!(list[0].supports_vision, Some(true));
         assert_eq!(list[0].supports_video, Some(true));
         assert_eq!(list[0].efforts[0].id, "high");
-        let json = encode_app_models(&list);
+        let json = encode_app_models(&list).expect("encode app models");
         let decoded = decode_app_models(Some(&json), "fallback", "Fallback");
         assert_eq!(decoded, list);
         let legacy = decode_app_models(
@@ -4365,6 +4889,308 @@ base_url = \"http://127.0.0.1:8080/v1\"
         assert_eq!(legacy[0].id, "plain");
         assert_eq!(legacy[0].context_window, None);
         assert!(legacy[0].efforts.is_empty());
+    }
+
+    #[test]
+    fn explicit_empty_app_models_is_not_resurrected_from_channel_model() {
+        // `app_models = "[]"` is a deliberate clear, not a legacy single-model
+        // provider. Re-synthesizing the channel `model` would undo the clear.
+        let decoded = decode_app_models(Some("[]"), "channel-model", "Channel");
+        assert!(
+            decoded.is_empty(),
+            "explicit empty catalog must stay empty: {decoded:?}"
+        );
+    }
+
+    #[test]
+    fn missing_or_corrupt_app_models_falls_back_to_the_channel_model_for_reads() {
+        for raw in [
+            None,
+            Some(""),
+            Some("   "),
+            Some("null"),
+            Some("{}"),
+            Some("not-json"),
+            Some(r#"[{"id":""}]"#),
+        ] {
+            let decoded = decode_app_models(raw, "channel-model", "Channel");
+            assert_eq!(
+                decoded,
+                vec![ProviderModelEntry::named("channel-model", "Channel")],
+                "channel fallback for {raw:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn partially_invalid_app_models_lists_recoverable_rows_and_stays_corrupt() {
+        let text = r#"
+[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "Relay"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = "[{\"id\":\"m1\",\"name\":\"M1\"},{\"id\":\"m2\",\"name\":\"M2\",\"contextWindow\":\"big\"},null]"
+"#;
+        let listed = build_list_result(std::path::PathBuf::new(), std::path::PathBuf::new(), text);
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(
+            relay.model_catalog_corrupt,
+            "one invalid row still makes the stored catalog unrecoverable"
+        );
+        assert_eq!(
+            relay
+                .models
+                .iter()
+                .map(|m| (m.id.as_str(), m.name.as_str()))
+                .collect::<Vec<_>>(),
+            [("m1", "M1"), ("m2", "M2")],
+            "readable row identities stay selectable instead of collapsing to the channel model"
+        );
+        let wire = serde_json::to_string(&listed).expect("list result is serializable");
+        assert!(
+            !wire.contains(r#""big""#) && !wire.contains("invalid type"),
+            "the IPC payload must not carry the stored value or parse detail: {wire}"
+        );
+    }
+
+    #[test]
+    fn app_models_accepts_legacy_rows_and_keeps_request_id_identity() {
+        let raw = r#"[
+            {"id":" m1 "},
+            {"id":"m1","name":"Duplicate"},
+            {"id":"m2","name":"M2","contextWindow":null,"supportsVision":null,"supportsVideo":null},
+            {"id":"m3","name":"M3","contextWindow":0,"efforts":[]}
+        ]"#;
+        let decoded = decode_app_models(Some(raw), "fallback", "Fallback");
+        assert_eq!(
+            decoded.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["m1", "m2", "m3"],
+            "identity is the trimmed request id, first row wins"
+        );
+        assert_eq!(decoded[0].name, "m1", "missing name falls back to id");
+        assert_eq!(decoded[1].context_window, None);
+        assert_eq!(decoded[1].supports_vision, None);
+        assert_eq!(decoded[1].supports_video, None);
+        assert_eq!(decoded[2].context_window, None, "0 is an empty value");
+        assert!(decoded[2].efforts.is_empty());
+
+        let json = encode_app_models(&decoded).expect("encode app models");
+        assert_eq!(
+            decode_app_models(Some(&json), "fallback", "Fallback"),
+            decoded,
+            "serialize → read must be stable"
+        );
+    }
+
+    #[test]
+    fn legacy_catalog_display_name_is_the_model_id_in_list_and_child_sections() {
+        let before = "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+api_key = \"sk-test\"
+name = \"Relay display\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+";
+        let synced = sync_generic_model_sections_in_text(before);
+        assert_eq!(
+            field_of(&synced, "relay__m1", "name").as_deref(),
+            Some("m1"),
+            "legacy row display falls back to the request id, not the channel name"
+        );
+        let listed = build_list_result(
+            std::path::PathBuf::new(),
+            std::path::PathBuf::new(),
+            &synced,
+        );
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert_eq!(
+            relay.models,
+            vec![ProviderModelEntry::named("m1", "m1")],
+            "providers_list and child sections must agree on the fallback name"
+        );
+        assert_eq!(
+            Some(relay.models[0].name.clone()),
+            field_of(&synced, "relay__m1", "name")
+        );
+    }
+
+    #[test]
+    fn explicit_empty_catalog_keeps_legacy_child_sections_but_lists_no_models() {
+        let before = "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+api_key = \"sk-test\"
+name = \"Relay\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+app_models = \"[]\"
+
+[model.relay__m1]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"m1\"
+api_key = \"sk-test\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+app_parent_provider = \"relay\"
+";
+        let synced = sync_generic_model_sections_in_text(before);
+        assert_eq!(
+            synced, before,
+            "old chats still reference these child section ids"
+        );
+        let listed = build_list_result(
+            std::path::PathBuf::new(),
+            std::path::PathBuf::new(),
+            &synced,
+        );
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(
+            relay.models.is_empty(),
+            "app_models = [] stays an explicit clear: {:?}",
+            relay.models
+        );
+    }
+
+    #[test]
+    fn unusable_app_models_is_reported_as_an_opaque_state_without_the_raw_value() {
+        let text = r#"
+[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "Relay"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = "not-json"
+"#;
+        let listed = build_list_result(std::path::PathBuf::new(), std::path::PathBuf::new(), text);
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(
+            relay.model_catalog_corrupt,
+            "Settings needs the unusable state"
+        );
+        assert_eq!(
+            relay.models,
+            vec![ProviderModelEntry::named("m1", "m1")],
+            "the channel row still stays selectable"
+        );
+        let wire = serde_json::to_string(&listed).expect("list result is serializable");
+        assert!(
+            !wire.contains("not-json") && !wire.contains("invalid JSON"),
+            "the IPC payload must not carry the stored value or parse detail: {wire}"
+        );
+
+        let healthy = build_list_result(
+            std::path::PathBuf::new(),
+            std::path::PathBuf::new(),
+            r#"
+[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "Relay"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = "[{\"id\":\"m1\",\"name\":\"M1\"}]"
+"#,
+        );
+        assert!(
+            !healthy.providers[0].model_catalog_corrupt,
+            "a stored catalog is safe to rewrite"
+        );
+        let legacy = build_list_result(
+            std::path::PathBuf::new(),
+            std::path::PathBuf::new(),
+            r#"
+[model.legacy]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "Legacy"
+api_key = "sk-test"
+"#,
+        );
+        assert!(
+            !legacy.providers[0].model_catalog_corrupt,
+            "a missing app_models field is a legacy provider, not a corrupt one"
+        );
+    }
+
+    #[test]
+    fn unusable_app_models_payload_and_debug_never_carry_the_stored_text() {
+        const MARKER: &str = "sk-CANARY-LEAK-7f3a";
+        let text = format!(
+            r#"
+[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "Relay"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = "not-json {MARKER}"
+"#
+        );
+        let listed = build_list_result(std::path::PathBuf::new(), std::path::PathBuf::new(), &text);
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(relay.model_catalog_corrupt);
+        let wire = serde_json::to_string(&listed).expect("list result is serializable");
+        assert!(
+            !wire.contains(MARKER),
+            "IPC payload leaked the stored value: {wire}"
+        );
+        let debug = format!(
+            "{:?}",
+            crate::provider_model_profile::read_model_catalog(Some(&format!("not-json {MARKER}")))
+        );
+        assert!(
+            !debug.contains(MARKER),
+            "debug output leaked the stored value: {debug}"
+        );
     }
 
     #[test]
@@ -4428,7 +5254,7 @@ base_url = \"http://127.0.0.1:8080/v1\"
                 is_default: false,
             },
         ];
-        let models_json = encode_app_models(&models);
+        let models_json = encode_app_models(&models).expect("encode app models");
         let efforts_json = encode_app_efforts(&efforts);
         // Simulate TOML field write + read (quote → line value → unquote).
         let models_field = format!("app_models = {}", quote(&models_json));
@@ -4891,6 +5717,1152 @@ app_efforts = "[{\"id\":\"xhigh\",\"name\":\"Extra high\",\"isDefault\":true}]"
     }
 
     #[test]
+    fn explicit_clears_survive_reload_without_legacy_resurrection() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-explicit-clear-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<(ProvidersListResult, String), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let models = encode_app_models(&[
+                ProviderModelEntry::named("m1", "M1"),
+                ProviderModelEntry::named("m2", "M2"),
+            ])
+            .expect("encode app models");
+            let efforts = encode_app_efforts(&[ProviderEffortEntry {
+                id: "high".into(),
+                name: "High".into(),
+                is_default: true,
+            }]);
+            write_text(
+                &path,
+                &format!(
+                    "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+app_models = {}
+app_efforts = {}
+app_supports_vision = \"true\"
+app_base_url_full_path = true
+context_window = 128000
+",
+                    quote(&models),
+                    quote(&efforts)
+                ),
+            )?;
+            let listed = upsert_custom_provider(UpsertProviderInput {
+                id: "relay".into(),
+                model: "m1".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models: Some(Vec::new()),
+                efforts: Some(Vec::new()),
+                context_window: Some(0),
+                base_url_full_path: Some(false),
+                append_prompt: Some(String::new()),
+                supports_vision: Some(false),
+                extra_headers: None,
+            })?;
+            let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            Ok((listed, raw))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (listed, raw) = outcome.expect("explicit clears should be written");
+        let provider = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(provider.models.is_empty(), "catalog clear must stick");
+        assert!(provider.efforts.is_empty(), "effort clear must stick");
+        assert_eq!(provider.context_window, None, "window clear must stick");
+        assert!(!provider.supports_vision, "vision clear must stick");
+        assert_eq!(provider.model, "m1", "active request model is preserved");
+        assert!(
+            raw.contains("app_models = \"[]\""),
+            "an explicit empty catalog is stored as `[]`:\n{raw}"
+        );
+        assert!(!raw.contains("context_window ="), "{raw}");
+        assert!(!raw.contains("app_efforts"), "{raw}");
+        assert!(!raw.contains("app_supports_vision"), "{raw}");
+        assert!(
+            !raw.contains("app_base_url_full_path"),
+            "full-path clear must stick:\n{raw}"
+        );
+        assert!(raw.contains("supports_reasoning_effort = false"), "{raw}");
+        assert!(raw.contains("api_key = \"sk-legacy-key\""), "auth kept");
+    }
+
+    #[test]
+    fn legacy_config_edit_without_new_fields_keeps_channel_values() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-legacy-edit-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<(ProvidersListResult, String), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let efforts = encode_app_efforts(&[ProviderEffortEntry {
+                id: "high".into(),
+                name: "High".into(),
+                is_default: true,
+            }]);
+            write_text(
+                &path,
+                &format!(
+                    "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+app_efforts = {}
+app_supports_vision = \"true\"
+context_window = 128000
+",
+                    quote(&efforts)
+                ),
+            )?;
+            let listed = upsert_custom_provider(UpsertProviderInput {
+                id: "relay".into(),
+                model: "m1".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models: None,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            })?;
+            let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            Ok((listed, raw))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (listed, raw) = outcome.expect("legacy config edit should succeed");
+        let provider = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert_eq!(
+            provider.models,
+            vec![ProviderModelEntry::named("m1", "m1")],
+            "legacy channel model becomes the single catalog row"
+        );
+        assert_eq!(provider.context_window, Some(128_000));
+        assert_eq!(provider.efforts.len(), 1);
+        assert_eq!(provider.efforts[0].id, "high");
+        assert!(provider.efforts[0].is_default, "empty-value defaults kept");
+        assert!(provider.supports_vision);
+        assert!(
+            raw.contains("context_window = 128000"),
+            "integer window stays bare:\n{raw}"
+        );
+        assert!(raw.contains("api_key = \"sk-legacy-key\""), "{raw}");
+    }
+
+    struct CatalogEditSnapshot {
+        bad_value: String,
+        after_keep: String,
+        after_clear: String,
+        kept: ProvidersListResult,
+        cleared: ProvidersListResult,
+    }
+
+    #[test]
+    fn omitting_models_keeps_an_unusable_app_models_value_until_an_explicit_clear() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-corrupt-catalog-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<Vec<CatalogEditSnapshot>, String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let mut captured = Vec::new();
+            for bad in [
+                "not-json",
+                "  not-json  ",
+                r#"[{"id":"   "}]"#,
+                "null",
+                "\t{}\n",
+                "{}",
+                "\"m1\"",
+                "1",
+            ] {
+                write_text(
+                    &path,
+                    &format!(
+                        "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+app_models = {}
+",
+                        quote(bad)
+                    ),
+                )?;
+                let input = |models: Option<Vec<ProviderModelEntry>>| UpsertProviderInput {
+                    id: "relay".into(),
+                    model: "m1".into(),
+                    base_url: "https://relay.example/v1".into(),
+                    name: Some("Relay".into()),
+                    api_key: None,
+                    api_backend: Some("chat_completions".into()),
+                    provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                    set_as_default: Some(false),
+                    create_only: Some(false),
+                    models,
+                    efforts: None,
+                    context_window: None,
+                    base_url_full_path: None,
+                    append_prompt: None,
+                    supports_vision: None,
+                    extra_headers: None,
+                };
+                let kept = upsert_custom_provider(input(None))?;
+                let after_keep = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                let cleared = upsert_custom_provider(input(Some(Vec::new())))?;
+                let after_clear = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                captured.push(CatalogEditSnapshot {
+                    bad_value: bad.to_string(),
+                    after_keep,
+                    after_clear,
+                    kept,
+                    cleared,
+                });
+            }
+            Ok(captured)
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let captured = outcome.expect("unusable catalog edits should succeed");
+        for snapshot in captured {
+            assert_eq!(
+                field_of(&snapshot.after_keep, "relay", APP_MODELS_KEY).as_deref(),
+                Some(snapshot.bad_value.as_str()),
+                "an edit that omits `models` must keep the unusable value:\n{}",
+                snapshot.after_keep
+            );
+            assert_eq!(
+                field_of(&snapshot.after_clear, "relay", APP_MODELS_KEY).as_deref(),
+                Some("[]"),
+                "only an explicit `models: []` clears the catalog:\n{}",
+                snapshot.after_clear
+            );
+            let kept_relay = snapshot
+                .kept
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .expect("relay provider after keep");
+            assert!(
+                kept_relay.model_catalog_corrupt,
+                "a non-array or unreadable value is not a legacy provider: {}",
+                snapshot.bad_value
+            );
+            assert_eq!(
+                kept_relay.models,
+                vec![ProviderModelEntry::named("m1", "m1")],
+                "unusable rows still read as the legacy channel model"
+            );
+            let cleared_relay = snapshot
+                .cleared
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .expect("relay provider after clear");
+            assert!(cleared_relay.models.is_empty());
+        }
+    }
+
+    struct VerbatimCatalogSnapshot {
+        stored: String,
+        after_keep: String,
+        after_second_keep: String,
+        after_change: String,
+        after_clear: String,
+        kept_models: Vec<ProviderModelEntry>,
+    }
+
+    #[test]
+    fn omitting_models_keeps_the_stored_catalog_field_verbatim() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-verbatim-catalog-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<Vec<VerbatimCatalogSnapshot>, String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let mut captured = Vec::new();
+            for stored in [
+                // Blank is a legacy provider, but the present key must stay.
+                "",
+                "  [{\"id\":\"m1\",\"name\":\"M1\",\"appNote\":\"keep-me\",\"contextWindow\":128000}]  ",
+            ] {
+                write_text(
+                    &path,
+                    &format!(
+                        "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+app_models = {}
+",
+                        quote(stored)
+                    ),
+                )?;
+                let input = |models: Option<Vec<ProviderModelEntry>>| UpsertProviderInput {
+                    id: "relay".into(),
+                    model: "m1".into(),
+                    base_url: "https://relay.example/v1".into(),
+                    name: Some("Relay".into()),
+                    api_key: None,
+                    api_backend: Some("chat_completions".into()),
+                    provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                    set_as_default: Some(false),
+                    create_only: Some(false),
+                    models,
+                    efforts: None,
+                    context_window: None,
+                    base_url_full_path: None,
+                    append_prompt: None,
+                    supports_vision: None,
+                    extra_headers: None,
+                };
+                let kept = upsert_custom_provider(input(None))?;
+                let after_keep = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                upsert_custom_provider(input(None))?;
+                let after_second_keep =
+                    std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                upsert_custom_provider(input(Some(vec![ProviderModelEntry::named("m2", "M2")])))?;
+                let after_change = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                upsert_custom_provider(input(Some(Vec::new())))?;
+                let after_clear = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                captured.push(VerbatimCatalogSnapshot {
+                    stored: stored.to_string(),
+                    after_keep,
+                    after_second_keep,
+                    after_change,
+                    after_clear,
+                    kept_models: kept
+                        .providers
+                        .iter()
+                        .find(|p| p.id == "relay")
+                        .map(|p| p.models.clone())
+                        .unwrap_or_default(),
+                });
+            }
+            Ok(captured)
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let captured = outcome.expect("catalog edits should succeed");
+        assert_eq!(captured.len(), 2);
+        let changed_catalog =
+            encode_app_models(&[ProviderModelEntry::named("m2", "M2")]).expect("encode catalog");
+        for snapshot in &captured {
+            assert_eq!(
+                field_of(&snapshot.after_keep, "relay", APP_MODELS_KEY).as_deref(),
+                Some(snapshot.stored.as_str()),
+                "`models: None` must write back the decoded field value, unknown row fields and \
+                 whitespace included:\n{}",
+                snapshot.after_keep
+            );
+            assert_eq!(
+                field_of(&snapshot.after_second_keep, "relay", APP_MODELS_KEY).as_deref(),
+                Some(snapshot.stored.as_str()),
+                "the preserved value must be stable across saves:\n{}",
+                snapshot.after_second_keep
+            );
+            assert_eq!(
+                field_of(&snapshot.after_change, "relay", APP_MODELS_KEY).as_deref(),
+                Some(changed_catalog.as_str()),
+                "`models: Some(rows)` must write the normalized catalog:\n{}",
+                snapshot.after_change
+            );
+            assert_eq!(
+                field_of(&snapshot.after_clear, "relay", APP_MODELS_KEY).as_deref(),
+                Some("[]"),
+                "`models: []` must stay an explicit clear:\n{}",
+                snapshot.after_clear
+            );
+        }
+        assert_eq!(
+            captured[0].kept_models,
+            vec![ProviderModelEntry::named("m1", "m1")],
+            "a blank catalog still reads as the legacy channel row"
+        );
+        assert_eq!(
+            captured[1].kept_models,
+            vec![ProviderModelEntry {
+                id: "m1".into(),
+                name: "M1".into(),
+                context_window: Some(128_000),
+                supports_vision: None,
+                supports_video: None,
+                efforts: Vec::new(),
+            }],
+            "an unrelated save must not change what the catalog reads back"
+        );
+    }
+
+    #[test]
+    fn omitting_models_leaves_a_legacy_parent_without_the_catalog_key() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-legacy-catalog-key-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<(String, String, Vec<ProviderModelEntry>), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            write_text(
+                &path,
+                "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+",
+            )?;
+            let input = |models: Option<Vec<ProviderModelEntry>>| UpsertProviderInput {
+                id: "relay".into(),
+                model: "m1".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            };
+            let kept = upsert_custom_provider(input(None))?;
+            let after_keep = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            upsert_custom_provider(input(Some(vec![ProviderModelEntry::named("m1", "M1")])))?;
+            let after_explicit = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let kept_models = kept
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .map(|p| p.models.clone())
+                .unwrap_or_default();
+            Ok((after_keep, after_explicit, kept_models))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (after_keep, after_explicit, kept_models) = outcome.expect("edits should succeed");
+        assert!(
+            field_of(&after_keep, "relay", APP_MODELS_KEY).is_none(),
+            "an omitted `models` must not create a catalog key a legacy parent never had:\n{after_keep}"
+        );
+        assert_eq!(
+            kept_models,
+            vec![ProviderModelEntry::named("m1", "m1")],
+            "a legacy parent still lists its channel model"
+        );
+        assert_eq!(
+            field_of(&after_explicit, "relay", APP_MODELS_KEY).as_deref(),
+            Some(
+                encode_app_models(&[ProviderModelEntry::named("m1", "M1")])
+                    .expect("encode catalog")
+                    .as_str()
+            ),
+            "an explicit catalog edit creates the key:\n{after_explicit}"
+        );
+    }
+
+    #[test]
+    fn parsed_app_models_distinguishes_an_absent_key_from_a_blank_value() {
+        let text = "\
+[model.absent]
+model = \"m\"
+
+[model.blank]
+model = \"m\"
+app_models = \"\"
+";
+        let sections = parse_model_sections(text);
+
+        assert!(!sections[0].fields.contains_key(APP_MODELS_KEY));
+        assert_eq!(
+            sections[1].fields.get(APP_MODELS_KEY).map(String::as_str),
+            Some("")
+        );
+    }
+
+    #[test]
+    fn omitting_models_keeps_the_channel_model_of_a_partially_invalid_catalog() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-recovered-channel-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        // The channel runs `m1`; only `m2` survives the partial read, because
+        // the second row carries no readable id.
+        let raw = r#"[{"id":"m2","name":"M2","contextWindow":64000,"supportsVision":false,"efforts":[{"id":"low","name":"Low","isDefault":true}]},{"id":null,"name":"M1"}]"#;
+        let old_efforts = r#"[{"id":"high","name":"High","isDefault":true}]"#;
+
+        let outcome = (|| -> Result<(String, ProvidersListResult, String), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            write_text(
+                &path,
+                &format!(
+                    "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://old.example/v1\"
+name = \"Relay\"
+api_key = \"sk-old\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+context_window = 32000
+app_supports_vision = \"true\"
+app_efforts = {}
+app_models = {}
+
+[model.relay__m1]
+model = \"m1\"
+base_url = \"https://old.example/v1\"
+name = \"M1 saved\"
+api_key = \"sk-old\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+app_parent_provider = \"relay\"
+",
+                    quote(old_efforts),
+                    quote(raw)
+                ),
+            )?;
+            let listed = upsert_custom_provider(UpsertProviderInput {
+                id: "relay".into(),
+                // What a caller that only saw the recovery rows sends.
+                model: "m2".into(),
+                base_url: "https://new.example/v1".into(),
+                name: Some("Relay renamed".into()),
+                api_key: Some("sk-new".into()),
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models: None,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            })?;
+            let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let recovered_section = session_set_model_id_for("relay", "m2");
+            Ok((text, listed, recovered_section))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (after, listed, recovered_section) =
+            outcome.expect("an edit that omits `models` should succeed");
+        assert_eq!(
+            field_of(&after, "relay", APP_MODELS_KEY).as_deref(),
+            Some(raw),
+            "the unreadable catalog stays byte-identical:\n{after}"
+        );
+        assert_eq!(
+            field_of(&after, "relay", "model").as_deref(),
+            Some("m1"),
+            "the channel keeps its stored model instead of the recovered row:\n{after}"
+        );
+        assert_eq!(
+            field_of(&after, "relay", "context_window").as_deref(),
+            Some("32000"),
+            "the recovered row's window must not become the channel window:\n{after}"
+        );
+        assert_eq!(
+            field_of(&after, "relay", APP_SUPPORTS_VISION_KEY).as_deref(),
+            Some("true"),
+            "the recovered row's vision flag must not reach the channel:\n{after}"
+        );
+        assert_eq!(
+            field_of(&after, "relay", APP_EFFORTS_KEY).as_deref(),
+            Some(old_efforts),
+            "the recovered row's effort ladder must not reach the channel:\n{after}"
+        );
+        assert_eq!(
+            field_of(&after, "relay", "name").as_deref(),
+            Some("Relay renamed")
+        );
+        assert_eq!(
+            field_of(&after, "relay", "api_key").as_deref(),
+            Some("sk-new")
+        );
+
+        assert_eq!(
+            field_of(&after, "relay__m1", "model").as_deref(),
+            Some("m1")
+        );
+        assert_eq!(
+            field_of(&after, "relay__m1", "name").as_deref(),
+            Some("M1 saved"),
+            "an older child keeps its identity on this save"
+        );
+        assert_eq!(
+            field_of(&after, "relay__m1", "base_url").as_deref(),
+            Some("https://new.example/v1"),
+            "older children still follow the channel route"
+        );
+        assert_eq!(
+            field_of(&after, "relay__m1", "api_key").as_deref(),
+            Some("sk-new")
+        );
+
+        assert_eq!(recovered_section, "relay__m2");
+        assert_eq!(
+            field_of(&after, &recovered_section, "model").as_deref(),
+            Some("m2"),
+            "a recovered row keeps its own routable child"
+        );
+        assert_eq!(
+            field_of(&after, &recovered_section, "context_window").as_deref(),
+            Some("64000"),
+            "recovered metadata belongs to the row's child, not the channel"
+        );
+
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider after the edit");
+        assert_eq!(relay.model, "m1");
+        assert_eq!(relay.context_window, Some(32_000));
+        assert!(relay.supports_vision);
+        assert_eq!(
+            relay
+                .efforts
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
+            ["high"]
+        );
+        assert_eq!(
+            relay
+                .models
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            ["m2"]
+        );
+        assert!(relay.model_catalog_corrupt);
+    }
+
+    #[test]
+    fn malformed_model_lists_are_rejected_while_explicit_clear_and_repair_write() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-malformed-catalog-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<(String, String, String, String, String), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let bad = "not-json";
+            write_text(
+                &path,
+                &format!(
+                    "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-legacy-key\"
+api_backend = \"chat_completions\"
+app_provider_mode = \"generic\"
+app_models = {}
+",
+                    quote(bad)
+                ),
+            )?;
+            let input = |models: Option<Vec<ProviderModelEntry>>| UpsertProviderInput {
+                id: "relay".into(),
+                model: "m1".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            };
+            let rejected = upsert_custom_provider(input(Some(vec![
+                ProviderModelEntry::default(),
+                ProviderModelEntry::named("   ", "Blank"),
+                ProviderModelEntry::named("\t\n", ""),
+            ])))
+            .expect_err("a non-empty list without usable rows is not a clear");
+            let after_reject = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let repaired = upsert_custom_provider(input(Some(vec![
+                ProviderModelEntry::named("m2", "M2"),
+                ProviderModelEntry::named("m3", "M3"),
+            ])))?;
+            let after_repair = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let cleared = upsert_custom_provider(input(Some(Vec::new())))?;
+            assert!(
+                cleared
+                    .providers
+                    .iter()
+                    .find(|p| p.id == "relay")
+                    .is_some_and(|p| p.models.is_empty() && !p.model_catalog_corrupt),
+                "an explicit clear should be reflected in the provider list"
+            );
+            let after_clear = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let repaired_ids = repaired
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .map(|p| {
+                    (
+                        p.model_catalog_corrupt,
+                        p.models
+                            .iter()
+                            .map(|m| m.id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(","),
+                    )
+                })
+                .unwrap_or_default();
+            Ok((
+                rejected,
+                after_reject,
+                after_repair,
+                after_clear,
+                format!("{}|{}", repaired_ids.0, repaired_ids.1),
+            ))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (rejected, after_reject, after_repair, after_clear, repaired_state) =
+            outcome.expect("malformed catalog handling should complete");
+        assert!(
+            rejected.contains("non-empty id"),
+            "the error must name the contract violation: {rejected}"
+        );
+        assert!(
+            !rejected.contains("sk-legacy-key"),
+            "validation errors must not echo credentials: {rejected}"
+        );
+        assert_eq!(
+            field_of(&after_reject, "relay", APP_MODELS_KEY).as_deref(),
+            Some("not-json"),
+            "a rejected catalog write must leave disk untouched:\n{after_reject}"
+        );
+        assert_eq!(
+            field_of(&after_repair, "relay", APP_MODELS_KEY).as_deref(),
+            Some(r#"[{"id":"m2","name":"M2"},{"id":"m3","name":"M3"}]"#),
+            "an explicit replacement repairs the catalog:\n{after_repair}"
+        );
+        assert_eq!(
+            repaired_state, "false|m2,m3",
+            "repair clears the corrupt flag and keeps row order"
+        );
+        assert_eq!(
+            field_of(&after_clear, "relay", APP_MODELS_KEY).as_deref(),
+            Some("[]"),
+            "an explicit empty list is still a clear, not an error:\n{after_clear}"
+        );
+    }
+
+    #[test]
+    fn blank_model_rows_are_rejected_before_normalization() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-blank-model-row-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        struct Outcome {
+            saved_ids: Vec<String>,
+            rejected: String,
+            after_save: String,
+            after_reject: String,
+            cleared_ids: Vec<String>,
+            after_clear: String,
+        }
+
+        let outcome = (|| -> Result<Outcome, String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let input = |models: Option<Vec<ProviderModelEntry>>| UpsertProviderInput {
+                id: "relay".into(),
+                model: String::new(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: Some("sk-relay-key".into()),
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            };
+            let saved = upsert_custom_provider(input(Some(vec![
+                ProviderModelEntry::named("m1", "M1"),
+                ProviderModelEntry::named(" m2 ", ""),
+            ])))?;
+            let saved_ids = saved
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .map(|p| p.models.iter().map(|m| m.id.clone()).collect())
+                .unwrap_or_default();
+            let after_save = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let rejected = upsert_custom_provider(input(Some(vec![
+                ProviderModelEntry::named("m1", "M1"),
+                ProviderModelEntry::named("  ", "Half-typed"),
+            ])))
+            .expect_err("a blank row is rejected even when other rows are valid");
+            let after_reject = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            let cleared = upsert_custom_provider(input(Some(Vec::new())))?;
+            let cleared_ids = cleared
+                .providers
+                .iter()
+                .find(|p| p.id == "relay")
+                .filter(|p| !p.model_catalog_corrupt)
+                .map(|p| p.models.iter().map(|m| m.id.clone()).collect())
+                .unwrap_or_default();
+            let after_clear = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            Ok(Outcome {
+                saved_ids,
+                rejected,
+                after_save,
+                after_reject,
+                cleared_ids,
+                after_clear,
+            })
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let Outcome {
+            saved_ids,
+            rejected,
+            after_save,
+            after_reject,
+            cleared_ids,
+            after_clear,
+        } = outcome.expect("blank-row handling should complete");
+        assert_eq!(
+            saved_ids,
+            vec!["m1".to_string(), "m2".to_string()],
+            "every valid row persists, trimmed, in order"
+        );
+        assert!(
+            rejected.contains("non-empty id"),
+            "the error must name the contract violation: {rejected}"
+        );
+        assert!(
+            !rejected.contains("Half-typed") && !rejected.contains("sk-relay-key"),
+            "validation errors must not echo user input: {rejected}"
+        );
+        assert_eq!(
+            after_reject, after_save,
+            "a rejected catalog write must leave disk untouched"
+        );
+        assert!(
+            cleared_ids.is_empty(),
+            "an explicit empty list still clears the catalog: {cleared_ids:?}"
+        );
+        assert_eq!(
+            field_of(&after_clear, "relay", APP_MODELS_KEY).as_deref(),
+            Some("[]"),
+            "explicit clear writes [] instead of a guessed catalog:\n{after_clear}"
+        );
+    }
+
+    #[test]
+    fn model_profiles_roundtrip_through_config_toml() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-model-roundtrip-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<(ProvidersListResult, ProvidersListResult), String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let models = vec![
+                ProviderModelEntry {
+                    id: "vision".into(),
+                    name: "Vision".into(),
+                    context_window: Some(1_048_576),
+                    supports_vision: Some(true),
+                    supports_video: Some(true),
+                    efforts: vec![
+                        ProviderEffortEntry {
+                            id: "low".into(),
+                            name: "Low".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "max".into(),
+                            name: "Max".into(),
+                            is_default: true,
+                        },
+                    ],
+                },
+                ProviderModelEntry {
+                    id: "text".into(),
+                    name: "Text".into(),
+                    context_window: None,
+                    supports_vision: Some(false),
+                    supports_video: None,
+                    efforts: Vec::new(),
+                },
+            ];
+            upsert_custom_provider(UpsertProviderInput {
+                id: "relay".into(),
+                model: "vision".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay".into()),
+                api_key: Some("sk-test-key".into()),
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(true),
+                models: Some(models.clone()),
+                efforts: Some(vec![ProviderEffortEntry {
+                    id: "medium".into(),
+                    name: "Medium".into(),
+                    is_default: true,
+                }]),
+                context_window: None,
+                base_url_full_path: Some(false),
+                append_prompt: None,
+                supports_vision: Some(false),
+                extra_headers: None,
+            })?;
+            let first = list_custom_providers()?;
+            // Re-open and save without touching the catalog.
+            let second = upsert_custom_provider(UpsertProviderInput {
+                id: "relay".into(),
+                model: "text".into(),
+                base_url: "https://relay.example/v1".into(),
+                name: Some("Relay renamed".into()),
+                api_key: None,
+                api_backend: Some("chat_completions".into()),
+                provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+                set_as_default: Some(false),
+                create_only: Some(false),
+                models: None,
+                efforts: None,
+                context_window: None,
+                base_url_full_path: None,
+                append_prompt: None,
+                supports_vision: None,
+                extra_headers: None,
+            })?;
+            Ok((first, second))
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let (first, second) = outcome.expect("model profiles should round-trip");
+        let first_provider = first
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert_eq!(first_provider.models.len(), 2);
+        assert_eq!(first_provider.models[0].id, "vision");
+        assert_eq!(first_provider.models[0].name, "Vision");
+        assert_eq!(first_provider.models[0].context_window, Some(1_048_576));
+        assert_eq!(first_provider.models[0].supports_vision, Some(true));
+        assert_eq!(first_provider.models[0].supports_video, Some(true));
+        assert_eq!(
+            first_provider.models[0]
+                .efforts
+                .iter()
+                .map(|e| (e.id.as_str(), e.is_default))
+                .collect::<Vec<_>>(),
+            [("low", false), ("max", true)]
+        );
+        assert_eq!(first_provider.models[1].id, "text");
+        assert_eq!(first_provider.models[1].context_window, None);
+
+        let second_provider = second
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider after reopen");
+        assert_eq!(second_provider.name, "Relay renamed");
+        assert_eq!(
+            second_provider.models, first_provider.models,
+            "an edit that omits `models` must keep every row"
+        );
+        assert_eq!(
+            second_provider.context_window,
+            first_provider.context_window
+        );
+        assert_eq!(second_provider.efforts, first_provider.efforts);
+        assert_eq!(second_provider.model, "text");
+    }
+
+    #[test]
     fn context_window_roundtrips_through_toml() {
         // Write a context_window field, parse back, and verify the same
         // parse logic `build_list_result` uses (string → u64, filtered > 0).
@@ -5338,7 +7310,10 @@ context_window = "1000000"
             .iter()
             .map(|(id, name)| ProviderModelEntry::named(*id, *name))
             .collect();
-        format_toml_field_value(APP_MODELS_KEY, &encode_app_models(&models))
+        format_toml_field_value(
+            APP_MODELS_KEY,
+            &encode_app_models(&models).expect("encode app models"),
+        )
     }
 
     fn field_of(text: &str, section_id: &str, key: &str) -> Option<String> {
@@ -5365,6 +7340,769 @@ context_window = "1000000"
         let slug = slug_model_id(&long);
         assert!(slug.len() <= 48, "{slug}");
         assert!(slug.starts_with("aaaa"));
+    }
+
+    struct StoredCatalogSnapshot {
+        corrupt: Option<ModelCatalogRead>,
+        cleared: Option<ModelCatalogRead>,
+        readable: Option<ModelCatalogRead>,
+        legacy: Option<ModelCatalogRead>,
+        absent: Option<ModelCatalogRead>,
+        raw_after: String,
+    }
+
+    #[test]
+    fn stored_provider_catalog_reports_disk_state_without_editing_it() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home =
+            std::env::temp_dir().join(format!("grok-app-stored-catalog-{}", uuid::Uuid::new_v4()));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let outcome = (|| -> Result<StoredCatalogSnapshot, String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let path = agent_config_toml();
+            let readable = encode_app_models(&[ProviderModelEntry::named("m3", "M3")])?;
+            let text = format!(
+                "\
+[models]
+default = \"readable\"
+
+[model.corrupt]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Corrupt\"
+api_key = \"dummy-relay-key\"
+api_backend = \"responses\"
+app_provider_mode = \"grok_build_proxy\"
+app_models = {}
+
+[model.cleared]
+model = \"m2\"
+base_url = \"https://relay.example/v1\"
+name = \"Cleared\"
+api_key = \"dummy-relay-key\"
+api_backend = \"responses\"
+app_provider_mode = \"grok_build_proxy\"
+app_models = {}
+
+[model.readable]
+model = \"m3\"
+base_url = \"https://relay.example/v1\"
+name = \"Readable\"
+api_key = \"dummy-relay-key\"
+api_backend = \"responses\"
+app_provider_mode = \"grok_build_proxy\"
+app_models = {}
+
+[model.legacy]
+model = \"m4\"
+base_url = \"https://relay.example/v1\"
+name = \"Legacy\"
+api_key = \"dummy-relay-key\"
+api_backend = \"responses\"
+app_provider_mode = \"grok_build_proxy\"
+",
+                quote("{\"id\":\"m2\"}"),
+                quote("[]"),
+                quote(&readable),
+            );
+            write_text(&path, &text)?;
+            let snapshot = StoredCatalogSnapshot {
+                corrupt: stored_provider_model_catalog("corrupt"),
+                cleared: stored_provider_model_catalog("cleared"),
+                readable: stored_provider_model_catalog("readable"),
+                legacy: stored_provider_model_catalog("legacy"),
+                absent: stored_provider_model_catalog("absent"),
+                raw_after: std::fs::read_to_string(&path).map_err(|e| e.to_string())?,
+            };
+            Ok(snapshot)
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let snapshot = outcome.expect("stored catalog reads should succeed");
+        assert!(matches!(
+            snapshot.corrupt,
+            Some(ModelCatalogRead::Corrupt(_))
+        ));
+        assert_eq!(snapshot.cleared, Some(ModelCatalogRead::Stored(Vec::new())));
+        assert_eq!(
+            snapshot.readable,
+            Some(ModelCatalogRead::Stored(vec![ProviderModelEntry::named(
+                "m3", "M3"
+            )]))
+        );
+        assert_eq!(snapshot.legacy, Some(ModelCatalogRead::LegacyChannel));
+        assert_eq!(snapshot.absent, None);
+        assert!(
+            snapshot
+                .raw_after
+                .contains("app_models = \"{\\\"id\\\":\\\"m2\\\"}\""),
+            "reading the state must not rewrite the config"
+        );
+    }
+
+    #[test]
+    fn corrupt_catalog_leaves_existing_child_sections_untouched() {
+        for bad in [
+            "not-json",
+            r#"[{"id":"   "}]"#,
+            r#"[{"id":"m1""#,
+            "null",
+            "{}",
+            "\"m1\"",
+            "1",
+        ] {
+            let before = format!(
+                r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m2"
+base_url = "https://relay.example/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = {}
+
+[model.relay__m1]
+model = "m1"
+base_url = "https://relay.example/v1"
+name = "m1"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+"#,
+                quote(bad)
+            );
+            assert_eq!(
+                sync_generic_model_sections_in_text(&before),
+                before,
+                "an unreadable catalog must not be replaced by a legacy guess: {bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn recovered_catalog_rows_get_routable_child_sections() {
+        let raw = r#"[{"id":"m1","name":"M1"},{"id":"m2","name":"M2","contextWindow":"big"},null]"#;
+        let before = format!(
+            r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m3"
+base_url = "https://new.example/v1"
+api_key = "sk-new"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = {}
+
+[model.relay__m1]
+model = "m1"
+base_url = "https://old.example/v1"
+name = "M1 saved"
+api_key = "sk-old"
+api_backend = "responses"
+context_window = 64000
+app_note = "keep-me"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+
+[model.relay__hidden]
+model = "hidden"
+base_url = "https://old.example/v1"
+name = "Hidden"
+api_key = "sk-old"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+"#,
+            quote(raw)
+        );
+
+        let once = sync_generic_model_sections_in_text(&before);
+        let twice = sync_generic_model_sections_in_text(&once);
+        assert_eq!(
+            once, twice,
+            "recovered-row sync must be idempotent:\n{twice}"
+        );
+        assert_eq!(
+            field_of(&once, "relay", APP_MODELS_KEY).as_deref(),
+            Some(raw),
+            "the corrupt catalog text is authoritative and must stay byte-identical"
+        );
+
+        for (key, expected) in [
+            ("model", "m2"),
+            ("name", "M2"),
+            ("base_url", "https://new.example/v1"),
+            ("api_key", "sk-new"),
+            ("api_backend", "chat_completions"),
+            (APP_PROVIDER_MODE_KEY, PROVIDER_MODE_GENERIC),
+            (APP_PARENT_PROVIDER_KEY, "relay"),
+        ] {
+            assert_eq!(
+                field_of(&once, "relay__m2", key).as_deref(),
+                Some(expected),
+                "relay__m2 `{key}` must carry the recovered row and current channel route"
+            );
+        }
+        assert_eq!(field_of(&once, "relay__m1", "model").as_deref(), Some("m1"));
+        assert_eq!(
+            field_of(&once, "relay__m1", "name").as_deref(),
+            Some("M1 saved"),
+            "an existing child keeps its display name"
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "context_window").as_deref(),
+            Some("64000")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "app_note").as_deref(),
+            Some("keep-me"),
+            "unknown child fields survive the sync"
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "base_url").as_deref(),
+            Some("https://new.example/v1")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "api_key").as_deref(),
+            Some("sk-new")
+        );
+        assert_eq!(
+            field_of(&once, "relay__hidden", "model").as_deref(),
+            Some("hidden"),
+            "children the corrupt text does not name are kept for older chats"
+        );
+
+        let listed = build_list_result(std::path::PathBuf::new(), std::path::PathBuf::new(), &once);
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(relay.model_catalog_corrupt);
+        let model_ids: Vec<String> = relay.models.iter().map(|m| m.id.clone()).collect();
+        assert_eq!(model_ids, ["m1", "m2"]);
+        let sections: Vec<GenericSectionBinding> = parse_model_sections(&once)
+            .into_iter()
+            .filter(|s| {
+                s.fields
+                    .get(APP_PARENT_PROVIDER_KEY)
+                    .is_some_and(|p| p == "relay")
+            })
+            .filter_map(|s| {
+                let model_id = s.fields.get("model")?.trim();
+                if model_id.is_empty() {
+                    return None;
+                }
+                Some(GenericSectionBinding {
+                    section_id: s.id,
+                    model_id: model_id.to_string(),
+                })
+            })
+            .collect();
+        for model in &relay.models {
+            let section_id = resolve_session_set_model_id(Some("relay"), &model.id, &sections);
+            assert_eq!(
+                field_of(&once, &section_id, "model").as_deref(),
+                Some(model.id.as_str()),
+                "listed row `{}` must resolve to a real child section, got `{section_id}`",
+                model.id
+            );
+        }
+    }
+
+    #[test]
+    fn recovered_catalog_rows_spawn_and_set_model_with_the_same_section() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-recovered-sections-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = std::fs::create_dir_all(home.join("agent-home"));
+        let raw = r#"[{"id":"m1","name":"M1"},{"id":"m2","name":"M2"},{"id":null}]"#;
+        std::fs::write(
+            agent_config_toml(),
+            format!(
+                r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = {}
+"#,
+                quote(raw)
+            ),
+        )
+        .expect("seed");
+
+        assert_eq!(spawn_model_for_provider("relay", "m2"), "relay__m2");
+        assert_eq!(session_set_model_id_for("relay", "m2"), "relay__m2");
+        assert_eq!(spawn_model_for_provider("relay", "m1"), "relay__m1");
+        assert_eq!(session_set_model_id_for("relay", "m1"), "relay__m1");
+        let text = std::fs::read_to_string(agent_config_toml()).expect("read synced config");
+        assert_eq!(field_of(&text, "relay__m2", "model").as_deref(), Some("m2"));
+        assert_eq!(
+            field_of(&text, "relay", APP_MODELS_KEY).as_deref(),
+            Some(raw)
+        );
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    /// Seed one `grok_build_proxy` channel; `models_atom` is the TOML literal
+    /// for `app_models` so a corrupt value stays byte-exact.
+    fn seed_proxy_catalog(models_atom: &str) {
+        seed_proxy_catalog_with_channel_model("m1", models_atom);
+    }
+
+    fn seed_proxy_catalog_with_channel_model(channel_model: &str, models_atom: &str) {
+        std::fs::write(
+            agent_config_toml(),
+            format!(
+                r#"[models]
+default = "relay"
+
+[model.relay]
+model = "{channel_model}"
+base_url = "https://relay.example/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "grok_build_proxy"
+app_models = {models_atom}
+"#
+            ),
+        )
+        .expect("seed");
+    }
+
+    fn proxy_channel() -> CustomProvider {
+        list_custom_providers()
+            .expect("list")
+            .providers
+            .into_iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider")
+    }
+
+    /// `--model` the native proxy spawn binds for `composer_model`.
+    fn proxy_spawn_model(composer_model: &str) -> String {
+        session_grok_build_proxy_spawn("relay", composer_model)
+            .expect("proxy spawn binding")
+            .model
+    }
+
+    #[test]
+    fn proxy_catalog_that_fixes_no_rows_keeps_the_stored_session_model() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-proxy-unlisted-model-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = std::fs::create_dir_all(home.join("agent-home"));
+
+        // Partial read: only m2 survives, but the chat is still on the old m3.
+        seed_proxy_catalog(&quote(r#"[{"id":"m2","name":"M2"},{"id":null}]"#));
+        let relay = proxy_channel();
+        assert!(
+            relay.model_catalog_corrupt,
+            "fixture must exercise a corrupt catalog"
+        );
+        assert_eq!(
+            spawn_model_for_provider("relay", "m3"),
+            "m3",
+            "spawn must keep the model the chat stored"
+        );
+        assert_eq!(
+            session_set_model_id_for("relay", "m3"),
+            "m3",
+            "set_model must not retarget a chat whose catalog cannot vet its model"
+        );
+        assert_eq!(proxy_spawn_model("m3"), "m3");
+        // A channel section alias is a route name, never a request model; both
+        // paths take the recovered row instead.
+        assert_eq!(session_set_model_id_for("relay", "relay"), "m2");
+        assert_eq!(proxy_spawn_model("relay"), "m2");
+        assert_eq!(session_set_model_id_for("relay", ""), "m2");
+        assert_eq!(proxy_spawn_model(""), "m2");
+
+        // Explicit clear: no rows, and the chat is still on the old m2.
+        seed_proxy_catalog("\"[]\"");
+        let relay = proxy_channel();
+        assert!(!relay.model_catalog_corrupt);
+        assert!(relay.models.is_empty(), "fixture must clear the catalog");
+        assert_eq!(spawn_model_for_provider("relay", "m2"), "m2");
+        assert_eq!(session_set_model_id_for("relay", "m2"), "m2");
+        assert_eq!(proxy_spawn_model("m2"), "m2");
+        assert_eq!(session_set_model_id_for("relay", "relay"), "m1");
+        assert_eq!(proxy_spawn_model("relay"), "m1");
+        assert_eq!(session_set_model_id_for("relay", ""), "m1");
+        assert_eq!(proxy_spawn_model(""), "m1");
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn proxy_readable_catalog_still_rejects_an_unlisted_model() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-proxy-listed-model-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = std::fs::create_dir_all(home.join("agent-home"));
+
+        seed_proxy_catalog(&quote(
+            r#"[{"id":"m1","name":"M1"},{"id":"m2","name":"M2"}]"#,
+        ));
+        let relay = proxy_channel();
+        assert!(!relay.model_catalog_corrupt);
+        assert_eq!(relay.models.len(), 2);
+
+        // Listed rows are still sent verbatim.
+        assert_eq!(session_set_model_id_for("relay", "m2"), "m2");
+        assert_eq!(spawn_model_for_provider("relay", "m2"), "m2");
+        assert_eq!(proxy_spawn_model("m2"), "m2");
+        // An id the readable catalog does not list never reaches the upstream;
+        // both paths take the same active row as the native proxy spawn.
+        assert_eq!(
+            session_set_model_id_for("relay", "m9"),
+            "m1",
+            "a readable catalog must not pass an unlisted id through"
+        );
+        assert_eq!(spawn_model_for_provider("relay", "m9"), "m1");
+        assert_eq!(proxy_spawn_model("m9"), "m1");
+        assert_eq!(session_set_model_id_for("relay", "relay"), "m1");
+        assert_eq!(proxy_spawn_model("relay"), "m1");
+        assert_eq!(session_set_model_id_for("relay", ""), "m1");
+        assert_eq!(proxy_spawn_model(""), "m1");
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn proxy_readable_catalog_without_the_channel_model_uses_the_first_row() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-proxy-channel-absent-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = std::fs::create_dir_all(home.join("agent-home"));
+
+        // Legacy channel model is no longer in the readable catalog.
+        seed_proxy_catalog_with_channel_model(
+            "legacy-channel",
+            &quote(r#"[{"id":"m2","name":"M2"},{"id":"m1","name":"M1"}]"#),
+        );
+        let relay = proxy_channel();
+        assert!(!relay.model_catalog_corrupt);
+        assert_eq!(relay.model, "legacy-channel");
+
+        for requested in ["", "legacy-channel", "m9"] {
+            assert_eq!(
+                session_set_model_id_for("relay", requested),
+                "m2",
+                "set_model must take the first row for `{requested}`"
+            );
+            assert_eq!(
+                proxy_spawn_model(requested),
+                "m2",
+                "the native proxy spawn must take the first row for `{requested}`"
+            );
+        }
+        assert_eq!(session_set_model_id_for("relay", "m1"), "m1");
+        assert_eq!(proxy_spawn_model("m1"), "m1");
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn corrupt_catalog_without_recovered_rows_creates_no_child_sections() {
+        for bad in [r#"[{"id":""},{"name":"no-id"}]"#, r#"[{"id":null}]"#, "[]"] {
+            let before = format!(
+                r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_models = {}
+"#,
+                quote(bad)
+            );
+            let once = sync_generic_model_sections_in_text(&before);
+            assert_eq!(
+                once, before,
+                "a catalog with no recovered row must not guess a child: {bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn corrupt_catalog_refreshes_channel_route_fields_on_existing_children() {
+        let before = r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://new.example/v1"
+app_upstream_base_url = "https://new-upstream.example/v1"
+api_key = "sk-test-new"
+name = "Relay"
+api_backend = "responses"
+app_provider_mode = "generic"
+app_models = "not-json"
+extra_headers = { "X-New" = "2" }
+supports_reasoning_effort = true
+
+[model.relay__m1]
+model = "m1"
+base_url = "https://old.example/v1"
+app_upstream_base_url = "https://old-upstream.example/v1"
+name = "Old One"
+api_key = "sk-test-old"
+api_backend = "chat_completions"
+context_window = 64000
+extra_headers = { "X-Old" = "1" }
+supports_reasoning_effort = false
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+app_note = "keep-me"
+
+[model.relay__m2]
+model = "m2"
+base_url = "https://old.example/v1"
+name = "Old Two"
+api_key = "sk-test-old"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+"#;
+        let once = sync_generic_model_sections_in_text(before);
+        let twice = sync_generic_model_sections_in_text(&once);
+        assert_eq!(once, twice, "route refresh must be idempotent:\n{twice}");
+
+        let ids: Vec<String> = parse_model_sections(&once)
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(
+            ids,
+            vec!["relay", "relay__m1", "relay__m2"],
+            "channels without a readable catalog must not create or drop children"
+        );
+        for id in ["relay__m1", "relay__m2"] {
+            assert_eq!(
+                field_of(&once, id, "base_url").as_deref(),
+                Some("https://new.example/v1")
+            );
+            assert_eq!(
+                field_of(
+                    &once,
+                    id,
+                    crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                )
+                .as_deref(),
+                Some("https://new-upstream.example/v1")
+            );
+            assert_eq!(
+                field_of(&once, id, "api_key").as_deref(),
+                Some("sk-test-new")
+            );
+            assert_eq!(
+                field_of(&once, id, "api_backend").as_deref(),
+                Some("responses")
+            );
+            assert_eq!(
+                field_of(&once, id, EXTRA_HEADERS_KEY).as_deref(),
+                Some(r#"{ "X-New" = "2" }"#)
+            );
+            assert_eq!(
+                field_of(&once, id, SUPPORTS_REASONING_EFFORT_KEY).as_deref(),
+                Some("true")
+            );
+            assert_eq!(
+                field_of(&once, id, APP_PROVIDER_MODE_KEY).as_deref(),
+                Some(PROVIDER_MODE_GENERIC)
+            );
+            assert_eq!(
+                field_of(&once, id, APP_PARENT_PROVIDER_KEY).as_deref(),
+                Some("relay")
+            );
+        }
+        assert_eq!(field_of(&once, "relay__m1", "model").as_deref(), Some("m1"));
+        assert_eq!(
+            field_of(&once, "relay__m1", "name").as_deref(),
+            Some("Old One")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "context_window").as_deref(),
+            Some("64000")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "app_note").as_deref(),
+            Some("keep-me")
+        );
+        assert_eq!(field_of(&once, "relay__m2", "model").as_deref(), Some("m2"));
+        assert_eq!(
+            field_of(&once, "relay__m2", "name").as_deref(),
+            Some("Old Two")
+        );
+        assert!(field_of(&once, "relay__m2", "context_window").is_none());
+        assert_eq!(get_models_default(&once).as_deref(), Some("relay"));
+    }
+
+    #[test]
+    fn explicit_empty_catalog_refreshes_children_and_drops_removed_channel_fields() {
+        let before = r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://new.example/v1"
+api_key = "sk-test-new"
+name = "Relay"
+app_provider_mode = "generic"
+app_models = "[]"
+
+[model.relay__m1]
+model = "m1"
+base_url = "https://old.example/v1"
+name = "Old One"
+api_key = "sk-test-old"
+api_backend = "responses"
+context_window = 64000
+app_upstream_base_url = "https://old-upstream.example/v1"
+extra_headers = { "X-Old" = "1" }
+supports_reasoning_effort = true
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+
+[model.relay__m2]
+model = "m2"
+base_url = "https://old.example/v1"
+name = "Old Two"
+api_key = "sk-test-old"
+api_backend = "responses"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+"#;
+        let once = sync_generic_model_sections_in_text(before);
+        let twice = sync_generic_model_sections_in_text(&once);
+        assert_eq!(once, twice, "route refresh must be idempotent:\n{twice}");
+
+        let ids: Vec<String> = parse_model_sections(&once)
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(ids, vec!["relay", "relay__m1", "relay__m2"]);
+        for id in ["relay__m1", "relay__m2"] {
+            assert_eq!(
+                field_of(&once, id, "base_url").as_deref(),
+                Some("https://new.example/v1")
+            );
+            assert_eq!(
+                field_of(&once, id, "api_key").as_deref(),
+                Some("sk-test-new")
+            );
+            assert_eq!(
+                field_of(&once, id, "api_backend").as_deref(),
+                Some("chat_completions"),
+                "a missing channel backend falls back to the default"
+            );
+            assert!(
+                field_of(
+                    &once,
+                    id,
+                    crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                )
+                .is_none(),
+                "a channel-level upstream removed from the parent must not linger on the child"
+            );
+            assert!(
+                field_of(&once, id, EXTRA_HEADERS_KEY).is_none(),
+                "a channel-level field removed from the parent must not linger on the child"
+            );
+            assert!(field_of(&once, id, SUPPORTS_REASONING_EFFORT_KEY).is_none());
+        }
+        assert_eq!(field_of(&once, "relay__m1", "model").as_deref(), Some("m1"));
+        assert_eq!(
+            field_of(&once, "relay__m1", "name").as_deref(),
+            Some("Old One")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m1", "context_window").as_deref(),
+            Some("64000")
+        );
+        assert_eq!(
+            field_of(&once, "relay__m2", "name").as_deref(),
+            Some("Old Two")
+        );
+
+        let listed = build_list_result(std::path::PathBuf::new(), std::path::PathBuf::new(), &once);
+        let relay = listed
+            .providers
+            .iter()
+            .find(|p| p.id == "relay")
+            .expect("relay provider");
+        assert!(
+            relay.models.is_empty(),
+            "app_models = [] stays an explicit clear"
+        );
     }
 
     #[test]
@@ -5662,5 +8400,226 @@ app_parent_provider = "proxy"
             None => std::env::remove_var("GROK_APP_HOME"),
         }
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    fn with_seeded_agent_home<T>(label: &str, config: &str, body: impl FnOnce() -> T) -> T {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!("grok-app-{label}-{}", uuid::Uuid::new_v4()));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = std::fs::create_dir_all(home.join("agent-home"));
+        std::fs::write(agent_config_toml(), config).expect("seed config");
+        let outcome = body();
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        outcome
+    }
+
+    fn sanitized_relay_config(port: u16) -> String {
+        format!(
+            r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "http://127.0.0.1:{port}/r/relay/v1"
+app_upstream_base_url = "https://opencode.ai/zen/go/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+
+[model.relay__m1]
+model = "m1"
+base_url = "http://127.0.0.1:{port}/r/relay/v1"
+app_upstream_base_url = "https://opencode.ai/zen/go/v1"
+name = "M1"
+api_key = "sk-test"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+app_parent_provider = "relay"
+"#
+        )
+    }
+
+    fn relay_upsert(base_url: &str, provider_mode: &str) -> UpsertProviderInput {
+        UpsertProviderInput {
+            id: "relay".into(),
+            model: "m1".into(),
+            base_url: base_url.into(),
+            name: Some("Relay".into()),
+            api_key: None,
+            api_backend: Some("chat_completions".into()),
+            provider_mode: Some(provider_mode.into()),
+            set_as_default: Some(false),
+            create_only: Some(false),
+            models: None,
+            efforts: None,
+            context_window: None,
+            base_url_full_path: None,
+            append_prompt: None,
+            supports_vision: None,
+            extra_headers: None,
+        }
+    }
+
+    #[test]
+    fn switching_a_sanitized_relay_to_a_direct_endpoint_drops_the_stale_upstream() {
+        let config = sanitized_relay_config(45_001);
+        with_seeded_agent_home("stale-upstream-switch", &config, || {
+            upsert_custom_provider(relay_upsert(
+                "https://api.openai.example/v1",
+                PROVIDER_MODE_GENERIC,
+            ))
+            .expect("upsert");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            for id in ["relay", "relay__m1"] {
+                assert_eq!(
+                    field_of(&after, id, "base_url").as_deref(),
+                    Some("https://api.openai.example/v1"),
+                    "`{id}` must point at the new endpoint:\n{after}"
+                );
+                assert!(
+                    field_of(
+                        &after,
+                        id,
+                        crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                    )
+                    .is_none(),
+                    "`{id}` must not keep the old sanitizer upstream:\n{after}"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn re_saving_the_local_proxy_keeps_the_real_upstream() {
+        let config = sanitized_relay_config(45_001);
+        with_seeded_agent_home("local-proxy-resave", &config, || {
+            upsert_custom_provider(relay_upsert(
+                "http://127.0.0.1:45002/r/relay/v1",
+                PROVIDER_MODE_GENERIC,
+            ))
+            .expect("upsert");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            for id in ["relay", "relay__m1"] {
+                assert_eq!(
+                    field_of(&after, id, "base_url").as_deref(),
+                    Some("http://127.0.0.1:45002/r/relay/v1")
+                );
+                assert_eq!(
+                    field_of(
+                        &after,
+                        id,
+                        crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                    )
+                    .as_deref(),
+                    Some("https://opencode.ai/zen/go/v1"),
+                    "`{id}` must keep the real upstream when only the proxy port moved:\n{after}"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn a_local_proxy_saved_without_a_prior_upstream_stores_no_upstream() {
+        let config = r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://api.openai.example/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+"#;
+        with_seeded_agent_home("local-proxy-no-upstream", config, || {
+            upsert_custom_provider(relay_upsert(
+                "http://127.0.0.1:45001/r/relay/v1",
+                PROVIDER_MODE_GENERIC,
+            ))
+            .expect("upsert");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            assert_eq!(
+                field_of(&after, "relay", "base_url").as_deref(),
+                Some("http://127.0.0.1:45001/r/relay/v1")
+            );
+            assert!(
+                field_of(
+                    &after,
+                    "relay",
+                    crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                )
+                .is_none(),
+                "a loopback base must not be recorded as its own upstream:\n{after}"
+            );
+        });
+    }
+
+    #[test]
+    fn native_proxy_upsert_drops_a_sanitizer_upstream_left_on_the_section() {
+        let config = sanitized_relay_config(45_001);
+        with_seeded_agent_home("native-proxy-upstream", &config, || {
+            upsert_custom_provider(relay_upsert(
+                "https://relay.example/v1",
+                PROVIDER_MODE_GROK_BUILD_PROXY,
+            ))
+            .expect("upsert");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            assert_eq!(
+                field_of(&after, "relay", "base_url").as_deref(),
+                Some("https://relay.example/v1")
+            );
+            assert!(
+                !after.contains(crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY),
+                "no section may keep the sanitizer upstream:\n{after}"
+            );
+        });
+    }
+
+    #[test]
+    fn sanitize_proxy_repair_drops_an_upstream_left_beside_a_direct_endpoint() {
+        let config = r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://api.openai.example/v1"
+app_upstream_base_url = "https://old-upstream.example/v1"
+api_key = "sk-test"
+name = "Relay"
+api_backend = "chat_completions"
+app_provider_mode = "generic"
+"#;
+        with_seeded_agent_home("repair-stale-upstream", config, || {
+            let repaired =
+                crate::relay_stream_proxy::repair_sanitize_proxy_bases().expect("repair");
+            assert!(repaired, "the stale upstream must be a repair");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            assert_eq!(
+                field_of(&after, "relay", "base_url").as_deref(),
+                Some("https://api.openai.example/v1")
+            );
+            assert!(
+                field_of(
+                    &after,
+                    "relay",
+                    crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY
+                )
+                .is_none(),
+                "repair must drop the upstream beside a direct endpoint:\n{after}"
+            );
+        });
     }
 }

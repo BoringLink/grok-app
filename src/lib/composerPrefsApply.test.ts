@@ -286,3 +286,172 @@ describe("resolveComposerPrefsSelection", () => {
     expect(fallback.effort).toBe("xhigh");
   });
 });
+
+describe("resolveComposerPrefsSelection with an explicitly cleared catalog", () => {
+  const cleared = {
+    id: "cleared",
+    model: "deepseek-chat",
+    baseUrl: "https://cleared.example/v1",
+    models: [],
+  };
+
+  it("does not seed the channel model for a chat without a model preference", () => {
+    // Arrange — the catalog was cleared, so the channel `model` is no row
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: null, effort: null, providerId: "cleared" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [cleared],
+    });
+
+    // Act / Assert — the official default and route, not the cleared channel
+    expect(next).toEqual({
+      modelId: "grok-4.7",
+      effort: "high",
+      providerId: null,
+    });
+  });
+
+  it("keeps a saved session's model even though its catalog was cleared", () => {
+    // Arrange — the session still routes on its preserved child section
+    const next = resolveComposerPrefsSelection({
+      prefs: {
+        modelId: "deepseek-reasoner",
+        effort: null,
+        providerId: "cleared",
+      },
+      catalog: GROK_BUILD_MODELS,
+      providers: [cleared],
+    });
+
+    // Act / Assert
+    expect(next).toEqual({ modelId: "deepseek-reasoner", effort: "high" });
+    // The session keeps its stored route, so no official override is issued.
+    expect(next.providerId).toBeUndefined();
+    // The chip has to route on that same id, not the cleared channel `model`.
+    const shown = resolveCustomRouteDisplay(cleared, next.modelId);
+    expect(shown?.chip.model).toBe("deepseek-reasoner");
+    expect(shown?.requestModel).toBe("deepseek-reasoner");
+  });
+
+  it("still seeds the channel model for a legacy provider with no catalog", () => {
+    // Arrange — no catalog at all is the legacy read, not a clear
+    const legacy = {
+      id: "legacy",
+      model: "llama3",
+      baseUrl: "https://legacy.example/v1",
+    };
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: null, effort: null, providerId: "legacy" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [legacy],
+    });
+
+    // Act / Assert
+    expect(next).toEqual({ modelId: "llama3", effort: "high" });
+    // A legacy provider that still lists a row keeps its own route.
+    expect(next.providerId).toBeUndefined();
+  });
+
+  it("leaves a deleted provider's chat on the official route", () => {
+    // Arrange — the chat remembers a provider the list no longer has
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: null, effort: null, providerId: "gone" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [cleared],
+    });
+
+    // Act / Assert — official model, and the route has to follow it
+    expect(next.modelId).toBe("grok-4.7");
+    expect(next.providerId).toBeNull();
+  });
+});
+
+describe("resolveComposerPrefsSelection with a corrupt catalog", () => {
+  const corrupt = {
+    id: "corrupt",
+    model: "m1",
+    baseUrl: "https://corrupt.example/v1",
+    modelCatalogCorrupt: true,
+    efforts: [
+      { id: "low", name: "low" },
+      { id: "high", name: "high", isDefault: true },
+    ],
+    models: [
+      {
+        id: "m1",
+        name: "M1",
+        efforts: [{ id: "max", name: "max", isDefault: true }],
+      },
+    ],
+  };
+
+  it("keeps a saved model id the partial read no longer lists", () => {
+    // Arrange — the session still has its own generic child section
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: "m2", effort: null, providerId: "corrupt" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [corrupt],
+    });
+
+    // Act / Assert — m2 routes, with the channel ladder, not m1's `max`
+    expect(next).toEqual({ modelId: "m2", effort: "high" });
+    const shown = resolveCustomRouteDisplay(corrupt, next.modelId);
+    expect(shown?.chip).toEqual({ name: "m2", model: "m2" });
+    expect(shown?.requestModel).toBe("m2");
+  });
+
+  it("labels a model the recovered rows still list", () => {
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: "m1", effort: "max", providerId: "corrupt" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [corrupt],
+    });
+
+    expect(next).toEqual({ modelId: "m1", effort: "max" });
+    const shown = resolveCustomRouteDisplay(corrupt, next.modelId);
+    expect(shown?.chip).toEqual({ name: "M1", model: "m1" });
+    expect(shown?.requestModel).toBe("m1");
+  });
+
+  it("leaves an unknown id on a readable catalog on the channel model", () => {
+    // Arrange — the same rows, but the catalog itself is readable
+    const readable = { ...corrupt, modelCatalogCorrupt: false };
+
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: "m2", effort: null, providerId: "corrupt" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [readable],
+    });
+
+    // Act / Assert — the existing fallback still applies
+    expect(next.modelId).toBe("m1");
+    expect(resolveCustomRouteDisplay(readable, "m2")?.requestModel).toBe("m1");
+  });
+
+  it("keeps the existing fallback when there is no stored model", () => {
+    // Arrange — nothing was saved, so there is no session id to preserve
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: null, effort: null, providerId: "corrupt" },
+      catalog: GROK_BUILD_MODELS,
+      providers: [corrupt],
+    });
+
+    // Act / Assert — the recovered row, not a fabricated selection
+    expect(next).toEqual({ modelId: "m1", effort: "max" });
+    // A recovered row is still a custom model, so the route stays custom.
+    expect(next.providerId).toBeUndefined();
+    expect(resolveCustomRouteDisplay(corrupt, next.modelId)?.requestModel).toBe(
+      "m1",
+    );
+  });
+
+  it("does not affect official prefs", () => {
+    const next = resolveComposerPrefsSelection({
+      prefs: { modelId: "grok-4.5", effort: "low", providerId: null },
+      catalog: GROK_BUILD_MODELS,
+      providers: [corrupt],
+    });
+
+    expect(next).toEqual({ modelId: "grok-4.5", effort: "low" });
+  });
+});

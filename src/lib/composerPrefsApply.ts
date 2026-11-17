@@ -26,7 +26,7 @@ export type ComposerPrefsSelectionInput = {
 
 export type ComposerPrefsProvider = Pick<
   CustomProvider,
-  "id" | "model" | "models" | "efforts" | "baseUrl"
+  "id" | "model" | "models" | "efforts" | "baseUrl" | "modelCatalogCorrupt"
 > & {
   /** Missing means generic. Every catalog id is selectable (#1394). */
   providerMode?: CustomProvider["providerMode"];
@@ -37,8 +37,13 @@ function isCustomProviderId(providerId: string | null | undefined): boolean {
   return id.length > 0 && id.toLowerCase() !== "official";
 }
 
+/**
+ * Selectable rows for one provider. A host that sends `models` owns the list,
+ * and `[]` is an explicit clear (BOR-152); only a missing catalog keeps the
+ * legacy channel `model` row.
+ */
 function providerModelList(provider: ComposerPrefsProvider) {
-  if (provider.models?.length) return provider.models;
+  if (provider.models != null) return provider.models;
   const configured = provider.model?.trim() ?? "";
   return configured ? [{ id: configured, name: configured }] : [];
 }
@@ -80,14 +85,32 @@ function draftModelIdIsKnown(
   return providerModelList(provider).some((m) => m.id === modelId);
 }
 
+/**
+ * A saved model id that a corrupt catalog's partial read no longer lists.
+ * The host keeps the session's generic child section, so the stored id is
+ * still routable and must not be replaced by the channel `model` (BOR-152).
+ */
+function keepsUnlistedModelOnCorrupt(
+  provider: ComposerPrefsProvider,
+  storedModel: string,
+): boolean {
+  if (provider.modelCatalogCorrupt !== true || !storedModel) return false;
+  return !providerModelList(provider).some((m) => m.id === storedModel);
+}
+
 function resolvedCustomModel(
   provider: ComposerPrefsProvider,
   storedModel: string,
 ): string {
   const selectable = providerModelList(provider);
+  // An explicitly cleared catalog keeps the child sections older sessions
+  // still route on, so a saved pick survives; a chat without one falls
+  // through to the official default instead of the cleared channel `model`.
+  if (provider.models?.length === 0) return storedModel;
   if (storedModel && selectable.some((m) => m.id === storedModel)) {
     return storedModel;
   }
+  if (keepsUnlistedModelOnCorrupt(provider, storedModel)) return storedModel;
   return provider.model?.trim() || selectable[0]?.id || "";
 }
 
@@ -100,7 +123,15 @@ function customSelection(
   if (!nextModelId) return null;
   const efforts = effortOptionsFromProvider(
     resolveProviderEfforts(
-      { ...provider, baseUrl: provider.baseUrl ?? "" },
+      {
+        ...provider,
+        baseUrl: provider.baseUrl ?? "",
+        // An id the partial read omits has no row of its own; keep the
+        // channel ladder instead of borrowing another row's efforts.
+        models: keepsUnlistedModelOnCorrupt(provider, storedModel)
+          ? []
+          : provider.models,
+      },
       nextModelId,
     ),
   );
@@ -109,6 +140,16 @@ function customSelection(
     effort: pickEffort(effort, efforts),
   };
 }
+
+export type ComposerPrefsSelection = {
+  modelId: string;
+  effort: string;
+  /**
+   * Route override for the composer chip. `null` means the official route;
+   * `undefined` means the caller keeps the route it already paints.
+   */
+  providerId?: string | null;
+};
 
 export function resolveComposerPrefsSelection(opts: {
   prefs: ComposerPrefsSelectionInput;
@@ -120,7 +161,7 @@ export function resolveComposerPrefsSelection(opts: {
    * the model back to the default. The provider is already restored this way.
    */
   draft?: ComposerPrefsDraftPick | null;
-}): { modelId: string; effort: string } {
+}): ComposerPrefsSelection {
   const catalog = opts.catalog.length > 0 ? opts.catalog : GROK_BUILD_MODELS;
   const providers = opts.providers ?? [];
   const providerId = opts.prefs.providerId?.trim() ?? "";
@@ -173,9 +214,13 @@ export function resolveComposerPrefsSelection(opts: {
     } else {
       const picked = customSelection(provider, storedModel, opts.prefs.effort);
       if (picked) return picked;
+      // Nothing on this provider is selectable, so the official route has to
+      // take over; otherwise the chip paints official while the send still
+      // routes to the provider (BOR-152).
       return {
         modelId: pickDefaultModelId(catalog),
         effort: pickEffort(opts.prefs.effort, null),
+        providerId: null,
       };
     }
   }
@@ -187,5 +232,6 @@ export function resolveComposerPrefsSelection(opts: {
   return {
     modelId: nextModelId,
     effort: pickEffort(opts.prefs.effort, findModel(nextModelId, catalog)),
+    ...(isCustomProviderId(providerId) ? { providerId: null } : {}),
   };
 }

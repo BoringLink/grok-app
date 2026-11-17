@@ -151,26 +151,15 @@ pub async fn providers_upsert(
         if crate::providers::normalize_backend(api_backend.as_deref()) != "responses" {
             return Err("grok_build_proxy requires api_backend=responses".into());
         }
-        let normalized_base = crate::providers::normalize_openai_base_url(
-            &base_url,
-            "responses",
-            base_url_full_path.unwrap_or_else(|| {
-                crate::providers::provider_base_url_full_path_for_id(&id)
-            }),
-        );
-        let remote = crate::providers::list_remote_models(
-            normalized_base,
+        check_grok_build_proxy_live_models(
+            id.clone(),
+            model.clone(),
+            base_url.clone(),
             api_key.clone(),
-            Some(id.clone()),
+            base_url_full_path,
+            models.clone(),
         )
         .await?;
-        let selected = models.clone().unwrap_or_else(|| {
-            vec![crate::providers::ProviderModelEntry::named(
-                model.clone(),
-                model.clone(),
-            )]
-        });
-        crate::providers::validate_grok_build_proxy_models(&remote.models, &selected)?;
     }
     let set_default_flag = set_as_default.unwrap_or(false);
     let mutated_id = id.clone();
@@ -233,6 +222,54 @@ pub async fn providers_upsert(
         mgr.recycle_all_agents(&app, "provider_route").await;
     }
     Ok(result)
+}
+
+/// Live `/models` gate for a grok-build-proxy upsert.
+///
+/// Reads the stored catalog so an unchanged, unreadable, or explicitly cleared
+/// one is not re-checked through the channel `model`. `Some([])` on an existing
+/// section is the explicit clear and passes without a request; a create with no
+/// rows is rejected before the round-trip instead of fetching `/models` to
+/// discover the same thing.
+async fn check_grok_build_proxy_live_models(
+    id: String,
+    model: String,
+    base_url: String,
+    api_key: Option<String>,
+    base_url_full_path: Option<bool>,
+    models: Option<Vec<crate::providers::ProviderModelEntry>>,
+) -> Result<(), String> {
+    let provider_id = id.clone();
+    let stored_catalog = tauri::async_runtime::spawn_blocking(move || {
+        crate::providers::stored_provider_model_catalog(&provider_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if !crate::providers::grok_build_proxy_upsert_needs_live_models(
+        models.as_deref(),
+        stored_catalog.as_ref(),
+    ) {
+        return Ok(());
+    }
+    if stored_catalog.is_none() && models.as_deref().is_some_and(|rows| rows.is_empty()) {
+        return Err("grok_build_proxy requires at least one model".into());
+    }
+    let normalized_base = crate::providers::normalize_openai_base_url(
+        &base_url,
+        "responses",
+        base_url_full_path.unwrap_or_else(|| {
+            crate::providers::provider_base_url_full_path_for_id(&id)
+        }),
+    );
+    let remote =
+        crate::providers::list_remote_models(normalized_base, api_key, Some(id)).await?;
+    let selected = models.unwrap_or_else(|| {
+        vec![crate::providers::ProviderModelEntry::named(
+            model.clone(),
+            model.clone(),
+        )]
+    });
+    crate::providers::validate_grok_build_proxy_models(&remote.models, &selected)
 }
 
 #[tauri::command]
@@ -613,5 +650,90 @@ mod project_inspect_tests {
         );
         assert_eq!(out["skills"]["total"], 0);
         assert_eq!(out["error"], "Grok Build CLI not found");
+    }
+}
+
+#[cfg(test)]
+mod grok_build_proxy_gate_tests {
+    use super::check_grok_build_proxy_live_models;
+
+    fn proxy_config(app_models_json: &str) -> String {
+        let quoted =
+            serde_json::to_string(app_models_json).expect("quote app_models for TOML");
+        format!(
+            "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-test-relay\"
+api_backend = \"responses\"
+app_provider_mode = \"grok_build_proxy\"
+app_models = {quoted}
+"
+        )
+    }
+
+    fn with_app_home<T>(config_toml: Option<&str>, run: impl FnOnce() -> T) -> T {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-proxy-gate-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+        if let Some(text) = config_toml {
+            let dir = home.join("agent-home");
+            std::fs::create_dir_all(&dir).expect("agent home");
+            std::fs::write(dir.join("config.toml"), text).expect("config.toml");
+        }
+        let out = run();
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        out
+    }
+
+    fn gate(models: Option<Vec<crate::providers::ProviderModelEntry>>) -> Result<(), String> {
+        tauri::async_runtime::block_on(check_grok_build_proxy_live_models(
+            "relay".into(),
+            "m1".into(),
+            "https://relay.example/v1".into(),
+            Some("sk-test-relay".into()),
+            None,
+            models,
+        ))
+    }
+
+    #[test]
+    fn explicit_clear_on_an_existing_proxy_skips_the_live_gate() {
+        let config = proxy_config(r#"[{"id":"m1","name":"M1"}]"#);
+        let outcome = with_app_home(Some(&config), || gate(Some(Vec::new())));
+        assert_eq!(outcome, Ok(()));
+    }
+
+    #[test]
+    fn unchanged_corrupt_catalog_skips_the_live_gate_and_the_clear_still_passes() {
+        let config = proxy_config("{not json");
+        let outcome = with_app_home(Some(&config), || {
+            (gate(None), gate(Some(Vec::new())))
+        });
+        assert_eq!(outcome, (Ok(()), Ok(())));
+    }
+
+    #[test]
+    fn explicit_clear_on_create_still_requires_one_model() {
+        let outcome = with_app_home(None, || gate(Some(Vec::new())));
+        assert_eq!(
+            outcome.unwrap_err(),
+            "grok_build_proxy requires at least one model"
+        );
     }
 }

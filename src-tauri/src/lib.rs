@@ -164,6 +164,7 @@ mod workspace_store;
 mod workspace_sandbox;
 
 mod provider_headers;
+mod provider_model_profile;
 
 mod providers;
 

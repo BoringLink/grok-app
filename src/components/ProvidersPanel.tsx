@@ -14,12 +14,17 @@ import {
 import * as api from "@/lib/api";
 import {
   asFormModel,
+  blankModelIdIndex,
   toFormEfforts,
   ccSwitchStatusKey,
   emptyForm,
   effortsFromProvider,
   formFromPreset,
+  formModelsPayload,
   hostOf,
+  isModelCatalogLocked,
+  keepsStoredChannel,
+  modelsForProviderSave,
   modelsFromProvider,
   type FormState,
   type RightMode,
@@ -273,6 +278,18 @@ export function ProvidersPanel({
   }, [reload]);
 
   const providers = list?.providers ?? [];
+  const isCreate = rightMode === "create" || !editingId;
+  const targetProviderId =
+    editingId ?? slugifyProviderId(form.id || form.name || form.baseUrl);
+  const targetProvider = targetProviderId
+    ? providers.find((p) => p.id === targetProviderId)
+    : undefined;
+  const modelCatalogCorrupt = !!targetProvider?.modelCatalogCorrupt;
+  const modelSettingsLocked = isModelCatalogLocked({
+    stored: targetProvider,
+    isCreate,
+    formModels: form.models,
+  });
   const activeSource = list?.activeSource ?? "official";
   const activeProviderId = list?.activeProviderId ?? null;
   const officialActive = activeSource === "official";
@@ -582,27 +599,32 @@ export function ProvidersPanel({
       setHintTone("err");
       return;
     }
-    const models = form.models
-      .map((m) => ({
-        id: m.id.trim(),
-        name: m.name.trim() || m.id.trim(),
-        contextWindow: m.contextWindow ?? null,
-        supportsVision: m.supportsVision,
-        supportsVideo: m.supportsVideo,
-        efforts: (m.efforts ?? [])
-          .map((e) => ({
-            id: e.id.trim(),
-            name: e.name.trim() || e.id.trim(),
-            isDefault: !!e.isDefault,
-          }))
-          .filter((e) => e.id),
-      }))
-      .filter((m) => m.id);
-    if (models.length === 0) {
+    if (blankModelIdIndex(form.models) >= 0) {
+      setHint(tr("prov.err.modelIdRequired"));
+      setHintTone("err");
+      return;
+    }
+    const id =
+      editingId ??
+      (slugifyProviderId(form.id || form.name || form.baseUrl) ||
+        `provider-${Date.now().toString(36)}`);
+    // Create flow: always use the form catalog (first model). Never reuse a
+    // ghost list entry's active model after delete+re-add with the same id.
+    const existing = list?.providers.find((p) => p.id === id);
+    const models = formModelsPayload(form.models);
+    if (models.length === 0 && isCreate) {
       setHint(tr("prov.err.needModel"));
       setHintTone("err");
       return;
     }
+    // Omit `models` unless the catalog changed: for an unreadable stored value
+    // the rows above are only the read fallback, and resending them would
+    // overwrite the original `app_models` text. A create collision re-adds an
+    // existing id, so it only overwrites the catalog when the preset differs.
+    const modelsToSave = modelsForProviderSave({
+      formModels: form.models,
+      stored: existing,
+    });
     let fallbackEfforts = form.efforts
       .map((e) => ({
         id: e.id.trim(),
@@ -625,38 +647,40 @@ export function ProvidersPanel({
     setBusy(true);
     setHint(tr("prov.saving"));
     setHintTone("muted");
-    const isCreate = rightMode === "create" || !editingId;
-    const id =
-      editingId ??
-      (slugifyProviderId(form.id || form.name || form.baseUrl) ||
-        `provider-${Date.now().toString(36)}`);
-    // Create flow: always use the form catalog (first model). Never reuse a
-    // ghost list entry's active model after delete+re-add with the same id.
-    const existing = list?.providers.find((p) => p.id === id);
-    const preferred =
-      !isCreate &&
-      existing?.model &&
-      models.some((m) => m.id === existing.model)
-        ? existing.model
-        : models[0].id;
-    const applied = materializeActiveModelChannel({
-      provider: {
-        id,
-        model: preferred,
-        baseUrl: form.baseUrl.trim(),
-        name: form.name.trim() || id,
-        hasApiKey: true,
-        apiBackend: form.apiBackend,
-        providerMode: form.providerMode,
-        isDefault: false,
-        models,
-        efforts: fallbackEfforts,
-        contextWindow: form.contextWindow,
-        supportsVision: form.supportsVision,
-      },
-      modelId: preferred,
-      models,
+    // An unreadable catalog that this save leaves on disk: the visible rows are
+    // recovery results, so the channel keeps its stored model and metadata.
+    const keepStoredChannel = keepsStoredChannel({
+      stored: existing,
+      modelsToSave,
     });
+    const storedModel = existing?.model?.trim() ?? "";
+    const reuseStoredModel =
+      storedModel !== "" &&
+      (keepStoredChannel ||
+        (!isCreate && models.some((m) => m.id === storedModel)));
+    const preferred = reuseStoredModel
+      ? storedModel
+      : models[0]?.id || storedModel || id;
+    const applied = keepStoredChannel
+      ? null
+      : materializeActiveModelChannel({
+          provider: {
+            id,
+            model: preferred,
+            baseUrl: form.baseUrl.trim(),
+            name: form.name.trim() || id,
+            hasApiKey: true,
+            apiBackend: form.apiBackend,
+            providerMode: form.providerMode,
+            isDefault: false,
+            models,
+            efforts: fallbackEfforts,
+            contextWindow: form.contextWindow,
+            supportsVision: form.supportsVision,
+          },
+          modelId: preferred,
+          models,
+        });
     const payload = {
       id,
       model: preferred,
@@ -666,17 +690,17 @@ export function ProvidersPanel({
       apiBackend: form.apiBackend,
       providerMode: form.providerMode,
       setAsDefault: false as boolean,
-      models,
-      efforts: applied.efforts ?? fallbackEfforts,
+      models: modelsToSave,
+      efforts: applied?.efforts ?? fallbackEfforts,
       baseUrlFullPath: form.baseUrlFullPath,
       // Always sent: "" clears the channel rules, so an emptied box sticks.
       appendPrompt: form.appendPrompt.trim(),
-      supportsVision: applied.supportsVision,
+      supportsVision: applied?.supportsVision ?? form.supportsVision,
       extraHeaders: form.extraHeaders
         .map((h) => ({ name: h.name.trim(), value: h.value.trim() }))
         .filter((h) => h.name && h.value),
       contextWindow:
-        applied.contextWindow != null && applied.contextWindow > 0
+        applied?.contextWindow != null && applied.contextWindow > 0
           ? applied.contextWindow
           : !isCreate &&
               existing?.contextWindow != null &&
@@ -1720,6 +1744,12 @@ export function ProvidersPanel({
                     </button>
                   </span>
 
+                  {modelCatalogCorrupt ? (
+                    <p className="prov-field__hint">
+                      {tr("prov.modelsCorrupt")}
+                    </p>
+                  ) : null}
+
                   {remoteModels.length > 0 ? (
                     <div className="prov-models__remote">
                       <div className="prov-models__remote-label">
@@ -1909,7 +1939,7 @@ export function ProvidersPanel({
                               onClick={() => setModelSettingsIndex(index)}
                               aria-label={tr("prov.modelSettings")}
                               title={tr("prov.modelSettings")}
-                              disabled={busy}
+                              disabled={busy || modelSettingsLocked}
                             >
                               <IconSettings size={15} />
                             </button>
@@ -2229,7 +2259,11 @@ export function ProvidersPanel({
       </GlassModal>
 
       <ProviderModelSettingsModal
-        open={modelSettingsIndex != null && !!form.models[modelSettingsIndex]}
+        open={
+          !modelSettingsLocked &&
+          modelSettingsIndex != null &&
+          !!form.models[modelSettingsIndex]
+        }
         locale={locale}
         model={
           modelSettingsIndex != null
@@ -2246,7 +2280,7 @@ export function ProvidersPanel({
         onClose={() => setModelSettingsIndex(null)}
         onSave={(next) => {
           const index = modelSettingsIndex;
-          if (index == null) return;
+          if (index == null || modelSettingsLocked) return;
           setForm((f) => ({
             ...f,
             models: f.models.map((row, i) =>
