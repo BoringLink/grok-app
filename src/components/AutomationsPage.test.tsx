@@ -170,6 +170,45 @@ describe("AutomationsPage route controls", () => {
     ).toHaveTextContent(/Same title · .*#111111/);
   });
 
+  it("does not offer official effort choices for a custom model that rejects reasoning", async () => {
+    const noThink = {
+      ...relay,
+      model: "no-think",
+      models: [
+        {
+          id: "no-think",
+          name: "No think",
+          supportsReasoningEffort: false,
+          efforts: [],
+        },
+      ],
+    };
+    renderPage({
+      providers: [noThink],
+      defaultProviderId: noThink.id,
+      defaultModelId: noThink.model,
+      defaultEffort: "high",
+    });
+    await openCreate();
+
+    expect(await screen.findByText("composer.effortUnavailable")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "automations.field.effort" }),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("automations.field.titlePh"), {
+      target: { value: "No-think task" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("automations.field.promptPh"), {
+      target: { value: "Run without an effort" },
+    });
+    submitForm("automations.create");
+    await waitFor(() =>
+      expect(api.automationCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ effort: null }),
+      ),
+    );
+  });
+
   it("starts a new task on the active custom provider", async () => {
     renderPage({
       providers: [relay],

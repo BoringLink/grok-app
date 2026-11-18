@@ -2,6 +2,8 @@
 
 **交接时间**：2026-08-22 · **基线**：`main` @ `fae9b545`（干净，与 `origin/main` 一致） · **来源**：software-design-philosophy review
 
+**行数规则变更（2026-11-17）**：本文中的 `files_ge_1000` 阈值仅记录当时计划背景，现已不作为 lint 或 CI 阻断条件；脚本保留计数 telemetry。App shell + AppWorkbench 的增长冻结规则仍有效。
+
 **执行位置**：worktree `D:/code/grok-app-appworkbench-decomp` · 分支 `refactor/appworkbench-decomposition`
 
 ## 现状（已核实的事实）

@@ -1341,6 +1341,13 @@ pub fn migrate_legacy_locale_default(stored: Option<&str>) -> Option<String> {
 
 pub const DEFAULT_OFFICIAL_EFFORT: &str = "xhigh";
 
+fn is_official_composer_route(provider_id: Option<&str>) -> bool {
+    provider_id
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .is_none_or(|id| id.eq_ignore_ascii_case("official"))
+}
+
 fn official_route_should_default_xhigh(model_id: Option<&str>) -> bool {
     match model_id.map(str::trim).filter(|s| !s.is_empty()) {
         None => true,
@@ -1360,11 +1367,12 @@ pub fn migrate_official_effort_to_xhigh(stored: Option<&str>) -> Option<String> 
 /// Session / project row: lift `high` → `xhigh` only for official 4.6 (or
 /// inherited global official 4.6). grok-4.5 and custom ids stay put.
 pub fn row_should_lift_official_high_to_xhigh(
+    provider_id: Option<&str>,
     row_model_id: Option<&str>,
     row_effort: Option<&str>,
     global_model_id: Option<&str>,
 ) -> bool {
-    if row_effort.map(str::trim) != Some("high") {
+    if !is_official_composer_route(provider_id) || row_effort.map(str::trim) != Some("high") {
         return false;
     }
     match row_model_id.map(str::trim).filter(|s| !s.is_empty()) {
@@ -1378,6 +1386,7 @@ fn migrate_official_effort_xhigh_rows(global_model_id: Option<&str>) {
     if let Err(e) = update_sessions_index(|sessions| {
         for s in sessions {
             if row_should_lift_official_high_to_xhigh(
+                s.provider_id.as_deref(),
                 s.model_id.as_deref(),
                 s.effort.as_deref(),
                 global_model_id,
@@ -1393,6 +1402,7 @@ fn migrate_official_effort_xhigh_rows(global_model_id: Option<&str>) {
     let mut projects_changed = false;
     for p in &mut projects {
         if row_should_lift_official_high_to_xhigh(
+            None,
             p.model_id.as_deref(),
             p.effort.as_deref(),
             global_model_id,
@@ -1410,7 +1420,10 @@ fn migrate_official_effort_xhigh_rows(global_model_id: Option<&str>) {
 
 /// Clamp a remembered effort to the catalog of the resolved model.
 /// grok-4.5 has no xhigh → high. Unknown / custom catalogs are left alone.
-pub fn clamp_effort_for_model(model_id: &str, effort: &str) -> String {
+pub fn clamp_effort_for_model(provider_id: Option<&str>, model_id: &str, effort: &str) -> String {
+    if !is_official_composer_route(provider_id) {
+        return effort.to_string();
+    }
     let allowed: &[&str] = match model_id.trim() {
         "grok-4.5" => &["low", "medium", "high"],
         "" | "grok-4.6" => &["low", "medium", "high", "xhigh"],
@@ -1992,6 +2005,7 @@ pub fn load_sessions_index() -> Vec<SessionMeta> {
     list
 }
 
+#[cfg(test)]
 pub fn save_sessions_index(list: &[SessionMeta]) -> Result<(), String> {
     write_json(&sessions_index_file(), &list)
 }
@@ -2161,12 +2175,8 @@ fn clear_agent_session_id(list: &mut [SessionMeta], id: &str) -> bool {
 /// `session/load` restores process-level model/effort from the old CLI journal,
 /// overriding new `--model` / `--reasoning-effort` spawn flags.
 pub fn clear_session_agent_session_id(id: &str) -> Result<bool, String> {
-    let mut list = load_sessions_index();
-    let changed = clear_agent_session_id(&mut list, id);
-    if changed {
-        save_sessions_index(&list)?;
-    }
-    Ok(changed)
+    let id = id.to_string();
+    update_sessions_index(move |list| Ok(clear_agent_session_id(list, &id)))
 }
 
 pub fn delete_session(id: &str) -> Result<(), String> {
@@ -3373,6 +3383,12 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
     let (g_model, g_effort, g_mode, g_policy) = global_prefs(&settings);
 
     let sess = session_id.and_then(|id| load_sessions_index().into_iter().find(|s| s.id == id));
+    let transient_plan_mode = sess.as_ref().is_some_and(|session| {
+        session
+            .mode
+            .as_deref()
+            .is_some_and(|mode| mode.trim().eq_ignore_ascii_case("plan"))
+    });
     // A chat that already chose a model keeps it across restart, whatever the
     // memory scope says. Chats that never chose one still follow the scope.
     let session_model = sess
@@ -3494,16 +3510,16 @@ pub fn resolve_composer_prefs(project_id: Option<&str>, session_id: Option<&str>
         prefs.model_id = m;
     }
     prefs.provider_id = session_provider;
-    prefs.effort = clamp_effort_for_model(&prefs.model_id, &prefs.effort);
+    if transient_plan_mode {
+        prefs.mode = "plan".into();
+    }
+    prefs.effort =
+        clamp_effort_for_model(prefs.provider_id.as_deref(), &prefs.model_id, &prefs.effort);
     prefs
 }
 
 /// Plan mode is a **transient, per-session** state, never a sticky default.
-///
-/// It used to be persisted like any other mode, so a single `/plan` wrote
-/// `mode: "plan"` into global settings and every later session started in plan
-/// mode. Session scope may still record it (that session really is planning);
-/// global / project defaults drop it.
+/// Global / project scopes store it on the selected session row only.
 fn sticky_mode(mode: Option<String>) -> Option<String> {
     match mode {
         Some(m) if m.trim().eq_ignore_ascii_case("plan") => None,
@@ -3548,7 +3564,10 @@ pub fn fallback_sessions_for_provider(
 }
 
 /// Persist a provider identity on an existing session row.
-fn save_provider_on_session(session_id: Option<&str>, provider_id: String) -> Result<(), String> {
+pub(crate) fn save_provider_on_session(
+    session_id: Option<&str>,
+    provider_id: String,
+) -> Result<(), String> {
     let Some(sid) = session_id.filter(|s| !s.is_empty()) else {
         return Ok(());
     };
@@ -3607,6 +3626,38 @@ fn save_effort_on_session(
     })
 }
 
+fn persist_transient_session_mode(
+    session_id: Option<&str>,
+    mode: Option<&str>,
+) -> Result<(), String> {
+    let (Some(session_id), Some(mode)) = (
+        session_id.map(str::trim).filter(|id| !id.is_empty()),
+        mode.map(str::trim).filter(|mode| !mode.is_empty()),
+    ) else {
+        return Ok(());
+    };
+    let is_plan = mode.eq_ignore_ascii_case("plan");
+    update_sessions_index(|sessions| {
+        let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) else {
+            return Ok(false);
+        };
+        if is_plan {
+            session.mode = Some("plan".into());
+        } else if session
+            .mode
+            .as_deref()
+            .is_some_and(|stored| stored.trim().eq_ignore_ascii_case("plan"))
+        {
+            session.mode = None;
+        } else {
+            return Ok(false);
+        }
+        session.updated_at = Utc::now();
+        Ok(true)
+    })?;
+    Ok(())
+}
+
 /// Persist a partial composer prefs update at the configured scope.
 pub fn save_composer_prefs(
     project_id: Option<&str>,
@@ -3657,13 +3708,14 @@ pub fn save_composer_prefs(
             if let Some(v) = effort {
                 s.effort = Some(v);
             }
-            if let Some(v) = sticky_mode(mode) {
+            if let Some(v) = sticky_mode(mode.clone()) {
                 s.mode = v;
             }
             if let Some(v) = permission_policy {
                 s.permission_policy = v;
             }
             save_settings(&s)?;
+            persist_transient_session_mode(session_id, mode.as_deref())?;
         }
         ComposerPrefsScope::Project => {
             let pid = project_id.filter(|s| !s.is_empty());
@@ -3693,13 +3745,14 @@ pub fn save_composer_prefs(
             if let Some(v) = effort {
                 s.effort = Some(v);
             }
-            if let Some(v) = sticky_mode(mode) {
+            if let Some(v) = sticky_mode(mode.clone()) {
                 s.mode = v;
             }
             if let Some(v) = permission_policy {
                 s.permission_policy = v;
             }
             save_settings(&s)?;
+            persist_transient_session_mode(session_id, mode.as_deref())?;
         }
         ComposerPrefsScope::Session => {
             let sid = session_id.filter(|s| !s.is_empty());
@@ -3918,6 +3971,44 @@ mod tests {
         assert_eq!(non_plan_mode("PLAN"), "agent");
         assert_eq!(non_plan_mode("agent"), "agent");
         assert_eq!(non_plan_mode("ask"), "ask");
+    }
+
+    #[test]
+    fn plan_mode_is_kept_on_a_session_without_becoming_a_global_default() {
+        with_temp_app_home("plan-mode-session", |_| {
+            let mut settings = load_settings();
+            settings.composer_prefs_scope = "global".into();
+            settings.mode = "agent".into();
+            save_settings(&settings).expect("seed global mode");
+            let session =
+                create_session(None, Some("Plan chat".into()), false).expect("create session");
+
+            save_composer_prefs(
+                None,
+                Some(&session.id),
+                None,
+                None,
+                Some("plan".into()),
+                None,
+                None,
+            )
+            .expect("save transient plan mode");
+
+            assert_eq!(resolve_composer_prefs(None, Some(&session.id)).mode, "plan");
+            assert_eq!(load_settings().mode, "agent");
+
+            save_composer_prefs(
+                None,
+                Some(&session.id),
+                None,
+                None,
+                Some("ask".into()),
+                None,
+                None,
+            )
+            .expect("clear transient plan mode");
+            assert_eq!(resolve_composer_prefs(None, Some(&session.id)).mode, "ask");
+        });
     }
 
     #[test]
@@ -4246,26 +4337,31 @@ mod tests {
     #[test]
     fn official_effort_row_lift_skips_4_5_and_custom() {
         assert!(row_should_lift_official_high_to_xhigh(
+            None,
             Some("grok-4.6"),
             Some("high"),
             Some("grok-4.6"),
         ));
         assert!(row_should_lift_official_high_to_xhigh(
             None,
+            None,
             Some("high"),
             Some("grok-4.6"),
         ));
         assert!(!row_should_lift_official_high_to_xhigh(
+            None,
             Some("grok-4.5"),
             Some("high"),
             Some("grok-4.6"),
         ));
         assert!(!row_should_lift_official_high_to_xhigh(
             Some("my-relay"),
+            Some("grok-4.6"),
             Some("high"),
             Some("grok-4.6"),
         ));
         assert!(!row_should_lift_official_high_to_xhigh(
+            None,
             Some("grok-4.6"),
             Some("low"),
             Some("grok-4.6"),
@@ -4273,15 +4369,18 @@ mod tests {
     }
 
     #[test]
-    fn clamp_effort_drops_xhigh_on_4_5() {
-        assert_eq!(clamp_effort_for_model("grok-4.5", "xhigh"), "high");
-        assert_eq!(clamp_effort_for_model("grok-4.6", "xhigh"), "xhigh");
-        assert_eq!(clamp_effort_for_model("grok-4.7", "xhigh"), "xhigh");
+    fn clamp_effort_drops_xhigh_on_official_4_5_only() {
+        assert_eq!(clamp_effort_for_model(None, "grok-4.5", "xhigh"), "high");
+        assert_eq!(clamp_effort_for_model(None, "grok-4.6", "xhigh"), "xhigh");
+        assert_eq!(clamp_effort_for_model(None, "grok-4.7", "xhigh"), "xhigh");
         assert_eq!(
-            clamp_effort_for_model("grok-4.7-build-fast", "xhigh"),
+            clamp_effort_for_model(None, "grok-4.7-build-fast", "xhigh"),
             "xhigh"
         );
-        assert_eq!(clamp_effort_for_model("custom-relay", "xhigh"), "xhigh");
+        assert_eq!(
+            clamp_effort_for_model(Some("relay"), "grok-4.5", "xhigh"),
+            "xhigh"
+        );
     }
 
     #[test]

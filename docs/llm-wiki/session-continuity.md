@@ -198,6 +198,8 @@ Permission / mode soft-respawn **keeps** `agentSessionId` so the next connect pr
 
 Changing **one chat's provider** (official ↔ custom, or another custom section) clears that chat's `agentSessionId` before the soft-respawn, so `session/load` cannot restore the previous route. Other chats are not recycled. SSH cold start is always the official route.
 
+Changing a chat's **selected model or reasoning effort** also requires a fresh process because the CLI receives the effort at spawn time and `session/load` preserves the old process settings. Busy turns keep their in-memory `agentSessionId` until the turn-end flush so streamed events remain routable; idle live, background, or parked agents clear the id only when their process is being dropped. The next connect uses the new model/effort and bootstraps from the App journal when required. A deleted provider follows the official route. An explicitly cleared catalog keeps a chat's saved session model identity; without one it falls back to the official route.
+
 ### 3a. Move chat to another project
 
 Sidebar **Move to project** (context menu, multi-select, drag onto a folder, or the composer project chip on an existing chat) rebinds `projectId`. The App journal stays under `{app_data}/sessions/<id>/` — nothing is copied into the folder.

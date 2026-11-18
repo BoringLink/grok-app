@@ -709,6 +709,15 @@
   background: var(--bg-hover);
 }
 
+.phone-sheet__row--muted {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.phone-sheet__row--muted:hover {
+  background: transparent;
+}
+
 .phone-sheet__row-icon {
   display: inline-flex;
   align-items: center;

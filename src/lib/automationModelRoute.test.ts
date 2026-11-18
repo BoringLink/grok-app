@@ -5,6 +5,8 @@ import {
   inferAutomationProviderId,
   normalizeAutomationRoute,
   parseAutomationModelValue,
+  resolveAutomationRunEffort,
+  resolveAutomationRunRoute,
 } from "./automationModelRoute";
 
 const providers = [
@@ -15,7 +17,109 @@ const providers = [
   },
 ];
 
+const effortProviders = [
+  {
+    id: "effort-relay",
+    model: "m1",
+    baseUrl: "https://relay.example/v1",
+    efforts: [{ id: "channel-only", name: "Channel only" }],
+    models: [
+      {
+        id: "m1",
+        name: "M1",
+        supportsReasoningEffort: true,
+        efforts: [{ id: "max", name: "Max", isDefault: true }],
+      },
+      {
+        id: "m2",
+        name: "M2",
+        supportsReasoningEffort: true,
+        efforts: [],
+      },
+      {
+        id: "no-think",
+        name: "No thinking",
+        supportsReasoningEffort: false,
+        efforts: [],
+      },
+    ],
+  },
+];
+
+
 describe("automation model route", () => {
+  it("falls back a deleted provider to the official model", () => {
+    expect(
+      resolveAutomationRunRoute({
+        providerId: "deleted-relay",
+        modelId: "gemini-3.5-flash",
+        officialModelIds: ["grok-4.7"],
+        officialDefaultModelId: "grok-4.7",
+        providers,
+      }),
+    ).toEqual({ providerId: "official", modelId: "grok-4.7" });
+  });
+
+  it("uses a model provider default when a saved model row disappeared", () => {
+    const configured = [
+      {
+        id: "relay-a",
+        model: "deepseek-v4-flash",
+        models: [{ id: "deepseek-v4-flash" }, { id: "qwen3.8-max" }],
+      },
+    ];
+    expect(
+      resolveAutomationRunRoute({
+        providerId: "relay-a",
+        modelId: "removed-model",
+        officialModelIds: ["grok-4.7"],
+        officialDefaultModelId: "grok-4.7",
+        providers: configured,
+      }),
+    ).toEqual({ providerId: "relay-a", modelId: "deepseek-v4-flash" });
+  });
+
+  it("normalizes automation effort against the selected model ladder", () => {
+    const options = {
+      providerId: "effort-relay",
+      providers: effortProviders,
+      officialModels: [],
+    };
+    expect(
+      resolveAutomationRunEffort({
+        ...options,
+        modelId: "m1",
+        requestedEffort: "max",
+      }),
+    ).toBe("max");
+    expect(
+      resolveAutomationRunEffort({
+        ...options,
+        modelId: "m2",
+        requestedEffort: "channel-only",
+      }),
+    ).toBe("medium");
+    expect(
+      resolveAutomationRunEffort({
+        ...options,
+        modelId: "no-think",
+        requestedEffort: "high",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("keeps a legacy effort when the route is unresolved for host validation", () => {
+    expect(
+      resolveAutomationRunEffort({
+        providerId: null,
+        modelId: "",
+        requestedEffort: "max",
+        providers: effortProviders,
+        officialModels: [],
+      }),
+    ).toBe("max");
+  });
+
   it("round-trips official and custom picks", () => {
     expect(
       parseAutomationModelValue(

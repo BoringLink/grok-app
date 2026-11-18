@@ -36,17 +36,34 @@ function renderModal(
 }
 
 describe("ProviderModelSettingsModal", () => {
-  it("shows context, reasoning support and levels without image/video caps", () => {
+  it("shows context, Off support and effort levels without image/video caps", () => {
     renderModal();
 
     expect(screen.getByLabelText("Context window")).toHaveValue("1000000");
     expect(
-      screen.getByRole("checkbox", { name: "Reasoning supported" }),
-    ).toHaveAttribute("aria-checked", "true");
+      screen.getByRole("checkbox", { name: "Allow Off in Composer" }),
+    ).not.toBeChecked();
     expect(screen.getAllByLabelText("Effort id")).toHaveLength(5);
     expect(screen.queryByText("Input modalities")).toBeNull();
     expect(screen.queryByText("Images")).toBeNull();
     expect(screen.queryByText("Video")).toBeNull();
+  });
+
+  it("prechecks Off when the model catalog already advertises none", () => {
+    const model = asFormModel({
+      id: "m1",
+      name: "M1",
+      efforts: [
+        { id: "low", name: "Low" },
+        { id: "none", name: "Off" },
+      ],
+      effortsSource: "remote",
+    });
+    renderModal({ model });
+
+    expect(
+      screen.getByRole("checkbox", { name: "Allow Off in Composer" }),
+    ).toBeChecked();
   });
 
   it("does not save when a non-empty context window is not a positive integer", async () => {
@@ -67,7 +84,7 @@ describe("ProviderModelSettingsModal", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("saves edited context, original effort ids and thinking support as user values", async () => {
+  it("saves edited context, original effort ids and Off support as user values", async () => {
     const user = userEvent.setup();
     const { onSave } = renderModal();
 
@@ -79,7 +96,7 @@ describe("ProviderModelSettingsModal", () => {
     await user.clear(first);
     await user.type(first, "minimum");
     await user.click(
-      screen.getByRole("checkbox", { name: "Reasoning supported" }),
+      screen.getByRole("checkbox", { name: "Allow Off in Composer" }),
     );
     await user.click(screen.getByRole("button", { name: "Save" }));
 
@@ -87,8 +104,9 @@ describe("ProviderModelSettingsModal", () => {
     const saved = onSave.mock.calls[0]![0];
     expect(saved.contextWindow).toBe(128000);
     expect(saved.contextWindowSource).toBe("user");
-    expect(saved.supportsReasoningEffort).toBe(false);
+    expect(saved.supportsReasoningEffort).toBe(true);
     expect(saved.supportsReasoningEffortSource).toBe("user");
+    expect(saved.supportsReasoningOff).toBe(true);
     expect(saved.efforts.map((effort) => effort.id)).toEqual([
       "minimum",
       "medium",
@@ -99,6 +117,50 @@ describe("ProviderModelSettingsModal", () => {
     expect(saved.efforts.find((effort) => effort.isDefault)?.id).toBe(
       "medium",
     );
+  });
+
+  it("persists an explicit Off disable without removing advertised effort ids", async () => {
+    const user = userEvent.setup();
+    const model = asFormModel({
+      id: "m1",
+      name: "M1",
+      efforts: [
+        { id: "high", name: "High", isDefault: true },
+        { id: "none", name: "Off" },
+      ],
+      effortsSource: "remote",
+    });
+    const { onSave } = renderModal({ model });
+
+    const toggle = screen.getByRole("checkbox", {
+      name: "Allow Off in Composer",
+    });
+    expect(toggle).toBeChecked();
+    await user.click(toggle);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const saved = onSave.mock.calls[0]![0];
+    expect(saved.supportsReasoningOff).toBe(false);
+    expect(saved.efforts.map((effort) => effort.id)).toEqual(["high", "none"]);
+  });
+
+  it("treats a configured effort ladder as reasoning support", async () => {
+    const user = userEvent.setup();
+    const model = asFormModel({
+      id: "m1",
+      name: "M1",
+      supportsReasoningEffort: false,
+      supportsReasoningEffortSource: "remote",
+    });
+    const { onSave } = renderModal({ model });
+
+    await user.clear(screen.getAllByLabelText("Effort id")[0]!);
+    await user.type(screen.getAllByLabelText("Effort id")[0]!, "minimum");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const saved = onSave.mock.calls[0]![0];
+    expect(saved.supportsReasoningEffort).toBe(true);
+    expect(saved.supportsReasoningOff).toBeUndefined();
   });
 
   it("resets an empty context window to the latest API value", async () => {
@@ -195,6 +257,7 @@ describe("ProviderModelSettingsModal", () => {
           effortsSource: saved.effortsSource,
           supportsReasoningEffort: saved.supportsReasoningEffort,
           supportsReasoningEffortSource: saved.supportsReasoningEffortSource,
+          supportsReasoningOff: saved.supportsReasoningOff,
         }}
         onClose={vi.fn()}
         onSave={vi.fn()}

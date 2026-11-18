@@ -50,6 +50,7 @@ export const deCore = {
   "effort.low": "Niedrig",
   "effort.xhigh": "Sehr hoch",
   "effort.max": "Sehr hoch",
+  "effort.none": "Aus",
   "mode.agent": "Agent",
   "mode.plan": "Plan",
   "mode.ask": "Fragen",

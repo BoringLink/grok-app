@@ -44,7 +44,7 @@
 - 浏览器兜底：`localStorage["grok-app.automations"]`
 - 字段：`title` `prompt` `enabled` `projectId` `modelId` `providerId` `effort` `sessionMode` `sessionId` `frequency` `time` `weekdays` `notify` `lastRunAt` `nextRunAt`
 - **执行会话**：`sessionMode` = `new`（每次新建，默认）| `reuse`（发送到 `sessionId` 指定的已有会话）。`reuse` 会话被删除时，Host 回退为新建一次并写回新的 `sessionId`，后续继续复用。
-- **模型路由**：`providerId` = `official` 或自定义 provider id；表单把官方模型与自定义渠道模型放在同一个分组选择里。执行时 Host 将 `providerId` / `modelId` 写入会话行后再 connect，因此不再退回用户的全局默认模型。旧数据无 `providerId` 时，官方目录模型固定走 `official`；仅被一个自定义渠道列出的模型路由到该渠道；其余沿用当前激活路由（编辑页显示「当前路由」，保存时不会把猜测写死）。
+- **模型路由**：`providerId` = `official` 或自定义 provider id；表单把官方模型与自定义渠道模型放在同一个分组选择里。执行时 Host 将 `providerId` / `modelId` 写入会话行后再 connect，因此不再退回用户的全局默认模型。旧数据无 `providerId` 时，官方目录模型固定走 `official`；仅被一个自定义渠道列出的模型路由到该渠道；其余沿用当前激活路由（编辑页显示「当前路由」，保存时不会把猜测写死）。推理档位按所选 provider/model 行解析并保留原始 id；多模型目录不会借用 channel 当前模型的 ladder。路由可解析时，Run now 会把过期 id 归一到该模型默认档；不支持推理的模型不显示档位选项且不向 Host 发送过期 effort，无法判定路由的旧记录仍交由 Host 校验。
 
 ## 执行
 

@@ -50,6 +50,7 @@ export const enCore = {
   "effort.low": "Low",
   "effort.xhigh": "Extra high",
   "effort.max": "Extra high",
+  "effort.none": "Off",
   "mode.agent": "Agent",
   "mode.plan": "Plan",
   "mode.ask": "Ask",

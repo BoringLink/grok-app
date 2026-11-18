@@ -201,6 +201,53 @@ describe("session projection", () => {
     expect(body.toLowerCase()).toMatch(/sandbox|namespace|sysctl|ubuntu/);
   });
 
+  it("formatTurnErrorBody appends the host upstream API error after friendly copy", () => {
+    const upstream =
+      "Unsupported value: 'minimal' is not supported with the 'gpt-6-luna-2026-09-22' model. Supported values are: 'none', 'low', 'medium', 'high', 'xhigh', and 'max'.";
+    // 已知错误码：friendly copy + 上游真实原因。
+    const body = formatTurnErrorBody(
+      {
+        code: "AGENT_CRASHED",
+        message: "Internal error (code -32603)",
+        content: `**AGENT_CRASHED**\n\nInternal error (code -32603)\n\n${upstream}`,
+        upstream,
+      },
+      "zh",
+    );
+    expect(body).toContain(upstream);
+    // 无 upstream 字段且 content 无非技术段落：行为不变（不追加任何段落）。
+    const plain = formatTurnErrorBody(
+      {
+        code: "AGENT_CRASHED",
+        message: "Internal error (code -32603)",
+        content: "**AGENT_CRASHED**\n\nInternal error (code -32603)",
+      },
+      "zh",
+    );
+    expect(plain).not.toContain("Unsupported value");
+    // journal 重载：无 upstream 字段，从存储 content 反推上游段落。
+    const reloaded = formatTurnErrorBody(
+      {
+        content:
+          "**AGENT_CRASHED**\n\nInternal error (code -32603, data: {\"http_status\":400,\"message\":\"API error (status 400 Bad Request): Request failed (HTTP 400).\"})\n\nUnsupported value: 'minimal' is not supported with the 'gpt-6-luna-2026-09-22' model. Supported values are: 'none', 'low', 'medium', 'high', 'xhigh', and 'max'.",
+      },
+      "zh",
+    );
+    expect(reloaded).toContain("Unsupported value: 'minimal'");
+    expect(reloaded).toContain("Supported values are");
+    expect(reloaded).not.toContain("http_status");
+    // body 里已含该 message 时不重复追加。
+    const withUpstreamInMessage = formatTurnErrorBody(
+      {
+        code: "AGENT_CRASHED",
+        message: upstream,
+        upstream,
+      },
+      "zh",
+    );
+    expect(withUpstreamInMessage.split(upstream).length - 1).toBe(1);
+  });
+
   it("formatTurnErrorBody maps host NETWORK_PROVIDER + free-usage-exhausted to quota deck", () => {
     const body = formatTurnErrorBody(
       {

@@ -60,6 +60,20 @@ describe("asFormModel", () => {
   });
 
   it("keeps an existing value without a source marker as user-set", () => {
+    // 无用户档位时，显式 supportsReasoningEffort 原样保留为 user-set。
+    const out = asFormModel({
+      id: "m1",
+      name: "M1",
+      contextWindow: 128_000,
+      supportsReasoningEffort: false,
+    });
+    expect(out.contextWindowSource).toBe("user");
+    expect(out.supportsReasoningEffort).toBe(false);
+    expect(out.supportsReasoningEffortSource).toBe("user");
+  });
+
+  it("user-configured efforts imply reasoning support", () => {
+    // 新语义：模型行配置了用户档位即表示支持扩展推理（catalog.md）。
     const out = asFormModel({
       id: "m1",
       name: "M1",
@@ -67,9 +81,8 @@ describe("asFormModel", () => {
       efforts: [{ id: "maximum", name: "Maximum", isDefault: true }],
       supportsReasoningEffort: false,
     });
-    expect(out.contextWindowSource).toBe("user");
     expect(out.effortsSource).toBe("user");
-    expect(out.supportsReasoningEffort).toBe(false);
+    expect(out.supportsReasoningEffort).toBe(true);
     expect(out.supportsReasoningEffortSource).toBe("user");
   });
 });
@@ -543,7 +556,8 @@ describe("per-model metadata persistence", () => {
         supportsVideo: false,
         efforts: [{ id: "high", name: "High", isDefault: true }],
         effortsSource: "user",
-        supportsReasoningEffort: false,
+        // 用户档位存在 ⇒ 支持推理（新语义，providerModelConfig）。
+        supportsReasoningEffort: true,
         supportsReasoningEffortSource: "user",
       },
     ]);

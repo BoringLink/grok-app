@@ -162,6 +162,9 @@ fn recover_catalog_rows(items: &[serde_json::Value]) -> Vec<ProviderModelEntry> 
                     .and_then(serde_json::Value::as_str)
                     .filter(|value| !value.trim().is_empty())
                     .map(str::to_string),
+                supports_reasoning_off: item
+                    .get("supportsReasoningOff")
+                    .and_then(serde_json::Value::as_bool),
             })
         })
         .collect();
@@ -565,6 +568,7 @@ mod tests {
                 context_window: Some(1_000_000),
                 supports_vision: Some(false),
                 supports_video: None,
+                supports_reasoning_off: Some(true),
                 efforts: vec![ProviderEffortEntry {
                     id: "max".into(),
                     name: "Max".into(),
@@ -582,5 +586,6 @@ mod tests {
         assert_eq!(rows.len(), 1, "duplicate request ids collapse to one row");
         assert_eq!(rows[0].id, "deepseek-v4-pro");
         assert_eq!(rows[0].name, "deepseek-v4-pro");
+        assert_eq!(rows[0].supports_reasoning_off, Some(true));
     }
 }

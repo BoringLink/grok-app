@@ -26,7 +26,7 @@ import argparse
 import json
 import re
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
@@ -200,33 +200,18 @@ def file_imported_anywhere(symbol_or_path: str, search_roots: Iterable[Path], ig
     return False
 
 
-def max_lines_in_glob(glob_pat: str) -> tuple[int, str]:
-    best = 0
-    best_path = ""
-    for p in ROOT.glob(glob_pat):
-        if not p.is_file():
-            continue
-        n = lines_of(p)
-        if n > best:
-            best = n
-            best_path = str(p.relative_to(ROOT))
-    return best, best_path
-
-
 def count_files_ge(glob_roots: list[str], min_lines: int, exts: set[str]) -> int:
     count = 0
-    for gr in glob_roots:
-        base = ROOT / gr
+    for root in glob_roots:
+        base = ROOT / root
         if not base.exists():
             continue
-        for p in base.rglob("*"):
-            if p.suffix not in exts:
+        for path in base.rglob("*"):
+            if path.suffix not in exts:
                 continue
-            # skip generated / vendor
-            parts = set(p.parts)
-            if "node_modules" in parts or "target" in parts or "dist" in parts:
+            if {"node_modules", "target", "dist"}.intersection(path.parts):
                 continue
-            if lines_of(p) >= min_lines:
+            if lines_of(path) >= min_lines:
                 count += 1
     return count
 
@@ -733,16 +718,6 @@ def build_gates() -> list[Gate]:
             "At least 6 domain CSS files under src/styles/",
             "final",
             lambda: (style_domain_files() >= 6, f"domain css files={style_domain_files()}"),
-        ),
-        Gate(
-            "FILES_OVER_1K_BUDGET",
-            "Files ≥1000 lines under src/ + src-tauri/src ≤ 80 (WP-F1 was 43; 0.2.31 tree is 79)",
-            "final",
-            lambda: (
-                count_files_ge(["src", "src-tauri/src"], 1000, {".ts", ".tsx", ".rs", ".css"})
-                <= 80,
-                f"count={count_files_ge(['src', 'src-tauri/src'], 1000, {'.ts', '.tsx', '.rs', '.css'})}",
-            ),
         ),
         Gate(
             "PROGRESS_FILE",

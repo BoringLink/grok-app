@@ -16,7 +16,6 @@ import type {
   ProviderModelFieldSource,
 } from "@/lib/api";
 import { DEFAULT_CUSTOM_CONTEXT_WINDOW } from "@/lib/grokCatalog";
-import { alignGrokPresetEfforts } from "@/lib/providerPresets";
 
 export type RemoteModelMetadata = {
   id: string;
@@ -84,9 +83,9 @@ function positiveWindow(n: number | null | undefined): number | null {
  * Normalize a reasoning ladder.
  *
  * Ids are preserved (trimmed only), blank/duplicate ids are dropped, and
- * exactly one row is marked default: the first API-marked row, else `medium`,
- * else the first valid row. That keeps `isDefault` pointing at an id that is
- * actually in the list.
+ * exactly one row is marked default: the first API-marked row, else the first
+ * non-`none` row (matching Composer/Host default semantics), else the first
+ * row. That keeps `isDefault` pointing at an id that is actually in the list.
  */
 export function normalizeModelEfforts(
   efforts: ProviderEffortEntry[] | null | undefined,
@@ -110,9 +109,8 @@ export function normalizeModelEfforts(
   const defaultId =
     apiDefault && seen.has(apiDefault)
       ? apiDefault
-      : seen.has("medium")
-        ? "medium"
-        : out[0].id;
+      : (out.find((effort) => effort.id.toLowerCase() !== "none")?.id ??
+        out[0].id);
   return out.map((effort) => ({
     ...effort,
     isDefault: effort.id === defaultId,
@@ -155,9 +153,23 @@ export function effectiveModelEfforts(
 export function effectiveModelSupportsReasoningEffort(
   model: Pick<
     ProviderModelEntry,
-    "supportsReasoningEffort" | "supportsReasoningEffortSource"
+    | "efforts"
+    | "effortsSource"
+    | "supportsReasoningEffort"
+    | "supportsReasoningEffortSource"
+    | "supportsReasoningOff"
   >,
 ): ResolvedModelValue<boolean> {
+  const configuredEfforts = effectiveModelEfforts(model);
+  if (
+    configuredEfforts.value.length > 0 &&
+    configuredEfforts.source !== "fallback"
+  ) {
+    return { value: true, source: configuredEfforts.source };
+  }
+  if (model.supportsReasoningOff === true) {
+    return { value: true, source: "user" };
+  }
   const hasValue = typeof model.supportsReasoningEffort === "boolean";
   const explicit = normalizeModelFieldSource(
     model.supportsReasoningEffortSource,
@@ -174,6 +186,18 @@ export function effectiveModelSupportsReasoningEffort(
           ? "user"
           : "fallback",
   };
+}
+
+/** Resolve whether the model's Off stop is available in Composer. */
+export function effectiveModelSupportsReasoningOff(
+  model: Pick<ProviderModelEntry, "supportsReasoningOff" | "efforts">,
+): boolean {
+  if (typeof model.supportsReasoningOff === "boolean") {
+    return model.supportsReasoningOff;
+  }
+  return normalizeModelEfforts(model.efforts).some(
+    (effort) => effort.id.toLowerCase() === "none",
+  );
 }
 
 /**
@@ -195,25 +219,59 @@ export function withResolvedModelMetadata(
     effortsSource: efforts.source,
     supportsReasoningEffort: reasoning.value,
     supportsReasoningEffortSource: reasoning.source,
+    ...(typeof model.supportsReasoningOff === "boolean"
+      ? { supportsReasoningOff: model.supportsReasoningOff }
+      : {}),
   };
 }
 
-/** Channel efforts the composer should show for the active (or given) model. */
-export function resolveProviderEfforts(
-  provider: Pick<CustomProvider, "id" | "baseUrl" | "model" | "models" | "efforts">,
+/** 按精确 provider/model id 解析档位，不借用其它模型的 channel ladder。 */
+export function configuredProviderModelEfforts(
+  provider: Pick<CustomProvider, "model" | "models" | "efforts">,
   modelId?: string | null,
-): ProviderEffortEntry[] | undefined {
-  const model = findProviderModel(provider, modelId);
+): ProviderEffortEntry[] {
+  const id = (modelId ?? provider.model).trim();
+  const model = provider.models?.find((entry) => entry.id.trim() === id);
+  if (model?.efforts?.length) return model.efforts;
+  const channelModelId = provider.model.trim();
+  const legacyChannelLadder =
+    channelModelId === id &&
+    (provider.models == null ||
+      (provider.models.length === 1 && provider.models[0]?.id.trim() === id));
+  return legacyChannelLadder ? provider.efforts ?? [] : [];
+}
+
+/** 按 provider/model identity 解析档位，不借用其它目录行的 channel ladder。 */
+export function resolveProviderEfforts(
+  provider: Pick<CustomProvider, "model" | "models" | "efforts">,
+  modelId?: string | null,
+): ProviderEffortEntry[] {
+  const id = (modelId ?? provider.model).trim();
+  const model = provider.models?.find((entry) => entry.id.trim() === id);
+  if (model && !effectiveModelSupportsReasoningEffort(model).value) return [];
+  // 与 Host `custom_model_effort_ladder` 同一优先级：行内显式开启 Off 时
+  // 该行视为独立配置，空档位走通用 fallback，不借旧式 channel 梯子。
+  const rowConfiguredOff = model?.supportsReasoningOff === true;
   const raw =
-    model?.efforts && model.efforts.length > 0
-      ? model.efforts
-      : provider.efforts;
-  const aligned = alignGrokPresetEfforts({
-    providerId: provider.id,
-    baseUrl: provider.baseUrl,
-    efforts: raw,
-  });
-  return aligned ?? raw;
+    rowConfiguredOff && !model?.efforts?.length
+      ? []
+      : configuredProviderModelEfforts(provider, id);
+  const ladder = raw.length > 0 ? raw : defaultProviderModelEfforts();
+  const catalogAdvertisesOff = ladder.some(
+    (effort) => effort.id.toLowerCase() === "none",
+  );
+  const supportsOff =
+    typeof model?.supportsReasoningOff === "boolean"
+      ? model.supportsReasoningOff
+      : catalogAdvertisesOff;
+  if (supportsOff && !catalogAdvertisesOff) {
+    // Off 是最低档，置于滑块最左侧。
+    return [{ id: "none" }, ...ladder];
+  }
+  if (!supportsOff && catalogAdvertisesOff) {
+    return ladder.filter((effort) => effort.id.toLowerCase() !== "none");
+  }
+  return ladder;
 }
 
 export function resolveProviderContextWindow(
@@ -320,11 +378,13 @@ export function mergeRemoteModelMetadata(
       ? remote.supportsReasoningEffort
       : null;
   const nextReasoning =
-    reasoning.source === "user"
-      ? reasoning
-      : remoteReasoning != null
-        ? { value: remoteReasoning, source: "remote" as const }
-        : { value: true, source: "fallback" as const };
+    nextEfforts.value.length > 0 && nextEfforts.source !== "fallback"
+      ? { value: true, source: nextEfforts.source }
+      : reasoning.source === "user"
+        ? reasoning
+        : remoteReasoning != null
+          ? { value: remoteReasoning, source: "remote" as const }
+          : { value: true, source: "fallback" as const };
 
   return {
     ...model,

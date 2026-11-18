@@ -50,6 +50,7 @@ export const koCore = {
   "effort.low": "낮음",
   "effort.xhigh": "최고",
   "effort.max": "최고",
+  "effort.none": "꺼짐",
   "mode.agent": "에이전트",
   "mode.plan": "계획",
   "mode.ask": "질문",

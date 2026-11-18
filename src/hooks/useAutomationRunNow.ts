@@ -6,7 +6,7 @@ import type { ComposerPrefs } from "@/lib/api";
 import type { CustomProvider } from "@/lib/api";
 import * as api from "@/lib/api";
 import type { ModelOption } from "@/lib/grokCatalog";
-import { GROK_BUILD_MODELS } from "@/lib/grokCatalog";
+import { GROK_BUILD_MODELS, pickDefaultModelId } from "@/lib/grokCatalog";
 import type {
   AskUserPayload,
   ChatMessage,
@@ -21,8 +21,9 @@ import {
   type Automation,
 } from "@/lib/automations";
 import {
-  effectiveAutomationProviderId,
   officialAutomationModelIds,
+  resolveAutomationRunEffort,
+  resolveAutomationRunRoute,
 } from "@/lib/automationModelRoute";
 import { recordAutomationRun } from "@/lib/automationRunHistory";
 import { recordAutomationBusySkip, useAutomationRunFailure } from "@/hooks/useAutomationRunFailure";
@@ -72,6 +73,17 @@ export interface AutomationRunNowContext {
   liveHostRef: MutableRefObject<SessionSnapshot>;
   messagesBySessionRef: MutableRefObject<Map<string, ChatMessage[]>>;
   sessionNavHostRef: MutableRefObject<SessionNavHost>;
+}
+
+/** 将 Host 的可重试设置错误映射到本地化自动化提示。 */
+export function automationRunErrorMessage(
+  error: unknown,
+  translate: AutomationRunNowContext["tr"],
+): string {
+  const message = String(error);
+  return message.includes("PENDING_SESSION_SETTINGS")
+    ? translate("session.pendingSettingsRetry")
+    : message;
 }
 
 /**
@@ -221,11 +233,25 @@ export function useAutomationRunNow(
 
         // Persist provider/model/effort for this session before connect when
         // possible. A reused chat keeps its own model, reasoning and route.
-        const runProviderId = effectiveAutomationProviderId(
-          auto,
-          officialAutomationModelIds(availableModels, GROK_BUILD_MODELS),
-          customProviders,
+        const officialModelIds = officialAutomationModelIds(
+          availableModels,
+          GROK_BUILD_MODELS,
         );
+        const { providerId: runProviderId, modelId: runModelId } =
+          resolveAutomationRunRoute({
+            providerId: auto.providerId,
+            modelId: auto.modelId,
+            officialModelIds,
+            officialDefaultModelId: pickDefaultModelId(availableModels),
+            providers: customProviders,
+          });
+        const runEffort = resolveAutomationRunEffort({
+          providerId: runProviderId,
+          modelId: runModelId,
+          requestedEffort: auto.effort,
+          providers: customProviders,
+          officialModels: availableModels,
+        });
         if (
           !reusedRow &&
           proj?.sshAlias &&
@@ -246,14 +272,14 @@ export function useAutomationRunNow(
           sessionId &&
           !reusedRow &&
           api.isTauri() &&
-          (auto.modelId || auto.effort || runProviderId)
+          (runModelId || auto.effort || runProviderId)
         ) {
           try {
             await api.composerPrefsSet({
               sessionId,
               projectId: proj?.id ?? null,
-              modelId: auto.modelId,
-              effort: auto.effort,
+              modelId: runModelId || undefined,
+              effort: runEffort,
               providerId: runProviderId ?? undefined,
             });
           } catch (e) {
@@ -265,7 +291,7 @@ export function useAutomationRunNow(
                 /* ignore */
               }
             }
-            return failAutomationRun(auto, String(e));
+            return failAutomationRun(auto, automationRunErrorMessage(e, tr));
           }
         }
 
@@ -296,7 +322,10 @@ export function useAutomationRunNow(
           title: snap.title || auto.title || snap.title,
         });
         if (snap.lastError || snap.state !== "ready") {
-          const detail = `${snap.lastError?.code ?? "AGENT_CRASHED"}: ${snap.lastError?.message ?? "connect failed"}`;
+          const detail = automationRunErrorMessage(
+            `${snap.lastError?.code ?? "AGENT_CRASHED"}: ${snap.lastError?.message ?? "connect failed"}`,
+            tr,
+          );
           // Drop empty shell sessions so the sidebar does not show ghosts.
           if (createdSessionId && api.isTauri()) {
             try {
@@ -411,7 +440,7 @@ export function useAutomationRunNow(
         });
         return true;
       } catch (e) {
-        return failAutomationRun(auto, String(e));
+        return failAutomationRun(auto, automationRunErrorMessage(e, tr));
       } finally {
         automationRunLockRef.current = false;
       }

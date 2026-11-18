@@ -45,11 +45,11 @@ export const ptBRProviders = {
   "prov.fetchedCapsApplied":
     "{n} modelos carregados. Metadados de janela de contexto e raciocínio disponíveis foram aplicados a partir da API.",
   "prov.effortsModelHint":
-    "Níveis de raciocínio deste modelo, salvos com os ids originais. Os valores são enviados como reasoning_effort. Se a API não anunciar nenhum, usa-se low/medium/high/xhigh com medium como padrão.",
+    "Os níveis mantêm os ids originais e são enviados como reasoning_effort. Sem uma ladder da API, o App usa low/medium/high/xhigh com medium como padrão. Ative Off para adicionar none ao Composer e obter respostas mais rápidas.",
   "prov.modelContextWindowInvalid": "Digite um número inteiro positivo de tokens ou deixe vazio para usar o valor da API ou o padrão de 1M.",
-  "prov.modelSupportsReasoning": "Suporta níveis de raciocínio",
-  "prov.modelSupportsReasoningHint": "Desative se este modelo não puder raciocinar ou o relay recusar reasoning_effort. O compositor então oculta os níveis de raciocínio deste modelo.",
-  "prov.modelSupportsReasoningOn": "Raciocínio suportado",
+  "prov.modelSupportsReasoning": "Desativar raciocínio",
+  "prov.modelSupportsReasoningHint": "Uma escala de raciocínio configurada indica que este modelo oferece raciocínio estendido. Ative Off para que o Composer possa desativá-lo e responder mais rápido.",
+  "prov.modelSupportsReasoningOn": "Permitir Off no Composer",
   "prov.modelUseApiDefault": "Usar API / padrão",
   "prov.mode": "Modo do provedor",
   "prov.mode.generic": "Relay genérico compatível com OpenAI",

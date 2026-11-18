@@ -331,4 +331,5 @@ export const frSession = {
   "session.journalLoadTimedOut": "Le chargement de l’historique a pris trop de temps. L’historique en cache s’affiche s’il est disponible — rouvrez le chat pour réessayer.",
   "session.journalLoadFailed": "Impossible de charger l’historique. L’historique en cache s’affiche s’il est disponible — rouvrez le chat pour réessayer.",
   "session.connectClaimTimedOut": "Une autre connexion pour ce chat est encore en cours. Réessayez dans un instant.",
+  "session.pendingSettingsRetry": "Les paramètres de session en attente n’ont pas pu être appliqués. Reconnectez-vous pour réessayer.",
 };

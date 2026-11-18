@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { CustomProvider } from "@/lib/api/providers";
 import {
   resolveComposerPrefsSelection,
@@ -7,12 +7,7 @@ import {
 } from "@/lib/composerPrefsApply";
 import type { ModelOption } from "@/lib/grokCatalog";
 import { resolveSessionProviderRoute } from "@/lib/sessionProviderRoute";
-
-export type DraftComposerRoute = {
-  providerId: string;
-  modelId: string;
-  effort: string;
-};
+import type { DraftComposerRoute } from "@/lib/draftComposerRoute";
 
 export type ProviderRouteSource = "official" | "custom";
 
@@ -48,6 +43,19 @@ export function useSessionProviderChip() {
   const sessionProviderChipRef = useRef<string | null | undefined>(undefined);
   const draftComposerRouteRef = useRef<DraftComposerRoute | null>(null);
   const afterProviderListRef = useRef<(() => void) | null>(null);
+  /** provider 目录加载失败标记：失败时 Composer 档位区显示错误而非中性加载态。 */
+  const [providersLoadFailed, setProvidersLoadFailed] = useState(false);
+  const clearDraftRouteIfCurrent = useCallback((route: DraftComposerRoute) => {
+    if (draftComposerRouteRef.current === route) draftComposerRouteRef.current = null;
+  }, []);
+  const updateDraftEffort = useCallback(
+    (sessionId: string | null | undefined, effort: string) => {
+      if (sessionId) return;
+      const draft = draftComposerRouteRef.current;
+      if (draft) draftComposerRouteRef.current = { ...draft, effort };
+    },
+    [],
+  );
 
   /** Paint the effective provider route and selected provider object. */
   const paint = useCallback((providerId: string | null) => {
@@ -115,17 +123,24 @@ export function useSessionProviderChip() {
       if (!list) {
         customProvidersRef.current = [];
         providersLoadedRef.current = false;
+        setProvidersLoadFailed(false);
         paint(sessionProviderChipRef.current ?? null);
         afterProviderListRef.current?.();
         return;
       }
       customProvidersRef.current = list.providers;
       providersLoadedRef.current = true;
+      setProvidersLoadFailed(false);
       paint(sessionProviderChipRef.current ?? null);
       afterProviderListRef.current?.();
     },
     [paint],
   );
+
+  /** 目录加载失败时置位失败标记；成功或重置列表时清除。 */
+  const noteProviderListError = useCallback(() => {
+    setProvidersLoadFailed(true);
+  }, []);
 
   /** Notify when a provider-list refresh has been applied. */
   const setAfterProviderList = useCallback((fn: (() => void) | null) => {
@@ -140,10 +155,14 @@ export function useSessionProviderChip() {
   return useMemo(
     () => ({
       draftComposerRouteRef,
+      updateDraftEffort,
+      clearDraftRouteIfCurrent,
       paint,
       resolvePrefs,
       applyPrefsRoute,
       noteProviderList,
+      noteProviderListError,
+      providersLoadFailed,
       bind,
       setAfterProviderList,
     }),
@@ -151,9 +170,13 @@ export function useSessionProviderChip() {
       applyPrefsRoute,
       bind,
       noteProviderList,
+      noteProviderListError,
+      providersLoadFailed,
       paint,
       resolvePrefs,
       setAfterProviderList,
+      updateDraftEffort,
+      clearDraftRouteIfCurrent,
     ],
   );
 }

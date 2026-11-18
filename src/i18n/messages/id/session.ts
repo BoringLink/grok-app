@@ -331,4 +331,5 @@ export const idSession = {
   "session.journalLoadTimedOut": "Memuat riwayat chat terlalu lama. Menampilkan cache jika ada — buka lagi chat untuk mencoba ulang.",
   "session.journalLoadFailed": "Tidak bisa memuat riwayat chat. Menampilkan cache jika ada — buka lagi chat untuk mencoba ulang.",
   "session.connectClaimTimedOut": "Koneksi lain untuk chat ini masih berjalan. Coba lagi sebentar.",
+  "session.pendingSettingsRetry": "Pengaturan sesi yang tertunda tidak dapat diterapkan. Hubungkan ulang untuk mencoba lagi.",
 };

@@ -45,11 +45,11 @@ export const filProviders = {
   "prov.fetchedCapsApplied":
     "Nag-load ng {n} model. Inilapat ang available na context window at reasoning metadata mula sa API.",
   "prov.effortsModelHint":
-    "Mga reasoning level para sa modelong ito, naka-save sa orihinal na ids. Ipinapadala ang mga value bilang reasoning_effort. Kapag walang ibinigay ang API, low/medium/high/xhigh ang gagamitin at medium ang default.",
+    "Nananatili ang mga orihinal na id ng reasoning levels at ipinapadala ang mga ito bilang reasoning_effort. Kung walang ladder mula sa API, ginagamit ng App ang low/medium/high/xhigh at medium ang default. I-enable ang Off para idagdag ang none sa Composer at mas mabilis na mga tugon.",
   "prov.modelContextWindowInvalid": "Maglagay ng positibong buong bilang ng token, o iwanang walang laman para gamitin ang API value o ang 1M default.",
-  "prov.modelSupportsReasoning": "Sinusuportahan ang reasoning levels",
-  "prov.modelSupportsReasoningHint": "Patayin kung hindi makapag-isip ang modelong ito o tinatanggihan ng relay ang reasoning_effort. Itatago ng composer ang reasoning levels para sa modelong ito.",
-  "prov.modelSupportsReasoningOn": "Sinusuportahan ang reasoning",
+  "prov.modelSupportsReasoning": "I-off ang reasoning",
+  "prov.modelSupportsReasoningHint": "Ang nak configured na reasoning levels ay nangangahulugang suportado ng modelong ito ang extended reasoning. I-enable ang Off para ma-disable ito ng Composer at makakuha ng mas mabilis na tugon.",
+  "prov.modelSupportsReasoningOn": "Payagan ang Off sa Composer",
   "prov.modelUseApiDefault": "Gamitin ang API / default",
   "prov.mode": "Mode ng provider",
   "prov.mode.generic": "Generic na OpenAI-compatible na relay",

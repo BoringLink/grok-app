@@ -45,11 +45,11 @@ export const esProviders = {
   "prov.fetchedCapsApplied":
     "Se cargaron {n} modelos. Se aplicaron los metadatos de contexto y razonamiento disponibles de la API.",
   "prov.effortsModelHint":
-    "Niveles de razonamiento de este modelo, guardados con sus ids originales. Los valores se envían como reasoning_effort. Si la API no anuncia ninguno, se usan low/medium/high/xhigh con medium por defecto.",
+    "Los niveles conservan sus ids originales y se envían como reasoning_effort. Sin una lista de la API, App usa low/medium/high/xhigh con medium como valor predeterminado. Activa Off para añadir none a Composer y obtener respuestas más rápidas.",
   "prov.modelContextWindowInvalid": "Introduce un número entero positivo de tokens o déjalo vacío para usar el valor de la API o el valor predeterminado de 1M.",
-  "prov.modelSupportsReasoning": "Admite niveles de razonamiento",
-  "prov.modelSupportsReasoningHint": "Desactívalo si este modelo no puede razonar o el relé rechaza reasoning_effort. El compositor ocultará los niveles de razonamiento de este modelo.",
-  "prov.modelSupportsReasoningOn": "Razonamiento admitido",
+  "prov.modelSupportsReasoning": "Desactivar razonamiento",
+  "prov.modelSupportsReasoningHint": "Una lista de niveles configurada indica que este modelo admite razonamiento extendido. Activa Off para que Composer lo desactive y responda más rápido.",
+  "prov.modelSupportsReasoningOn": "Permitir Off en Composer",
   "prov.modelUseApiDefault": "Usar API / predeterminado",
   "prov.mode": "Modo del proveedor",
   "prov.mode.generic": "Relé genérico compatible con OpenAI",

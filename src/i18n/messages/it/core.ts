@@ -50,6 +50,7 @@ export const itCore = {
   "effort.low": "Basso",
   "effort.xhigh": "Molto alto",
   "effort.max": "Molto alto",
+  "effort.none": "Disattivato",
   "mode.agent": "Agente",
   "mode.plan": "Piano",
   "mode.ask": "Domanda",

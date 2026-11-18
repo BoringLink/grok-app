@@ -331,4 +331,5 @@ export const zhSession = {
   "session.journalLoadTimedOut": "聊天记录加载超时。已尽量显示缓存内容，可再次打开会话重试。",
   "session.journalLoadFailed": "无法加载聊天记录。已尽量显示缓存内容，可再次打开会话重试。",
   "session.connectClaimTimedOut": "该会话仍有一次连接进行中，请稍后再试。",
+  "session.pendingSettingsRetry": "无法应用待处理的会话设置。请重新连接以重试。",
 };

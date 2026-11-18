@@ -1,4 +1,11 @@
 import type { ComposerModelPick } from "@/lib/composerModelGroups";
+import { pickDefaultModelId, type ModelOption } from "@/lib/grokCatalog";
+import {
+  pickSessionEffort,
+  resolvePickedModelEfforts,
+  resolveSessionEffortOptions,
+  type SessionEffortProvider,
+} from "@/lib/sessionEffort";
 
 /** Serialize a model pick into one `Select` option value. */
 export function automationModelValue(pick: ComposerModelPick): string {
@@ -80,6 +87,83 @@ export function effectiveAutomationProviderId(
   if (!model) return null;
   if (officialModelIds.includes(model)) return "official";
   return uniqueProviderForModel(model, providers);
+}
+
+
+/** 按 automation 运行时的 provider/model 档位校验并回退过期值。 */
+export function resolveAutomationRunEffort(opts: {
+  providerId: string | null;
+  modelId: string;
+  requestedEffort?: string | null;
+  providers: ReadonlyArray<SessionEffortProvider>;
+  officialModels: ModelOption[];
+}): string | undefined {
+  const requested = opts.requestedEffort?.trim() ?? "";
+  if (!requested) return undefined;
+  if (!opts.providerId) return requested;
+  const provider =
+    opts.providerId === "official"
+      ? null
+      : opts.providers.find((candidate) => candidate.id === opts.providerId);
+  if (opts.providerId !== "official" && !provider) return requested;
+  const modelId =
+    opts.modelId.trim() ||
+    provider?.model.trim() ||
+    pickDefaultModelId(opts.officialModels);
+  const resolution =
+    opts.providerId === "official"
+      ? resolveSessionEffortOptions({
+          source: "official",
+          modelId,
+          officialModels: opts.officialModels,
+        })
+      : resolvePickedModelEfforts({
+          pick: {
+            kind: "custom",
+            providerId: opts.providerId,
+            modelId,
+          },
+          providers: opts.providers,
+          officialModels: opts.officialModels,
+        });
+  if (!resolution?.supported || resolution.options.length === 0) {
+    return undefined;
+  }
+  return pickSessionEffort(resolution.options, requested);
+}
+
+
+/** 按当前可用 provider 规范化已保存的 automation 路由。 */
+export function resolveAutomationRunRoute(opts: {
+  providerId?: string | null;
+  modelId?: string | null;
+  officialModelIds: readonly string[];
+  officialDefaultModelId: string;
+  providers: readonly AutomationProviderModels[];
+}): { providerId: string | null; modelId: string } {
+  const requestedProviderId = effectiveAutomationProviderId(
+    opts,
+    opts.officialModelIds,
+    opts.providers,
+  );
+  const providerWasRemoved =
+    requestedProviderId != null &&
+    requestedProviderId !== "official" &&
+    !opts.providers.some((provider) => provider.id === requestedProviderId);
+  if (!requestedProviderId) {
+    return { providerId: null, modelId: opts.modelId?.trim() ?? "" };
+  }
+  const normalized = normalizeAutomationRoute({
+    providerId: providerWasRemoved ? "official" : requestedProviderId,
+    modelId: providerWasRemoved ? "" : opts.modelId ?? "",
+    officialModelIds: opts.officialModelIds,
+    officialDefaultModelId: opts.officialDefaultModelId,
+    providers: opts.providers,
+  });
+  return {
+    providerId: normalized.providerId || (providerWasRemoved ? "official" : requestedProviderId),
+    modelId: normalized.modelId,
+  };
 }
 
 /**

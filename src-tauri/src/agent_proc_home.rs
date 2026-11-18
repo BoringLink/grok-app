@@ -111,6 +111,7 @@ fn populate(
         // makes the sandbox refuse to start (#1338, #1341).
         share_entry(&src, &dest)?;
     }
+    strip_default_reasoning_effort(&dir.join("config.toml"));
     if custom_route {
         return Ok(());
     }
@@ -120,6 +121,41 @@ fn populate(
         }
     }
     Ok(())
+}
+
+/// Seal 时剔除 `default_reasoning_effort`（仅 sealed 副本，规范 home 不动）。
+///
+/// CLI 实测（1.0.88）：该用户级键会静默覆盖 `--reasoning-effort` spawn
+/// flag（仅 `--model` 选中自定义路由模型时发生）。App 的档位传递以 spawn
+/// flag 为权威，sealed 副本里不允许这个覆盖源存在。规范 agent-home /
+/// 共享 `~/.grok` 永不改写。
+fn strip_default_reasoning_effort(sealed_config: &Path) {
+    let bytes = match fs::read(sealed_config) {
+        Ok(bytes) => bytes,
+        Err(_) => return,
+    };
+    let text = match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(_) => return,
+    };
+    let stripped: String = text
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim_start();
+            !(trimmed.starts_with("default_reasoning_effort") && trimmed.contains('='))
+        })
+        .collect::<Vec<&str>>()
+        .join("\n")
+        + "\n";
+    if stripped != text {
+        if let Err(e) = fs::write(sealed_config, stripped) {
+            tracing::warn!(
+                target: "agent_proc_home",
+                error = %e,
+                "sealed config strip default_reasoning_effort failed; spawn flag may be overridden"
+            );
+        }
+    }
 }
 
 /// Copy a file's bytes into a new inode. `hard_link` would leave `st_nlink` > 1,
@@ -540,6 +576,37 @@ pub fn sweep_orphans() {
 mod tests {
     use super::*;
     use std::sync::Mutex;
+
+    #[test]
+    fn seal_strips_default_reasoning_effort_from_sealed_copy_only() {
+        let tmp = std::env::temp_dir().join(format!(
+            "grok-seal-strip-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        let canonical = tmp.join("canonical");
+        std::fs::create_dir_all(&canonical).expect("canonical home");
+        std::fs::write(
+            canonical.join("config.toml"),
+            "stream_tool_calls = false\ndefault_reasoning_effort = \"low\"\n[models]\ndefault_reasoning_effort = \"high\"\n",
+        )
+        .expect("seed config");
+
+        let sealed = create(&canonical, false).expect("seal");
+        let sealed_text =
+            std::fs::read_to_string(sealed.join("config.toml")).expect("sealed config");
+        assert!(
+            !sealed_text.contains("default_reasoning_effort"),
+            "sealed copy must not carry the spawn-flag override: {sealed_text}"
+        );
+        assert!(sealed_text.contains("stream_tool_calls"));
+        // 规范 home 不改写。
+        let canonical_text =
+            std::fs::read_to_string(canonical.join("config.toml")).expect("canonical config");
+        assert!(canonical_text.contains("default_reasoning_effort = \"low\""));
+        discard(&sealed);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 
     fn with_app_home<T>(f: impl FnOnce(PathBuf) -> T) -> T {
         static TEST_LOCK: Mutex<()> = Mutex::new(());

@@ -23,12 +23,9 @@ import {
   GROK_BUILD_MODELS,
   PERMISSION_POLICIES,
   SESSION_MODES,
-  effortCatalogForRoute,
   effortDisplayLabel,
-  effortUiOptionIsActive,
-  effortUiOptionsForCatalog,
+  effortsForModel,
   findModel,
-  spawnIdToEffortUiSlot,
   type EffortOption,
   type ModelOption,
   type PermissionPolicyId,
@@ -98,6 +95,11 @@ export type PhoneComposerToolsSheetProps = {
     effortLow: string;
     effortXhigh?: string;
     effortMax?: string;
+    effortNone?: string;
+    /** Shown in place of the ladder when the model rejects reasoning effort. */
+    effortUnavailable?: string;
+    /** Shown when the provider catalog failed to load (not still loading). */
+    effortLoadError?: string;
     contextCurrent: string;
     contextUnknown: string;
     contextCompact: string;
@@ -123,8 +125,11 @@ export type PhoneComposerToolsSheetProps = {
   /** Active inference route: official | custom. */
   activeSource?: string;
   activeProviderId?: string | null;
-  /** Channel-configured efforts when custom route is active. */
-  channelEfforts?: EffortOption[] | null;
+  /** Reasoning options for this chat's exact model; `undefined` uses official catalog. */
+  efforts?: EffortOption[] | null;
+  effortOptionsPending?: boolean;
+  /** 自定义 provider 目录加载失败时，档位区显示错误而非中性加载态。 */
+  effortOptionsFailed?: boolean;
   mode: string;
   policy: string;
   contextDisplay: ContextUsageDisplay;
@@ -143,17 +148,16 @@ export type PhoneComposerToolsSheetProps = {
 };
 
 function effortLabel(
-  spawnId: string,
+  option: EffortOption | string,
   labels: PhoneComposerToolsSheetProps["labels"],
-  catalog?: EffortOption[] | null,
 ): string {
-  const slot = spawnIdToEffortUiSlot(spawnId, catalog);
-  return effortDisplayLabel(slot ?? spawnId, {
+  return effortDisplayLabel(option, {
     high: labels.effortHigh,
     medium: labels.effortMedium,
     low: labels.effortLow,
     xhigh: labels.effortXhigh,
     max: labels.effortMax ?? labels.effortXhigh,
+    none: labels.effortNone,
   });
 }
 
@@ -229,7 +233,9 @@ export function PhoneComposerToolsSheet({
   providers = [],
   activeSource = "official",
   activeProviderId = null,
-  channelEfforts = null,
+  efforts,
+  effortOptionsPending = false,
+  effortOptionsFailed = false,
   mode,
   policy,
   contextDisplay,
@@ -266,12 +272,19 @@ export function PhoneComposerToolsSheet({
       : null;
   const activeCustom = customRoute?.chip ?? null;
   const activeRequestModel = customRoute?.requestModel ?? null;
-  const effortCatalog = effortCatalogForRoute({
-    model: findModel(modelId, modelList),
-    channelEfforts:
-      activeSource === "custom" ? channelEfforts : null,
-  });
-  const effortUiList = effortUiOptionsForCatalog(effortCatalog);
+  const effortOptions =
+    efforts != null ? efforts : effortsForModel(findModel(modelId, modelList));
+  const activeEffortOption =
+    effortOptions.find((option) => option.id === effort) ?? null;
+  const effortDisplay = effortOptionsPending
+    ? labels.effort
+    : effortOptions.length === 0
+      ? effortOptionsFailed
+        ? labels.effortLoadError ?? labels.effort
+        : labels.effortUnavailable ?? labels.effort
+      : activeEffortOption
+        ? effortLabel(activeEffortOption, labels)
+        : labels.effort;
   const officialLabel =
     modelList.find((m) => m.id === modelId)?.label ?? modelId;
   const modelLabel = composerModelChipLabel({
@@ -405,7 +418,7 @@ export function PhoneComposerToolsSheet({
               <SheetRow
                 icon={<IconBolt size={20} />}
                 label={labels.model}
-                value={`${modelLabel} ${effortLabel(effort, labels, effortCatalog)}`}
+                value={`${modelLabel} ${effortDisplay}`}
                 chevron
                 onClick={() => setPanel("model")}
               />
@@ -511,7 +524,7 @@ export function PhoneComposerToolsSheet({
               <SheetRow
                 icon={<IconActivity size={20} />}
                 label={labels.effort}
-                value={effortLabel(effort, labels, effortCatalog)}
+                value={effortDisplay}
                 chevron
                 onClick={() => setPanel("effort")}
               />
@@ -519,41 +532,44 @@ export function PhoneComposerToolsSheet({
           )}
 
           {panel === "effort" &&
-            effortUiList.map((e) => {
-              const active = effortUiOptionIsActive(
-                e,
-                effort,
-                effortCatalog,
-              );
-              return (
-                <button
-                  key={e.uiId}
-                  type="button"
-                  className={
-                    "phone-sheet__row" + (active ? " is-active" : "")
-                  }
-                  onClick={() => {
-                    onEffort(e.spawnId);
-                    setPanel("model");
-                  }}
-                >
-                  <span className="phone-sheet__row-label">
-                    {effortDisplayLabel(e.uiId, {
-                      high: labels.effortHigh,
-                      medium: labels.effortMedium,
-                      low: labels.effortLow,
-                      xhigh: labels.effortXhigh,
-                      max: labels.effortMax ?? labels.effortXhigh,
-                    })}
-                  </span>
-                  {active ? (
-                    <span className="phone-sheet__row-value" aria-hidden>
-                      <IconCheck size={18} />
+            (effortOptions.length > 0 ? (
+              effortOptions.map((option) => {
+                const active = option.id === effort;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={
+                      "phone-sheet__row" + (active ? " is-active" : "")
+                    }
+                    aria-pressed={active}
+                    onClick={() => {
+                      onEffort(option.id);
+                      setPanel("model");
+                    }}
+                  >
+                    <span className="phone-sheet__row-label">
+                      {effortLabel(option, labels)}
                     </span>
-                  ) : null}
-                </button>
-              );
-            })}
+                    {active ? (
+                      <span className="phone-sheet__row-value" aria-hidden>
+                        <IconCheck size={18} />
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })
+            ) : (
+              <div className="phone-sheet__row phone-sheet__row--muted" role="status">
+                <span className="phone-sheet__row-label">
+                  {effortOptionsPending
+                    ? labels.effort
+                    : effortOptionsFailed
+                      ? labels.effortLoadError
+                      : labels.effortUnavailable}
+                </span>
+              </div>
+            ))}
 
           {panel === "access" && (
             <>

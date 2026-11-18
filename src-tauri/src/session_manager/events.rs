@@ -104,7 +104,6 @@ impl SessionManager {
                 .map(|(id, _)| id.clone())
                 .collect();
             for bg_id in bg_ids {
-                self.pending_soft_respawn.lock().remove(&bg_id);
                 self.handle_acp_event_on_background(
                     app,
                     &bg_id,
@@ -122,9 +121,6 @@ impl SessionManager {
                 .map(|s| s.app_session_id.clone());
             if live_sid.is_none() {
                 return;
-            }
-            if let Some(sid) = live_sid {
-                self.pending_soft_respawn.lock().remove(&sid);
             }
             // Fall through to live ProcessExited handling below.
         } else {
@@ -1039,6 +1035,24 @@ impl SessionManager {
                 {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
+                        let pending_reason =
+                            self.pending_soft_respawn.lock().remove(&s.app_session_id);
+                        if pending_reason
+                            .as_deref()
+                            .is_some_and(super::control::requires_session_id_clear)
+                        {
+                            match store::clear_session_agent_session_id(&s.app_session_id) {
+                                Ok(_) => s.meta.agent_session_id = None,
+                                Err(error) => {
+                                    tracing::error!(
+                                        session = %s.app_session_id,
+                                        error = %error,
+                                        "failed to clear agent session id after process exit"
+                                    );
+                                    self.queue_pending_soft_respawn(&s.app_session_id, "effort");
+                                }
+                            }
+                        }
                         // Take the last coalesced stream batch before we drop
                         // the live slot — otherwise ~40ms / 600 chars vanish.
                         // Do not mark done: that would Ready the UI before

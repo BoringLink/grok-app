@@ -50,6 +50,7 @@ export const zhTWCore = {
   "effort.low": "低",
   "effort.xhigh": "極高",
   "effort.max": "極高",
+  "effort.none": "關閉",
   "mode.agent": "Agent",
   "mode.plan": "計劃",
   "mode.ask": "提問",

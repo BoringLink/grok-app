@@ -45,11 +45,11 @@ export const koProviders = {
   "prov.fetchedCapsApplied":
     "모델 {n}개를 불러왔습니다. API에서 제공한 컨텍스트 창과 추론 메타데이터를 적용했습니다.",
   "prov.effortsModelHint":
-    "이 모델의 추론 수준이며 원래 id 그대로 저장됩니다. 값은 reasoning_effort로 전송됩니다. API가 제공하지 않으면 low/medium/high/xhigh를 사용하고 medium이 기본입니다.",
+    "추론 단계는 원래 id로 유지되어 reasoning_effort로 전송됩니다. API에 ladder가 없으면 App은 low/medium/high/xhigh를 사용하고 medium을 기본으로 합니다. Off를 켜면 Composer에 none을 추가해 더 빠르게 응답할 수 있습니다.",
   "prov.modelContextWindowInvalid": "토큰 수를 양의 정수로 입력하거나, 비워 두면 API 값 또는 1M 기본값을 사용합니다.",
-  "prov.modelSupportsReasoning": "추론 수준 지원",
-  "prov.modelSupportsReasoningHint": "이 모델이 사고할 수 없거나 relay가 reasoning_effort를 거부하면 끕니다. Composer는 이 모델의 추론 수준을 숨깁니다.",
-  "prov.modelSupportsReasoningOn": "추론 지원",
+  "prov.modelSupportsReasoning": "추론 끄기",
+  "prov.modelSupportsReasoningHint": "추론 단계가 설정된 모델은 확장 추론을 지원합니다. Off를 켜면 Composer에서 확장 추론을 비활성화해 더 빠르게 응답하도록 할 수 있습니다.",
+  "prov.modelSupportsReasoningOn": "Composer에서 Off 허용",
   "prov.modelUseApiDefault": "API / 기본값 사용",
   "prov.mode": "공급자 모드",
   "prov.mode.generic": "일반 OpenAI 호환 릴레이",

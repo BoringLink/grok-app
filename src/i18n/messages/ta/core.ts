@@ -50,6 +50,7 @@ export const taCore = {
   "effort.low": "குறைவு",
   "effort.xhigh": "மிக உயர்",
   "effort.max": "மிக உயர்",
+  "effort.none": "முடக்கு",
   "mode.agent": "முகவர்",
   "mode.plan": "திட்டம்",
   "mode.ask": "கேள்",

@@ -80,6 +80,7 @@ export type SessionNavHost = {
     setAutomationSetup: (on: boolean) => void;
     resetUsageAndClock: () => void;
     resetPlanAndGates: () => void;
+    resetComposerMode: () => void;
     newChatTitle: () => string;
     startWelcomeIntro: () => void;
   };
@@ -159,6 +160,7 @@ export function createSessionNavHost(): SessionNavHost {
       setAutomationSetup: stub("draft.setAutomationSetup"),
       resetUsageAndClock: stub("draft.resetUsageAndClock"),
       resetPlanAndGates: stub("draft.resetPlanAndGates"),
+      resetComposerMode: stub("draft.resetComposerMode"),
       newChatTitle: stub("draft.newChatTitle") as SessionNavHost["draft"]["newChatTitle"],
       startWelcomeIntro: stub("draft.startWelcomeIntro"),
     },
@@ -518,6 +520,7 @@ export function useSessionNavigation(opts: {
       const proj =
         project === undefined ? host.catalog.getActiveProject() : project;
       if (host.catalog.rejectUnusable(proj)) return;
+      host.draft.resetComposerMode();
       host.draft.startWelcomeIntro();
 
       const leavingId = viewingSessionIdRef.current;

@@ -201,6 +201,9 @@ export interface TurnErrorPayload {
   code?: string;
   message?: string;
   content?: string;
+  /** Host 提取的最近一条上游 API 错误 message（如不支持的思考强度）。
+   * 已知错误码的 friendly copy 之后由前端追加展示。 */
+  upstream?: string | null;
 }
 export interface StreamPayload {
   sessionId: string;

@@ -45,11 +45,11 @@ export const jaProviders = {
   "prov.fetchedCapsApplied":
     "{n} 件のモデルを読み込みました。API にあるコンテキストウィンドウと推論メタデータを反映しました。",
   "prov.effortsModelHint":
-    "このモデルの推論レベル。元の id のまま保存され、reasoning_effort として送信されます。API が提供しない場合は low/medium/high/xhigh を使い、medium が既定です。",
+    "推論レベルは元の id のまま reasoning_effort として送信されます。API に ladder がない場合は low/medium/high/xhigh を使い、medium が既定です。Off を有効にすると Composer に none が追加され、より速く応答できます。",
   "prov.modelContextWindowInvalid": "トークン数を正の整数で入力してください。空欄の場合は API 値、なければ 1M の既定値を使います。",
-  "prov.modelSupportsReasoning": "推論レベルに対応",
-  "prov.modelSupportsReasoningHint": "このモデルが思考できない、または relay が reasoning_effort を拒否する場合はオフにします。Composer はこのモデルの推論レベルを表示しません。",
-  "prov.modelSupportsReasoningOn": "推論に対応",
+  "prov.modelSupportsReasoning": "推論をオフにする",
+  "prov.modelSupportsReasoningHint": "推論レベルが設定されているモデルは拡張推論に対応しています。Off を有効にすると、Composer で拡張推論を無効にして応答を速くできます。",
+  "prov.modelSupportsReasoningOn": "Composer で Off を許可",
   "prov.modelUseApiDefault": "API / 既定値を使う",
   "prov.mode": "プロバイダーモード",
   "prov.mode.generic": "汎用 OpenAI 互換リレー",

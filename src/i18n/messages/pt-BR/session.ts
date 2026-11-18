@@ -331,4 +331,5 @@ export const ptBRSession = {
   "session.journalLoadTimedOut": "O histórico demorou demais para carregar. Mostrando o cache se houver — abra o chat de novo para tentar.",
   "session.journalLoadFailed": "Não foi possível carregar o histórico. Mostrando o cache se houver — abra o chat de novo para tentar.",
   "session.connectClaimTimedOut": "Outra conexão deste chat ainda está em andamento. Tente de novo em instantes.",
+  "session.pendingSettingsRetry": "Não foi possível aplicar as configurações pendentes da sessão. Reconecte para tentar novamente.",
 };

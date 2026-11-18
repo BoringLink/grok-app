@@ -45,11 +45,11 @@ export const ruProviders = {
   "prov.fetchedCapsApplied":
     "Загружено моделей: {n}. Доступные метаданные контекста и рассуждения применены из API.",
   "prov.effortsModelHint":
-    "Уровни рассуждения этой модели сохраняются с исходными id. Значения отправляются как reasoning_effort. Если API их не предоставляет, используются low/medium/high/xhigh со значением medium по умолчанию.",
+    "Уровни сохраняют исходные id и отправляются как reasoning_effort. Если API не предоставляет ladder, App использует low/medium/high/xhigh, по умолчанию medium. Включите Off, чтобы добавить none в Composer и ускорить ответы.",
   "prov.modelContextWindowInvalid": "Введите положительное целое число токенов или оставьте поле пустым, чтобы использовать значение API или значение по умолчанию 1M.",
-  "prov.modelSupportsReasoning": "Поддерживает уровни рассуждения",
-  "prov.modelSupportsReasoningHint": "Отключите, если эта модель не умеет рассуждать или релей отклоняет reasoning_effort. Composer скроет уровни рассуждения для этой модели.",
-  "prov.modelSupportsReasoningOn": "Рассуждение поддерживается",
+  "prov.modelSupportsReasoning": "Отключение рассуждения",
+  "prov.modelSupportsReasoningHint": "Настроенные уровни означают, что модель поддерживает расширенное рассуждение. Включите Off, чтобы Composer отключал его для более быстрого ответа.",
+  "prov.modelSupportsReasoningOn": "Разрешить Off в Composer",
   "prov.modelUseApiDefault": "Использовать API / по умолчанию",
   "prov.mode": "Режим провайдера",
   "prov.mode.generic": "Обычный OpenAI-совместимый relay",

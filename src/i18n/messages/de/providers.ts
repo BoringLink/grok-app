@@ -45,11 +45,11 @@ export const deProviders = {
   "prov.fetchedCapsApplied":
     "{n} Modelle geladen. Verfügbare Kontextfenster- und Reasoning-Metadaten aus der API übernommen.",
   "prov.effortsModelHint":
-    "Reasoning-Stufen für dieses Modell, unter ihren ursprünglichen IDs gespeichert. Werte werden als reasoning_effort gesendet. Meldet die API keine, gilt low/medium/high/xhigh mit medium als Standard.",
+    "Reasoning-Stufen bleiben unter ihren ursprünglichen IDs und werden als reasoning_effort gesendet. Ohne API-Leiter nutzt App low/medium/high/xhigh mit medium als Standard. Off fügt none in Composer hinzu, damit erweitertes Reasoning für schnellere Antworten deaktiviert werden kann.",
   "prov.modelContextWindowInvalid": "Geben Sie eine positive ganze Tokenzahl ein oder lassen Sie das Feld leer, um den API-Wert oder den 1M-Standard zu verwenden.",
-  "prov.modelSupportsReasoning": "Unterstützt Reasoning-Stufen",
-  "prov.modelSupportsReasoningHint": "Ausschalten, wenn dieses Modell nicht denken kann oder das Relay reasoning_effort ablehnt. Der Composer blendet dann die Reasoning-Stufen für dieses Modell aus.",
-  "prov.modelSupportsReasoningOn": "Reasoning unterstützt",
+  "prov.modelSupportsReasoning": "Reasoning deaktivieren",
+  "prov.modelSupportsReasoningHint": "Eine konfigurierte Reasoning-Stufenfolge bedeutet, dass dieses Modell erweitertes Reasoning unterstützt. Aktiviere Off, damit Composer es für schnellere Antworten ausschalten kann.",
+  "prov.modelSupportsReasoningOn": "Off in Composer erlauben",
   "prov.modelUseApiDefault": "API / Standard verwenden",
   "prov.mode": "Anbietermodus",
   "prov.mode.generic": "Generisches OpenAI-kompatibles Relay",

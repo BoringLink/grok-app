@@ -50,6 +50,7 @@ export const frCore = {
   "effort.low": "Faible",
   "effort.xhigh": "Très élevé",
   "effort.max": "Très élevé",
+  "effort.none": "Désactivé",
   "mode.agent": "Agent",
   "mode.plan": "Plan",
   "mode.ask": "Question",

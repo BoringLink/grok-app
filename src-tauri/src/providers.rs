@@ -40,7 +40,7 @@ pub struct ProviderModelEntry {
     /// Legacy per-model video-input flag. No Settings control; kept verbatim.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_video: Option<bool>,
-    /// Per-model reasoning ladder. Empty → channel `efforts`, then App default.
+    /// 模型专属档位为空时使用通用 fallback；旧式单模型路由仅在 id 匹配时用 channel `efforts`。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub efforts: Vec<ProviderEffortEntry>,
     /// Which layer produced `efforts`: `user`, `remote`, or `fallback`.
@@ -52,6 +52,9 @@ pub struct ProviderModelEntry {
     /// Which layer produced `supports_reasoning_effort`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_reasoning_effort_source: Option<String>,
+    /// App-owned setting that lets Composer expose the raw `none` id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_reasoning_off: Option<bool>,
 }
 
 impl ProviderModelEntry {
@@ -104,7 +107,7 @@ pub struct CustomProvider {
     /// stored text. Deliberately opaque — no parse detail or raw value here.
     #[serde(default)]
     pub model_catalog_corrupt: bool,
-    /// Reasoning efforts for this channel (App-managed). Empty → App falls back to Grok 3.
+    /// `app_efforts` 仅用于匹配的旧式单模型路由；多模型目录不借用当前 channel 档位。
     #[serde(default)]
     pub efforts: Vec<ProviderEffortEntry>,
     /// Optional per-channel context window (tokens). None → App falls back to
@@ -177,6 +180,9 @@ const APP_MODELS_KEY: &str = "app_models";
 const APP_EFFORTS_KEY: &str = "app_efforts";
 /// Grok Build capability gate for forwarding `--reasoning-effort` to inference.
 const SUPPORTS_REASONING_EFFORT_KEY: &str = "supports_reasoning_effort";
+/// CLI native effort menu. Without it the CLI rejects custom ids such as
+/// `instant` and falls back to its default level.
+const CLI_REASONING_EFFORTS_KEY: &str = "reasoning_efforts";
 /// TOML field (ignored by Grok Build): when true, do not auto-append `/v1` to base_url.
 const APP_BASE_URL_FULL_PATH_KEY: &str = "app_base_url_full_path";
 /// TOML field (ignored by Grok Build): extra rules appended to the system prompt.
@@ -436,10 +442,17 @@ fn format_toml_field_value(key: &str, value: &str) -> String {
             return n.to_string();
         }
     }
-    // CLI inline table — never JSON-quote (Grok would treat it as a string).
+    // CLI inline table / array of tables — never JSON-quote (Grok would treat
+    // it as a string and ignore the effort menu).
     if key == EXTRA_HEADERS_KEY {
         let raw = value.trim();
         if raw.starts_with('{') {
+            return raw.to_string();
+        }
+    }
+    if key == CLI_REASONING_EFFORTS_KEY {
+        let raw = value.trim();
+        if raw.starts_with('[') {
             return raw.to_string();
         }
     }
@@ -529,32 +542,66 @@ fn ensure_reasoning_effort_support_fields() -> Result<bool, String> {
 
     let text = read_text(&path);
     let sections = parse_model_sections(&text);
+    let lines = config_lines(&text);
+    let mut updates = Vec::new();
     let mut insertions = Vec::new();
     for section in sections {
-        if !is_custom(&section.fields)
-            || section.fields.contains_key(SUPPORTS_REASONING_EFFORT_KEY)
-            || decode_app_efforts(
-                section
-                    .fields
-                    .get(APP_EFFORTS_KEY)
-                    .map(std::string::String::as_str),
-            )
-            .is_empty()
+        if !is_custom(&section.fields) {
+            continue;
+        }
+        let channel_efforts = decode_app_efforts(
+            section
+                .fields
+                .get(APP_EFFORTS_KEY)
+                .map(std::string::String::as_str),
+        );
+        let fallback_model = section
+            .fields
+            .get("model")
+            .map(String::as_str)
+            .unwrap_or(section.id.as_str());
+        let models = decode_app_models(
+            section.fields.get(APP_MODELS_KEY).map(String::as_str),
+            fallback_model,
+            fallback_model,
+        );
+        let has_model_efforts = models.iter().any(|model| {
+            model.supports_reasoning_effort == Some(true)
+                || model.supports_reasoning_off == Some(true)
+                || !model.efforts.is_empty()
+        });
+        if channel_efforts.is_empty() && !has_model_efforts {
+            continue;
+        }
+        if section
+            .fields
+            .get(SUPPORTS_REASONING_EFFORT_KEY)
+            .is_some_and(|value| parse_app_bool_field(Some(value)))
         {
             continue;
         }
 
-        let lines = config_lines(&text);
-        let index = (section.start + 1..section.end)
-            .find(|&i| assignment_key_exact(lines[i].trim()) == Some(APP_EFFORTS_KEY))
-            .map_or(section.end, |i| i + 1);
-        insertions.push(index);
+        if section.fields.contains_key(SUPPORTS_REASONING_EFFORT_KEY) {
+            if let Some(index) = (section.start + 1..section.end).find(|&i| {
+                assignment_key_exact(lines[i].trim()) == Some(SUPPORTS_REASONING_EFFORT_KEY)
+            }) {
+                updates.push(index);
+            }
+        } else {
+            let index = (section.start + 1..section.end)
+                .find(|&i| assignment_key_exact(lines[i].trim()) == Some(APP_EFFORTS_KEY))
+                .map_or(section.end, |i| i + 1);
+            insertions.push(index);
+        }
     }
-    if insertions.is_empty() {
+    if updates.is_empty() && insertions.is_empty() {
         return Ok(false);
     }
 
-    let mut lines: Vec<_> = config_lines(&text).into_iter().map(str::to_owned).collect();
+    let mut lines: Vec<_> = lines.into_iter().map(str::to_owned).collect();
+    for index in updates {
+        lines[index] = format!("{SUPPORTS_REASONING_EFFORT_KEY} = true");
+    }
     for index in insertions.into_iter().rev() {
         lines.insert(index, format!("{SUPPORTS_REASONING_EFFORT_KEY} = true"));
     }
@@ -1170,10 +1217,30 @@ fn is_generic_parent(section: &Section) -> bool {
     ) != PROVIDER_MODE_GROK_BUILD_PROXY
 }
 
+/// Channel `app_efforts` may back a legacy single-model catalog only.
+fn single_model_channel_efforts(
+    parent: &Section,
+    models: &[ProviderModelEntry],
+) -> Option<Vec<ProviderEffortEntry>> {
+    let model = models.first().filter(|_| models.len() == 1)?;
+    if parent
+        .fields
+        .get("model")
+        .map(String::as_str)
+        .map(str::trim)
+        != Some(model.id.trim())
+    {
+        return None;
+    }
+    let efforts = decode_app_efforts(parent.fields.get(APP_EFFORTS_KEY).map(String::as_str));
+    (!efforts.is_empty()).then_some(efforts)
+}
+
 fn generic_child_fields(
     parent: &Section,
     model: &ProviderModelEntry,
     parent_id: &str,
+    channel_efforts: Option<&[ProviderEffortEntry]>,
 ) -> Vec<(String, String)> {
     let mut fields: Vec<(String, String)> = Vec::new();
     fields.push(("model".into(), model.id.clone()));
@@ -1217,6 +1284,12 @@ fn generic_child_fields(
     if let Some(v) = parent.fields.get(SUPPORTS_REASONING_EFFORT_KEY) {
         fields.push((SUPPORTS_REASONING_EFFORT_KEY.into(), v.clone()));
     }
+    if let Some(efforts) = cli_efforts_for_model(model, channel_efforts) {
+        let raw = encode_cli_reasoning_efforts(&efforts);
+        if !raw.is_empty() {
+            fields.push((CLI_REASONING_EFFORTS_KEY.into(), raw));
+        }
+    }
     fields.push((APP_PROVIDER_MODE_KEY.into(), PROVIDER_MODE_GENERIC.into()));
     fields.push((APP_PARENT_PROVIDER_KEY.into(), parent_id.to_string()));
 
@@ -1229,6 +1302,7 @@ fn generic_child_fields(
         "context_window",
         EXTRA_HEADERS_KEY,
         SUPPORTS_REASONING_EFFORT_KEY,
+        CLI_REASONING_EFFORTS_KEY,
         APP_PROVIDER_MODE_KEY,
         APP_PARENT_PROVIDER_KEY,
         APP_MODELS_KEY,
@@ -1269,6 +1343,8 @@ fn refreshed_child_fields(
     parent: &Section,
     child: &Section,
     parent_id: &str,
+    model: Option<&ProviderModelEntry>,
+    channel_efforts: Option<&[ProviderEffortEntry]>,
 ) -> Vec<(String, String)> {
     let own = |key: &str| {
         child
@@ -1313,6 +1389,14 @@ fn refreshed_child_fields(
             fields.push((key.into(), v));
         }
     }
+    if let Some(efforts) = model.and_then(|model| cli_efforts_for_model(model, channel_efforts)) {
+        let raw = encode_cli_reasoning_efforts(&efforts);
+        if !raw.is_empty() {
+            fields.push((CLI_REASONING_EFFORTS_KEY.into(), raw));
+        }
+    } else if let Some(v) = own(CLI_REASONING_EFFORTS_KEY) {
+        fields.push((CLI_REASONING_EFFORTS_KEY.into(), v));
+    }
     fields.push((APP_PROVIDER_MODE_KEY.into(), PROVIDER_MODE_GENERIC.into()));
     fields.push((APP_PARENT_PROVIDER_KEY.into(), parent_id.to_string()));
     if let Some(v) = channel(crate::relay_stream_proxy::APP_UPSTREAM_BASE_URL_KEY) {
@@ -1327,6 +1411,7 @@ fn refreshed_child_fields(
         "model",
         "name",
         "context_window",
+        CLI_REASONING_EFFORTS_KEY,
         APP_PROVIDER_MODE_KEY,
         APP_PARENT_PROVIDER_KEY,
     ]);
@@ -1359,7 +1444,7 @@ fn refresh_child_channel_fields(text: &str, parent: &Section, parent_id: &str) -
         .collect();
     let mut text = text.to_string();
     for child in children {
-        let fields = refreshed_child_fields(parent, &child, parent_id);
+        let fields = refreshed_child_fields(parent, &child, parent_id, None, None);
         text = replace_or_append_section(&text, &child.id, &fields);
     }
     text
@@ -1414,9 +1499,16 @@ fn ensure_recovered_child_sections(
         let Some(model) = recovered_rows.iter().find(|m| m.id == binding.model_id) else {
             continue;
         };
+        let channel_efforts = single_model_channel_efforts(parent, recovered_rows);
         let fields = match children.iter().find(|c| c.id == binding.section_id) {
-            Some(child) => refreshed_child_fields(parent, child, parent_id),
-            None => generic_child_fields(parent, model, parent_id),
+            Some(child) => refreshed_child_fields(
+                parent,
+                child,
+                parent_id,
+                Some(model),
+                channel_efforts.as_deref(),
+            ),
+            None => generic_child_fields(parent, model, parent_id, channel_efforts.as_deref()),
         };
         text = replace_or_append_section(&text, &binding.section_id, &fields);
     }
@@ -1498,7 +1590,8 @@ fn sync_parent_children(text: &str, parent_id: &str) -> String {
         let Some(model) = models.iter().find(|m| m.id == binding.model_id) else {
             continue;
         };
-        let fields = generic_child_fields(&parent, model, parent_id);
+        let channel_efforts = single_model_channel_efforts(&parent, &models);
+        let fields = generic_child_fields(&parent, model, parent_id, channel_efforts.as_deref());
         text = replace_or_append_section(&text, &binding.section_id, &fields);
     }
     text
@@ -1649,6 +1742,7 @@ pub fn normalize_provider_models(models: &[ProviderModelEntry]) -> Vec<ProviderM
                 m.supports_reasoning_effort_source.as_deref(),
                 m.supports_reasoning_effort.is_some(),
             ),
+            supports_reasoning_off: m.supports_reasoning_off,
         });
     }
     out
@@ -1678,6 +1772,67 @@ fn encode_app_efforts(efforts: &[ProviderEffortEntry]) -> String {
     serde_json::to_string(efforts).unwrap_or_else(|_| "[]".into())
 }
 
+/// Canonical wire effort Grok Build accepts for an App-owned option id.
+///
+/// CLI 1.x validates `model.<id>.reasoning_efforts[].value` against its fixed
+/// tier list, so a provider-only id such as `instant` must map to the nearest
+/// tier; the menu keeps the raw id as the option `id`.
+fn canonical_wire_effort(id: &str) -> &'static str {
+    match id.trim().to_ascii_lowercase().as_str() {
+        "none" | "off" | "disabled" | "disable" => "none",
+        "minimal" | "minimum" | "instant" | "fastest" => "minimal",
+        "low" | "fast" | "light" => "low",
+        "high" | "deep" | "think" | "thinking" => "high",
+        "xhigh" | "extra-high" | "extra_high" => "xhigh",
+        "max" | "maximum" | "ultra" => "max",
+        _ => "medium",
+    }
+}
+
+/// CLI `session/set_config_option` 可下发的线级档（1.0.88 实测固定档集：
+/// minimal / low / medium / high / xhigh）。
+///
+/// `none` 无法经该 RPC 表达（CLI 报 `unknown reasoning_effort value`），
+/// `max` 同样超出固定档集——这两档的权威路径是 spawn flag
+/// `--reasoning-effort`（配额 seal 时剔除用户级 `default_reasoning_effort`
+/// 的覆盖）。返回 `None` 表示跳过 RPC 下发。
+///
+/// 同 value 多原始 id 的 ladder 也走本路径：ladder 表
+/// (`model.<id>.reasoning_efforts`) 由 [`encode_cli_reasoning_efforts`] 写入
+/// agent-home，CLI 自己完成 raw id → value 的映射，因此 spawn 腿
+/// `--reasoning-effort <raw>` 与 RPC 腿下发 `canonical_wire_effort(raw)` 在
+/// 线级（API 实际收到的值）完全一致。热切换对该场景是精确的，不需要为
+/// 消除"歧义"而强制 respawn——respawn 会打断运行中的回合，破坏
+/// "下一轮生效"的用户预期。
+pub fn set_config_wire_effort(id: &str) -> Option<&'static str> {
+    let tier = canonical_wire_effort(id);
+    matches!(tier, "minimal" | "low" | "medium" | "high" | "xhigh").then_some(tier)
+}
+
+/// TOML inline array of tables for Grok Build's `model.<id>.reasoning_efforts`.
+///
+/// `id` is the raw Composer option the App passes to `--reasoning-effort`;
+/// `value` is the canonical tier the CLI maps it to.
+fn encode_cli_reasoning_efforts(efforts: &[ProviderEffortEntry]) -> String {
+    if efforts.is_empty() {
+        return String::new();
+    }
+    let rows: Vec<String> = efforts
+        .iter()
+        .map(|effort| {
+            let id = effort.id.trim();
+            format!(
+                "{{ id = {}, value = {}, label = {}, default = {} }}",
+                quote(id),
+                quote(canonical_wire_effort(id)),
+                quote(effort.name.trim()),
+                effort.is_default
+            )
+        })
+        .collect();
+    format!("[{}]", rows.join(", "))
+}
+
 /// Normalize efforts: unique ids, blank names → id.
 pub fn normalize_provider_efforts(efforts: &[ProviderEffortEntry]) -> Vec<ProviderEffortEntry> {
     let mut out = Vec::new();
@@ -1685,7 +1840,7 @@ pub fn normalize_provider_efforts(efforts: &[ProviderEffortEntry]) -> Vec<Provid
     let mut any_default = false;
     for e in efforts {
         let id = e.id.trim().to_string();
-        if id.is_empty() || !seen.insert(id.clone()) {
+        if !crate::acp_client::is_spawnable_reasoning_effort(&id) || !seen.insert(id.clone()) {
             continue;
         }
         let name = e.name.trim();
@@ -2379,17 +2534,40 @@ pub fn session_route_provider_id(stored: Option<&str>) -> String {
     }
 }
 
-/// Drop a provider that no longer exists on disk before connecting.
-///
-/// A deleted provider must not spawn a process against a missing
-/// `[model.<id>]` section. The session keeps its stored id until the user
-/// picks again, so this is the recoverable official fallback.
-pub fn existing_session_route(route: &str) -> String {
+/// 删除的 provider 或显式清空且无会话 model id 时回退 official。
+pub fn existing_session_route(
+    route: &str,
+    composer_model: &str,
+    session_model_is_stored: bool,
+) -> String {
     let id = route.trim();
-    if !is_session_provider_official(id) && is_custom_provider_id(id) {
-        return id.to_string();
+    if is_session_provider_official(id) {
+        return SESSION_PROVIDER_OFFICIAL.into();
     }
-    SESSION_PROVIDER_OFFICIAL.into()
+    let list = match list_custom_providers() {
+        Ok(list) => list,
+        Err(error) => {
+            tracing::warn!(
+                provider = %id,
+                error = %error,
+                "could not resolve saved session route; keeping provider id"
+            );
+            return id.to_string();
+        }
+    };
+    let Some(provider) = list.providers.iter().find(|provider| provider.id == id) else {
+        return SESSION_PROVIDER_OFFICIAL.into();
+    };
+    if composer_model.trim().is_empty() || (provider.models.is_empty() && !session_model_is_stored)
+    {
+        SESSION_PROVIDER_OFFICIAL.into()
+    } else {
+        id.to_string()
+    }
+}
+
+fn official_default_model_id() -> String {
+    crate::models_catalog::list_available_models().default_model_id
 }
 
 /// Model to connect with after resolving a chat's saved provider.
@@ -2408,9 +2586,40 @@ pub fn session_model_id_for_route(
             && !is_custom_provider_id(id)
     });
     if removed_provider {
-        return OFFICIAL_CATALOG_MODEL.into();
+        return official_default_model_id();
     }
     session_set_model_id_for(resolved_route, composer_model)
+}
+
+/// 用于推理目录查询的模型 id：官方使用已解析 id，自定义路由使用上游模型 id。
+pub fn effort_model_id_for_route(
+    provider_id: &str,
+    composer_model: &str,
+    session_model: &str,
+) -> String {
+    let composer_model = composer_model.trim();
+    if is_session_provider_official(provider_id) {
+        return session_model.trim().to_string();
+    }
+    let Ok(list) = list_custom_providers() else {
+        return if composer_model.is_empty() {
+            session_model.trim().to_string()
+        } else {
+            composer_model.to_string()
+        };
+    };
+    if let Some(provider) = list
+        .providers
+        .iter()
+        .find(|provider| provider.id == provider_id.trim())
+    {
+        return resolved_custom_effort_model_id(provider, composer_model);
+    }
+    if composer_model.is_empty() {
+        session_model.trim().to_string()
+    } else {
+        composer_model.to_string()
+    }
 }
 
 /// How a composer provider pick relates to the route this chat already uses.
@@ -2514,6 +2723,443 @@ pub fn composer_provider_pick(
     }
 }
 
+/// Default id for a reasoning ladder: explicit `isDefault`, then `medium`,
+/// then the first non-blank id. Mirrors the composer's raw-id default rule.
+/// 梯子无显式 `isDefault` 时的默认档：首个非空且非 `none` 的档位。
+/// Off 永远不做隐式默认；不再凭空回退 `medium`（与前端
+/// `pickDefaultEffort` 保持同一规则，避免两端默认档分歧）。
+pub fn reasoning_effort_ladder_default(efforts: &[ProviderEffortEntry]) -> Option<String> {
+    efforts
+        .iter()
+        .find(|entry| entry.is_default && !entry.id.trim().is_empty())
+        .or_else(|| {
+            efforts.iter().find(|entry| {
+                !entry.id.trim().is_empty() && !entry.id.trim().eq_ignore_ascii_case("none")
+            })
+        })
+        .map(|entry| entry.id.trim().to_string())
+}
+
+/// 判断模型目录是否显式声明指定的推理档位。
+pub fn model_advertises_reasoning_effort(
+    provider_id: &str,
+    composer_model: &str,
+    effort_id: &str,
+) -> bool {
+    let effort_id = effort_id.trim();
+    if !crate::acp_client::is_spawnable_reasoning_effort(effort_id) {
+        return false;
+    }
+    if is_session_provider_official(provider_id) {
+        return crate::models_catalog::list_available_models()
+            .models
+            .into_iter()
+            .find(|model| model.id == composer_model.trim())
+            .is_some_and(|model| {
+                model
+                    .reasoning_efforts
+                    .iter()
+                    .any(|effort| effort.id == effort_id)
+            });
+    }
+    let Ok(list) = list_custom_providers() else {
+        return false;
+    };
+    let Some(provider) = list
+        .providers
+        .into_iter()
+        .find(|provider| provider.id == provider_id.trim())
+    else {
+        return false;
+    };
+    let model_id = resolved_custom_effort_model_id(&provider, composer_model);
+    let model = provider
+        .models
+        .iter()
+        .find(|model| model.id.trim() == model_id.as_str());
+    if model.is_some_and(|model| !model_supports_reasoning_effort(model)) {
+        return false;
+    }
+    custom_model_effort_ladder(&provider, &model_id)
+        .is_some_and(|ladder| ladder.iter().any(|effort| effort.id.trim() == effort_id))
+}
+
+const CUSTOM_FALLBACK_REASONING_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh"];
+
+/// 根据 provider 目录将已保存的 model id 解析到实际可用的推理档位行。
+fn resolved_custom_effort_model_id(provider: &CustomProvider, composer_model: &str) -> String {
+    let requested = composer_model.trim();
+    if !requested.is_empty()
+        && provider
+            .models
+            .iter()
+            .any(|model| model.id.trim() == requested)
+    {
+        return requested.to_string();
+    }
+    if !requested.is_empty() && (provider.model_catalog_corrupt || provider.models.is_empty()) {
+        return requested.to_string();
+    }
+    let active = provider.model.trim();
+    if !active.is_empty()
+        && provider
+            .models
+            .iter()
+            .any(|model| model.id.trim() == active)
+    {
+        return active.to_string();
+    }
+    provider
+        .models
+        .first()
+        .map(|model| model.id.trim().to_string())
+        .filter(|model| !model.is_empty())
+        .or_else(|| (!requested.is_empty()).then(|| requested.to_string()))
+        .unwrap_or_else(|| active.to_string())
+}
+
+fn resolved_custom_model_id_for_session(
+    provider: &CustomProvider,
+    composer_model: &str,
+    session_model_is_stored: bool,
+) -> String {
+    let requested = composer_model.trim();
+    if provider.model_catalog_corrupt && !session_model_is_stored {
+        if provider
+            .models
+            .iter()
+            .any(|model| model.id.trim() == requested)
+        {
+            return requested.to_string();
+        }
+        let active = provider.model.trim();
+        if provider
+            .models
+            .iter()
+            .any(|model| model.id.trim() == active)
+        {
+            return active.to_string();
+        }
+        if let Some(first) = provider.models.first().map(|model| model.id.trim()) {
+            if !first.is_empty() {
+                return first.to_string();
+            }
+        }
+    }
+    resolved_custom_effort_model_id(provider, requested)
+}
+
+/// 返回当前会话路由实际选择的自定义模型 identity。
+pub fn session_composer_model_id_for_route(
+    stored_provider: Option<&str>,
+    resolved_route: &str,
+    composer_model: &str,
+    session_model_is_stored: bool,
+) -> String {
+    if is_session_provider_official(resolved_route) {
+        return session_model_id_for_route(stored_provider, resolved_route, composer_model);
+    }
+    let id = resolved_route.trim();
+    let provider = list_custom_providers().ok().and_then(|list| {
+        list.providers
+            .into_iter()
+            .find(|provider| provider.id == id)
+    });
+    provider.map_or_else(
+        || composer_model.trim().to_string(),
+        |provider| {
+            resolved_custom_model_id_for_session(&provider, composer_model, session_model_is_stored)
+        },
+    )
+}
+
+fn model_supports_reasoning_effort(model: &ProviderModelEntry) -> bool {
+    let has_configured_ladder =
+        !model.efforts.is_empty() && model.efforts_source.as_deref() != Some(MODEL_SOURCE_FALLBACK);
+    has_configured_ladder
+        || model.supports_reasoning_off == Some(true)
+        || model.supports_reasoning_effort != Some(false)
+}
+
+/// Append or drop the raw `none` row according to the model setting.
+fn with_reasoning_off(
+    mut ladder: Vec<ProviderEffortEntry>,
+    model: &ProviderModelEntry,
+) -> Vec<ProviderEffortEntry> {
+    let catalog_advertises_off = ladder
+        .iter()
+        .any(|effort| effort.id.trim().eq_ignore_ascii_case("none"));
+    let supports_off = model
+        .supports_reasoning_off
+        .unwrap_or(catalog_advertises_off);
+    if supports_off && !catalog_advertises_off {
+        ladder.push(ProviderEffortEntry {
+            id: "none".into(),
+            name: "none".into(),
+            is_default: false,
+        });
+    } else if !supports_off {
+        ladder.retain(|effort| !effort.id.trim().eq_ignore_ascii_case("none"));
+    }
+    ladder
+}
+
+fn fallback_reasoning_efforts() -> Vec<ProviderEffortEntry> {
+    CUSTOM_FALLBACK_REASONING_EFFORTS
+        .iter()
+        .map(|id| ProviderEffortEntry {
+            id: (*id).to_string(),
+            name: (*id).to_string(),
+            is_default: *id == "medium",
+        })
+        .collect()
+}
+
+/// The row's own ladder, including the optional Off entry.
+fn model_own_efforts(model: &ProviderModelEntry) -> Option<Vec<ProviderEffortEntry>> {
+    if !model_supports_reasoning_effort(model) {
+        return None;
+    }
+    let ladder = if !model.efforts.is_empty() {
+        normalize_provider_efforts(&model.efforts)
+    } else if model.supports_reasoning_off == Some(true) {
+        fallback_reasoning_efforts()
+    } else {
+        return None;
+    };
+    Some(with_reasoning_off(ladder, model))
+}
+
+/// Ladder sent to the CLI for one generic child section.
+///
+/// A legacy single-model channel may lend its `app_efforts` when the catalog
+/// row is the same model; multi-model channels never borrow another row.
+fn cli_efforts_for_model(
+    model: &ProviderModelEntry,
+    channel_efforts: Option<&[ProviderEffortEntry]>,
+) -> Option<Vec<ProviderEffortEntry>> {
+    if !model_supports_reasoning_effort(model) {
+        return None;
+    }
+    if !model.efforts.is_empty() || model.supports_reasoning_off == Some(true) {
+        return model_own_efforts(model);
+    }
+    let channel = channel_efforts.filter(|efforts| !efforts.is_empty())?;
+    Some(with_reasoning_off(
+        normalize_provider_efforts(channel),
+        model,
+    ))
+}
+
+fn custom_model_effort_ladder(
+    provider: &CustomProvider,
+    model_id: &str,
+) -> Option<Vec<ProviderEffortEntry>> {
+    let model_id = model_id.trim();
+    let model = provider
+        .models
+        .iter()
+        .find(|model| model.id.trim() == model_id)?;
+    if !model_supports_reasoning_effort(model) {
+        return None;
+    }
+    if !model.efforts.is_empty() || model.supports_reasoning_off == Some(true) {
+        return model_own_efforts(model);
+    }
+    if provider.models.len() == 1
+        && provider.model.trim() == model_id
+        && !provider.efforts.is_empty()
+    {
+        return Some(with_reasoning_off(
+            normalize_provider_efforts(&provider.efforts),
+            model,
+        ));
+    }
+    None
+}
+
+fn official_fallback_efforts(model_id: &str) -> &'static [&'static str] {
+    if matches!(
+        model_id.trim(),
+        "grok-4.7" | "grok-4.7-build-fast" | "grok-4.6"
+    ) {
+        &["low", "medium", "high", "xhigh"]
+    } else {
+        &["low", "medium", "high"]
+    }
+}
+
+/// 模型档位目录的默认档：显式 `isDefault` 优先；否则取首个可 spawn 且
+/// 非 `none` 的档位（Off 不做隐式默认；API 提供了档位但未标默认）。
+/// 完全没有档位信息时由调用方回退 `medium`（CLI 固定 wire 枚举内）。
+fn reasoning_effort_catalog_default(
+    efforts: &[crate::models_catalog::ReasoningEffort],
+) -> Option<String> {
+    efforts
+        .iter()
+        .filter(|effort| crate::acp_client::is_spawnable_reasoning_effort(&effort.id))
+        .find(|effort| effort.is_default)
+        .or_else(|| {
+            efforts.iter().find(|effort| {
+                crate::acp_client::is_spawnable_reasoning_effort(&effort.id)
+                    && !effort.id.trim().eq_ignore_ascii_case("none")
+            })
+        })
+        .map(|effort| effort.id.trim().to_string())
+}
+
+/// 按路由校验推理档位：有目录时必须匹配目录，无目录时沿用产品 fallback。
+pub fn is_valid_reasoning_effort_for_model(
+    provider_id: &str,
+    composer_model: &str,
+    effort_id: &str,
+) -> bool {
+    let effort_id = effort_id.trim();
+    if !crate::acp_client::is_spawnable_reasoning_effort(effort_id) {
+        return false;
+    }
+    if effort_id == "none" {
+        return model_advertises_reasoning_effort(provider_id, composer_model, effort_id);
+    }
+    if is_session_provider_official(provider_id) {
+        let available = crate::models_catalog::list_available_models();
+        let Some(model) = available
+            .models
+            .iter()
+            .find(|model| model.id == composer_model.trim())
+        else {
+            return official_fallback_efforts(composer_model).contains(&effort_id);
+        };
+        if model.reasoning_efforts.is_empty() {
+            return official_fallback_efforts(composer_model).contains(&effort_id);
+        }
+        return model
+            .reasoning_efforts
+            .iter()
+            .any(|effort| effort.id == effort_id);
+    }
+    let Ok(list) = list_custom_providers() else {
+        return false;
+    };
+    let Some(provider) = list
+        .providers
+        .iter()
+        .find(|provider| provider.id == provider_id.trim())
+    else {
+        return false;
+    };
+    let model_id = resolved_custom_effort_model_id(provider, composer_model);
+    let model = provider
+        .models
+        .iter()
+        .find(|model| model.id.trim() == model_id.as_str());
+    if model.is_some_and(|model| !model_supports_reasoning_effort(model)) {
+        return false;
+    }
+    if let Some(ladder) = custom_model_effort_ladder(provider, &model_id) {
+        return ladder.iter().any(|effort| effort.id.trim() == effort_id);
+    }
+    CUSTOM_FALLBACK_REASONING_EFFORTS.contains(&effort_id)
+}
+
+/// 按 provider/model 解析 CLI 实际使用的推理档位。
+///
+/// 显式模型档位里的过期 id 回退到该模型默认值；未配置模型档位时使用
+/// 自定义通用 fallback。单行旧目录仅在它与活动模型相同时使用 channel 档位。
+/// 只有精确模型档位声明 `none` 才会向 CLI 传 Off。
+pub fn effective_reasoning_effort(
+    provider_id: &str,
+    composer_model: &str,
+    stored_effort: &str,
+) -> Option<String> {
+    let stored = stored_effort.trim();
+    let stored_is_spawnable = crate::acp_client::is_spawnable_reasoning_effort(stored);
+    if is_session_provider_official(provider_id) {
+        let available = crate::models_catalog::list_available_models();
+        let model = available
+            .models
+            .iter()
+            .find(|model| model.id == composer_model.trim());
+        if stored == "none" {
+            return model
+                .filter(|model| {
+                    model
+                        .reasoning_efforts
+                        .iter()
+                        .any(|effort| effort.id == "none")
+                })
+                .map(|_| stored.to_string());
+        }
+        if let Some(model) = model.filter(|model| !model.reasoning_efforts.is_empty()) {
+            if stored_is_spawnable
+                && model
+                    .reasoning_efforts
+                    .iter()
+                    .any(|effort| effort.id == stored)
+            {
+                return Some(stored.to_string());
+            }
+            return reasoning_effort_catalog_default(&model.reasoning_efforts);
+        }
+        let fallback = official_fallback_efforts(composer_model);
+        if fallback.contains(&stored) {
+            return stored_is_spawnable.then(|| stored.to_string());
+        }
+        return fallback
+            .iter()
+            .find(|effort| **effort == "xhigh")
+            .or_else(|| fallback.iter().find(|effort| **effort == "high"))
+            .map(|effort| (*effort).to_string());
+    }
+    let Ok(list) = list_custom_providers() else {
+        return if stored == "none" {
+            Some("medium".to_string())
+        } else {
+            stored_is_spawnable.then(|| stored.to_string())
+        };
+    };
+    let Some(provider) = list
+        .providers
+        .into_iter()
+        .find(|provider| provider.id == provider_id.trim())
+    else {
+        return if stored == "none" {
+            Some("medium".to_string())
+        } else {
+            stored_is_spawnable.then(|| stored.to_string())
+        };
+    };
+    let model_id = resolved_custom_effort_model_id(&provider, composer_model);
+    let model = provider
+        .models
+        .iter()
+        .find(|model| model.id.trim() == model_id.as_str());
+    if model.is_some_and(|model| !model_supports_reasoning_effort(model)) {
+        return None;
+    }
+    if stored == "none" {
+        if let Some(ladder) = custom_model_effort_ladder(&provider, &model_id) {
+            return if ladder.iter().any(|entry| entry.id.trim() == "none") {
+                Some(stored.to_string())
+            } else {
+                reasoning_effort_ladder_default(&ladder)
+            };
+        }
+        return Some("medium".to_string());
+    }
+    if let Some(ladder) = custom_model_effort_ladder(&provider, &model_id) {
+        if ladder.iter().any(|entry| entry.id.trim() == stored) {
+            return stored_is_spawnable.then(|| stored.to_string());
+        }
+        return reasoning_effort_ladder_default(&ladder);
+    }
+    Some(if CUSTOM_FALLBACK_REASONING_EFFORTS.contains(&stored) {
+        stored.to_string()
+    } else {
+        "medium".to_string()
+    })
+}
+
 /// `--model` for a process bound to `provider_id`.
 ///
 /// Official routes spawn with a catalog id. A generic custom route spawns with
@@ -2532,7 +3178,7 @@ pub fn spawn_model_for_provider(provider_id: &str, composer_model: &str) -> Stri
 pub fn official_model_id_for(requested: &str) -> String {
     let model = requested.trim();
     if model.is_empty() || model == OFFICIAL_DEFAULT_MODEL {
-        return OFFICIAL_CATALOG_MODEL.into();
+        return official_default_model_id();
     }
     if is_official_catalog_model(model) {
         return model.into();
@@ -2541,7 +3187,7 @@ pub fn official_model_id_for(requested: &str) -> String {
     if available.models.iter().any(|row| row.id == model) {
         return model.into();
     }
-    OFFICIAL_CATALOG_MODEL.into()
+    available.default_model_id
 }
 
 /// `session/set_model` id for one chat on `provider_id`.
@@ -2567,7 +3213,16 @@ pub fn session_set_model_id_for(provider_id: &str, composer_model: &str) -> Stri
             provider.model_catalog_corrupt || provider.models.is_empty(),
         );
     }
-    resolve_session_set_model_id(Some(id), composer_model, &generic_sections_for_provider(id))
+    let generic_sections = generic_sections_for_provider(id);
+    let requested = composer_model.trim();
+    if generic_sections
+        .iter()
+        .any(|section| section.section_id == requested)
+    {
+        return requested.to_string();
+    }
+    let resolved_model_id = resolved_custom_effort_model_id(&provider, requested);
+    resolve_session_set_model_id(Some(id), &resolved_model_id, &generic_sections)
 }
 
 /// Pure half of [`session_set_model_id_for`] for a Grok Build-compatible relay.
@@ -3020,10 +3675,34 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
     if !app_efforts_json.is_empty() && app_efforts_json != "[]" {
         fields.push((APP_EFFORTS_KEY.into(), app_efforts_json));
     }
+    let models_support_reasoning = models.iter().any(|row| {
+        row.supports_reasoning_effort == Some(true)
+            || row.supports_reasoning_off == Some(true)
+            || !row.efforts.is_empty()
+    });
     fields.push((
         SUPPORTS_REASONING_EFFORT_KEY.into(),
-        (!efforts.is_empty()).to_string(),
+        (!efforts.is_empty() || models_support_reasoning).to_string(),
     ));
+    let channel_efforts = if models.len() == 1 && active_model.is_some() {
+        normalize_provider_efforts(&efforts)
+    } else {
+        Vec::new()
+    };
+    let parent_cli_efforts = active_model
+        .and_then(|model| {
+            cli_efforts_for_model(
+                model,
+                (!channel_efforts.is_empty()).then_some(channel_efforts.as_slice()),
+            )
+        })
+        .or_else(|| (!channel_efforts.is_empty()).then(|| channel_efforts.clone()));
+    if let Some(list) = parent_cli_efforts {
+        let raw = encode_cli_reasoning_efforts(&list);
+        if !raw.is_empty() {
+            fields.push((CLI_REASONING_EFFORTS_KEY.into(), raw));
+        }
+    }
     if let Some(ref p) = resolved_append_prompt {
         fields.push((APP_APPEND_PROMPT_KEY.into(), p.clone()));
     }
@@ -3059,6 +3738,8 @@ pub fn upsert_custom_provider(input: UpsertProviderInput) -> Result<ProvidersLis
             fields.iter().map(|(k, _)| k.clone()).collect();
         // Always treated as managed — empty list must not copy the old table back.
         known.insert(EXTRA_HEADERS_KEY.into());
+        // The CLI effort menu is derived from the active catalog row.
+        known.insert(CLI_REASONING_EFFORTS_KEY.into());
         // `app_upstream_base_url` belongs to the loopback sanitize rewrite only;
         // a direct endpoint or the native proxy must not inherit the real host a
         // previous sanitize save stored. The one kept copy is pushed above.
@@ -3486,10 +4167,12 @@ fn remote_reasoning_efforts(item: &serde_json::Value) -> Vec<ProviderEffortEntry
 }
 
 fn remote_supports_reasoning_effort(item: &serde_json::Value, has_ladder: bool) -> Option<bool> {
+    if has_ladder {
+        return Some(true);
+    }
     ["supports_reasoning_effort", "supportsReasoningEffort"]
         .iter()
         .find_map(|key| item.get(*key).and_then(|value| value.as_bool()))
-        .or(has_ladder.then_some(true))
 }
 
 fn remote_modalities(item: &serde_json::Value) -> (Option<bool>, Option<bool>) {
@@ -4086,6 +4769,114 @@ mod tests {
     use super::*;
 
     #[test]
+    fn catalog_default_prefers_flag_then_first_spawnable() {
+        let mk = |id: &str, is_default: bool| crate::models_catalog::ReasoningEffort {
+            id: id.into(),
+            value: id.into(),
+            label: id.into(),
+            description: String::new(),
+            is_default,
+        };
+        // 有显式 default → default。
+        let flagged = vec![mk("low", false), mk("high", true)];
+        assert_eq!(
+            reasoning_effort_catalog_default(&flagged).as_deref(),
+            Some("high")
+        );
+        // 无 default → 首个非空且非 `none` 的档位（不再优先 medium）。
+        let no_default = vec![mk("low", false), mk("medium", false), mk("high", false)];
+        assert_eq!(
+            reasoning_effort_catalog_default(&no_default).as_deref(),
+            Some("low")
+        );
+        // Off 前置（模型行显式开启 Off 或目录把 none 排在最前）时，
+        // 默认档跳过 `none`，与前端 `pickDefaultEffort` 同一规则。
+        let off_first = vec![mk("none", false), mk("low", false), mk("high", false)];
+        assert_eq!(
+            reasoning_effort_catalog_default(&off_first).as_deref(),
+            Some("low")
+        );
+        let ladder_off_first: Vec<ProviderEffortEntry> = off_first
+            .iter()
+            .map(|e| ProviderEffortEntry {
+                id: e.id.clone(),
+                name: e.id.clone(),
+                is_default: e.is_default,
+            })
+            .collect();
+        assert_eq!(
+            reasoning_effort_ladder_default(&ladder_off_first).as_deref(),
+            Some("low"),
+            "Off 永不做隐式默认档"
+        );
+        // 完全没有可 spawn 档 → None，由调用方回退 medium。
+        assert_eq!(reasoning_effort_catalog_default(&[mk(" ", false)]), None);
+    }
+
+    #[test]
+    fn set_config_wire_effort_filters_to_cli_fixed_tiers() {
+        // CLI 固定档集内的 App id → 原样透传（canonical 映射后）。
+        assert_eq!(set_config_wire_effort("low"), Some("low"));
+        assert_eq!(set_config_wire_effort("medium"), Some("medium"));
+        assert_eq!(set_config_wire_effort("high"), Some("high"));
+        assert_eq!(set_config_wire_effort("minimal"), Some("minimal"));
+        assert_eq!(set_config_wire_effort("xhigh"), Some("xhigh"));
+        // instant 是 App 菜单 id，canonical 映射到 minimal。
+        assert_eq!(set_config_wire_effort("instant"), Some("minimal"));
+        // none / max 超出 CLI set_config 固定档集：跳过 RPC，spawn flag 权威。
+        assert_eq!(set_config_wire_effort("none"), None);
+        assert_eq!(set_config_wire_effort("off"), None);
+        assert_eq!(set_config_wire_effort("max"), None);
+        // 未知 id canonical 兜到 medium。
+        assert_eq!(set_config_wire_effort("bogus"), Some("medium"));
+    }
+
+    #[test]
+    fn hot_apply_is_wire_exact_for_duplicate_value_ladder_ids() {
+        // 同 value 多原始 id 的 ladder：spawn 腿 `--reasoning-effort <raw>` 由
+        // CLI 按 reasoning_efforts 表映射到 value；RPC 腿下发同一 value。
+        // 两条腿线级一致，热切换精确，不需要为消除"歧义"强制 respawn。
+        let ladder = [
+            ProviderEffortEntry {
+                id: "instant".into(),
+                name: "Instant".into(),
+                is_default: false,
+            },
+            ProviderEffortEntry {
+                id: "balanced".into(),
+                name: "Balanced".into(),
+                is_default: true,
+            },
+            ProviderEffortEntry {
+                id: "deliberate".into(),
+                name: "Deliberate".into(),
+                is_default: false,
+            },
+        ];
+        let table = encode_cli_reasoning_efforts(&ladder);
+        // 表中每个 id 的 value 与热切换下发值必须一致。
+        for effort in &ladder {
+            let needle = format!(
+                "id = \"{}\", value = \"{}\"",
+                effort.id,
+                canonical_wire_effort(&effort.id)
+            );
+            assert!(table.contains(&needle), "missing row: {needle} in {table}");
+            assert_eq!(
+                set_config_wire_effort(&effort.id),
+                Some(canonical_wire_effort(&effort.id)),
+                "RPC tier must equal the value the CLI maps {id} to",
+                id = effort.id
+            );
+        }
+        // balanced 与 deliberate 共享 value = medium：线级无差异。
+        assert_eq!(
+            set_config_wire_effort("balanced"),
+            set_config_wire_effort("deliberate")
+        );
+    }
+
+    #[test]
     fn sanitize_and_endpoint() {
         assert_eq!(sanitize_id("My Relay").unwrap(), "my-relay");
         assert!(models_list_endpoint("https://x.example/v1")
@@ -4233,6 +5024,62 @@ base_url = \"http://127.0.0.1:8080/v1\"
             supports_vision: false,
             extra_headers: vec![],
         }
+    }
+
+    #[test]
+    fn custom_model_effort_ladder_filters_invalid_ids_before_defaulting() {
+        let mut provider = sample_provider("relay");
+        provider.model = "m".into();
+        provider.models = vec![ProviderModelEntry {
+            id: "m".into(),
+            name: "Model".into(),
+            efforts: vec![
+                ProviderEffortEntry {
+                    id: "two words".into(),
+                    name: "Invalid".into(),
+                    is_default: true,
+                },
+                ProviderEffortEntry {
+                    id: "medium".into(),
+                    name: "Medium".into(),
+                    is_default: false,
+                },
+            ],
+            ..Default::default()
+        }];
+
+        let ladder = custom_model_effort_ladder(&provider, "m").expect("valid ladder");
+        assert_eq!(
+            ladder
+                .iter()
+                .map(|entry| entry.id.as_str())
+                .collect::<Vec<_>>(),
+            ["medium"]
+        );
+        assert_eq!(
+            reasoning_effort_ladder_default(&ladder).as_deref(),
+            Some("medium")
+        );
+    }
+
+    #[test]
+    fn corrupt_catalog_uses_recovered_row_for_inherited_models_only() {
+        let mut provider = sample_provider("relay");
+        provider.model = "stale-channel-model".into();
+        provider.model_catalog_corrupt = true;
+        provider.models = vec![
+            ProviderModelEntry::named("m1", "Model 1"),
+            ProviderModelEntry::named("m2", "Model 2"),
+        ];
+
+        assert_eq!(
+            resolved_custom_model_id_for_session(&provider, "grok-4.7", false),
+            "m1"
+        );
+        assert_eq!(
+            resolved_custom_model_id_for_session(&provider, "grok-4.7", true),
+            "grok-4.7"
+        );
     }
 
     #[test]
@@ -5078,6 +5925,71 @@ app_provider_mode = \"generic\"
     }
 
     #[test]
+    fn cli_effort_wire_mapping_keeps_instant_and_off_distinct() {
+        assert_eq!(canonical_wire_effort("instant"), "minimal");
+        assert_eq!(canonical_wire_effort("none"), "none");
+        assert_eq!(canonical_wire_effort("off"), "none");
+        assert_eq!(canonical_wire_effort("ultra"), "max");
+        assert_eq!(canonical_wire_effort("xhigh"), "xhigh");
+        assert_eq!(canonical_wire_effort("vendor-tier"), "medium");
+    }
+
+    #[test]
+    fn generic_child_declares_raw_cli_effort_menu_including_off() {
+        let rows = vec![ProviderModelEntry {
+            id: "gpt-6-luna-2026-09-22".into(),
+            name: "GPT 6 Luna".into(),
+            efforts: vec![
+                ProviderEffortEntry {
+                    id: "low".into(),
+                    name: "low".into(),
+                    is_default: false,
+                },
+                ProviderEffortEntry {
+                    id: "instant".into(),
+                    name: "Instant".into(),
+                    is_default: false,
+                },
+            ],
+            supports_reasoning_off: Some(true),
+            ..Default::default()
+        }];
+        let before = format!(
+            "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"gpt-6-luna-2026-09-22\"
+base_url = \"https://relay.example/v1\"
+api_key = \"sk-test\"
+name = \"Relay\"
+api_backend = \"responses\"
+app_provider_mode = \"generic\"
+app_models = {}
+supports_reasoning_effort = true
+",
+            quote(&encode_app_models(&rows).expect("encode app models"))
+        );
+        let synced = sync_generic_model_sections_in_text(&before);
+        let menu = field_of(&synced, "relay__gpt-6-luna-2026-09-22", "reasoning_efforts")
+            .expect("child must advertise the CLI effort menu");
+        assert!(
+            menu.contains("{ id = \"instant\", value = \"minimal\", label = \"Instant\""),
+            "{menu}"
+        );
+        assert!(
+            menu.contains("{ id = \"none\", value = \"none\", label = \"none\""),
+            "{menu}"
+        );
+        assert_eq!(
+            sync_generic_model_sections_in_text(&synced),
+            synced,
+            "a second sync must not rewrite the menu"
+        );
+    }
+
+    #[test]
     fn explicit_empty_catalog_keeps_legacy_child_sections_but_lists_no_models() {
         let before = "\
 [models]
@@ -5291,6 +6203,11 @@ app_models = "not-json {MARKER}"
                 {
                     "id": "ladder-only",
                     "reasoningEfforts": ["minimum", {"effort": "maximum", "isDefault": true}]
+                },
+                {
+                    "id": "false-with-ladder",
+                    "reasoning_efforts": [{"id":"balanced"}],
+                    "supports_reasoning_effort": false
                 }
             ]
         }"#;
@@ -5325,6 +6242,16 @@ app_models = "not-json {MARKER}"
             ladder.supports_reasoning_effort,
             Some(true),
             "a structured ladder implies reasoning support"
+        );
+        let false_with_ladder = got
+            .models
+            .iter()
+            .find(|model| model.id == "false-with-ladder")
+            .unwrap();
+        assert_eq!(
+            false_with_ladder.supports_reasoning_effort,
+            Some(true),
+            "an advertised ladder takes precedence over a conflicting false flag"
         );
     }
 
@@ -5809,6 +6736,11 @@ api_backend = \"responses\"";
                 name: "Max".into(),
                 is_default: false,
             },
+            ProviderEffortEntry {
+                id: "two words".into(),
+                name: "Unsafe".into(),
+                is_default: false,
+            },
         ]);
         assert_eq!(list.len(), 4);
         assert_eq!(list[0].id, "low");
@@ -5820,6 +6752,268 @@ api_backend = \"responses\"";
         let json = encode_app_efforts(&list);
         let decoded = decode_app_efforts(Some(&json));
         assert_eq!(decoded, list);
+    }
+
+    #[test]
+    fn effective_reasoning_effort_omits_unsupported_models_and_keeps_raw_ids() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-effective-effort-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let result = upsert_custom_provider(UpsertProviderInput {
+            id: "relay".into(),
+            model: "no-think".into(),
+            base_url: "https://relay.example/v1".into(),
+            name: Some("Relay".into()),
+            api_key: Some("test-key".into()),
+            api_backend: Some("responses".into()),
+            provider_mode: Some(PROVIDER_MODE_GENERIC.into()),
+            create_only: Some(true),
+            models: Some(vec![
+                ProviderModelEntry {
+                    id: "no-think".into(),
+                    name: "No think".into(),
+                    supports_reasoning_effort: Some(false),
+                    ..Default::default()
+                },
+                ProviderModelEntry {
+                    id: "raw".into(),
+                    name: "Raw".into(),
+                    efforts: vec![
+                        ProviderEffortEntry {
+                            id: "max".into(),
+                            name: "Max".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "minimal".into(),
+                            name: "Minimal".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "none".into(),
+                            name: "Off".into(),
+                            is_default: false,
+                        },
+                    ],
+                    ..Default::default()
+                },
+                ProviderModelEntry {
+                    id: "configured-ladder".into(),
+                    name: "Configured ladder".into(),
+                    efforts: vec![ProviderEffortEntry {
+                        id: "balanced".into(),
+                        name: "Balanced".into(),
+                        is_default: true,
+                    }],
+                    efforts_source: Some(MODEL_SOURCE_USER.into()),
+                    supports_reasoning_effort: Some(false),
+                    ..Default::default()
+                },
+                ProviderModelEntry {
+                    id: "off-disabled".into(),
+                    name: "Off disabled".into(),
+                    efforts: vec![
+                        ProviderEffortEntry {
+                            id: "low".into(),
+                            name: "Low".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "high".into(),
+                            name: "High".into(),
+                            is_default: true,
+                        },
+                        ProviderEffortEntry {
+                            id: "none".into(),
+                            name: "none".into(),
+                            is_default: false,
+                        },
+                    ],
+                    efforts_source: Some(MODEL_SOURCE_REMOTE.into()),
+                    supports_reasoning_off: Some(false),
+                    ..Default::default()
+                },
+                ProviderModelEntry {
+                    id: "off-toggle".into(),
+                    name: "Off toggle".into(),
+                    efforts: vec![
+                        ProviderEffortEntry {
+                            id: "low".into(),
+                            name: "Low".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "high".into(),
+                            name: "High".into(),
+                            is_default: true,
+                        },
+                    ],
+                    efforts_source: Some(MODEL_SOURCE_USER.into()),
+                    supports_reasoning_effort: Some(false),
+                    supports_reasoning_off: Some(true),
+                    ..Default::default()
+                },
+                ProviderModelEntry {
+                    id: "empty".into(),
+                    name: "No advertised ladder".into(),
+                    supports_reasoning_effort: Some(true),
+                    ..Default::default()
+                },
+                ProviderModelEntry {
+                    id: "med".into(),
+                    name: "Medium default".into(),
+                    efforts: vec![
+                        ProviderEffortEntry {
+                            id: "low".into(),
+                            name: "low".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "medium".into(),
+                            name: "medium".into(),
+                            is_default: false,
+                        },
+                        ProviderEffortEntry {
+                            id: "high".into(),
+                            name: "high".into(),
+                            is_default: false,
+                        },
+                    ],
+                    ..Default::default()
+                },
+            ]),
+            efforts: Some(vec![ProviderEffortEntry {
+                id: "channel-only".into(),
+                name: "Channel only".into(),
+                is_default: true,
+            }]),
+            context_window: None,
+            base_url_full_path: Some(false),
+            append_prompt: None,
+            supports_vision: Some(false),
+            extra_headers: None,
+        });
+
+        let config = std::fs::read_to_string(agent_config_toml()).expect("config");
+        let omitted = effective_reasoning_effort("relay", "no-think", "high");
+        let raw = effective_reasoning_effort("relay", "raw", "max");
+        let off = effective_reasoning_effort("relay", "raw", "none");
+        let configured = effective_reasoning_effort("relay", "configured-ladder", "balanced");
+        let off_toggle = effective_reasoning_effort("relay", "off-toggle", "none");
+        let off_disabled = effective_reasoning_effort("relay", "off-disabled", "none");
+        let unadvertised_off = effective_reasoning_effort("relay", "med", "none");
+        let unadvertised_off_without_model_ladder =
+            effective_reasoning_effort("relay", "empty", "none");
+        let medium = effective_reasoning_effort("relay", "med", "missing");
+        let resolved_channel_model = effort_model_id_for_route("relay", "grok-4.7", "relay");
+        let resolved_generic_model = effort_model_id_for_route("relay", "raw", "relay__raw");
+        let stale_custom_session_model = session_set_model_id_for("relay", "grok-4.7");
+        let resolved_active_session_model = session_set_model_id_for("relay", "no-think");
+        let channel_model_fallback =
+            effective_reasoning_effort("relay", &resolved_channel_model, "high");
+        let official = effective_reasoning_effort("official", "grok-4.7", "xhigh");
+        let invalid_official = effective_reasoning_effort("official", "grok-4.7", "max");
+        let default_official_three_tier = effective_reasoning_effort("official", "grok-4.5", "");
+        let unadvertised_official_off = effective_reasoning_effort("official", "grok-4.7", "none");
+        let advertised_custom_off = model_advertises_reasoning_effort("relay", "raw", "none");
+        let advertised_toggle_off =
+            model_advertises_reasoning_effort("relay", "off-toggle", "none");
+        let advertised_disabled_off =
+            model_advertises_reasoning_effort("relay", "off-disabled", "none");
+        let configured_ladder_reasoning =
+            model_advertises_reasoning_effort("relay", "configured-ladder", "balanced");
+        let unadvertised_custom_off = model_advertises_reasoning_effort("relay", "med", "none");
+        let valid_custom_effort = is_valid_reasoning_effort_for_model("relay", "raw", "max");
+        let valid_toggle_off = is_valid_reasoning_effort_for_model("relay", "off-toggle", "none");
+        let invalid_disabled_off =
+            is_valid_reasoning_effort_for_model("relay", "off-disabled", "none");
+        let invalid_custom_effort = is_valid_reasoning_effort_for_model("relay", "raw", "ultra");
+        let valid_generic_fallback = is_valid_reasoning_effort_for_model("relay", "empty", "xhigh");
+        let channel_effort_not_borrowed =
+            is_valid_reasoning_effort_for_model("relay", "empty", "channel-only");
+        let unsupported_custom_effort =
+            is_valid_reasoning_effort_for_model("relay", "no-think", "low");
+        let deleted_provider_off =
+            effective_reasoning_effort("deleted-provider-for-effort-test", "raw", "none");
+        let valid_official_fallback =
+            is_valid_reasoning_effort_for_model("official", "grok-4.7", "xhigh");
+        let invalid_official_fallback =
+            is_valid_reasoning_effort_for_model("official", "grok-4.7", "tier.2");
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        result.expect("provider fixture");
+        assert!(
+            config.contains("supports_reasoning_effort = true"),
+            "a model-level ladder must enable the CLI capability gate"
+        );
+
+        assert_eq!(omitted, None, "a model-level opt-out must omit the flag");
+        assert_eq!(raw.as_deref(), Some("max"), "raw id must pass through");
+        assert_eq!(off.as_deref(), Some("none"), "advertised Off stays a value");
+        assert_eq!(
+            configured.as_deref(),
+            Some("balanced"),
+            "a configured ladder enables reasoning"
+        );
+        assert_eq!(
+            off_toggle.as_deref(),
+            Some("none"),
+            "the Off setting adds none"
+        );
+        assert_eq!(
+            off_disabled.as_deref(),
+            Some("high"),
+            "explicit Off disable falls back to the ladder default"
+        );
+        assert_eq!(
+            unadvertised_off_without_model_ladder.as_deref(),
+            Some("medium"),
+            "the generic model default must win over the channel ladder"
+        );
+        assert_eq!(
+            unadvertised_off.as_deref(),
+            Some("low"),
+            "unadvertised Off falls to the first real tier (no fabricated medium)"
+        );
+        assert_eq!(
+            medium.as_deref(),
+            Some("low"),
+            "an unknown id falls to the first tier when the ladder has no default flag"
+        );
+        assert_eq!(resolved_channel_model, "no-think");
+        assert_eq!(resolved_generic_model, "raw");
+        assert_eq!(stale_custom_session_model, resolved_active_session_model);
+        assert_eq!(channel_model_fallback, None);
+        assert_eq!(official.as_deref(), Some("xhigh"));
+        assert_eq!(invalid_official.as_deref(), Some("xhigh"));
+        assert_eq!(default_official_three_tier.as_deref(), Some("high"));
+        assert_eq!(unadvertised_official_off, None);
+        assert!(advertised_custom_off);
+        assert!(advertised_toggle_off);
+        assert!(!advertised_disabled_off);
+        assert!(configured_ladder_reasoning);
+        assert!(!unadvertised_custom_off);
+        assert!(valid_custom_effort);
+        assert!(valid_toggle_off);
+        assert!(!invalid_disabled_off);
+        assert!(!invalid_custom_effort);
+        assert!(valid_generic_fallback);
+        assert!(!channel_effort_not_borrowed);
+        assert!(!unsupported_custom_effort);
+        assert_eq!(deleted_provider_off.as_deref(), Some("medium"));
+        assert!(valid_official_fallback);
+        assert!(!invalid_official_fallback);
     }
 
     #[test]
@@ -5917,6 +7111,67 @@ app_efforts = "[{\"id\":\"xhigh\",\"name\":\"Extra high\",\"isDefault\":true}]"
         assert!(
             config.contains("supports_reasoning_effort = true"),
             "existing App providers must be migrated without a manual re-save:\n{config}"
+        );
+    }
+
+    #[test]
+    fn list_repairs_explicit_false_global_gate_when_model_rows_have_efforts() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-provider-effort-model-repair-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous_home = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let result = (|| -> Result<String, String> {
+            ensure_app_dirs().map_err(|e| e.to_string())?;
+            let models = encode_app_models(&[ProviderModelEntry {
+                id: "m1".into(),
+                name: "M1".into(),
+                supports_reasoning_effort: Some(true),
+                efforts: vec![ProviderEffortEntry {
+                    id: "balanced".into(),
+                    name: "Balanced".into(),
+                    is_default: true,
+                }],
+                ..Default::default()
+            }])
+            .map_err(|error| error.to_string())?;
+            let path = agent_config_toml();
+            write_text(
+                &path,
+                &format!(
+                    r#"[models]
+default = "relay"
+
+[model.relay]
+model = "m1"
+base_url = "https://relay.example/v1"
+api_key = "test-key"
+api_backend = "responses"
+supports_reasoning_effort = false
+app_models = {}
+"#,
+                    quote(&models),
+                ),
+            )?;
+            list_custom_providers()?;
+            std::fs::read_to_string(path).map_err(|error| error.to_string())
+        })();
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        let config = result.expect("existing model effort metadata should be repaired");
+        assert!(
+            config.contains("supports_reasoning_effort = true"),
+            "model efforts must enable Grok Build's provider capability gate:\n{config}"
         );
     }
 
@@ -6962,6 +8217,7 @@ app_models = {}
                     efforts_source: Some("user".into()),
                     supports_reasoning_effort: Some(false),
                     supports_reasoning_effort_source: Some("remote".into()),
+                    supports_reasoning_off: Some(true),
                 },
                 ProviderModelEntry {
                     id: "text".into(),
@@ -7052,6 +8308,7 @@ app_models = {}
                 .as_deref(),
             Some("remote")
         );
+        assert_eq!(first_provider.models[0].supports_reasoning_off, Some(true));
         assert_eq!(
             first_provider.models[0]
                 .efforts
@@ -7417,6 +8674,15 @@ context_window = "1000000"
     }
 
     #[test]
+    fn effort_lookup_uses_composer_model_id_not_generic_spawn_section() {
+        assert_eq!(effort_model_id_for_route("relay", "m2", "relay__m2"), "m2");
+        assert_eq!(
+            effort_model_id_for_route(SESSION_PROVIDER_OFFICIAL, "deleted-model", "grok-4.7"),
+            "grok-4.7"
+        );
+    }
+
+    #[test]
     fn session_route_does_not_follow_a_legacy_global_default() {
         let _lock = crate::paths::APP_HOME_ENV_LOCK
             .lock()
@@ -7426,6 +8692,9 @@ context_window = "1000000"
         let previous = std::env::var_os("GROK_APP_HOME");
         std::env::set_var("GROK_APP_HOME", &home);
         let _ = ensure_agent_home();
+        let mut settings = crate::store::load_settings();
+        settings.model_id = Some("grok-4.6".into());
+        crate::store::save_settings(&settings).expect("save official model default");
         let path = agent_config_toml();
         let text = set_models_default(&read_text(&path), "relay");
         write_text(&path, &text).expect("write config");
@@ -7436,6 +8705,7 @@ context_window = "1000000"
                 ("base_url".into(), "https://relay.example/v1".into()),
                 ("api_key".into(), "sk-test".into()),
                 ("model".into(), "shared-model".into()),
+                (APP_MODELS_KEY.into(), "[]".into()),
             ],
         );
         write_text(&path, &text).expect("write provider");
@@ -7447,12 +8717,28 @@ context_window = "1000000"
             "deleted-relay"
         );
         assert_eq!(
-            existing_session_route("deleted-relay"),
+            existing_session_route("deleted-relay", "", false),
             SESSION_PROVIDER_OFFICIAL
         );
         assert_eq!(
-            existing_session_route(SESSION_PROVIDER_OFFICIAL),
+            existing_session_route(SESSION_PROVIDER_OFFICIAL, "", false),
             SESSION_PROVIDER_OFFICIAL
+        );
+        assert_eq!(
+            existing_session_route("relay", "", false),
+            SESSION_PROVIDER_OFFICIAL
+        );
+        assert_eq!(
+            existing_session_route("relay", "grok-4.6", false),
+            SESSION_PROVIDER_OFFICIAL
+        );
+        assert_eq!(
+            existing_session_route("relay", "shared-model", true),
+            "relay"
+        );
+        assert_eq!(
+            crate::models_catalog::list_available_models().default_model_id,
+            "grok-4.6"
         );
         assert_eq!(
             session_model_id_for_route(
@@ -7460,7 +8746,7 @@ context_window = "1000000"
                 SESSION_PROVIDER_OFFICIAL,
                 "grok-4.6",
             ),
-            OFFICIAL_CATALOG_MODEL,
+            crate::models_catalog::list_available_models().default_model_id,
             "a model id shared with the official catalog must still use the official fallback after deletion",
         );
         assert_eq!(
@@ -8050,6 +9336,54 @@ app_models = {models_atom}
             .into_iter()
             .find(|p| p.id == "relay")
             .expect("relay provider")
+    }
+
+    #[test]
+    fn effort_resolution_uses_selected_model_ladder_and_resolves_stale_catalog_ids() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-effort-unlisted-model-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+        let _ = std::fs::create_dir_all(home.join("agent-home"));
+
+        seed_proxy_catalog(&quote(
+            r#"[{"id":"m1","name":"M1","efforts":[{"id":"low","name":"Low"}]},{"id":"m2","name":"M2","efforts":[{"id":"ultra","name":"Ultra"}]}]"#,
+        ));
+
+        let selected_model = effort_model_id_for_route("relay", "m2", "relay__m1");
+        assert_eq!(selected_model, "m2");
+        assert!(is_valid_reasoning_effort_for_model(
+            "relay",
+            &selected_model,
+            "ultra"
+        ));
+        assert_eq!(
+            effective_reasoning_effort("relay", &selected_model, "ultra").as_deref(),
+            Some("ultra")
+        );
+
+        let stale_model = effort_model_id_for_route("relay", "m9", "relay__m1");
+        assert_eq!(stale_model, "m1");
+        assert!(!is_valid_reasoning_effort_for_model(
+            "relay",
+            &stale_model,
+            "xhigh"
+        ));
+        assert_eq!(
+            effective_reasoning_effort("relay", &stale_model, "xhigh").as_deref(),
+            Some("low")
+        );
+
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     /// `--model` the native proxy spawn binds for `composer_model`.
@@ -8650,11 +9984,22 @@ app_parent_provider = "proxy"
         );
         assert_eq!(session_set_model_id_for("zhipu", "glm/b"), "zhipu__glm-b");
         assert_eq!(
+            session_set_model_id_for("zhipu", "zhipu__glm-b"),
+            "zhipu__glm-b"
+        );
+        assert_eq!(
+            spawn_model_for_provider("zhipu", "zhipu__glm-b"),
+            "zhipu__glm-b"
+        );
+        assert_eq!(
             session_set_model_id_for("zhipu", "zhipu__glm-a"),
             "zhipu__glm-a"
         );
-        assert_eq!(session_set_model_id_for("zhipu", "not-a-model"), "zhipu");
-        assert_eq!(session_set_model_id_for("zhipu", ""), "zhipu");
+        assert_eq!(
+            session_set_model_id_for("zhipu", "not-a-model"),
+            "zhipu__glm-a"
+        );
+        assert_eq!(session_set_model_id_for("zhipu", ""), "zhipu__glm-a");
 
         let again = list_custom_providers().expect("list");
         let reread = std::fs::read_to_string(agent_config_toml()).expect("config");
@@ -8687,7 +10032,7 @@ app_parent_provider = "proxy"
             field_of(&dropped, "zhipu__glm-a", "model").as_deref(),
             Some("glm-a")
         );
-        assert_eq!(session_set_model_id_for("zhipu", "glm/b"), "zhipu");
+        assert_eq!(session_set_model_id_for("zhipu", "glm/b"), "zhipu__glm-a");
 
         remove_custom_provider("zhipu").expect("remove");
         let removed = std::fs::read_to_string(agent_config_toml()).expect("config");
