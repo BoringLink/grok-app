@@ -33,10 +33,6 @@ export type ResolvedModelValue<T> = {
   source: ProviderModelFieldSource;
 };
 
-/** Fallback used when neither the API nor the user supplied a context window. */
-export const DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW =
-  DEFAULT_CUSTOM_CONTEXT_WINDOW;
-
 /**
  * Reasoning levels used when the API does not advertise a ladder. The ids are
  * sent verbatim as `reasoning_effort`; `medium` is the default.
@@ -123,7 +119,7 @@ export function effectiveModelContextWindow(
   const window = positiveWindow(model.contextWindow);
   const explicit = normalizeModelFieldSource(model.contextWindowSource);
   return {
-    value: window ?? DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW,
+    value: window ?? DEFAULT_CUSTOM_CONTEXT_WINDOW,
     source:
       window == null
         ? "fallback"
@@ -300,13 +296,6 @@ export function resolveProviderSupportsVision(
   return !!provider.supportsVision;
 }
 
-export function resolveProviderSupportsVideo(
-  provider: Pick<CustomProvider, "model" | "models">,
-  modelId?: string | null,
-): boolean {
-  return findProviderModel(provider, modelId)?.supportsVideo === true;
-}
-
 /** Copy the active model's extras onto channel fields for Host / CLI. */
 export function materializeActiveModelChannel(opts: {
   provider: CustomProvider;
@@ -357,7 +346,7 @@ export function mergeRemoteModelMetadata(
         : context.source === "fallback"
           ? context
           : {
-              value: DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW,
+              value: DEFAULT_CUSTOM_CONTEXT_WINDOW,
               source: "fallback" as const,
             };
 

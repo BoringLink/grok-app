@@ -240,8 +240,6 @@ export function ProvidersPanel({
         setList({
           providers: [],
           defaultModel: null,
-          activeSource: "official",
-          activeProviderId: null,
           configPath: "",
           agentHome: "",
         });

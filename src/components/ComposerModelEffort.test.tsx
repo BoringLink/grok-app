@@ -33,6 +33,7 @@ describe("composer model effort menu", () => {
     const onEffort = vi.fn();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="m-raw"
         effort="balanced"
         efforts={[
@@ -63,6 +64,7 @@ describe("composer model effort menu", () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="m-raw"
         effort="minimal"
         efforts={[{ id: "minimal" }, { id: "ultra" }]}
@@ -82,6 +84,7 @@ describe("composer model effort menu", () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="m-off"
         effort="low"
         efforts={[
@@ -102,6 +105,7 @@ describe("composer model effort menu", () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="m-off"
         effort="none"
         efforts={[
@@ -129,6 +133,7 @@ describe("composer model effort menu", () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="m-instant"
         effort="instant"
         efforts={[
@@ -157,6 +162,7 @@ describe("composer model effort menu", () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="m-plain"
         effort="none"
         efforts={[
@@ -188,6 +194,7 @@ describe("composer model effort menu", () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="m-nothink"
         effort="high"
         efforts={[]}
@@ -212,6 +219,7 @@ describe("composer model effort menu", () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="m-raw"
         effort="high"
         efforts={[]}

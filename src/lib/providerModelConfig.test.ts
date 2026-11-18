@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CustomProvider, ProviderModelEntry } from "@/lib/api";
+import { DEFAULT_CUSTOM_CONTEXT_WINDOW } from "@/lib/grokCatalog";
 import {
-  DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW,
   defaultProviderModelEfforts,
   effectiveModelContextWindow,
   effectiveModelEfforts,
@@ -13,7 +13,6 @@ import {
   normalizeModelEfforts,
   resolveProviderContextWindow,
   resolveProviderEfforts,
-  resolveProviderSupportsVideo,
   resolveProviderSupportsVision,
   withResolvedModelMetadata,
 } from "./providerModelConfig";
@@ -283,7 +282,6 @@ describe("resolveProviderContextWindow / vision", () => {
     });
     expect(resolveProviderContextWindow(p)).toBe(1_048_576);
     expect(resolveProviderSupportsVision(p)).toBe(true);
-    expect(resolveProviderSupportsVideo(p)).toBe(true);
     expect(resolveProviderSupportsVision(p, "text")).toBe(false);
     expect(resolveProviderContextWindow(p, "text")).toBe(200_000);
   });
@@ -302,10 +300,10 @@ describe("default per-model metadata", () => {
   it("uses a 1M context window and the approved four-level ladder", () => {
     const context = effectiveModelContextWindow({});
     expect(context).toEqual({
-      value: DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW,
+      value: DEFAULT_CUSTOM_CONTEXT_WINDOW,
       source: "fallback",
     });
-    expect(DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW).toBe(1_000_000);
+    expect(DEFAULT_CUSTOM_CONTEXT_WINDOW).toBe(1_000_000);
 
     const efforts = effectiveModelEfforts({});
     expect(efforts.source).toBe("fallback");

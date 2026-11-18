@@ -388,7 +388,6 @@ export async function secretsGetMasked() {
     /** Per-provider-preset custom STT key presence (ADR-0001). */
     sttCustomKeys?: Record<string, boolean>;
     relayBaseUrl: string | null;
-    defaultModel: string | null;
   }>("secrets_get_masked");
 }
 
@@ -411,10 +410,6 @@ export async function secretsSet(body: {
     sttCustomApiKey: body.sttCustomApiKey ?? null,
     sttCustomApiKeyProvider: body.sttCustomApiKeyProvider ?? null,
   });
-}
-
-export async function providerPing() {
-  return invoke<{ ok: boolean; class: string; message: string }>("provider_ping");
 }
 
 export async function importGrokCli() {

@@ -97,9 +97,6 @@ export interface CustomProvider {
 export interface ProvidersListResult {
   providers: CustomProvider[];
   defaultModel: string | null;
-  /** `official` | `custom` */
-  activeSource: string;
-  activeProviderId: string | null;
   configPath: string;
   agentHome: string;
   /**
@@ -164,89 +161,6 @@ export async function providersCcSwitchImport(body: {
       onConflict: body.onConflict ?? "overwrite",
     },
   });
-}
-
-// ── Model auxiliary routing (`[models]` side-task slots) ─────────────────────
-
-export interface ModelsAuxSlots {
-  imageDescription: string;
-  webSearch: string;
-  sessionSummary: string;
-  promptSuggestion: string;
-}
-
-export interface ModelsAuxOption {
-  id: string;
-  label: string;
-  source: string;
-  hint?: string;
-}
-
-export interface ModelsAuxState {
-  slots: ModelsAuxSlots;
-  options: ModelsAuxOption[];
-  sessionDataMode: string;
-  writable: boolean;
-  configPath: string;
-  mainDefault: string;
-  activeSource: string;
-  saveGrokTarget?: string | null;
-  saveGrokLabel?: string | null;
-  saveGrokReason: string;
-  /**
-   * Stable health code for i18n (empty = ok):
-   * `official_aux_incomplete` | `text_only_no_vision`
-   */
-  healthCode?: string;
-  visionReady?: boolean;
-  mainTextOnly?: boolean;
-  hasOfficialApiKey?: boolean;
-}
-
-export interface ModelsAuxSetInput {
-  imageDescription?: string | null;
-  webSearch?: string | null;
-  sessionSummary?: string | null;
-  promptSuggestion?: string | null;
-}
-
-export async function modelsAuxGet() {
-  return invoke<ModelsAuxState>("models_aux_get");
-}
-
-export async function modelsAuxSet(body: ModelsAuxSetInput) {
-  return invoke<ModelsAuxState>("models_aux_set", {
-    imageDescription: body.imageDescription ?? null,
-    webSearch: body.webSearch ?? null,
-    sessionSummary: body.sessionSummary ?? null,
-    promptSuggestion: body.promptSuggestion ?? null,
-  });
-}
-
-export async function modelsAuxApplySaveGrok() {
-  return invoke<ModelsAuxState>("models_aux_apply_save_grok");
-}
-
-export async function modelsAuxResetDefaults() {
-  return invoke<ModelsAuxState>("models_aux_reset_defaults");
-}
-
-/** Independent `grok -p -m <modelId>` under agent-home (not the live session model). */
-export async function modelsAuxHeadless(body: {
-  modelId: string;
-  prompt: string;
-  maxTurns?: number;
-}) {
-  return invoke<string>("models_aux_headless", {
-    modelId: body.modelId,
-    prompt: body.prompt,
-    maxTurns: body.maxTurns ?? null,
-  });
-}
-
-/** Host web search via configured web_search aux model (headless). */
-export async function modelsAuxWebSearch(query: string) {
-  return invoke<string>("models_aux_web_search", { query });
 }
 
 // ── Official aux (isolated GROK_HOME + grok -p) ─────────────────────────────

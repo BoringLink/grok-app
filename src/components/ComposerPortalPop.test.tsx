@@ -411,6 +411,7 @@ describe("composer chip portal pops", () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="test-model"
         effort="high"
         labels={{
@@ -449,6 +450,7 @@ describe("composer chip portal pops", () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="test-model"
         effort="high"
         labels={{
@@ -497,6 +499,7 @@ describe("composer chip portal pops", () => {
     const onModel = vi.fn();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="grok-4.6"
         effort="high"
         labels={{
@@ -604,6 +607,7 @@ describe("composer chip portal pops", () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="test-model"
         effort="high"
         labels={{
@@ -635,6 +639,7 @@ describe("composer chip portal pops", () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="test-model"
         effort="high"
         labels={{
@@ -659,10 +664,55 @@ describe("composer chip portal pops", () => {
     expect(pop!.querySelector('input[type="number"]')).toBeNull();
   });
 
+  it("marks the custom row active from the single provider route value", async () => {
+    const user = userEvent.setup();
+    render(
+      <ComposerModelMenu
+        providerRoute={{ providerId: "yunyi" }}
+        modelId="deepseek-chat"
+        effort="high"
+        providers={[
+          {
+            id: "yunyi",
+            name: "Yunyi",
+            model: "deepseek-chat",
+            models: [{ id: "deepseek-chat", name: "DeepSeek Chat" }],
+          },
+        ]}
+        labels={{
+          model: "Model",
+          effort: "Effort",
+          effortHigh: "High",
+          effortMedium: "Medium",
+          effortLow: "Low",
+          modelSearchPlaceholder: "Search models",
+          modelSearchEmpty: "No models",
+          modelGroupOfficial: "Official",
+        }}
+        onEffort={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Model" }));
+    const pop = bodyPop();
+    expect(pop).not.toBeNull();
+    fireEvent.mouseEnter(pop!.querySelector(".cmm__row")!);
+
+    const active = await waitFor(() => {
+      const rows = document.body.querySelectorAll<HTMLElement>(
+        ".cmm__opt.is-active",
+      );
+      expect(rows).toHaveLength(1);
+      return rows[0];
+    });
+    expect(active.textContent).toContain("DeepSeek Chat");
+  });
+
   it("localizes grok-4.6 xhigh via effort i18n in composer menu", async () => {
     const user = userEvent.setup();
     render(
       <ComposerModelMenu
+        providerRoute={{ providerId: null }}
         modelId="grok-4.6"
         effort="xhigh"
         labels={{

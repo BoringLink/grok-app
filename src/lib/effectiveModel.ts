@@ -65,21 +65,6 @@ export function resolveCustomRouteDisplay(
 }
 
 /**
- * Resolve the model id the composer chip should display.
- *
- * @param modelId Official catalog selection (composer state).
- * @param activeCustomModel Request model of the active custom provider, or
- *   null/undefined when the official route is active.
- */
-export function effectiveComposerModel(
-  modelId: string,
-  activeCustomModel: string | null | undefined,
-): string {
-  const custom = activeCustomModel?.trim();
-  return custom ? custom : modelId;
-}
-
-/**
  * Label for the composer model chip.
  *
  * Official route: catalog label (or model id).

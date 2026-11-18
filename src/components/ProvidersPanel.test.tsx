@@ -60,8 +60,6 @@ const healthyProvider = {
 const listResult: ProvidersListResult = {
   providers: [corruptProvider, healthyProvider],
   defaultModel: null,
-  activeSource: "official",
-  activeProviderId: null,
   configPath: "",
   agentHome: "",
 };

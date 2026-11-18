@@ -73,6 +73,7 @@ function renderSheet(opts: {
   render(
     <PhoneComposerToolsSheet
       open
+      providerRoute={{ providerId: null }}
       onClose={vi.fn()}
       labels={labels}
       activeProject={null}

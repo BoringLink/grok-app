@@ -11,12 +11,6 @@ import type { DraftComposerRoute } from "@/lib/draftComposerRoute";
 
 export type ProviderRouteSource = "official" | "custom";
 
-type ProviderChipSetters = {
-  setProviderActiveSource: (source: ProviderRouteSource) => void;
-  setProviderActiveId: (id: string | null) => void;
-  setActiveCustomProvider: (provider: CustomProvider | null) => void;
-};
-
 /**
  * Route painting for one applied prefs resolve.
  * `routeProviderId` is the resolver's override: `null` pins the official
@@ -35,9 +29,12 @@ export type PrefsRouteInput = {
  * The chat's stored provider is the only route source. A provider that has
  * disappeared from the loaded list falls back to official; no global
  * activation state participates.
+ *
+ * `setProviderId` 由调用方持有，路由只有一个值：`null` 表示官方。
  */
-export function useSessionProviderChip() {
-  const settersRef = useRef<ProviderChipSetters | null>(null);
+export function useSessionProviderChip(
+  setProviderId: (id: string | null) => void,
+) {
   const customProvidersRef = useRef<CustomProvider[]>([]);
   const providersLoadedRef = useRef(false);
   const sessionProviderChipRef = useRef<string | null | undefined>(undefined);
@@ -57,25 +54,19 @@ export function useSessionProviderChip() {
     [],
   );
 
-  /** Paint the effective provider route and selected provider object. */
-  const paint = useCallback((providerId: string | null) => {
-    const set = settersRef.current;
-    if (!set) return;
-    const route = resolveSessionProviderRoute({
-      providerId,
-      providers: customProvidersRef.current,
-      providersLoaded: providersLoadedRef.current,
-    });
-    sessionProviderChipRef.current = route.providerId;
-    set.setProviderActiveSource(route.source);
-    set.setProviderActiveId(route.providerId);
-    set.setActiveCustomProvider(
-      route.providerId
-        ? customProvidersRef.current.find((p) => p.id === route.providerId) ??
-            null
-        : null,
-    );
-  }, []);
+  /** Paint the resolved provider route (`null` = official). */
+  const paint = useCallback(
+    (providerId: string | null) => {
+      const route = resolveSessionProviderRoute({
+        providerId,
+        providers: customProvidersRef.current,
+        providersLoaded: providersLoadedRef.current,
+      });
+      sessionProviderChipRef.current = route.providerId;
+      setProviderId(route.providerId);
+    },
+    [setProviderId],
+  );
 
   /**
    * Resolve stored prefs against the provider list and the new-chat draft the
@@ -147,11 +138,6 @@ export function useSessionProviderChip() {
     afterProviderListRef.current = fn;
   }, []);
 
-  /** Bind the setters owned by the composer state. */
-  const bind = useCallback((setters: ProviderChipSetters) => {
-    settersRef.current = setters;
-  }, []);
-
   return useMemo(
     () => ({
       draftComposerRouteRef,
@@ -163,12 +149,10 @@ export function useSessionProviderChip() {
       noteProviderList,
       noteProviderListError,
       providersLoadFailed,
-      bind,
       setAfterProviderList,
     }),
     [
       applyPrefsRoute,
-      bind,
       noteProviderList,
       noteProviderListError,
       providersLoadFailed,
