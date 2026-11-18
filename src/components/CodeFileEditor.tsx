@@ -209,14 +209,16 @@ export function CodeFileEditor({
       view.requestMeasure();
       setProbe(readProbe(view, view.state.doc.toString()));
     };
+    const timers: number[] = [];
     const raf = window.requestAnimationFrame(() => {
       measure();
-      window.setTimeout(measure, 50);
-      window.setTimeout(measure, 250);
+      timers.push(window.setTimeout(measure, 50));
+      timers.push(window.setTimeout(measure, 250));
     });
 
     return () => {
       window.cancelAnimationFrame(raf);
+      timers.forEach((id) => window.clearTimeout(id));
       view.destroy();
       viewRef.current = null;
     };
