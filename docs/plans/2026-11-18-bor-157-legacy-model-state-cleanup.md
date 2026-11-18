@@ -28,8 +28,18 @@
 
 ## 验证
 
-（收尾时回填）
+- `cargo test --lib`：2301 passed，3 ignored；`cargo fmt --check`、`cargo clippy --all-targets -D warnings`、`cargo check`：通过。
+- `pnpm typecheck`、`pnpm lint`：通过。
+- `pnpm test`：750 文件 / 8648 用例通过。
+- `pnpm build:ui`（tsc -b + vite build）：通过。
+- `scripts/check-code-quality-gates.py`：PASS（AppWorkbench + App = 13321 ≤ 13750）。
+- 评审（reviewer subagent）发现的 1 Critical + 2 Major 已修复并复验：
+  - C1：sessions index 读取失败（torn/corrupt）不再落迁移标记，改为可失败读取 `load_sessions_index_checked`，修复后下次启动重试（测试 `backfill_refuses_a_torn_sessions_index`）。
+  - M2：删除 provider 时仅当 `[models].default` 指向被删 id 才归位 `grok`，避免悬空 default（测试覆盖指向第三方 default 不动）。
+  - M1：设置搜索命中表单内锚点（模型目录 / extra headers / provider mode）会自动打开编辑/创建表单并完成滚动高亮（`SettingsPageDeepLink.test.tsx` + `ProvidersPanel.test.tsx` 8 例）。
+- 覆盖边界：空配置、旧 relay 迁移、provider 配置不可读、索引损坏、歧义模型、官方模型行、已有 provider_id 行、幂等二次运行、模型删除后窗口回落，均有 Rust/TS 测试。
 
 ## 未完成
 
-（收尾时回填）
+- 未在真实桌面窗口手工验证设置页与 Composer 主流程（本会话无浏览器/桌面工具）；组件行为由 jsdom 测试覆盖，命令路径由 Rust 测试覆盖，`pnpm build:ui` 通过。建议合入前在桌面端跑一遍：配置 provider 模型 → 选模型与档位 → 切会话恢复 → 编辑器上下文组件显示用量。
+- 分支尚未推送，未创建 PR。
