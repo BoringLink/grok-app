@@ -10,13 +10,11 @@ import {
   findProviderModel,
   materializeActiveModelChannel,
   mergeRemoteModelMetadata,
-  modelsForContextWindow,
   normalizeModelEfforts,
   resolveProviderContextWindow,
   resolveProviderEfforts,
   resolveProviderSupportsVideo,
   resolveProviderSupportsVision,
-  withModelContextWindow,
   withResolvedModelMetadata,
 } from "./providerModelConfig";
 
@@ -667,52 +665,3 @@ describe("mergeRemoteModelMetadata", () => {
   });
 });
 
-describe("withModelContextWindow", () => {
-  it("updates the active catalog row and marks it user-set", () => {
-    const next = withModelContextWindow(
-      [{ id: "a", name: "A" }, { id: "b", name: "B" }],
-      "b",
-      32000,
-    );
-    expect(next.find((m) => m.id === "b")?.contextWindow).toBe(32000);
-    expect(next.find((m) => m.id === "b")?.contextWindowSource).toBe("user");
-    expect(next.find((m) => m.id === "a")?.contextWindow).toBeUndefined();
-  });
-});
-
-describe("modelsForContextWindow", () => {
-  it("updates the active row for a readable catalog", () => {
-    const next = modelsForContextWindow(
-      {
-        model: "b",
-        models: [{ id: "a", name: "A" }, { id: "b", name: "B" }],
-      },
-      32000,
-    );
-    expect(next).toEqual([
-      { id: "a", name: "A" },
-      { id: "b", name: "B", contextWindow: 32000, contextWindowSource: "user" },
-    ]);
-  });
-
-  it("keeps an explicitly empty catalog empty", () => {
-    // An empty `app_models` list is a real user choice; re-adding the channel
-    // model would revive a catalog the user deliberately cleared.
-    const next = modelsForContextWindow({ model: "m1", models: [] }, 32000);
-    expect(next).toEqual([]);
-  });
-
-  it("omits the catalog when the stored value is unreadable", () => {
-    // `models` is only the legacy read fallback. Sending it would write the
-    // fallback row over the original `app_models` text.
-    const next = modelsForContextWindow(
-      {
-        model: "m1",
-        models: [{ id: "m1", name: "m1" }],
-        modelCatalogCorrupt: true,
-      },
-      32000,
-    );
-    expect(next).toBeUndefined();
-  });
-});

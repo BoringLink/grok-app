@@ -397,48 +397,4 @@ export function mergeRemoteModelMetadata(
   };
 }
 
-/**
- * `models` payload for a composer context-window change.
- *
- * `undefined` leaves the stored `app_models` alone: when the stored value is
- * unreadable, `models` only carries the legacy read fallback, and sending it
- * would replace the original text with a repaired catalog. The channel
- * `contextWindow` still lands, which is what the composer chip edits.
- *
- * An empty (but readable) catalog stays empty. Only a missing catalog falls
- * back to the channel model, so a user who cleared `app_models` never gets a
- * model row back from a context-window edit.
- */
-export function modelsForContextWindow(
-  provider: Pick<CustomProvider, "models" | "model" | "modelCatalogCorrupt">,
-  tokens: number,
-): ProviderModelEntry[] | undefined {
-  if (provider.modelCatalogCorrupt === true) return undefined;
-  if (provider.models?.length === 0) return [];
-  return withModelContextWindow(provider.models, provider.model, tokens);
-}
 
-/** Patch the active model's context window inside a catalog (composer chip). */
-export function withModelContextWindow(
-  models: ProviderModelEntry[] | null | undefined,
-  modelId: string,
-  tokens: number,
-): ProviderModelEntry[] {
-  const list = models?.length ? models.slice() : [];
-  const id = modelId.trim();
-  if (!id) return list;
-  const next = positiveWindow(tokens);
-  let found = false;
-  const patch = <T extends ProviderModelEntry>(model: T): T => ({
-    ...model,
-    contextWindow: next,
-    contextWindowSource: next == null ? undefined : "user",
-  });
-  const mapped = list.map((model) => {
-    if (model.id.trim() !== id) return model;
-    found = true;
-    return patch(model);
-  });
-  if (found) return mapped;
-  return [...mapped, patch({ id, name: id })];
-}
