@@ -331,6 +331,25 @@ describe("resolveContextWindow", () => {
     ).toBe(500000);
   });
 
+  it("uses a user-selected official window over the 500k app default", () => {
+    const models: ModelOption[] = [
+      {
+        id: "grok-4.7",
+        label: "Grok 4.7",
+        contextWindow: 256000,
+        contextWindows: [256000, 500000],
+        contextWindowSource: "user",
+      },
+    ];
+    expect(
+      resolveContextWindow({
+        activeCustomProvider: null,
+        modelId: "grok-4.7",
+        models,
+      }),
+    ).toBe(256000);
+  });
+
   it("keeps an agent-reported 256k over the 500k app default", () => {
     const models: ModelOption[] = [
       {

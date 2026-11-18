@@ -288,6 +288,8 @@ export interface AvailableModel {
   contextWindow?: number | null;
   /** Selectable windows from CLI `info.context_windows` (catalog order). */
   contextWindows?: number[] | null;
+  /** `user` when Settings overrides the window, else `catalog`. */
+  contextWindowSource?: "user" | "catalog" | null;
 }
 
 export interface AvailableModelsResult {
@@ -321,6 +323,21 @@ export async function storeTakeQuarantine() {
 
 export async function modelsListAvailable() {
   return invoke<AvailableModelsResult>("models_list_available");
+}
+
+/**
+ * Choose (or clear with `null`) one official model's context window.
+ * Only sizes the model advertises are accepted; the host returns the
+ * refreshed catalog so Settings can show the new source immediately.
+ */
+export async function modelsSetOfficialContextWindow(
+  modelId: string,
+  tokens: number | null,
+) {
+  return invoke<AvailableModelsResult>("models_set_official_context_window", {
+    modelId,
+    tokens,
+  });
 }
 
 export async function composerPrefsResolve(opts?: {
@@ -367,21 +384,6 @@ export async function sessionSetModel(
   return invoke<ComposerPrefs>("session_set_model", {
     modelId,
     projectId: opts?.projectId ?? null,
-    sessionId: opts?.sessionId ?? null,
-  });
-}
-
-/**
- * Set the live session's context window (`session/set_model` `_meta.contextWindow`).
- * Does not change the stored model or reasoning effort. Official routes only.
- */
-export async function sessionSetContextWindow(
-  tokens: number,
-  opts?: { sessionId?: string | null },
-) {
-  if (!isTauri()) return;
-  return invoke<void>("session_set_context_window", {
-    tokens,
     sessionId: opts?.sessionId ?? null,
   });
 }

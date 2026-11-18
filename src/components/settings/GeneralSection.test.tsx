@@ -69,6 +69,26 @@ describe("GeneralSection composer", () => {
     expect(html).toContain("settings.composerEnterInsertsLive");
     expect(html).toContain('aria-checked="false"');
   });
+
+  it("offers a per-model context window beside the official model list", () => {
+    const html = renderSection(
+      buildModel({
+        activeTab: "composer",
+        availableModels: [
+          {
+            id: "grok-4.7",
+            label: "Grok 4.7",
+            contextWindow: 256000,
+            contextWindows: [256000, 500000],
+            contextWindowSource: "catalog",
+          },
+        ],
+      }),
+    );
+    expect(html).toContain("settings.availableModelsWindow");
+    expect(html).toContain("settings.availableModelsWindowCatalog");
+    expect(html).toContain("grok-4.7");
+  });
 });
 
 describe("GeneralSection agent", () => {
