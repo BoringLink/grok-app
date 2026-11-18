@@ -3062,6 +3062,51 @@ pub fn is_valid_reasoning_effort_for_model(
     CUSTOM_FALLBACK_REASONING_EFFORTS.contains(&effort_id)
 }
 
+/// Configured context window for one custom-provider model.
+///
+/// `model_id` may be a catalog row id or a generic child section id. The
+/// model row wins over the channel field. `None` means neither level set a
+/// window, so the caller should leave the CLI default alone instead of
+/// inventing a size the provider never configured.
+pub fn provider_model_context_window(provider_id: &str, model_id: &str) -> Option<u64> {
+    let route = provider_id.trim();
+    if route.is_empty() || is_session_provider_official(route) {
+        return None;
+    }
+    let provider = list_custom_providers()
+        .ok()?
+        .providers
+        .into_iter()
+        .find(|provider| provider.id == route)?;
+    let requested = model_id.trim();
+    let section_model = generic_sections_for_provider(route)
+        .into_iter()
+        .find(|section| section.section_id == requested)
+        .map(|section| section.model_id);
+    let lookup = if requested.is_empty() {
+        provider.model.trim().to_string()
+    } else {
+        requested.to_string()
+    };
+    provider_window_from_row(&provider, &lookup, section_model.as_deref())
+}
+
+fn provider_window_from_row(
+    provider: &CustomProvider,
+    model_id: &str,
+    section_model: Option<&str>,
+) -> Option<u64> {
+    let row = provider
+        .models
+        .iter()
+        .find(|model| model.id.trim() == model_id)
+        .or_else(|| {
+            section_model.and_then(|id| provider.models.iter().find(|model| model.id.trim() == id))
+        });
+    row.and_then(|model| model.context_window.filter(|window| *window > 0))
+        .or_else(|| provider.context_window.filter(|window| *window > 0))
+}
+
 /// 按 provider/model 解析 CLI 实际使用的推理档位。
 ///
 /// 显式模型档位里的过期 id 回退到该模型默认值；未配置模型档位时使用
@@ -5024,6 +5069,40 @@ base_url = \"http://127.0.0.1:8080/v1\"
             supports_vision: false,
             extra_headers: vec![],
         }
+    }
+
+    #[test]
+    fn provider_model_context_window_prefers_row_then_channel() {
+        let mut provider = sample_provider("relay");
+        provider.model = "m".into();
+        provider.context_window = Some(900_000);
+        let mut row = ProviderModelEntry::named("m", "Model");
+        row.context_window = Some(1_000_000);
+        provider.models = vec![row];
+
+        assert_eq!(
+            provider_window_from_row(&provider, "m", None),
+            Some(1_000_000),
+            "the catalog row wins over the channel field"
+        );
+        assert_eq!(
+            provider_window_from_row(&provider, "relay__m", Some("m")),
+            Some(1_000_000),
+            "a generic child section resolves back to its catalog row"
+        );
+
+        provider.models.clear();
+        assert_eq!(
+            provider_window_from_row(&provider, "relay__m", Some("m")),
+            Some(900_000),
+            "without a row the channel window applies"
+        );
+        provider.context_window = Some(0);
+        assert_eq!(
+            provider_window_from_row(&provider, "m", None),
+            None,
+            "an unset channel window leaves the CLI default alone"
+        );
     }
 
     #[test]
