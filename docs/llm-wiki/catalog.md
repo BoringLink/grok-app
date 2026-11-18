@@ -17,7 +17,7 @@ Host 同时读取当前会话数据模式的 `GROK_HOME/models_cache.json` 与�
 
 ## 上下文窗口
 
-**窗口来自模型目录，App 不提供窗口选择；Composer 只负责模型与推理档，`/context-window` 命令已移除。**
+**官方模型窗口来自模型目录，App 不提供窗口选择；Composer 只负责模型与推理档，`/context-window` 命令已移除。**
 
 CLI `models_cache.json` 的 `info.context_window` 是目录默认值（Grok 4.7 / Fast / 4.6 / 4.5 当前为 **256000**）。可选长度在 `info.context_windows`（当前 `[256000, 500000]`）。静态兜底与此相同。`initialize` 的 live 覆盖只改目录值，不抹掉列表。
 
@@ -28,7 +28,7 @@ CLI `models_cache.json` 的 `info.context_window` 是目录默认值（Grok 4.7 
 
 官方模型不写 App 侧的窗口覆盖文件；目录值就是唯一来源。
 
-Host 在**连接**（新建与恢复会话）和**切换模型**时解析当前会话模型的生效窗口，并通过 `session/set_model` 的 `_meta.contextWindow` 下发；切换模型不会沿用上一个模型的窗口。目录没有窗口时不下发，交给 CLI 默认。自定义 provider 的窗口同时写入 config.toml，spawn 与 ACP 两条路径保持一致。
+Host 在**连接**（新建与恢复会话）和**切换模型**时解析当前会话模型的生效窗口，并通过 `session/set_model` 的 `_meta.contextWindow` 下发；切换模型不会沿用上一个模型的窗口。官方模型在目录没有窗口时不下发，交给 CLI 默认；自定义提供商始终下发解析出的窗口（模型行 → 通道 → 1M 兜底），与 Composer 显示保持一致。自定义 provider 的已配置窗口同时写入 config.toml，spawn 与 ACP 两条路径保持一致。
 
 Composer 的 `currentModelWindow` 只用于编辑器上下文用量分母：live 用量优先，其次模型生效窗口。`/context` 仍展示真实用量，不因配置变化伪造数据。
 
