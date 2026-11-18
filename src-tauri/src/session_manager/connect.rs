@@ -2423,10 +2423,9 @@ async fn push_connected_effort(client: &AcpClient, agent_sid: &str, effort: Opti
 
 /// `session/set_model` after open, with the model's configured context window.
 ///
-/// The window comes from the App's per-model configuration for the resolved
-/// route: the official catalog (Settings override or CLI default) or the
-/// custom provider's model row / channel. Applying it here keeps a resumed
-/// chat on the same size its model configuration declares, and a model switch
+/// The window comes from the resolved route's model data: the official catalog
+/// value or the custom provider's model row / channel. Applying it here keeps
+/// a resumed chat on the same size its model declares, and a model switch
 /// never carries the previous model's window.
 ///
 /// An allowlist refusal is returned so the caller can stop the turn. A transient
