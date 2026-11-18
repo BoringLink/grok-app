@@ -68,6 +68,19 @@ impl SessionManager {
                 connect_gave_up_reason(false)
             ));
         };
+        // Consume a respawn queued by an idle-state effort/policy switch
+        // BEFORE the prompt lands on the stale ACP. Hot-switch is async by
+        // design (never interrupts a running turn), but once the chat is
+        // idle the queued respawn must take effect: flush detaches the old
+        // process only when idle, and this send then cold-spawns with the
+        // new flags (connect lock already held here).
+        let flush_target = session_id
+            .clone()
+            .or_else(|| self.inner.lock().as_ref().map(|s| s.app_session_id.clone()));
+        if let Some(target) = flush_target.as_deref() {
+            self.flush_pending_soft_respawn_during_connect(&app, target)
+                .await;
+        }
         if let Some(target) = session_id.as_deref() {
             match self.ensure_promptable_session(&app, target) {
                 Ok(true) => {}
