@@ -2449,7 +2449,17 @@ pub fn list_custom_providers_readonly() -> Result<ProvidersListResult, String> {
     let path = agent_config_toml();
     let text = match fs::read_to_string(&path) {
         Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // Windows 把“父路径不是目录”也归入 NotFound；只有 agent home
+            // 确实不存在才算“没有自定义 provider”，损坏时向上报错。
+            let home = agent_home_dir();
+            match fs::metadata(&home) {
+                Ok(meta) if meta.is_dir() => String::new(),
+                Ok(_) => return Err(format!("agent home is not a directory: {}", home.display())),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+                Err(error) => return Err(format!("agent home read failed: {error}")),
+            }
+        }
         Err(error) => return Err(format!("agent config read failed: {error}")),
     };
     Ok(build_list_result(agent_home_dir(), path, &text))
@@ -8713,11 +8723,27 @@ context_window = "1000000"
 
     #[test]
     fn effort_lookup_uses_composer_model_id_not_generic_spawn_section() {
-        assert_eq!(effort_model_id_for_route("relay", "m2", "relay__m2"), "m2");
-        assert_eq!(
-            effort_model_id_for_route(SESSION_PROVIDER_OFFICIAL, "deleted-model", "grok-4.7"),
-            "grok-4.7"
-        );
+        // 该函数会读 app home 里的 provider 配置，必须隔离，否则并行用例互相污染。
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home =
+            std::env::temp_dir().join(format!("grok-app-effort-route-{}", uuid::Uuid::new_v4()));
+        let previous_home = std::env::var_os("GROK_APP_HOME");
+        std::env::set_var("GROK_APP_HOME", &home);
+
+        let relay = effort_model_id_for_route("relay", "m2", "relay__m2");
+        let official =
+            effort_model_id_for_route(SESSION_PROVIDER_OFFICIAL, "deleted-model", "grok-4.7");
+
+        match previous_home {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+
+        assert_eq!(relay, "m2");
+        assert_eq!(official, "grok-4.7");
     }
 
     #[test]
