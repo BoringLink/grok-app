@@ -378,13 +378,9 @@ html[data-pet-shell] .boot-gate {
   color: #e6b450;
 }
 
-.pet-bubble__spin {
-  width: 11px;
-  height: 11px;
-  border-radius: 50%;
-  border: 1.6px solid color-mix(in srgb, var(--accent, #6b8cff) 30%, transparent);
-  border-top-color: var(--accent, #6b8cff);
-  animation: pet-bubble-spin 0.7s linear infinite;
+/* 等待态 glyph 会变黄；圆环保持原有主题强调色。 */
+.pet-bubble__glyph .session-activity-spinner {
+  color: var(--accent, #6b8cff);
 }
 
 .pet-bubble__text {
@@ -459,12 +455,6 @@ html[data-pet-shell] .boot-gate {
   width: 72%;
   background: #e6b450;
   animation: none;
-}
-
-@keyframes pet-bubble-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @keyframes pet-bubble-indeterminate {
