@@ -267,7 +267,6 @@ Shell（无边框 · data-theme dark|light · tokens）
 | `spawn_agent` | 启动失败 | AGENT_CRASHED 或 CLI_NOT_FOUND | exit/stderr 截断 |
 | `acp_handshake` | 协议不兼容 | 版本不匹配升级提示 | 版本号 |
 | `auth` | 401 | AUTH_FAILED | **redact key** |
-| `provider_ping` | 超时/DNS | NETWORK_PROVIDER + 原因 | host only |
 | `stream` | 中断 | 断开 + 重附着 | session_id |
 | `permission` | 用户拒绝 | Agent 继续/结束可预期 | decision |
 | `persist_transcript` | 写盘失败 | Toast + 内存仍可看 | path |

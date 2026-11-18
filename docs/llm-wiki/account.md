@@ -66,7 +66,7 @@ Syncing the file is not enough while multi-session **parked** / **prewarm** CLI 
 | agent-home empty/stale after custom route, UI reads it as signed-out | `read_auth_profile` prefers **better** of `$GROK_HOME` / `~/.grok` / App agent-home (signed-in → refresh → not expired) |
 | `~/.grok/auth.json` wiped but agent-home mirror still signed-in | Rank mirrors for status + token; heal by copying agent-home → `~/.grok` |
 | mtime-only sync skipped restore of good `~/.grok` over newer empty agent-home | `sync_cli_auth_to_agent_home` compares **bytes** |
-| Process reuse gate used `is_custom_provider_id(modelId)` — custom sessions store **upstream** model ids, so custom processes looked "official" and were reused after auth strip | Store `custom_route` on `AcpClient` at spawn from `active_route()`; gate uses that |
+| Process reuse gate used `is_custom_provider_id(modelId)` — custom sessions store **upstream** model ids, so custom processes looked "official" and were reused after auth strip | Store `custom_route` on `AcpClient` at spawn from the chat's stored provider; gate uses that |
 | Warm reuse must not rewrite shared auth | The process `GROK_HOME` is sealed at spawn. Warm reuse does not call `prepare_route_auth`. Shared-mode official still uses `~/.grok`. |
 | Official `authenticate(cached_token)` soft-fail left process with no OIDC | Official path re-syncs auth and **retries authenticate once** |
 
