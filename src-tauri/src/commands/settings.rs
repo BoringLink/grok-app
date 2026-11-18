@@ -528,8 +528,6 @@ pub async fn secrets_get_masked() -> Result<serde_json::Value, String> {
         crate::providers::ProvidersListResult {
             providers: vec![],
             default_model: None,
-            active_source: "official".into(),
-            active_provider_id: None,
             config_path: String::new(),
             agent_home: String::new(),
             switched_to_independent: false,

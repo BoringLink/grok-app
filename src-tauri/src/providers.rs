@@ -95,6 +95,9 @@ pub struct CustomProvider {
     /// the CLI can discover server-side capabilities from `/models`.
     #[serde(default = "default_provider_mode")]
     pub provider_mode: String,
+    /// Legacy read-only: mirrors `[models].default` for the secrets compat path
+    /// (`secrets_get_masked`, provider upsert mirroring) and Doctor display.
+    /// Never use it to decide a chat's route.
     pub is_default: bool,
     /// Catalog of selectable models for this channel (App-managed).
     /// Legacy providers without `app_models` read as one row from `model`.
@@ -219,11 +222,9 @@ pub fn normalize_provider_mode(raw: Option<&str>) -> String {
 #[serde(rename_all = "camelCase")]
 pub struct ProvidersListResult {
     pub providers: Vec<CustomProvider>,
+    /// Legacy read of `[models].default` for the secrets mirror / Doctor display.
+    /// A chat's route comes from its own stored provider, never from this key.
     pub default_model: Option<String>,
-    /// `official` = built-in Grok OAuth / xAI path; `custom` = a config.toml model with base_url.
-    pub active_source: String,
-    /// When `active_source == "custom"`, the selected provider id.
-    pub active_provider_id: Option<String>,
     pub config_path: String,
     pub agent_home: String,
     /// True when this call forced `session_data_mode` shared → independent so
@@ -253,15 +254,6 @@ pub fn is_official_catalog_model(id: &str) -> bool {
             | OFFICIAL_CATALOG_MODEL_46
             | OFFICIAL_CATALOG_MODEL_LEGACY
     )
-}
-
-/// Which inference channel the agent should use.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ActiveRoute {
-    /// Built-in xAI / SuperGrok (OIDC via auth.json).
-    Official,
-    /// OpenAI-compatible relay section id in config.toml (`[model.<id>]`).
-    Custom { id: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -946,6 +938,9 @@ fn assignment_key_exact(trimmed: &str) -> Option<&str> {
     crate::agent_home_config::assignment_key(trimmed)
 }
 
+/// Legacy read of `[models].default` for the secrets mirror / Doctor display.
+/// Kept because section rewrites must preserve the key as-is; no App code
+/// activates a route or writes it for activation any more.
 fn get_models_default(text: &str) -> Option<String> {
     let mut in_models = false;
     for line in text.lines() {
@@ -2285,19 +2280,6 @@ pub fn is_reserved_custom_provider_id(id: &str) -> bool {
     t == OFFICIAL_DEFAULT_MODEL || t == "official"
 }
 
-fn route_from_default(def: Option<&str>, providers: &[CustomProvider]) -> (String, Option<String>) {
-    if let Some(d) = def {
-        let d = d.trim();
-        if !d.is_empty()
-            && !is_reserved_custom_provider_id(d)
-            && providers.iter().any(|p| p.id == d)
-        {
-            return ("custom".into(), Some(d.to_string()));
-        }
-    }
-    ("official".into(), None)
-}
-
 fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListResult {
     let def = get_models_default(text);
     let mut providers = Vec::new();
@@ -2371,12 +2353,9 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             extra_headers,
         });
     }
-    let (active_source, active_provider_id) = route_from_default(def.as_deref(), &providers);
     ProvidersListResult {
         providers,
         default_model: def,
-        active_source,
-        active_provider_id,
         config_path: path.display().to_string(),
         agent_home: home.display().to_string(),
         switched_to_independent: false,
@@ -2394,19 +2373,6 @@ pub fn list_custom_providers() -> Result<ProvidersListResult, String> {
     let _ = ensure_generic_model_sections();
     let text = read_text(&path);
     Ok(build_list_result(home, path, &text))
-}
-
-/// Current channel from `[models].default` vs custom provider sections.
-pub fn active_route() -> ActiveRoute {
-    match list_custom_providers() {
-        Ok(list) if list.active_source == "custom" => {
-            if let Some(id) = list.active_provider_id.filter(|s| !s.trim().is_empty()) {
-                return ActiveRoute::Custom { id };
-            }
-            ActiveRoute::Official
-        }
-        _ => ActiveRoute::Official,
-    }
 }
 
 /// Whether `id` is a configured custom provider route (not an official catalog model).
@@ -2630,9 +2596,9 @@ pub fn effort_model_id_for_route(
 
 /// How a composer provider pick relates to the route this chat already uses.
 ///
-/// An empty stored id means "follow the global route". Writing that same
-/// route onto the row is not a switch: respawning would drop the CLI resume
-/// id and skip `session/set_model`.
+/// An empty stored id resolves to the official route. Writing that same route
+/// onto the row is not a switch: respawning would drop the CLI resume id and
+/// skip `session/set_model`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionProviderPick {
     SameRoute,
@@ -3444,17 +3410,8 @@ pub fn session_grok_build_proxy_spawn(
     grok_build_proxy_spawn_for_provider_text(&text, provider_id, composer_model)
 }
 
-/// After official login / account switch: only the official route should
-/// receive a copy of `~/.grok/auth.json` in agent-home. Custom relays must
-/// keep that file out so Grok Build uses `[model.<id>].api_key`.
-pub fn should_sync_cli_auth_after_account_change(route: &ActiveRoute) -> bool {
-    matches!(route, ActiveRoute::Official)
-}
-
-/// Prepare agent-home auth material for the active route.
-///
-/// Custom: strip agent-home `auth.json` so inference uses `api_key` only.
-/// Official: mirror `~/.grok/auth.json` into agent-home for OAuth.
+/// Serializes agent-home `auth.json` preparation so spawns on different routes
+/// never interleave the write.
 pub fn route_auth_lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     &LOCK
@@ -3466,8 +3423,10 @@ pub fn prepare_route_auth_for_agent() {
 }
 
 /// Prepare agent-home auth for one spawn. `custom` strips `auth.json` so the
-/// process uses that provider's `api_key`. Official copies OIDC in.
-/// Callers that spawn different providers must not overlap this write.
+/// process uses that provider's `api_key`. Official copies OIDC in: it is the
+/// only route that may mirror `~/.grok/auth.json` into agent-home, so a custom
+/// relay never receives OIDC. Callers that spawn different providers must not
+/// overlap this write.
 pub fn prepare_route_auth(custom: bool) {
     if custom {
         crate::account::clear_agent_home_auth();
@@ -3476,9 +3435,6 @@ pub fn prepare_route_auth(custom: bool) {
             "custom route spawn: cleared agent-home auth.json (api_key only)"
         );
     } else {
-        debug_assert!(should_sync_cli_auth_after_account_change(
-            &ActiveRoute::Official
-        ));
         if let Err(e) = crate::account::sync_cli_auth_to_agent_home() {
             tracing::warn!(
                 target: "providers",
@@ -3843,15 +3799,14 @@ pub fn remove_custom_provider(id: &str) -> Result<ProvidersListResult, String> {
         // section was already gone or the id did not match (re-add ghosts).
         return Err(format!("provider `{id}` not found"));
     }
-    let def = get_models_default(&text);
     text = remove_section(&text, &id);
     // Verify the section is actually gone before reporting success.
     if parse_model_sections(&text).iter().any(|s| s.id == id) {
         return Err(format!("failed to remove provider `{id}` from config"));
     }
-    if def.as_deref() == Some(id.as_str()) {
-        text = set_models_default(&text, OFFICIAL_DEFAULT_MODEL);
-    }
+    // `[models].default` is a legacy CLI key: leave it untouched even when it
+    // names this provider. The deleted chat rows fall back to official in
+    // `fallback_sessions_for_provider`, and a stray default no longer routes.
     write_text(&path, &text)?;
     // The next connect for a chat on this provider falls back to official and
     // prepares its own auth under the spawn lock.
@@ -5188,19 +5143,6 @@ base_url = \"http://127.0.0.1:8080/v1\"
             resolved_custom_model_id_for_session(&provider, "grok-4.7", true),
             "grok-4.7"
         );
-    }
-
-    #[test]
-    fn official_default_is_not_a_custom_route_even_if_id_collides() {
-        let grok = [sample_provider("grok")];
-        let (source, pid) = route_from_default(Some("grok"), &grok);
-        assert_eq!(source, "official");
-        assert_eq!(pid, None);
-
-        let relay = [sample_provider("relay")];
-        let (custom_src, custom_id) = route_from_default(Some("relay"), &relay);
-        assert_eq!(custom_src, "custom");
-        assert_eq!(custom_id.as_deref(), Some("relay"));
     }
 
     #[test]
@@ -8567,22 +8509,6 @@ context_window = "1000000"
     }
 
     #[test]
-    fn login_must_not_sync_oidc_into_custom_agent_home() {
-        // grok login always writes ~/.grok/auth.json. Copying that into
-        // agent-home while a custom relay is active makes the next spawn
-        // send OIDC to the relay. Official stays the only route that
-        // should receive the mirror.
-        assert!(!should_sync_cli_auth_after_account_change(
-            &ActiveRoute::Custom {
-                id: "claudex".into()
-            }
-        ));
-        assert!(should_sync_cli_auth_after_account_change(
-            &ActiveRoute::Official
-        ));
-    }
-
-    #[test]
     fn official_route_does_not_remap_a_custom_catalog_model() {
         // A chat without a custom provider preference is official. A stale relay
         // Model id must not silently route it back to that relay.
@@ -8597,7 +8523,7 @@ context_window = "1000000"
         std::env::set_var("GROK_APP_HOME", &home);
         let _ = ensure_agent_home();
 
-        let listed = upsert_custom_provider(UpsertProviderInput {
+        upsert_custom_provider(UpsertProviderInput {
             id: "qwen38-local".into(),
             model: "qwen3.8-27b".into(),
             base_url: "http://127.0.0.1:8080/v1".into(),
@@ -8620,7 +8546,6 @@ context_window = "1000000"
             extra_headers: None,
         })
         .expect("upsert");
-        assert_eq!(listed.active_source, "official");
 
         assert_eq!(
             spawn_model_for_provider("qwen38-local", "qwen3.8-27b"),
@@ -10049,7 +9974,7 @@ app_parent_provider = "proxy"
         let previous = std::env::var_os("GROK_APP_HOME");
         std::env::set_var("GROK_APP_HOME", &home);
         let _ = std::fs::create_dir_all(home.join("agent-home"));
-        let prelude = "# user comment\n\n[model.hand]\nmodel = \"keep-me\"\nbase_url = \"https://hand.example/v1\"\napi_key = \"sk-hand\"\nname = \"Hand\"\n";
+        let prelude = "# user comment\n\n[models]\ndefault = \"zhipu\"\n\n[model.hand]\nmodel = \"keep-me\"\nbase_url = \"https://hand.example/v1\"\napi_key = \"sk-hand\"\nname = \"Hand\"\n";
         std::fs::write(agent_config_toml(), prelude).expect("seed");
 
         let listed = upsert_custom_provider(UpsertProviderInput {
@@ -10155,6 +10080,11 @@ app_parent_provider = "proxy"
         assert_eq!(
             field_of(&removed, "hand", "model").as_deref(),
             Some("keep-me")
+        );
+        assert_eq!(
+            get_models_default(&removed).as_deref(),
+            Some("zhipu"),
+            "removing a provider must not rewrite the legacy [models].default key"
         );
 
         upsert_custom_provider(UpsertProviderInput {

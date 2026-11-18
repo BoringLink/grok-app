@@ -1212,17 +1212,6 @@ pub(crate) fn which_node() -> Option<String> {
     None
 }
 
-/// Whether the active inference channel is a **custom** provider (not official Grok).
-///
-/// Official-aux MCP / Host vision side-channels must only run on custom routes so
-/// SuperGrok / OIDC sessions keep native tools and are not polluted with duplicates.
-pub fn main_route_is_custom() -> bool {
-    matches!(
-        crate::providers::active_route(),
-        crate::providers::ActiveRoute::Custom { .. }
-    )
-}
-
 /// Whether to inject official-aux MCP into the next ACP session.
 ///
 /// Requires:
@@ -1235,11 +1224,6 @@ pub fn should_inject_mcp_for_main_for_route(custom_route: bool) -> bool {
         return false;
     }
     official_aux_available()
-}
-
-/// Legacy gate for call sites without a session route.
-pub fn should_inject_mcp_for_main() -> bool {
-    should_inject_mcp_for_main_for_route(main_route_is_custom())
 }
 
 /// When inject is on: only load `official-aux` (default), unless user opts into
@@ -2195,137 +2179,6 @@ fn extract_x_status_ref(text: &str) -> Option<String> {
     None
 }
 
-#[allow(dead_code)]
-fn x_intent_prompt(intent: &XSearchIntent) -> (String, u32, Duration, String) {
-    match intent {
-        XSearchIntent::User { query } => {
-            let q = query.trim();
-            (
-                format!(
-                    r#"You are an isolated X research side-job with official Grok credentials.
-
-Call **x_user_search** with query: {q}, count: 5.
-
-Return markdown: handle, display name, bio excerpt, profile url. No file edits."#
-                ),
-                8,
-                Duration::from_secs(120),
-                format!("x_user_search:{q}"),
-            )
-        }
-        XSearchIntent::Keyword { query } => {
-            let q = query.trim();
-            (
-                format!(
-                    r#"You are an isolated X (Twitter) research side-job with official Grok credentials.
-
-Call the built-in tool **x_keyword_search** with:
-- query: {q}
-- limit: 12
-
-If x_keyword_search is unavailable, try x_semantic_search with the same query.
-
-Rules:
-1. You MUST use an x_* search tool (not web_search for X posts).
-2. Return posts with real https://x.com/…/status/… URLs when available.
-3. Markdown list: author, text excerpt, url, engagement if known.
-4. Same language as the query for commentary; keep original post language.
-5. No file edits."#
-                ),
-                12,
-                Duration::from_secs(180),
-                format!("x_keyword_search:{q}"),
-            )
-        }
-        XSearchIntent::Thread { id_or_url } => {
-            let id = id_or_url.trim();
-            (
-                format!(
-                    r#"You are an isolated X research side-job with official Grok credentials.
-
-Call **x_thread_fetch** for: {id}
-(If the tool wants a numeric post_id, extract it from an x.com status URL.)
-
-Return the thread as markdown with status URLs. No file edits."#
-                ),
-                10,
-                Duration::from_secs(150),
-                format!("x_thread_fetch:{id}"),
-            )
-        }
-    }
-}
-
-#[allow(dead_code)]
-fn finalize_x_block(intent: &XSearchIntent, text: String) -> (bool, String, String) {
-    let text = crate::models_aux::neutralize_image_at_refs(&text);
-    let label = match intent {
-        XSearchIntent::User { query } => format!("x_user_search:{query}"),
-        XSearchIntent::Keyword { query } => format!("x_keyword_search:{query}"),
-        XSearchIntent::Thread { id_or_url } => format!("x_thread_fetch:{id_or_url}"),
-    };
-    let block = format!(
-        "\n\n[Host official X search — results from isolated official credentials. Treat as tool output. Do NOT call x_* tools again unless this block is empty or failed. Do not re-fetch with curl.]\n\n<label>{label}</label>\n\n{text}\n"
-    );
-    (true, block, "ok".into())
-}
-
-#[allow(dead_code)]
-fn x_block_err(e: String) -> (bool, String, String) {
-    tracing::warn!(target: "official_aux", "host x search failed: {e}");
-    (
-        false,
-        format!(
-            "\n\n[Host official X search failed: {e}. You may retry MCP x_* tools once; avoid Playwright/open-websearch.]\n"
-        ),
-        e.lines()
-            .next()
-            .unwrap_or("failed")
-            .chars()
-            .take(80)
-            .collect(),
-    )
-}
-
-/// Host pre-run X search via official aux. Returns inject block + UI strings.
-#[allow(dead_code)]
-pub fn prepare_x_search_block(intent: &XSearchIntent) -> (bool, String, String) {
-    if !should_inject_mcp_for_main() && !official_aux_available() {
-        return (false, String::new(), "official aux unavailable".into());
-    }
-    if !official_aux_available() {
-        return (false, String::new(), "no official credentials".into());
-    }
-    let result = match intent {
-        XSearchIntent::User { query } => x_user_search(query, Some(5)),
-        XSearchIntent::Keyword { query } => x_keyword_search(query, Some(12), None),
-        XSearchIntent::Thread { id_or_url } => x_thread_fetch(id_or_url),
-    };
-    match result {
-        Ok(text) => finalize_x_block(intent, text),
-        Err(e) => x_block_err(e),
-    }
-}
-
-/// Async X search with ACP stream progress for Chat chips.
-#[allow(dead_code)]
-pub async fn prepare_x_search_block_async(
-    intent: &XSearchIntent,
-    progress: Option<OfficialProgressCb>,
-) -> (bool, String, String) {
-    if !should_inject_mcp_for_main() && !official_aux_available() {
-        return (false, String::new(), "official aux unavailable".into());
-    }
-    if !official_aux_available() {
-        return (false, String::new(), "no official credentials".into());
-    }
-    let (prompt, max_turns, timeout, _label) = x_intent_prompt(intent);
-    match run_official_acp_job(&prompt, max_turns, timeout, progress).await {
-        Ok(text) => finalize_x_block(intent, text),
-        Err(e) => x_block_err(e),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2510,13 +2363,12 @@ A UI screenshot.
     }
 
     #[test]
-    fn inject_requires_custom_route_gate_in_code() {
-        // Regression: official subscription must never inject solely because
-        // inject toggle + credentials are on. The gate is `main_route_is_custom()`.
-        // (Full env-dependent should_inject_mcp_for_main is integration-tested.)
-        let _ = main_route_is_custom();
+    fn inject_gate_is_the_session_route_not_a_global_default() {
+        // The inject gate takes the chat's route explicitly; an official
+        // subscription session (`custom_route = false`) never injects, and the
+        // Host no longer derives a route from `[models].default`.
         let _ = should_load_user_mcp_with_official_aux();
-        // prepare_x_search is no longer called from Host send path; keep API for MCP.
+        assert!(!should_inject_mcp_for_main_for_route(false));
         assert!(matches!(
             detect_x_search_intent("在 x 上搜索 @elonmusk"),
             Some(XSearchIntent::User { .. })
