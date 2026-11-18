@@ -306,6 +306,8 @@ export interface ComposerPrefs {
   source: string;
   /** `official` or a custom provider id. Missing on older chats. */
   providerId?: string | null;
+  /** Model id saved on this session, when it exists independently of defaults. */
+  sessionModelId?: string | null;
 }
 
 export async function settingsGet() {
@@ -356,19 +358,6 @@ export async function settingsSet(settings: Record<string, unknown>) {
   return invoke<AppSettings>("settings_set", { settings });
 }
 
-/** Update live Host permission policy + persist at configured prefs scope. */
-export async function sessionSetPolicy(
-  policy: string,
-  opts?: { projectId?: string | null; sessionId?: string | null },
-) {
-  if (!isTauri()) return null;
-  return invoke<ComposerPrefs>("session_set_policy", {
-    policy,
-    projectId: opts?.projectId ?? null,
-    sessionId: opts?.sessionId ?? null,
-  });
-}
-
 /** Switch live agent model + persist at configured prefs scope. */
 export async function sessionSetModel(
   modelId: string,
@@ -378,21 +367,6 @@ export async function sessionSetModel(
   return invoke<ComposerPrefs>("session_set_model", {
     modelId,
     projectId: opts?.projectId ?? null,
-    sessionId: opts?.sessionId ?? null,
-  });
-}
-
-/**
- * Set the live session's context window (`session/set_model` `_meta.contextWindow`).
- * Does not change the stored model or reasoning effort. Official routes only.
- */
-export async function sessionSetContextWindow(
-  tokens: number,
-  opts?: { sessionId?: string | null },
-) {
-  if (!isTauri()) return;
-  return invoke<void>("session_set_context_window", {
-    tokens,
     sessionId: opts?.sessionId ?? null,
   });
 }
@@ -414,7 +388,6 @@ export async function secretsGetMasked() {
     /** Per-provider-preset custom STT key presence (ADR-0001). */
     sttCustomKeys?: Record<string, boolean>;
     relayBaseUrl: string | null;
-    defaultModel: string | null;
   }>("secrets_get_masked");
 }
 
@@ -437,10 +410,6 @@ export async function secretsSet(body: {
     sttCustomApiKey: body.sttCustomApiKey ?? null,
     sttCustomApiKeyProvider: body.sttCustomApiKeyProvider ?? null,
   });
-}
-
-export async function providerPing() {
-  return invoke<{ ok: boolean; class: string; message: string }>("provider_ping");
 }
 
 export async function importGrokCli() {

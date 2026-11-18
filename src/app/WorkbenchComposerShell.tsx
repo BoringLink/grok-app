@@ -5,7 +5,6 @@
  * Permission bar + wrap/portal live in WorkbenchComposerColumn. Host still
  * owns send/queue/compact verbs.
  */
-import * as api from "@/lib/api";
 import { AttachChatPanel } from "@/components/AttachChatPanel";
 import { AttachmentCard } from "@/components/AttachmentCard";
 import { ChatRefChip } from "@/components/ChatRefChip";
@@ -144,7 +143,7 @@ export function WorkbenchComposerShell(p: WorkbenchComposerShellProps) {
     setCompactNote,
     setGoalMode,
     setJsonSchemaDraft,
-    setMode,
+    persistComposerMode,
     setPhoneToolsOpen,
     setPromptHistoryActive,
     setPromptHistoryClearOpen,
@@ -713,18 +712,11 @@ export function WorkbenchComposerShell(p: WorkbenchComposerShellProps) {
                         policyShortYolo: tr("policy.short.always_approve"),
                       }}
                       onMode={(v) => {
-                        setMode(v);
                         if (v === "plan") {
                           setGoalMode(false);
                           sessionGoalClear.arm(session.sessionId, session.state);
                         }
-                        void api
-                          .composerPrefsSet({
-                            projectId: activeProject?.id ?? null,
-                            sessionId: session.sessionId ?? null,
-                            mode: v,
-                          })
-                          .catch((e) => showToast(String(e), 4000));
+                        persistComposerMode(v);
                       }}
                       onPolicy={(v: PermissionPolicyId) => {
                         applyPermissionPolicy(v);

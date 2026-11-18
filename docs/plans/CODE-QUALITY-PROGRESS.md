@@ -1,5 +1,7 @@
 # Code Quality Remediation — Progress Ledger
 
+> **Current rule:** the ≥1000-line file count is informational telemetry only; `FILES_OVER_1K_BUDGET` is retired and does not block CI. The historical metrics below remain unchanged.
+>
 > **Agent 必须在每完成一个 Work Package 后更新本文件。**  
 > 机器闸门 `final` 要求本文件含 `FINAL: PASS`（见 `scripts/check-code-quality-gates.py`）。  
 > 未达标时保持 `FINAL: PENDING`。
@@ -151,4 +153,12 @@ Parallel non-overlapping tracks (multi-agent) — **landed**:
 | residual-appworkbench | AppWorkbench + hooks | **PASS** | WP-W33: setup/boot gate extracted; planned W-wave done |
 | residual-settings-catalog | settingsCatalog split | **PASS** | domain entries |
 
-Follow-on: `docs/plans/HANDOFF-appworkbench-decomposition.md`. Decreasing ceilings now **13750 / 94 useState / 65 useEffect**; `files_ge_1000` **≤80**. Planned W-wave cuts through W33 are done; `sessionChangesById` and git dirty stay on the host.
+Follow-on: `docs/plans/HANDOFF-appworkbench-decomposition.md`. Decreasing ceilings now **13750 / 94 useState / 65 useEffect**; `files_ge_1000` remains an informational metric with no threshold. Planned W-wave cuts through W33 are done; `sessionChangesById` and git dirty stay on the host.
+
+### WP-W34 — BOR-157 route-state collapse (2026-11-18)
+
+| Track | Owner path | Status | Notes |
+|-------|------------|--------|-------|
+| appworkbench-route-state | `AppWorkbench.tsx` + `src/hooks/useSessionProviderChip.ts` | **PASS** | 3 route states → 1 `providerRouteId`; `bind()` render side effect removed; dead `modelsAux`/`activeSource` surfaces deleted (net −~180 lines) |
+
+Follow-on: BOR-157 integration record in `2026-11-18-bor-157-legacy-model-state-cleanup.md`. Decreasing ceilings unchanged (13750 / 94 useState / 65 useEffect); gates PASS.

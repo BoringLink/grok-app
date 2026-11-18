@@ -210,7 +210,8 @@ export function parseContextInfoPayload(raw: unknown): ContextInfoView | null {
 }
 
 /**
- * Lone `/context` line. `/context-window` is a different command.
+ * Lone `/context` line. A longer name such as the removed
+ * `/context-window` must not be treated as this command.
  * Extra paragraphs stay a normal send.
  */
 export function classifyContextSlashLine(

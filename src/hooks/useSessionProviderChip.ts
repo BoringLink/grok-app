@@ -1,129 +1,166 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { CustomProvider } from "@/lib/api/providers";
+import {
+  resolveComposerPrefsSelection,
+  type ComposerPrefsSelection,
+  type ComposerPrefsSelectionInput,
+} from "@/lib/composerPrefsApply";
+import type { ModelOption } from "@/lib/grokCatalog";
+import { resolveSessionProviderRoute } from "@/lib/sessionProviderRoute";
+import type { DraftComposerRoute } from "@/lib/draftComposerRoute";
 
-export type DraftComposerRoute = {
-  providerId: string;
-  modelId: string;
-  effort: string;
-};
+export type ProviderRouteSource = "official" | "custom";
 
-type ProviderChipSetters = {
-  setProviderActiveSource: (source: string) => void;
-  setProviderActiveId: (id: string | null) => void;
-  setActiveCustomProvider: (provider: CustomProvider | null) => void;
+/**
+ * Route painting for one applied prefs resolve.
+ * `routeProviderId` is the resolver's override: `null` pins the official
+ * route, `undefined` keeps the stored → draft order.
+ */
+export type PrefsRouteInput = {
+  routeProviderId?: string | null;
+  prefsProviderId?: string | null;
+  /** Chat on screen; a stored chat drops its unsaved draft pick first. */
+  sessionId?: string | null;
 };
 
 /**
  * Composer chip for the chat on screen.
- * A stored provider paints that chat. Missing means the global route.
- * Listing providers again must not wipe a chat that already picked one.
+ *
+ * The chat's stored provider is the only route source. A provider that has
+ * disappeared from the loaded list falls back to official; no global
+ * activation state participates.
+ *
+ * `setProviderId` 由调用方持有，路由只有一个值：`null` 表示官方。
  */
-export function useSessionProviderChip() {
-  const settersRef = useRef<ProviderChipSetters | null>(null);
-  const globalProviderRouteRef = useRef<{ source: string; id: string | null }>({
-    source: "official",
-    id: null,
-  });
+export function useSessionProviderChip(
+  setProviderId: (id: string | null) => void,
+) {
   const customProvidersRef = useRef<CustomProvider[]>([]);
+  const providersLoadedRef = useRef(false);
   const sessionProviderChipRef = useRef<string | null | undefined>(undefined);
   const draftComposerRouteRef = useRef<DraftComposerRoute | null>(null);
   const afterProviderListRef = useRef<(() => void) | null>(null);
-
-  const paint = useCallback((providerId: string | null) => {
-    const set = settersRef.current;
-    if (!set) return;
-    const id = (providerId ?? "").trim();
-    sessionProviderChipRef.current = id || null;
-    const providers = customProvidersRef.current;
-    const global = globalProviderRouteRef.current;
-    if (!id) {
-      const source = global.source || "official";
-      set.setProviderActiveSource(source);
-      set.setProviderActiveId(global.id);
-      set.setActiveCustomProvider(
-        source === "custom"
-          ? providers.find((p) => p.id === global.id) ?? null
-          : null,
-      );
-      return;
-    }
-    if (id.toLowerCase() === "official") {
-      set.setProviderActiveSource("official");
-      set.setProviderActiveId(null);
-      set.setActiveCustomProvider(null);
-      return;
-    }
-    set.setProviderActiveSource("custom");
-    set.setProviderActiveId(id);
-    set.setActiveCustomProvider(providers.find((p) => p.id === id) ?? null);
+  /** provider 目录加载失败标记：失败时 Composer 档位区显示错误而非中性加载态。 */
+  const [providersLoadFailed, setProvidersLoadFailed] = useState(false);
+  const clearDraftRouteIfCurrent = useCallback((route: DraftComposerRoute) => {
+    if (draftComposerRouteRef.current === route) draftComposerRouteRef.current = null;
   }, []);
+  const updateDraftEffort = useCallback(
+    (sessionId: string | null | undefined, effort: string) => {
+      if (sessionId) return;
+      const draft = draftComposerRouteRef.current;
+      if (draft) draftComposerRouteRef.current = { ...draft, effort };
+    },
+    [],
+  );
 
-  const noteProviderList = useCallback(
+  /** Paint the resolved provider route (`null` = official). */
+  const paint = useCallback(
+    (providerId: string | null) => {
+      const route = resolveSessionProviderRoute({
+        providerId,
+        providers: customProvidersRef.current,
+        providersLoaded: providersLoadedRef.current,
+      });
+      sessionProviderChipRef.current = route.providerId;
+      setProviderId(route.providerId);
+    },
+    [setProviderId],
+  );
+
+  /**
+   * Resolve stored prefs against the provider list and the new-chat draft the
+   * chip already holds, so callers do not have to reach into those refs.
+   */
+  const resolvePrefs = useCallback(
     (
-      list: {
-        providers: CustomProvider[];
-        activeSource: string;
-        activeProviderId: string | null;
-      } | null,
-    ) => {
-      const set = settersRef.current;
-      const notify = () => {
-        afterProviderListRef.current?.();
-      };
-      if (!list) {
-        customProvidersRef.current = [];
-        globalProviderRouteRef.current = { source: "official", id: null };
-        set?.setProviderActiveSource("official");
-        set?.setProviderActiveId(null);
-        set?.setActiveCustomProvider(null);
-        notify();
+      prefs: ComposerPrefsSelectionInput,
+      catalog: ModelOption[],
+      context?: { sessionId?: string | null; forceOfficial?: boolean },
+    ): ComposerPrefsSelection =>
+      resolveComposerPrefsSelection({
+        prefs,
+        catalog,
+        providers: customProvidersRef.current,
+        providersLoaded: providersLoadedRef.current,
+        forceOfficial: context?.forceOfficial,
+        draft: context?.sessionId ? null : draftComposerRouteRef.current,
+      }),
+    [],
+  );
+
+  /** Apply the resolved provider identity, clearing drafts for saved sessions. */
+  const applyPrefsRoute = useCallback(
+    (input: PrefsRouteInput) => {
+      if (input.sessionId) draftComposerRouteRef.current = null;
+      if (input.routeProviderId !== undefined) {
+        paint(input.routeProviderId ?? "official");
         return;
       }
-      customProvidersRef.current = list.providers;
-      globalProviderRouteRef.current = {
-        source: list.activeSource,
-        id: list.activeProviderId,
-      };
-      const chip = sessionProviderChipRef.current;
-      if (chip === undefined) {
-        set?.setProviderActiveSource(list.activeSource);
-        set?.setProviderActiveId(list.activeProviderId);
-        set?.setActiveCustomProvider(
-          list.activeSource === "custom"
-            ? list.providers.find((p) => p.id === list.activeProviderId) ?? null
-            : null,
-        );
-        notify();
+      const stored = input.prefsProviderId?.trim() ?? "";
+      if (stored) {
+        paint(stored);
         return;
       }
-      paint(chip);
-      notify();
+      const draft = input.sessionId ? null : draftComposerRouteRef.current;
+      paint(draft?.providerId ?? null);
     },
     [paint],
   );
 
-  const providersSnapshot = useCallback(
-    () => customProvidersRef.current,
-    [],
+  /** Refresh route painting after the current provider catalog changes. */
+  const noteProviderList = useCallback(
+    (list: { providers: CustomProvider[] } | null) => {
+      if (!list) {
+        customProvidersRef.current = [];
+        providersLoadedRef.current = false;
+        setProvidersLoadFailed(false);
+        paint(sessionProviderChipRef.current ?? null);
+        afterProviderListRef.current?.();
+        return;
+      }
+      customProvidersRef.current = list.providers;
+      providersLoadedRef.current = true;
+      setProvidersLoadFailed(false);
+      paint(sessionProviderChipRef.current ?? null);
+      afterProviderListRef.current?.();
+    },
+    [paint],
   );
 
-  const setAfterProviderList = useCallback((fn: (() => void) | null) => {
-    afterProviderListRef.current = fn;
+  /** 目录加载失败时置位失败标记；成功或重置列表时清除。 */
+  const noteProviderListError = useCallback(() => {
+    setProvidersLoadFailed(true);
   }, []);
 
-  const bind = useCallback((setters: ProviderChipSetters) => {
-    settersRef.current = setters;
+  /** Notify when a provider-list refresh has been applied. */
+  const setAfterProviderList = useCallback((fn: (() => void) | null) => {
+    afterProviderListRef.current = fn;
   }, []);
 
   return useMemo(
     () => ({
       draftComposerRouteRef,
+      updateDraftEffort,
+      clearDraftRouteIfCurrent,
       paint,
+      resolvePrefs,
+      applyPrefsRoute,
       noteProviderList,
-      bind,
-      providersSnapshot,
+      noteProviderListError,
+      providersLoadFailed,
       setAfterProviderList,
     }),
-    [bind, noteProviderList, paint, providersSnapshot, setAfterProviderList],
+    [
+      applyPrefsRoute,
+      noteProviderList,
+      noteProviderListError,
+      providersLoadFailed,
+      paint,
+      resolvePrefs,
+      setAfterProviderList,
+      updateDraftEffort,
+      clearDraftRouteIfCurrent,
+    ],
   );
 }

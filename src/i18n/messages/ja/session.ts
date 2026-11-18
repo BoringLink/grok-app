@@ -331,4 +331,5 @@ export const jaSession = {
   "session.journalLoadTimedOut": "チャット履歴の読み込みがタイムアウトしました。キャッシュがあれば表示します。開き直して再試行してください。",
   "session.journalLoadFailed": "チャット履歴を読み込めませんでした。キャッシュがあれば表示します。開き直して再試行してください。",
   "session.connectClaimTimedOut": "このチャットの接続がまだ実行中です。しばらくしてから再試行してください。",
+  "session.pendingSettingsRetry": "保留中のセッション設定を適用できませんでした。再接続してもう一度お試しください。",
 };

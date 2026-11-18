@@ -1,6 +1,8 @@
 # Grok App 代码质量全盘整改 — 规格 + 执行 Goal
 
 > **文档性质**：整改规格（单一事实来源）+ 可复制启动 Goal + 机器验收闸门  
+> **当前有效性**：本文是 2026-08-01 的历史整改规格。≥1000 行文件数目标已由仓库维护者决定不再作为 lint/CI 阻断条件；该项仅保留历史记录和非阻断 telemetry，其余现行闸门仍按脚本执行。
+>
 > **诊断来源**：2026-08-01 全库 code-review 诊断（对照 `docs/plans/2026-07-26-开源诊断与整改交接.md`）  
 > **执行方式**：**一个 Goal 跑完全程**；Wave / Work Package 由 Agent **自动续接**，禁止「做完一阶段就停下来等用户」  
 > **完成铁律**：**`python3 scripts/check-code-quality-gates.py --mode final` 必须 PASS**，否则 **禁止** 宣称整改完成、禁止写 `FINAL: PASS`  
@@ -85,7 +87,7 @@ Rust 相关 WP 额外：`cargo clippy --all-targets -- -D warnings` 在 CI 接�
 | CI | 无 clippy/fmt/eslint/质量闸 | **全有** |
 | Excel HTML | `dangerouslySetInnerHTML` 未消毒 | **安全** |
 | 定时器 | setTimeout 77 / clearTimeout 17 | **clear ≥ 50% set** |
-| ≥1000 行文件数 | ~53 | **≤45** |
+| ≥1000 行文件数 | ~53 | 历史目标 **≤45**；当前不设 CI 阈值 |
 
 诊断细节见会话内 code-review 报告；7/26 文档中 **已修复** 的 SEC-01/02/03/10 等 **不要重做**，除非回归。
 
@@ -375,7 +377,7 @@ cd src-tauri && cargo test
 1. App ≤6000 / useState ≤100 / useEffect ≤50。  
 2. 定时器：为 setTimeout 补清理，或抽到带 dispose 的 hook，使 clearTimeout ≥ 50% setTimeout。  
 3. CSS：域文件 ≥6；最大 ≤10000。  
-4. ≥1000 行文件数 ≤45：继续拆仍超标的次热点（`ResourceViewer`、`SettingsPage`、`messages.ts` 可按域拆 key，**非必须拆完 i18n** 若已靠其他文件压到 45）。  
+4. ≥1000 行文件数：历史整改目标；不再要求继续拆分或作为 CI 放行阈值，计数仅作 telemetry。
 5. CI 中质量闸升级为 `--mode final`（或 release 分支保护）。  
 
 **验收**：`python3 scripts/check-code-quality-gates.py --mode final` 在 Progress 写 PASS 前必须已能绿（差 PROGRESS_FILE / HANDOFF 两项时先做 F2）。  

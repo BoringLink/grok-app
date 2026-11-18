@@ -50,6 +50,7 @@ export const trCore = {
   "effort.low": "Düşük",
   "effort.xhigh": "Çok yüksek",
   "effort.max": "Çok yüksek",
+  "effort.none": "Kapalı",
   "mode.agent": "Ajan",
   "mode.plan": "Plan",
   "mode.ask": "Sor",

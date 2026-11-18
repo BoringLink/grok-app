@@ -331,4 +331,5 @@ export const esSession = {
   "session.journalLoadTimedOut": "La carga del historial tardó demasiado. Se muestra la copia en caché si existe; vuelve a abrir el chat para reintentar.",
   "session.journalLoadFailed": "No se pudo cargar el historial. Se muestra la copia en caché si existe; vuelve a abrir el chat para reintentar.",
   "session.connectClaimTimedOut": "Otra conexión de este chat sigue en curso. Inténtalo de nuevo en un momento.",
+  "session.pendingSettingsRetry": "No se pudieron aplicar los ajustes pendientes de la sesión. Vuelve a conectar para reintentarlo.",
 };

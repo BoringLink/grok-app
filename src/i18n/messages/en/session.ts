@@ -331,4 +331,5 @@ export const enSession = {
   "session.journalLoadTimedOut": "Chat history took too long to load. Showing the cached transcript when available — open the chat again to retry.",
   "session.journalLoadFailed": "Could not load chat history. Showing the cached transcript when available — open the chat again to retry.",
   "session.connectClaimTimedOut": "Another connect for this chat is still running. Try again in a moment.",
+  "session.pendingSettingsRetry": "Pending session settings could not be applied. Reconnect to retry.",
 } as const;

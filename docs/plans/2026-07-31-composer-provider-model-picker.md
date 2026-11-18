@@ -1,5 +1,7 @@
 # Composer provider model picker Implementation Plan
 
+> **SUPERSEDED (2026-11, BOR-151..157):** global provider activation (`providersActivate` / `activeSource` / `effectiveComposerModel`) was replaced by session-scoped routing (`composer_prefs_set` per chat, official fallback). Do not implement from this plan; see docs/llm-wiki/providers.md and model-routing.md.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Composer model menu lists official catalog models plus each custom provider’s configured request model (grouped); picking an entry activates that route; chip shows display name only on custom routes.

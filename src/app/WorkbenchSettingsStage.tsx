@@ -3,6 +3,7 @@
  * prefs hydrate in useAppSettingsPrefs. This file owns the SettingsPage
  * prop surface.
  */
+import { useRef } from "react";
 import { SettingsPage } from "@/components/SettingsPage";
 import { UiErrorBoundary } from "@/components/UiErrorBoundary";
 import { saveMessageTimestampsPref } from "@/lib/messageTimestampsPref";
@@ -18,11 +19,9 @@ import { saveNotifySoundPref } from "@/lib/notifySound";
 import { saveWindowAlwaysOnTopPref } from "@/lib/windowAlwaysOnTop";
 import { savePermissionTimeoutSec } from "@/lib/permissionTimeout";
 import { saveAskUserTimeoutSec } from "@/lib/askUser/askUserTimeout";
-import { IDLE_SNAPSHOT } from "@/lib/session";
 import {
   applyPersistedSessionDataMode,
   normalizeSessionDataMode,
-  sessionDataModeLockedByCustomRoute,
 } from "@/lib/sessionDataMode";
 import {
   normalizeCompactionDetail,
@@ -38,6 +37,7 @@ import {
   resolveLocalePreference,
 } from "@/i18n";
 import { isValidPolicy, isValidPrefsScope } from "@/lib/grokCatalog";
+import { queueComposerPreferenceApply } from "@/lib/composerPrefsBarrier";
 import { appDisplayVersion } from "@/lib/appDisplayVersion";
 import { mapProbeToCliInfo } from "@/lib/cliVersionStatus";
 import type { SessionRow } from "@/lib/app/sidebarModels";
@@ -45,11 +45,13 @@ import type { WorkbenchSettingsStageProps } from "@/app/workbenchSettingsStagePr
 
 
 
+/** 渲染设置页，并将设置范围状态绑定到成功写入后的值。 */
 export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
+  const prefsScopeWriteRef = useRef(Promise.resolve());
   const {
     account, accountBusy, accountHeatmapError, accountLoading, accountProbeError, acpServerAddr,
-    activeAccountId, activeProject, agentCatalog, agentIdleMinutes, agentProfilePath, agentsJson,
-    allowUnverifiedCliInstall, allowedTools, applyComposerPrefs, applyGlobalSandboxProfile, applyPermissionPolicy, applySkinChoice,
+    activeAccountId, agentCatalog, agentIdleMinutes, agentProfilePath, agentsJson,
+    allowUnverifiedCliInstall, allowedTools, applyGlobalSandboxProfile, applyPermissionPolicy, applySkinChoice,
     applyThemeChoice, applyThemeScheduleChoice, applyWallpaperAdjustChoice, applyWallpaperChoice, applyWallpaperMediaSize, applyWallpaperScrimChoice, applyWallpaperBlurChoice,
     archivedGroups, askUserTimeoutSec, auditLedgerRetentionDays, autoWakeEnabled, availableModels, backgroundWaitPolicy,
     backgroundWaitTimeoutSec, cancelAccountLogin, cliAgentSkewRepairing, cliInfo, closeToTray, compactionDetail,
@@ -63,7 +65,7 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
     prefsScope, projects, proxyMode, proxyNoProxy, proxyUrl, refreshAccount,
     refreshProviderRoute, refreshSessions, refreshVoiceGate, reopenLastSession, replaceProviderBrandLogo, restoreSessions,
     runAccountLogin, runAccountLogout, runAddAccount, runRemoveAccount, runSaveAccount, runSwitchAccount,
-    sandboxProfile, savedAccounts, session, sessionDataMode, sessions, setAcpServerAddr,
+    sandboxProfile, savedAccounts, sessionDataMode, sessions, setAcpServerAddr,
     setAgentIdleMinutes, setAgentProfilePath, setAgentsJson, setAllowUnverifiedCliInstall, setAllowedTools, setAppDialog,
     setAskUserTimeoutSec, setAuditLedgerRetentionDays, setAutoWakeEnabled, setBackgroundWaitPolicy, setBackgroundWaitTimeoutSec, setCliAgentSkewRepairing,
     setCliInfo, setCloseToTray, setCompactionDetail, setCompactionMode, setComposerEditor, setDefaultOpenTarget, setDisableWebSearch,
@@ -71,7 +73,7 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
     setLocale, setLocalePreference, setManualCliPath, setMaxAgentTurns, setMaxConcurrentAgents, setMessageTimeFormat,
     setNoAskUser, setNotifyOnPermission, setNotifyOnTurnDone, setNotifySound, setPermissionTimeoutSec, setPlanEnabled,
     setPreferredAgent, setPrefsScope, setProviderBalanceCache, setProxyMode, setProxyNoProxy, setProxyUrl,
-    setReopenLastSession, setReplaceProviderBrandLogo, setResourceOpenTarget, setSession, setSessionDataMode, setSettingsFocusAnchor,
+    setReopenLastSession, setReplaceProviderBrandLogo, setResourceOpenTarget, setSessionDataMode, setSettingsFocusAnchor,
     setSetup, setShowMessageTimestamps, setShowProductTutorial, setShowReplyLength, setShowShortcuts, setSidebarShowRelativeTime,
     setSkillsReloadToken, setStoreApiKeysInKeychain, setStreamStallSeconds, setSttCustomBaseUrl, setSttCustomLanguage, setSttCustomModel,
     setSttEngine, setSttZhScript, setSubagentWorktreeSnapshotEnabled, setSubagentsEnabled, setToast, setTodoGateEnabled,
@@ -230,15 +232,6 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
           })();
           };
           if (mode === "shared") {
-          void (async () => {
-            const list = await api.providersList().catch(() => null);
-            if (sessionDataModeLockedByCustomRoute(list?.activeSource)) {
-              setToast(
-                tr("settings.sessionDataMode.customRequiresIndependent"),
-              );
-              window.setTimeout(() => setToast(null), 5200);
-              return;
-            }
             setAppDialog({
               kind: "confirm",
               title: tr("settings.sessionDataMode"),
@@ -246,7 +239,6 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
               confirmLabel: tr("common.confirm"),
               onConfirm: commit,
             });
-          })();
           return;
           }
           commit();
@@ -259,17 +251,18 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
           prefsScope={prefsScope}
           onPrefsScope={(v) => {
           if (!isValidPrefsScope(v)) return;
-          setPrefsScope(v);
-          void api.settingsGet().then((s) =>
-          api.settingsSet({ ...s, composerPrefsScope: v }),
+          prefsScopeWriteRef.current = queueComposerPreferenceApply(
+            prefsScopeWriteRef.current,
+            async () => {
+              const settings = await api.settingsGet();
+              await api.settingsSet({ ...settings, composerPrefsScope: v });
+              setPrefsScope(v);
+            },
+            (error) => {
+              console.warn("composer prefs scope save failed", error);
+              showToast(tr("error.deck.generic.problem"), 4000);
+            },
           );
-          void api
-          .composerPrefsResolve({
-          projectId: activeProject?.id ?? null,
-          sessionId: session.sessionId ?? null,
-          })
-          .then((prefs) => applyComposerPrefs(prefs, availableModels))
-          .catch(() => {});
           }}
           availableModels={availableModels}
           manualCliPath={manualCliPath}
@@ -832,25 +825,11 @@ export function WorkbenchSettingsStage(p: WorkbenchSettingsStageProps) {
             });
           }}
           onProviderActivated={() => {
-          // Host already recycled warm agents on upsert/activate. Refresh UI
-          // chrome only — never park (sessionDisconnect) a live process: that
-          // kept stale OIDC/config in memory and required a full app restart
-          // (issue #376). Soft-fail so save UI never sticks on “Saving…”.
+          // Official OAuth / API-key changes rebind the account chrome only.
+          // Sessions keep their own provider and reconnect on their next turn.
           void (async () => {
           try {
-          if (api.isTauri()) {
-          setSession({ ...IDLE_SNAPSHOT });
-          }
           await refreshProviderRoute();
-          // #557: custom activate may flip session_data_mode → independent.
-          try {
-            const s = await api.settingsGet();
-            if (s?.sessionDataMode) {
-              setSessionDataMode(normalizeSessionDataMode(s.sessionDataMode));
-            }
-          } catch {
-            /* soft-fail mode refresh */
-          }
           await refreshAccount({ refreshBilling: false }).catch(() => {
           /* soft-fail billing refresh */
           });

@@ -6,19 +6,32 @@ import {
 
 // ── Custom providers (agent-home config.toml) ───────────────────────────────
 
+/** Which layer produced a per-model metadata value. */
+export type ProviderModelFieldSource = "user" | "remote" | "fallback";
+
 export interface ProviderModelEntry {
   /** Upstream request body model id. */
   id: string;
   /** Composer chip / menu display label. */
   name: string;
-  /** Per-model context window (tokens). Missing → channel, then App default. */
+  /** Per-model context window (tokens). Missing → API value, then 1M default. */
   contextWindow?: number | null;
-  /** Per-model: this request id accepts image pixels. Missing → channel flag. */
+  /** `contextWindow` provenance. Legacy rows without it keep a value as user. */
+  contextWindowSource?: ProviderModelFieldSource;
+  /** Legacy image-pixel flag. No Settings control; kept verbatim. */
   supportsVision?: boolean;
-  /** Per-model: this request id accepts video input. Missing → unset. */
+  /** Legacy video-input flag. No Settings control; kept verbatim. */
   supportsVideo?: boolean;
-  /** Per-model reasoning ladder. Empty/missing → channel `efforts`. */
+  /** 模型专属档位；空值在显式模型目录中使用通用 fallback。 */
   efforts?: ProviderEffortEntry[];
+  /** `efforts` provenance. */
+  effortsSource?: ProviderModelFieldSource;
+  /** Whether this model accepts reasoning levels. A configured ladder also implies support. */
+  supportsReasoningEffort?: boolean | null;
+  /** `supportsReasoningEffort` provenance. */
+  supportsReasoningEffortSource?: ProviderModelFieldSource;
+  /** Explicitly enables Composer's Off stop; an advertised `none` id also enables it. */
+  supportsReasoningOff?: boolean;
 }
 
 export interface ProviderEffortEntry {
@@ -46,9 +59,16 @@ export interface CustomProvider {
   /** Explicit relay semantics. Host never infers this from the URL. */
   providerMode: "generic" | "grok_build_proxy" | string;
   isDefault: boolean;
-  /** Selectable models for this channel (App-managed catalog). */
+  /** Selectable models for this channel (App-managed catalog). An empty array is an explicit clear. */
   models?: ProviderModelEntry[];
-  /** Reasoning efforts for this channel (App-managed). Empty → Grok 3-tier fallback. */
+  /**
+   * True when the stored `app_models` value cannot be read. `models` still
+   * carries the legacy fallback row, but saving without changing the catalog
+   * keeps the stored value instead of overwriting it. Opaque: never includes
+   * the raw value or parse detail.
+   */
+  modelCatalogCorrupt?: boolean;
+  /** channel `app_efforts`；仅旧式单模型且 id 匹配时作为模型档位。 */
   efforts?: ProviderEffortEntry[];
   /** Per-channel context window (tokens). None → catalog window, then default. */
   contextWindow?: number | null;
@@ -77,9 +97,6 @@ export interface CustomProvider {
 export interface ProvidersListResult {
   providers: CustomProvider[];
   defaultModel: string | null;
-  /** `official` | `custom` */
-  activeSource: string;
-  activeProviderId: string | null;
   configPath: string;
   agentHome: string;
   /**
@@ -122,6 +139,7 @@ export interface CcSwitchScanResult {
 export interface CcSwitchImportResult {
   imported: number;
   skipped: number;
+  affectedProviderIds: string[];
   failed: Array<{ sourceId: string; reason: string }>;
   providers?: ProvidersListResult | null;
 }
@@ -136,112 +154,13 @@ export async function providersCcSwitchImport(body: {
   sourceIds: string[];
   /** Default overwrite — same id updates key/base_url. */
   onConflict?: "skip" | "overwrite" | "rename";
-  activateId?: string | null;
 }) {
   return invoke<CcSwitchImportResult>("providers_cc_switch_import", {
     body: {
       sourceIds: body.sourceIds,
       onConflict: body.onConflict ?? "overwrite",
-      activateId: body.activateId ?? null,
     },
   });
-}
-
-/** Switch to official Grok Build or a custom provider (writes config.toml default). */
-export async function providersActivate(
-  source: "official" | "custom",
-  providerId?: string | null,
-  /** False: reload only the live chat. Default true: drop every warm process. */
-  recycleAgents?: boolean,
-) {
-  return invoke<ProvidersListResult>("providers_activate", {
-    source,
-    providerId: providerId ?? null,
-    recycleAgents: recycleAgents ?? null,
-  });
-}
-
-// ── Model auxiliary routing (`[models]` side-task slots) ─────────────────────
-
-export interface ModelsAuxSlots {
-  imageDescription: string;
-  webSearch: string;
-  sessionSummary: string;
-  promptSuggestion: string;
-}
-
-export interface ModelsAuxOption {
-  id: string;
-  label: string;
-  source: string;
-  hint?: string;
-}
-
-export interface ModelsAuxState {
-  slots: ModelsAuxSlots;
-  options: ModelsAuxOption[];
-  sessionDataMode: string;
-  writable: boolean;
-  configPath: string;
-  mainDefault: string;
-  activeSource: string;
-  saveGrokTarget?: string | null;
-  saveGrokLabel?: string | null;
-  saveGrokReason: string;
-  /**
-   * Stable health code for i18n (empty = ok):
-   * `official_aux_incomplete` | `text_only_no_vision`
-   */
-  healthCode?: string;
-  visionReady?: boolean;
-  mainTextOnly?: boolean;
-  hasOfficialApiKey?: boolean;
-}
-
-export interface ModelsAuxSetInput {
-  imageDescription?: string | null;
-  webSearch?: string | null;
-  sessionSummary?: string | null;
-  promptSuggestion?: string | null;
-}
-
-export async function modelsAuxGet() {
-  return invoke<ModelsAuxState>("models_aux_get");
-}
-
-export async function modelsAuxSet(body: ModelsAuxSetInput) {
-  return invoke<ModelsAuxState>("models_aux_set", {
-    imageDescription: body.imageDescription ?? null,
-    webSearch: body.webSearch ?? null,
-    sessionSummary: body.sessionSummary ?? null,
-    promptSuggestion: body.promptSuggestion ?? null,
-  });
-}
-
-export async function modelsAuxApplySaveGrok() {
-  return invoke<ModelsAuxState>("models_aux_apply_save_grok");
-}
-
-export async function modelsAuxResetDefaults() {
-  return invoke<ModelsAuxState>("models_aux_reset_defaults");
-}
-
-/** Independent `grok -p -m <modelId>` under agent-home (not the live session model). */
-export async function modelsAuxHeadless(body: {
-  modelId: string;
-  prompt: string;
-  maxTurns?: number;
-}) {
-  return invoke<string>("models_aux_headless", {
-    modelId: body.modelId,
-    prompt: body.prompt,
-    maxTurns: body.maxTurns ?? null,
-  });
-}
-
-/** Host web search via configured web_search aux model (headless). */
-export async function modelsAuxWebSearch(query: string) {
-  return invoke<string>("models_aux_web_search", { query });
 }
 
 // ── Official aux (isolated GROK_HOME + grok -p) ─────────────────────────────
@@ -318,7 +237,6 @@ export async function providersUpsert(body: {
   apiKey?: string;
   apiBackend?: string;
   providerMode?: "generic" | "grok_build_proxy" | string;
-  setAsDefault?: boolean;
   createOnly?: boolean;
   models?: ProviderModelEntry[];
   efforts?: ProviderEffortEntry[];
@@ -340,7 +258,6 @@ export async function providersUpsert(body: {
     apiKey: body.apiKey ?? null,
     apiBackend: body.apiBackend ?? null,
     providerMode: body.providerMode ?? null,
-    setAsDefault: body.setAsDefault ?? null,
     createOnly: body.createOnly ?? null,
     models: body.models ?? null,
     efforts: body.efforts ?? null,
@@ -354,10 +271,6 @@ export async function providersUpsert(body: {
 
 export async function providersRemove(id: string) {
   return invoke<ProvidersListResult>("providers_remove", { id });
-}
-
-export async function providersSetDefault(modelId: string) {
-  return invoke<ProvidersListResult>("providers_set_default", { modelId });
 }
 
 export async function providersPing(opts?: {
@@ -392,6 +305,9 @@ export async function providersListModels(opts: {
       contextWindow?: number | null;
       supportsVision?: boolean | null;
       supportsVideo?: boolean | null;
+      /** Extended `/models` rows may advertise a reasoning ladder. */
+      reasoningEfforts?: ProviderEffortEntry[];
+      supportsReasoningEffort?: boolean | null;
     }>;
   }>("providers_list_models", {
     baseUrl: opts.baseUrl,

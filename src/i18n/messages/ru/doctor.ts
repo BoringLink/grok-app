@@ -39,6 +39,7 @@ export const ruDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "Свой relay",
   "setup.account.relayHint": "OpenAI-совместимый Base URL + ключ",
+  "setup.account.relayPerChatHint": "Новые чаты запускаются с официальной моделью. Выберите модель ретранслятора в композере для каждого чата.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "API-ключ",
   "setup.account.protocol": "Формат сообщений",

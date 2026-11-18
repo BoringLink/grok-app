@@ -29,7 +29,7 @@ Grok App completed architecture-level quality remediation **without intentional 
 | `session_manager` | 7690 monolithic | **dir** facade ~115 lines |
 | `api.ts` facade | 4946 | **26** (+ ≥4 domain modules) |
 | SettingsPage destructured props | ~180–204 | **9–10** (routing + `...rest`) |
-| Files ≥1000 lines (`src` + `src-tauri/src`) | ~53 | **≤45** (43) |
+| Files ≥1000 lines (`src` + `src-tauri/src`) | ~53 | Historical remediation target: ≤45 (43); no longer a CI gate |
 
 ## 3. Directory migration map
 
@@ -130,4 +130,4 @@ cd src-tauri && cargo test
 python3 scripts/check-code-quality-gates.py --mode final
 ```
 
-Gate thresholds in `scripts/check-code-quality-gates.py` were **not** relaxed.
+At initial completion, the gate thresholds were **not** relaxed. The ≥1000-line file-count gate has since been retired by repository-owner direction; the count remains an informational metric.

@@ -172,46 +172,46 @@ export const deFeatures = {
   "managedSetup.error.rejected": "Der Deployment-Key wurde abgelehnt oder ist abgelaufen. Mit dem Administrator klären.",
   "managedSetup.error.signatureRejectedTitle": "Managed-Signatur abgelehnt",
   "managedSetup.error.signatureRejected": "Die CLI hat die Managed-Config-Signatur oder den Envelope abgelehnt. Administrator kontaktieren; die App schreibt keine unverifizierte Policy.",
-  "modelAux.title": "Aux-Modell-Routing",
-  "modelAux.desc": "Das Hauptmodell führt die Chat-Schleife. Nebenaufgaben können ein stärkeres multimodales Modell nutzen (wie Hermes-Aux-Slots). Schreibt nur [models]-Task-Keys — ändert nie deine Hauptroute.",
-  "modelAux.loading": "Modellschichten werden geladen…",
-  "modelAux.refresh": "Neu laden",
-  "modelAux.saved": "Aux-Modell gespeichert. Agenten verbinden sich beim nächsten Vorgang neu.",
-  "modelAux.sharedReadOnly": "Shared-Sitzungsmodus: die App schreibt ~/.grok nicht um. Auf Independent wechseln oder config.toml in der CLI bearbeiten.",
-  "modelAux.mainDefault": "Haupt-[models].default",
-  "modelAux.activeSource": "Aktive Route",
-  "modelAux.option.auto": "Auto (CLI-Standard)",
-  "modelAux.slot.imageDescription": "Bildbeschreibung",
-  "modelAux.slot.imageDescriptionDesc": "Wenn das Hauptmodell Bilder nicht sieht, beschreibt Grok Build Anhänge mit diesem Modell.",
-  "modelAux.slot.webSearch": "Websuche",
-  "modelAux.slot.webSearchDesc": "Modell für das web_search-Werkzeug (Backend-Suche funktioniert am besten auf Grok-Klasse-Modellen).",
-  "modelAux.slot.sessionSummary": "Sitzungszusammenfassung",
-  "modelAux.slot.sessionSummaryDesc": "Nebenjob-Modell für Sitzungszusammenfassungen / Compact-bezogenen Text.",
-  "modelAux.slot.promptSuggestion": "Prompt-Vorschlag",
-  "modelAux.slot.promptSuggestionDesc": "Modell für Composer-Prompt-Vorschläge, wenn die CLI sie aktiviert.",
-  "modelAux.saveGrok": "Grok speichern",
-  "modelAux.saveGrokHint": "Alle vier Slots auf {model} zeigen. Hauptmodell unverändert.",
-  "modelAux.saveGrokNoTarget": "Noch kein multimodales Ziel. Offiziellen API-Schlüssel (Konto → Custom-Anbieter → Official) oder Grok-fähiges Relay (Amux / Yun) hinzufügen, dann erneut.",
-  "modelAux.saveGrokConfirmTitle": "Save-Grok-Preset anwenden?",
-  "modelAux.saveGrokConfirmBody": "Bildbeschreibung, Websuche, Sitzungszusammenfassung und Prompt-Vorschlag auf {model} setzen. Dein Hauptmodell / aktive Route bleibt.",
-  "modelAux.saveGrokDone": "Alle Aux-Slots → {model}",
-  "modelAux.resetDefaults": "Offizielle Defaults wiederherstellen",
-  "modelAux.resetConfirmTitle": "CLI-Defaults wiederherstellen?",
-  "modelAux.resetConfirmBody": "Custom-Overrides für die vier Aux-Slots entfernen. Grok-Build-Built-in-Defaults gelten wieder. Hauptmodell und Custom-Anbieter bleiben. Um die Hauptroute zurück auf Official zu stellen, Custom-Anbieter → Official → Verwenden.",
-  "modelAux.resetDone": "Aux-Slots auf CLI-Defaults zurückgesetzt.",
-  "modelAux.footnote": "Tipp: nach dem Wechsel zurück zum offiziellen Abo hier „Offizielle Defaults wiederherstellen“, damit Nebenaufgaben kein Custom-Relay mehr nutzen.",
-  "modelAux.pathLabel": "Config",
-  "modelAux.needOfficialKey": "Um Official Grok als Aux-Modell zu nutzen, während die Hauptroute ein Custom-Relay ist, offiziellen API-Schlüssel unter Custom-Anbieter → Official einfügen (auth.json wird auf Custom-Routen geleert).",
-  "modelAux.health.officialIncomplete": "Aux-Slots zeigen auf offizielles Grok, aber es gibt keinen vollständigen offiziellen Modellabschnitt oder API-Schlüssel. Bilder werden nicht als Pixel gesendet (vermeidet DeepSeek image_url 400). Fix: offiziellen API-Schlüssel unter Custom-Anbieter → Official einfügen, Slots mit „Offizielle Defaults wiederherstellen“ leeren oder Amux/Yun hinzufügen und Save Grok erneut.",
-  "modelAux.health.textOnlyNoVision": "Hauptmodell ist text-only und Vision-Aux ist nicht bereit. Angehängte Bilder gehen nur als Pfadnotizen, bis du hier ein Vision-Modell konfigurierst.",
-  "modelAux.nextStepsTitle": "Vision auf einem Text-Hauptmodell aktivieren",
-  "modelAux.nextStep1": "Option A — Official: Konto → Custom-Anbieter → Official → xAI-API-Schlüssel einfügen, dann Bildbeschreibung auf Official · grok-4.7 setzen (oder Save Grok).",
-  "modelAux.nextStep2": "Option B — Relay: Amux / Yun mit grok-4.7 hinzufügen, dann alle Aux-Slots auf diesen Anbieter setzen (oder Save Grok).",
-  "modelAux.nextStep3": "Wenn Slots auf einer kaputten offiziellen Grok-ID hängen, zuerst „Offizielle Defaults wiederherstellen“, dann neu konfigurieren.",
-  "modelAux.goProviders": "Custom-Anbieter öffnen",
-  "modelAux.officialAuxTitle": "Offizieller Side-Channel",
-  "modelAux.officialAuxReady": "Offizieller Grok-Side-Channel bereit ({reason}). Session-MCP „official-aux“ stellt web_search + x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe über isoliertes grok -p bereit (nutzt keine DeepSeek-Auth).",
-  "modelAux.officialAuxMissing": "Offizieller Side-Channel offline. Mit Grok Build anmelden (CLI-Auth) oder offiziellen API-Schlüssel unter Custom-Anbieter → Official einfügen — dann Sitzung neu verbinden.",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "Kostenaufstellung",
   "costRollup.settingsDesc": "Bekannte Tokennutzung nach Projekt oder Sitzung und Tag (aus Live-Nutzung und Sitzungsjournalen, wenn vorhanden). Nach Projekt/Sitzung filtern, Klartext-Zusammenfassung exportieren oder lokalen Sample-Ring leeren. Nur Schätzungen — keine Abrechnung.",
   "costRollup.lead": "Rollierende {days}-Tage-Ansicht der vom Agenten gemeldeten Tokenzahlen. Unten Projekt-/Sitzungs-Körnung und Filterchips. Sitzungen ohne bekannte Nutzung bleiben Unbekannt.",

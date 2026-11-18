@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -18,7 +18,10 @@ const findLabels = {
   noMatches: "No matches",
 };
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("CodeFileEditor find", () => {
   it("uses the shared find bar and marks every match", async () => {
@@ -85,5 +88,38 @@ describe("CodeFileEditor find", () => {
     await waitFor(() =>
       expect(document.activeElement).toBe(container.querySelector(".cm-content")),
     );
+  });
+
+  it("cancels its delayed re-measures on unmount", async () => {
+    const setSpy = vi.spyOn(window, "setTimeout");
+    const clearSpy = vi.spyOn(window, "clearTimeout");
+
+    const { unmount } = render(
+      <CodeFileEditor
+        value={"alpha\n"}
+        fileName="alpha.ts"
+        onChange={() => {}}
+        ariaLabel="Edit alpha.ts"
+        findLabels={findLabels}
+      />,
+    );
+
+    // 挂载后由 rAF 排入两次延迟重测（50ms / 250ms）。
+    await waitFor(() =>
+      expect(
+        setSpy.mock.calls.filter((call) => call[1] === 50 || call[1] === 250)
+          .length,
+      ).toBe(2),
+    );
+    const deferred = setSpy.mock.calls
+      .map((call, index) => ({
+        delay: call[1],
+        id: setSpy.mock.results[index]?.value as number | undefined,
+      }))
+      .filter((entry) => entry.delay === 50 || entry.delay === 250);
+
+    unmount();
+
+    deferred.forEach((entry) => expect(clearSpy).toHaveBeenCalledWith(entry.id));
   });
 });

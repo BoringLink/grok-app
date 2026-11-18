@@ -50,6 +50,7 @@ export const idCore = {
   "effort.low": "Rendah",
   "effort.xhigh": "Sangat tinggi",
   "effort.max": "Sangat tinggi",
+  "effort.none": "Mati",
   "mode.agent": "Agen",
   "mode.plan": "Rencana",
   "mode.ask": "Tanya",

@@ -50,6 +50,7 @@ export const ruCore = {
   "effort.low": "Низкое",
   "effort.xhigh": "Очень высокое",
   "effort.max": "Очень высокое",
+  "effort.none": "Выключено",
   "mode.agent": "Агент",
   "mode.plan": "План",
   "mode.ask": "Спросить",

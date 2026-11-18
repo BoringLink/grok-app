@@ -9,17 +9,21 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent,
 } from "react";
 import * as api from "@/lib/api";
 import {
   asFormModel,
+  blankModelIdIndex,
   toFormEfforts,
   ccSwitchStatusKey,
   emptyForm,
   effortsFromProvider,
   formFromPreset,
+  formModelsPayload,
   hostOf,
+  isModelCatalogLocked,
+  keepsStoredChannel,
+  modelsForProviderSave,
   modelsFromProvider,
   type FormState,
   type RightMode,
@@ -45,11 +49,11 @@ import { Tip } from "@/components/ui/tooltip";
 import { ProviderModelSettingsModal } from "@/components/ProviderModelSettingsModal";
 import {
   materializeActiveModelChannel,
-  mergeRemoteModelCaps,
+  mergeRemoteModelMetadata,
+  type RemoteModelMetadata,
 } from "@/lib/providerModelConfig";
 import {
   PROVIDER_SAVE_TIMEOUT_MS,
-  providerMutationNeedsAgentReload,
   slugifyProviderId,
   withProviderSaveTimeout,
 } from "@/lib/providerSave";
@@ -93,19 +97,32 @@ export interface ProvidersPanelProps {
    * Parent should refresh composer model groups — lightweight, no route recycle toast.
    */
   onProvidersChanged?: () => void;
-  /** Called after switching official/custom so host can reconnect Grok Build. */
-  onProviderActivated?: () => void;
+  /** Official API key saved or cleared. */
+  onOfficialKeyChanged?: () => void;
   /** Ephemeral feedback (e.g. fetch models result). */
   onToast?: (msg: string, ms?: number) => void;
-  /**
-   * When the edited channel is the active DeepSeek route and balance loads,
-   * parent can refresh sidebar / UserMenu cache.
-   */
+  /** Refresh provider-specific sidebar / UserMenu cache after balance loads. */
   onBalanceLoaded?: (
     providerId: string,
     result: api.ProviderBalanceResult,
   ) => void;
+  /**
+   * Settings search / deep-link anchor queued for focus. Form-internal anchors
+   * only exist inside the create/edit form, so the panel opens that form first.
+   */
+  pendingAnchor?: string | null;
+  /** The queued anchor target is mounted now — the settings shell can scroll. */
+  onPendingAnchorMounted?: () => void;
+  /** Search-hit highlight class helper (` is-search-hit`). */
+  rowHighlight?: (anchorId: string) => string;
 }
+
+/** 仅在 provider 表单（create/edit）内渲染的设置锚点。 */
+const FORM_INTERNAL_ANCHORS: ReadonlySet<string> = new Set([
+  "settings-anchor-prov-models",
+  "settings-anchor-prov-extra-headers",
+  "settings-anchor-provider-mode",
+]);
 
 function FieldHelp({ label, tip }: { label: string; tip: string }) {
   return (
@@ -134,9 +151,12 @@ export function ProvidersPanel({
   locale,
   officialAvailable = false,
   onProvidersChanged,
-  onProviderActivated,
+  onOfficialKeyChanged,
   onToast,
   onBalanceLoaded,
+  pendingAnchor: pendingAnchorProp = null,
+  onPendingAnchorMounted,
+  rowHighlight = () => "",
 }: ProvidersPanelProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [list, setList] = useState<api.ProvidersListResult | null>(null);
@@ -148,15 +168,7 @@ export function ProvidersPanel({
   const [form, setForm] = useState<FormState>(emptyForm);
   const [busy, setBusy] = useState(false);
   const [showKey, setShowKey] = useState(false);
-  const [remoteModels, setRemoteModels] = useState<
-    Array<{
-      id: string;
-      supportsBackendSearch?: boolean;
-      contextWindow?: number | null;
-      supportsVision?: boolean | null;
-      supportsVideo?: boolean | null;
-    }>
-  >([]);
+  const [remoteModels, setRemoteModels] = useState<RemoteModelMetadata[]>([]);
   const [modelSettingsIndex, setModelSettingsIndex] = useState<number | null>(
     null,
   );
@@ -247,8 +259,6 @@ export function ProvidersPanel({
         setList({
           providers: [],
           defaultModel: null,
-          activeSource: "official",
-          activeProviderId: null,
           configPath: "",
           agentHome: "",
         });
@@ -273,9 +283,18 @@ export function ProvidersPanel({
   }, [reload]);
 
   const providers = list?.providers ?? [];
-  const activeSource = list?.activeSource ?? "official";
-  const activeProviderId = list?.activeProviderId ?? null;
-  const officialActive = activeSource === "official";
+  const isCreate = rightMode === "create" || !editingId;
+  const targetProviderId =
+    editingId ?? slugifyProviderId(form.id || form.name || form.baseUrl);
+  const targetProvider = targetProviderId
+    ? providers.find((p) => p.id === targetProviderId)
+    : undefined;
+  const modelCatalogCorrupt = !!targetProvider?.modelCatalogCorrupt;
+  const modelSettingsLocked = isModelCatalogLocked({
+    stored: targetProvider,
+    isCreate,
+    formModels: form.models,
+  });
   /** Show official row even without OAuth so users can paste an API key for speech. */
   const showOfficialRow = true;
 
@@ -292,7 +311,7 @@ export function ProvidersPanel({
     setRightMode(PROVIDER_PRESETS.length > 0 ? "pick" : "create");
   };
 
-  const openCustomCreate = () => {
+  const openCustomCreate = useCallback(() => {
     setSelection(null);
     setEditingId(null);
     setForm(emptyForm());
@@ -302,7 +321,7 @@ export function ProvidersPanel({
     setHint(null);
     setShowKey(false);
     setRightMode("create");
-  };
+  }, []);
 
   const fillPresetForm = (preset: ProviderPreset, endpointId?: string) => {
     setSelection(null);
@@ -405,7 +424,6 @@ export function ProvidersPanel({
       const r = await api.providersCcSwitchImport({
         sourceIds: Array.from(ccSelected),
         onConflict: "overwrite",
-        activateId: null,
       });
       if (r.providers) setList(r.providers);
       const failN = r.failed?.length ?? 0;
@@ -462,7 +480,7 @@ export function ProvidersPanel({
       setHasOfficialKey(true);
       setHint(tr("prov.officialKeySaved"));
       setHintTone("ok");
-      onProviderActivated?.();
+      onOfficialKeyChanged?.();
     } catch (e) {
       setHint(String(e));
       setHintTone("err");
@@ -481,7 +499,7 @@ export function ProvidersPanel({
       setOfficialKeyDraft("");
       setHint(tr("prov.officialKeyCleared"));
       setHintTone("muted");
-      onProviderActivated?.();
+      onOfficialKeyChanged?.();
     } catch (e) {
       setHint(String(e));
       setHintTone("err");
@@ -490,7 +508,7 @@ export function ProvidersPanel({
     }
   };
 
-  const openEdit = (p: api.CustomProvider) => {
+  const openEdit = useCallback((p: api.CustomProvider) => {
     setSelection(p.id);
     setEditingId(p.id);
     setForm({
@@ -526,7 +544,7 @@ export function ProvidersPanel({
     setHint(null);
     setShowKey(false);
     setRightMode("edit");
-  };
+  }, []);
 
   const closeRight = () => {
     setRightMode("empty");
@@ -538,15 +556,39 @@ export function ProvidersPanel({
     setDraftModelName("");
   };
 
-  const addModelToForm = (
-    modelId: string,
-    displayName?: string,
-    extras?: {
-      contextWindow?: number | null;
-      supportsVision?: boolean | null;
-      supportsVideo?: boolean | null;
-    },
-  ) => {
+  const pendingAnchor = (pendingAnchorProp ?? "").trim();
+  const formAnchorPending = FORM_INTERNAL_ANCHORS.has(pendingAnchor);
+  const formOpen = rightMode === "create" || rightMode === "edit";
+
+  // 搜索/深链命中表单内锚点：先打开表单（首个 provider，或列表为空时新建），
+  // 锚点才存在于 DOM，settings 外壳随后才能滚动并高亮。
+  useEffect(() => {
+    if (!formAnchorPending || loading || formOpen) return;
+    const first = list?.providers[0];
+    if (first) openEdit(first);
+    else openCustomCreate();
+  }, [
+    formAnchorPending,
+    loading,
+    formOpen,
+    list,
+    openEdit,
+    openCustomCreate,
+  ]);
+
+  /** 每次锚点请求只通知一次外壳，避免重复 scroll 重置高亮计时。 */
+  const notifiedAnchorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!formAnchorPending || !formOpen) {
+      notifiedAnchorRef.current = null;
+      return;
+    }
+    if (notifiedAnchorRef.current === pendingAnchor) return;
+    notifiedAnchorRef.current = pendingAnchor;
+    onPendingAnchorMounted?.();
+  }, [formAnchorPending, formOpen, pendingAnchor, onPendingAnchorMounted]);
+
+  const addModelToForm = (modelId: string, displayName?: string) => {
     const id = modelId.trim();
     if (!id) return;
     const name = (displayName ?? draftModelName).trim() || id;
@@ -554,16 +596,7 @@ export function ProvidersPanel({
     setForm((f) => {
       if (f.models.some((m) => m.id === id)) return f;
       const row = asFormModel(
-        mergeRemoteModelCaps(
-          {
-            id,
-            name,
-            contextWindow: extras?.contextWindow ?? null,
-            supportsVision: extras?.supportsVision ?? undefined,
-            supportsVideo: extras?.supportsVideo ?? undefined,
-          },
-          remote,
-        ),
+        mergeRemoteModelMetadata({ id, name }, remote),
       );
       return { ...f, models: [...f.models, row] };
     });
@@ -582,27 +615,32 @@ export function ProvidersPanel({
       setHintTone("err");
       return;
     }
-    const models = form.models
-      .map((m) => ({
-        id: m.id.trim(),
-        name: m.name.trim() || m.id.trim(),
-        contextWindow: m.contextWindow ?? null,
-        supportsVision: m.supportsVision,
-        supportsVideo: m.supportsVideo,
-        efforts: (m.efforts ?? [])
-          .map((e) => ({
-            id: e.id.trim(),
-            name: e.name.trim() || e.id.trim(),
-            isDefault: !!e.isDefault,
-          }))
-          .filter((e) => e.id),
-      }))
-      .filter((m) => m.id);
-    if (models.length === 0) {
+    if (blankModelIdIndex(form.models) >= 0) {
+      setHint(tr("prov.err.modelIdRequired"));
+      setHintTone("err");
+      return;
+    }
+    const id =
+      editingId ??
+      (slugifyProviderId(form.id || form.name || form.baseUrl) ||
+        `provider-${Date.now().toString(36)}`);
+    // Create flow: always use the form catalog (first model). Never reuse a
+    // ghost list entry's active model after delete+re-add with the same id.
+    const existing = list?.providers.find((p) => p.id === id);
+    const models = formModelsPayload(form.models);
+    if (models.length === 0 && isCreate) {
       setHint(tr("prov.err.needModel"));
       setHintTone("err");
       return;
     }
+    // Omit `models` unless the catalog changed: for an unreadable stored value
+    // the rows above are only the read fallback, and resending them would
+    // overwrite the original `app_models` text. A create collision re-adds an
+    // existing id, so it only overwrites the catalog when the preset differs.
+    const modelsToSave = modelsForProviderSave({
+      formModels: form.models,
+      stored: existing,
+    });
     let fallbackEfforts = form.efforts
       .map((e) => ({
         id: e.id.trim(),
@@ -625,38 +663,43 @@ export function ProvidersPanel({
     setBusy(true);
     setHint(tr("prov.saving"));
     setHintTone("muted");
-    const isCreate = rightMode === "create" || !editingId;
-    const id =
-      editingId ??
-      (slugifyProviderId(form.id || form.name || form.baseUrl) ||
-        `provider-${Date.now().toString(36)}`);
-    // Create flow: always use the form catalog (first model). Never reuse a
-    // ghost list entry's active model after delete+re-add with the same id.
-    const existing = list?.providers.find((p) => p.id === id);
-    const preferred =
-      !isCreate &&
-      existing?.model &&
-      models.some((m) => m.id === existing.model)
-        ? existing.model
-        : models[0].id;
-    const applied = materializeActiveModelChannel({
-      provider: {
-        id,
-        model: preferred,
-        baseUrl: form.baseUrl.trim(),
-        name: form.name.trim() || id,
-        hasApiKey: true,
-        apiBackend: form.apiBackend,
-        providerMode: form.providerMode,
-        isDefault: false,
-        models,
-        efforts: fallbackEfforts,
-        contextWindow: form.contextWindow,
-        supportsVision: form.supportsVision,
-      },
-      modelId: preferred,
-      models,
+    // An unreadable catalog that this save leaves on disk: the visible rows are
+    // recovery results, so the channel keeps its stored model and metadata.
+    const keepStoredChannel = keepsStoredChannel({
+      stored: existing,
+      modelsToSave,
     });
+    const storedModel = existing?.model?.trim() ?? "";
+    const reuseStoredModel =
+      storedModel !== "" &&
+      (keepStoredChannel ||
+        (!isCreate && models.some((m) => m.id === storedModel)));
+    const preferred = reuseStoredModel
+      ? storedModel
+      : models[0]?.id || storedModel || id;
+    // An unchanged catalog keeps the stored channel metadata; only a real
+    // catalog edit materializes model values onto the channel.
+    const applied =
+      keepStoredChannel || modelsToSave === undefined
+        ? null
+        : materializeActiveModelChannel({
+            provider: {
+              id,
+              model: preferred,
+              baseUrl: form.baseUrl.trim(),
+              name: form.name.trim() || id,
+              hasApiKey: true,
+              apiBackend: form.apiBackend,
+              providerMode: form.providerMode,
+              isDefault: false,
+              models,
+              efforts: fallbackEfforts,
+              contextWindow: form.contextWindow,
+              supportsVision: form.supportsVision,
+            },
+            modelId: preferred,
+            models,
+          });
     const payload = {
       id,
       model: preferred,
@@ -665,18 +708,17 @@ export function ProvidersPanel({
       apiKey: form.apiKey.trim() || undefined,
       apiBackend: form.apiBackend,
       providerMode: form.providerMode,
-      setAsDefault: false as boolean,
-      models,
-      efforts: applied.efforts ?? fallbackEfforts,
+      models: modelsToSave,
+      efforts: applied?.efforts ?? fallbackEfforts,
       baseUrlFullPath: form.baseUrlFullPath,
       // Always sent: "" clears the channel rules, so an emptied box sticks.
       appendPrompt: form.appendPrompt.trim(),
-      supportsVision: applied.supportsVision,
+      supportsVision: applied?.supportsVision ?? form.supportsVision,
       extraHeaders: form.extraHeaders
         .map((h) => ({ name: h.name.trim(), value: h.value.trim() }))
         .filter((h) => h.name && h.value),
       contextWindow:
-        applied.contextWindow != null && applied.contextWindow > 0
+        applied?.contextWindow != null && applied.contextWindow > 0
           ? applied.contextWindow
           : !isCreate &&
               existing?.contextWindow != null &&
@@ -687,7 +729,7 @@ export function ProvidersPanel({
     try {
       // Wall-clock budget so a hung host IPC cannot leave the UI on “Saving…”.
       // Disk write may still complete after a timeout (user can re-open panel).
-      // Do not auto-set default — user activates via Use / composer pick.
+      // New providers are available in the composer picker for one chat at a time.
       //
       // Create: try createOnly first so we never silently merge a ghost section.
       // If the same id still exists (failed/missed delete, or re-add preset),
@@ -736,34 +778,11 @@ export function ProvidersPanel({
       }
       // Always refresh composer model groups (list may have new models/names).
       onProvidersChanged?.();
-      const needsReload = providerMutationNeedsAgentReload({
-        setAsDefault: false,
-        providerId: id,
-        activeSource: r.activeSource,
-        activeProviderId: r.activeProviderId,
-      });
-      // Apply-path honesty: soft_respawn | saved_disk_only | host_only.
-      const effect = resolveProviderApplyEffect({
-        needsReload,
-        isTauri: api.isTauri(),
-      });
+      // Apply-path honesty: host_only | saved_disk_only. Sessions using this
+      // provider reconnect on their next turn; no global route switch exists.
+      const effect = resolveProviderApplyEffect({ isTauri: api.isTauri() });
       const toastKey = buildProviderApplyToastKey(effect) as MessageKey;
-      if (effect === "soft_respawn") {
-        setHint(tr(toastKey));
-        setHintTone("ok");
-        try {
-          // Fire-and-forget UI refresh; host already recycled agents on upsert.
-          onProviderActivated?.();
-        } catch (e) {
-          // Soft-fail: config is on disk; next message / restart still works.
-          setHint(tr("prov.savedApplyFailed", { detail: String(e) }));
-          setHintTone("err");
-          onToast?.(
-            tr("prov.savedApplyFailed", { detail: String(e) }),
-            4800,
-          );
-        }
-      } else if (replacedExisting && effect === "saved_disk_only") {
+      if (replacedExisting && effect === "saved_disk_only") {
         setHint(tr("prov.savedReplaced"));
         setHintTone("ok");
       } else {
@@ -799,8 +818,6 @@ export function ProvidersPanel({
   const confirmRemove = async () => {
     if (!deleteTarget) return;
     const { id } = deleteTarget;
-    const wasActive =
-      activeSource === "custom" && activeProviderId === id;
     setBusy(true);
     setDeleteTarget(null);
     try {
@@ -810,44 +827,8 @@ export function ProvidersPanel({
         closeRight();
       }
       onProvidersChanged?.();
-      // Deleting the live route falls back to official — recycle chrome like activate.
-      if (wasActive) {
-        onProviderActivated?.();
-      }
     } catch (e) {
       setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const activateOfficial = async (e?: MouseEvent) => {
-    e?.stopPropagation();
-    setBusy(true);
-    try {
-      const r = await api.providersActivate("official");
-      setList(r);
-      onProviderActivated?.();
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const activateCustom = async (id: string, e?: MouseEvent) => {
-    e?.stopPropagation();
-    setBusy(true);
-    try {
-      const r = await api.providersActivate("custom", id);
-      setList(r);
-      // #557: Host may auto-switch shared → independent so agent-home config is live.
-      if (r.switchedToIndependent) {
-        onToast?.(tr("prov.switchedToIndependent"), 5200);
-      }
-      onProviderActivated?.();
-    } catch (err) {
-      setError(String(err));
     } finally {
       setBusy(false);
     }
@@ -879,7 +860,7 @@ export function ProvidersPanel({
           ...f,
           models: f.models.map((m) => {
             const remote = r.models.find((x) => x.id === m.id);
-            return remote ? asFormModel(mergeRemoteModelCaps(m, remote)) : m;
+            return remote ? asFormModel(mergeRemoteModelMetadata(m, remote)) : m;
           }),
         }));
         onToast?.(tr("prov.fetchedCapsApplied", { n: String(r.models.length) }), 2800);
@@ -1106,8 +1087,7 @@ export function ProvidersPanel({
                 role="listitem"
                 className={
                   "prov-item" +
-                  (selection === "official" ? " is-selected" : "") +
-                  (officialActive ? " is-active" : "")
+                  (selection === "official" ? " is-selected" : "")
                 }
               >
                 <button
@@ -1131,32 +1111,10 @@ export function ProvidersPanel({
                     )}
                   </span>
                 </button>
-                {officialAvailable ? (
-                  !officialActive ? (
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm prov-item__use"
-                      disabled={busy}
-                      onClick={(e) => void activateOfficial(e)}
-                    >
-                      {tr("prov.useThis")}
-                    </button>
-                  ) : (
-                    <span
-                      className="prov-item__using"
-                      title={tr("prov.active")}
-                      aria-label={tr("prov.active")}
-                    >
-                      <IconCheck size={14} />
-                    </span>
-                  )
-                ) : null}
               </div>
             )}
 
             {providers.map((p) => {
-              const active =
-                activeSource === "custom" && activeProviderId === p.id;
               const selected = selection === p.id;
               const brandId = resolveProviderBrandId({
                 providerId: p.id,
@@ -1167,9 +1125,7 @@ export function ProvidersPanel({
                   key={p.id}
                   role="listitem"
                   className={
-                    "prov-item" +
-                    (selected ? " is-selected" : "") +
-                    (active ? " is-active" : "")
+                    "prov-item" + (selected ? " is-selected" : "")
                   }
                 >
                   <button
@@ -1198,24 +1154,6 @@ export function ProvidersPanel({
                       </span>
                     </span>
                   </button>
-                  {!active ? (
-                    <button
-                      type="button"
-                      className="btn btn--ghost btn--sm prov-item__use"
-                      disabled={busy}
-                      onClick={(e) => void activateCustom(p.id, e)}
-                    >
-                      {tr("prov.useThis")}
-                    </button>
-                  ) : (
-                    <span
-                      className="prov-item__using"
-                      title={tr("prov.active")}
-                      aria-label={tr("prov.active")}
-                    >
-                      <IconCheck size={14} />
-                    </span>
-                  )}
                 </div>
               );
             })}
@@ -1313,22 +1251,7 @@ export function ProvidersPanel({
                     {tr("prov.officialDesc")}
                   </p>
                 </div>
-                {officialAvailable ? (
-                  officialActive ? (
-                    <span className="account-badge account-badge--ok">
-                      {tr("prov.active")}
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn--solid"
-                      disabled={busy}
-                      onClick={() => void activateOfficial()}
-                    >
-                      {tr("prov.useThis")}
-                    </button>
-                  )
-                ) : null}
+
               </div>
               <p className="prov-detail__sub" id="settings-anchor-official-key">
                 {tr("prov.officialVoiceHint")}
@@ -1699,8 +1622,11 @@ export function ProvidersPanel({
 
                 {/* Models — full-width section, 2 equal columns inside */}
                 <div
-                  className="prov-field prov-field--full prov-section"
-                  id="settings-anchor-prov-supports-vision"
+                  className={
+                    "prov-field prov-field--full prov-section" +
+                    rowHighlight("settings-anchor-prov-models")
+                  }
+                  id="settings-anchor-prov-models"
                 >
                   <span className="prov-field__label-row">
                     <FieldHelp
@@ -1719,6 +1645,12 @@ export function ProvidersPanel({
                         : tr("prov.fetchModels")}
                     </button>
                   </span>
+
+                  {modelCatalogCorrupt ? (
+                    <p className="prov-field__hint">
+                      {tr("prov.modelsCorrupt")}
+                    </p>
+                  ) : null}
 
                   {remoteModels.length > 0 ? (
                     <div className="prov-models__remote">
@@ -1909,7 +1841,7 @@ export function ProvidersPanel({
                               onClick={() => setModelSettingsIndex(index)}
                               aria-label={tr("prov.modelSettings")}
                               title={tr("prov.modelSettings")}
-                              disabled={busy}
+                              disabled={busy || modelSettingsLocked}
                             >
                               <IconSettings size={15} />
                             </button>
@@ -1980,7 +1912,10 @@ export function ProvidersPanel({
                 </div>
 
                 <div
-                  className="prov-field prov-field--full"
+                  className={
+                    "prov-field prov-field--full" +
+                    rowHighlight("settings-anchor-prov-extra-headers")
+                  }
                   id="settings-anchor-prov-extra-headers"
                 >
                   <FieldHelp
@@ -2087,7 +2022,10 @@ export function ProvidersPanel({
                 </div>
 
                 <div
-                  className="prov-field prov-field--full"
+                  className={
+                    "prov-field prov-field--full" +
+                    rowHighlight("settings-anchor-provider-mode")
+                  }
                   id="settings-anchor-provider-mode"
                 >
                   <FieldHelp
@@ -2229,24 +2167,24 @@ export function ProvidersPanel({
       </GlassModal>
 
       <ProviderModelSettingsModal
-        open={modelSettingsIndex != null && !!form.models[modelSettingsIndex]}
+        open={
+          !modelSettingsLocked &&
+          modelSettingsIndex != null &&
+          !!form.models[modelSettingsIndex]
+        }
         locale={locale}
         model={
           modelSettingsIndex != null
             ? form.models[modelSettingsIndex] ?? null
             : null
         }
-        providerId={form.id}
-        baseUrl={form.baseUrl}
-        fallbackEfforts={form.efforts.map((e) => ({
-          id: e.id,
-          name: e.name,
-          isDefault: e.isDefault,
-        }))}
+        remote={remoteModels.find(
+          (remoteModel) => remoteModel.id === form.models[modelSettingsIndex ?? -1]?.id,
+        )}
         onClose={() => setModelSettingsIndex(null)}
         onSave={(next) => {
           const index = modelSettingsIndex;
-          if (index == null) return;
+          if (index == null || modelSettingsLocked) return;
           setForm((f) => ({
             ...f,
             models: f.models.map((row, i) =>
@@ -2254,9 +2192,13 @@ export function ProvidersPanel({
                 ? {
                     ...row,
                     contextWindow: next.contextWindow,
-                    supportsVision: next.supportsVision,
-                    supportsVideo: next.supportsVideo,
+                    contextWindowSource: next.contextWindowSource,
+                    supportsReasoningEffort: next.supportsReasoningEffort,
+                    supportsReasoningEffortSource:
+                      next.supportsReasoningEffortSource,
+                    supportsReasoningOff: next.supportsReasoningOff,
                     efforts: toFormEfforts(next.efforts),
+                    effortsSource: next.effortsSource,
                   }
                 : row,
             ),

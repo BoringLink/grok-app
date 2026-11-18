@@ -18,6 +18,7 @@ include!("session_p2.rs");
 include!("workspace.rs");
 include!("automation.rs");
 include!("settings.rs");
+include!("composer_prefs.rs");
 include!("doctor_p1.rs");
 include!("doctor_p2.rs");
 include!("extensions_p1.rs");

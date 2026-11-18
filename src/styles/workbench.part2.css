@@ -607,14 +607,3 @@
 }
 
 /* --- merged --- */
-
-.cmm__apply-note {
-  margin: 6px 8px 4px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-size: 11px;
-  line-height: 1.35;
-  color: var(--text-tertiary);
-  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
-  border: 1px solid var(--border-subtle, transparent);
-}

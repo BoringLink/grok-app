@@ -1,8 +1,27 @@
-import type { ModelOption } from "@/lib/grokCatalog";
+import {
+  isValidModelId,
+  pickDefaultModelId,
+  type ModelOption,
+} from "@/lib/grokCatalog";
 
 export type ComposerModelPick =
   | { kind: "official"; modelId: string }
   | { kind: "custom"; providerId: string; modelId: string };
+
+/** Pin a custom model pick to the official catalog when the session requires it. */
+export function pinComposerModelPickToOfficial(
+  pick: ComposerModelPick,
+  forceOfficial: boolean,
+  officialModels: ModelOption[],
+): ComposerModelPick {
+  if (!forceOfficial || pick.kind === "official") return pick;
+  return {
+    kind: "official",
+    modelId: isValidModelId(pick.modelId, officialModels)
+      ? pick.modelId
+      : pickDefaultModelId(officialModels),
+  };
+}
 
 export type ComposerModelEntry = {
   pick: ComposerModelPick;
@@ -34,9 +53,21 @@ export type ComposerProviderInput = {
    * missing one, is a generic relay. Both list every catalog row (#1394).
    */
   providerMode?: string | null;
-  /** Catalog of selectable models; falls back to single `model` when empty. */
+  /** Catalog of selectable models; only a missing catalog falls back to `model`. */
   models?: ComposerProviderModelInput[];
+  /** True when the stored catalog is unreadable; `models` only has recovered rows. */
+  modelCatalogCorrupt?: boolean;
 };
+
+/**
+ * A host that sends `models` owns the list, and `[]` is an explicit clear.
+ * Only an older host that omits the field keeps the legacy row.
+ */
+function hasCatalog(
+  models: ReadonlyArray<ComposerProviderModelInput> | null | undefined,
+): models is ReadonlyArray<ComposerProviderModelInput> {
+  return models != null;
+}
 
 function cleanModels(
   models: ReadonlyArray<ComposerProviderModelInput> | null | undefined,
@@ -55,13 +86,13 @@ function cleanModels(
  * Every catalog row is listed. A generic relay sends the matching
  * `[model.<provider>__<slug>]` section, whose `model` field is that row's
  * upstream id (#1337, #1394). A Grok Build-compatible relay sends the
- * catalog id. An empty catalog falls back to the channel `model`.
+ * catalog id. A missing catalog falls back to the channel `model`; an
+ * explicitly cleared one lists nothing.
  */
 function modelsForProvider(
   p: ComposerProviderInput,
 ): ComposerProviderModelInput[] {
-  const catalog = cleanModels(p.models);
-  if (catalog.length > 0) return catalog;
+  if (hasCatalog(p.models)) return cleanModels(p.models);
   const configured = p.model?.trim() ?? "";
   if (!configured) return [];
   return [{ id: configured, name: configured }];
@@ -75,6 +106,7 @@ export function composerMenuProviders(
     model: string;
     providerMode?: string | null;
     models?: ReadonlyArray<{ id: string; name?: string | null }> | null;
+    modelCatalogCorrupt?: boolean;
   }>,
 ): Array<
   ComposerProviderInput & {
@@ -87,11 +119,9 @@ export function composerMenuProviders(
     name: p.name,
     model: p.model,
     providerMode: p.providerMode ?? "generic",
-    models: (p.models?.length
-      ? p.models
-      : p.model
-        ? [{ id: p.model, name: p.model }]
-        : []
+    modelCatalogCorrupt: p.modelCatalogCorrupt,
+    models: (
+      p.models ?? (p.model ? [{ id: p.model, name: p.model }] : [])
     ).map((m) => ({
       id: m.id,
       name: (m.name || m.id).trim() || m.id,
@@ -172,24 +202,16 @@ export function filterComposerModelGroups(
 export function isComposerModelEntryActive(
   entry: ComposerModelEntry,
   opts: {
-    activeSource: "official" | "custom" | string;
-    activeProviderId: string | null | undefined;
+    /** `null` = official route; otherwise the resolved custom provider id. */
+    providerId: string | null;
     /** Active custom request model (provider.model). */
     activeRequestModel?: string | null;
     modelId: string;
   },
 ): boolean {
   if (entry.pick.kind === "official") {
-    return (
-      opts.activeSource !== "custom" && entry.pick.modelId === opts.modelId
-    );
+    return opts.providerId === null && entry.pick.modelId === opts.modelId;
   }
-  const requestOk =
-    !opts.activeRequestModel ||
-    opts.activeRequestModel === entry.pick.modelId;
-  return (
-    opts.activeSource === "custom" &&
-    opts.activeProviderId === entry.pick.providerId &&
-    requestOk
-  );
+  const requestOk = opts.activeRequestModel === entry.pick.modelId;
+  return opts.providerId === entry.pick.providerId && requestOk;
 }

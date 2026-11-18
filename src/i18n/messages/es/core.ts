@@ -50,6 +50,7 @@ export const esCore = {
   "effort.low": "Bajo",
   "effort.xhigh": "Muy alto",
   "effort.max": "Muy alto",
+  "effort.none": "Desactivado",
   "mode.agent": "Agente",
   "mode.plan": "Plan",
   "mode.ask": "Preguntar",

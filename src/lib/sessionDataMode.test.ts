@@ -11,7 +11,6 @@ import {
   planSessionDataModeSwitch,
   resolveSessionDataModeBanner,
   sessionDataModeHomeLabel,
-  sessionDataModeLockedByCustomRoute,
   shouldBlockMixedRead,
 } from "./sessionDataMode";
 
@@ -229,16 +228,6 @@ describe("formatSessionDataModeStatusVars", () => {
       modeLabel: "independent",
       path: "~/.grok-app/agent-home",
     });
-  });
-});
-
-describe("sessionDataModeLockedByCustomRoute", () => {
-  it("locks shared mode only while a custom provider is the live route", () => {
-    expect(sessionDataModeLockedByCustomRoute("custom")).toBe(true);
-    expect(sessionDataModeLockedByCustomRoute("CUSTOM")).toBe(true);
-    expect(sessionDataModeLockedByCustomRoute("official")).toBe(false);
-    expect(sessionDataModeLockedByCustomRoute("")).toBe(false);
-    expect(sessionDataModeLockedByCustomRoute(null)).toBe(false);
   });
 });
 

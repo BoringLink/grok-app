@@ -96,7 +96,10 @@ export type WorkbenchComposerColumnProps = {
   setProjects: Dispatch<SetStateAction<Project[]>>;
   setLocalError: Dispatch<SetStateAction<string | null>>;
   canGuideQueuedMessage: boolean;
-  channelEffortOptions: EffortOption[] | null;
+  effortOptions: EffortOption[] | null;
+  effortOptionsPending?: boolean;
+  /** 自定义 provider 目录加载失败时，档位区显示错误而非中性加载态。 */
+  effortOptionsFailed?: boolean;
   chatAttachments: ChatRef[];
   clearSlashFilters: () => void;
   cliWorktrees: CliWorktreeEntry[];
@@ -121,7 +124,6 @@ export type WorkbenchComposerColumnProps = {
   connecting: boolean;
   contextUsageDisplay: ContextUsageDisplay;
   refreshContextInfo: () => void;
-  currentModelWindow: number | null;
   customRouteActive: boolean;
   cycleAttachedChatScope: (id: string) => void;
   effectiveCanSend: boolean;
@@ -141,8 +143,7 @@ export type WorkbenchComposerColumnProps = {
   goalMode: boolean;
   guideQueuedMessage: (item: QueuedSend) => Promise<void>;
   guidingQueueItemId: string | null;
-  handleContextWindow: (tokens: number) => Promise<boolean>;
-  handleEffortPick: (nextEffort: string) => void;
+  handleEffortPick: (nextEffort: string) => Promise<boolean>;
   handleModelPick: (pick: ComposerModelPick) => Promise<void>;
   layout: LayoutPrefs;
   liveAt: LiveTokenQuery;
@@ -188,8 +189,8 @@ export type WorkbenchComposerColumnProps = {
   promptHistoryPos: FloatingPos | null;
   promptHistoryScope: PromptHistoryScope;
   promptHistoryUnfilteredCount: number;
-  providerActiveId: string | null;
-  providerActiveSource: string;
+  /** Active inference route: `null` provider id = official. */
+  providerId: string | null;
   queueEditItemId: string | null;
   queuePreviewLabels: { filesCount: (n: number) => string; chatsCount: (n: number) => string; empty: string; };
   quotes: ComposerQuote[];
@@ -217,7 +218,7 @@ export type WorkbenchComposerColumnProps = {
   setCompactNote: Dispatch<SetStateAction<string>>;
   setGoalMode: Dispatch<SetStateAction<boolean>>;
   setJsonSchemaDraft: Dispatch<SetStateAction<string>>;
-  setMode: Dispatch<SetStateAction<string>>;
+  persistComposerMode: (mode: string) => void;
   setPhoneToolsOpen: Dispatch<SetStateAction<boolean>>;
   setPromptHistoryActive: Dispatch<SetStateAction<number>>;
   setPromptHistoryClearOpen: Dispatch<SetStateAction<boolean>>;
@@ -357,11 +358,10 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
     effort,
     availableModels,
     composerProviderInputs,
-    providerActiveSource,
-    providerActiveId,
-    channelEffortOptions,
-    currentModelWindow,
-    handleContextWindow,
+    providerId,
+    effortOptions,
+    effortOptionsPending = false,
+    effortOptionsFailed = false,
     handleModelPick,
     handleEffortPick,
   } = p;
@@ -998,47 +998,32 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                 aria-label={tr("composer.model")}
               >
                 <ComposerModelMenu
-                  locale={locale}
                   modelId={modelId}
                   effort={effort}
                   models={availableModels}
                   providers={composerProviderInputs}
-                  activeSource={providerActiveSource}
-                  activeProviderId={providerActiveId}
-                  channelEfforts={channelEffortOptions}
-                  contextWindow={currentModelWindow}
-                  contextWindowEditable={customRouteActive}
-                  onContextWindow={handleContextWindow}
+                  providerRoute={{ providerId }}
+                  efforts={effortOptions}
+                  effortOptionsPending={effortOptionsPending}
+                  effortOptionsFailed={effortOptionsFailed}
                   labels={{
                     model: tr("composer.model"),
                     modelGroupOfficial: tr("composer.modelGroupOfficial"),
-                    modelViaProvider: tr("composer.modelViaProvider"),
                     effort: tr("composer.effort"),
                     effortHigh: tr("effort.high"),
                     effortMedium: tr("effort.medium"),
                     effortLow: tr("effort.low"),
                     effortXhigh: tr("effort.xhigh"),
                     effortMax: tr("effort.max"),
+                    effortNone: tr("effort.none"),
+                    effortUnavailable: tr("composer.effortUnavailable"),
+                    effortLoadError: tr("composer.effortLoadError"),
+                    effortFaster: tr("composer.effortFaster"),
+                    effortSmarter: tr("composer.effortSmarter"),
                     modelSearchPlaceholder: tr(
                       "composer.modelSearchPlaceholder",
                     ),
                     modelSearchEmpty: tr("composer.modelSearchEmpty"),
-                    contextWindow: tr("composer.contextWindow"),
-                    contextWindowOfficial: tr(
-                      "composer.contextWindowOfficial",
-                    ),
-                    contextWindowCustom: tr("composer.contextWindowCustom"),
-                    contextWindowPlaceholder: tr(
-                      "composer.contextWindowPlaceholder",
-                    ),
-                    contextWindowSave: tr("composer.contextWindowSave"),
-                    contextWindowOfficialHint: tr(
-                      "composer.contextWindowOfficialHint",
-                    ),
-                    advanced: tr("composer.advanced"),
-                    effortHint: tr("composer.effortPanelHint"),
-                    effortFaster: tr("composer.effortFaster"),
-                    effortSmarter: tr("composer.effortSmarter"),
                   }}
                   onModelPick={(pick) => {
                     void handleModelPick(pick);

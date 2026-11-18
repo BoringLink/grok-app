@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useLayoutEffect,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
@@ -121,7 +122,6 @@ import {
 } from "@/lib/session";
 import {
   INITIAL_CONTEXT_USAGE,
-  formatTokenCount,
   resolveContextUsageDisplay,
   type ContextUsageState,
 } from "@/lib/contextUsage";
@@ -178,6 +178,7 @@ import * as api from "@/lib/api";
 import {
   liveHostAfterProviderSwitch,
   queueComposerPreferenceApply,
+  resolveComposerPrefsAfterBarrier,
 } from "@/lib/composerPrefsBarrier";
 import {
   isDangerousSandboxProfile,
@@ -238,7 +239,6 @@ import {
   type Locale,
   type LocalePreference,
 } from "@/i18n";
-import { resolveComposerPrefsSelection } from "@/lib/composerPrefsApply";
 import {
   messagesAfterEditResend,
   optimisticLiveHostForEditResend,
@@ -249,16 +249,12 @@ import {
 import {
   DEFAULT_EFFORT,
   DEFAULT_MODEL_ID,
-  GROK_BUILD_EFFORTS,
   GROK_BUILD_MODELS,
   findModel,
-  effortCatalogForRoute,
-  effortOptionsFromProvider,
   isValidEffort,
   isValidModelId,
   isValidPolicy,
   isValidPrefsScope,
-  mapEffortToTargetCatalog,
   pickDefaultEffort,
   pickDefaultModelId,
   resolveContextWindow,
@@ -267,10 +263,13 @@ import {
   type PermissionPolicyId,
 } from "@/lib/grokCatalog";
 import {
-  materializeActiveModelChannel,
-  resolveProviderEfforts,
-  withModelContextWindow,
-} from "@/lib/providerModelConfig";
+  classifyModelEffortError,
+  modelEffortErrorMessageKey,
+} from "@/lib/modelEffortApply";
+import {
+  pickSessionEffort,
+  resolvePickedModelEfforts,
+} from "@/lib/sessionEffort";
 import {
   mapPermissionButtons,
 } from "@/lib/permissionOptions";
@@ -458,15 +457,8 @@ import {
   type SlashItem,
 } from "@/lib/slashCatalog";
 import { parseContextInfoPayload } from "@/lib/contextInfoSnapshot";
-import {
-  contextWindowSlashFeedback,
-  leftoverContextWindowArgs,
-  positiveContextWindows,
-  resolveContextWindowCommand,
-  formatWindowLabel,
-  selectableContextWindows,
-  stripContextWindowSlashFromDraft,
-} from "@/lib/contextWindowCommand";
+import { positiveContextWindows } from "@/lib/modelWindows";
+import { resolveProviderContextWindow } from "@/lib/providerModelConfig";
 import {
   leftoverWorkflowArgs,
   resolveWorkflowSlashAction,
@@ -557,6 +549,7 @@ import {
 
 import {
   composerMenuProviders,
+  pinComposerModelPickToOfficial,
   type ComposerModelPick,
 } from "@/lib/composerModelGroups";
 import {
@@ -680,7 +673,7 @@ import type { ContextMenuState } from "@/lib/app/appDialogTypes";
 import { useSessionRuntime } from "@/hooks/useSessionRuntime";
 import { sessionTranscriptStore } from "@/lib/sessionTranscriptStore";
 import { useSessionConnect, createSessionConnectHost } from "@/hooks/useSessionConnect";
-import { useSessionProviderChip } from "@/hooks/useSessionProviderChip";
+import { useSessionProviderChip, type ProviderRouteSource } from "@/hooks/useSessionProviderChip";
 import {
   createGitWorktreeChromeHost,
   useGitWorktreeChrome,
@@ -713,6 +706,13 @@ import { useComposerSend } from "@/hooks/useComposerSend";
 import { useComposerEndPad } from "@/hooks/useComposerEndPad";
 import { useRewindComposerRestore } from "@/hooks/useRewindComposerRestore";
 import { useSessionCatalog } from "@/hooks/useSessionCatalog";
+import { useSessionComposerEffort } from "@/hooks/useSessionComposerEffort";
+import { useComposerPrefsResolver } from "@/hooks/useComposerPrefsResolver";
+import { useComposerPrefWrites } from "@/hooks/useComposerPrefWrites";
+import {
+  resolveComposerModeForView,
+  resolveComposerPrefsDraftEffort,
+} from "@/lib/composerPrefsApply";
 import {
   createSessionNavHost,
   useSessionNavigation,
@@ -1202,6 +1202,8 @@ export function AppWorkbench() {
     sessions,
   });
   const [activeProject, setActiveProject] = useState<Project | null>(null);
+  const activeProjectIdRef = useRef<string | null>(null);
+  useLayoutEffect(() => { activeProjectIdRef.current = activeProject?.id ?? null; }, [activeProject?.id]);
   const mcpDoctorHostRef = useRef(createMcpDoctorChromeHost());
   const {
     showMcpModal,
@@ -2084,6 +2086,29 @@ export function AppWorkbench() {
   /** Queue item open in the edit dialog (`null` when closed). */
   /** Effort changes respawn the CLI; sends must wait for that write to settle. */
   const effortApplyRef = useRef<Promise<void>>(Promise.resolve());
+  const composerPrefToast = useCallback(
+    (message: string, ms?: number) => showToastRef.current(message, ms),
+    [],
+  );
+  const composerPrefTranslate = useCallback(
+    (key: MessageKey) => trRef.current(key),
+    [],
+  );
+  const {
+    draftModeRef,
+    resetDraftMode,
+    persistMode: persistComposerMode,
+    persistPolicy: persistComposerPolicy,
+  } = useComposerPrefWrites({
+    projectId: activeProject?.id,
+    sessionId: session.sessionId,
+    mode,
+    setMode,
+    setPolicy,
+    queueRef: effortApplyRef,
+    showToast: composerPrefToast,
+    translate: composerPrefTranslate,
+  });
   /** Live provider retry progress — store lives outside the shell (Thinking reads it). */
   const setRetryStatus = setProviderRetryStatus;
   /** Epoch ms when the current agent turn became busy (for elapsed UI). */
@@ -2388,25 +2413,49 @@ export function AppWorkbench() {
     };
   }, []);
 
-  const sessionProviderChip = useSessionProviderChip();
+  /** 当前会话的 provider 路由：`null` = 官方，非空 = 已按目录解析的自定义 provider id。 */
+  const [providerRouteId, setProviderRouteId] = useState<string | null>(null);
+  const sessionProviderChip = useSessionProviderChip(setProviderRouteId);
 
   const applyComposerPrefs = useCallback(
-    (prefs: api.ComposerPrefs, catalog: ModelOption[]) => {
-      const next = resolveComposerPrefsSelection({
-        prefs,
-        catalog,
-        providers: sessionProviderChip.providersSnapshot(),
-        draft: sessionProviderChip.draftComposerRouteRef.current,
-      });
+    (
+      prefs: api.ComposerPrefs,
+      catalog: ModelOption[],
+      chipFor?: { sessionId: string | null; forceOfficial?: boolean },
+    ) => {
+      const next = sessionProviderChip.resolvePrefs(prefs, catalog, chipFor);
       setModelId(next.modelId);
-      setEffort(next.effort);
-      setMode(prefs.mode || "agent");
+      const draftRouteCandidate = chipFor?.sessionId ? null : sessionProviderChip.draftComposerRouteRef.current;
+      const draftEffort = resolveComposerPrefsDraftEffort({
+        selection: next,
+        storedEffort: prefs.effort,
+        draftRoute: draftRouteCandidate,
+        forceOfficial: !!chipFor?.forceOfficial,
+      });
+      if (draftRouteCandidate && !draftEffort.draftRouteMatches) {
+        sessionProviderChip.clearDraftRouteIfCurrent(draftRouteCandidate);
+      }
+      setEffort(draftEffort.effort);
+      setMode(
+        resolveComposerModeForView({
+          prefsMode: prefs.mode,
+          draftMode: draftModeRef.current,
+          sessionId: chipFor?.sessionId,
+        }),
+      );
       setPolicy(
         isValidPolicy(prefs.permissionPolicy) ? prefs.permissionPolicy : "ask",
       );
       if (isValidPrefsScope(prefs.scope)) setPrefsScope(prefs.scope);
+      if (chipFor) {
+        sessionProviderChip.applyPrefsRoute({
+          routeProviderId: next.providerId,
+          prefsProviderId: prefs.providerId,
+          sessionId: chipFor.sessionId,
+        });
+      }
     },
-    [sessionProviderChip],
+    [sessionProviderChip, draftModeRef],
   );
 
   const refreshLists = useCallback(async () => {
@@ -2626,13 +2675,16 @@ export function AppWorkbench() {
             })
           : GROK_BUILD_MODELS;
       setAvailableModels(catalog);
-      // Bootstrap: global-effective prefs (context re-resolved when project/session changes).
+      const bootstrapBarrier = effortApplyRef.current;
       const prefs = await api
         .composerPrefsResolve({ projectId: null, sessionId: null })
         .catch(() => null);
-      if (prefs) {
+      const bootstrapStillCurrent =
+        effortApplyRef.current === bootstrapBarrier && session.sessionId == null &&
+        viewingSessionIdRef.current == null;
+      if (prefs && bootstrapStillCurrent) {
         applyComposerPrefs(prefs, catalog);
-      } else {
+      } else if (bootstrapStillCurrent) {
         setPolicy(
           isValidPolicy(settings.permissionPolicy || "")
             ? settings.permissionPolicy
@@ -2799,50 +2851,21 @@ export function AppWorkbench() {
     void refreshLists();
   }, [refreshLists, bootRetryNonce]);
 
-  // Re-resolve model/permission when project or chat changes.
-  // Permission always cascades project/session tiers (L10), even when model
-  // memory scope is global — so project-level tiers apply after a switch.
-  useEffect(() => {
-    if (!api.isTauri()) return;
-    let cancelled = false;
-    const run = () => {
-      void api
-        .composerPrefsResolve({
-          projectId: activeProject?.id ?? null,
-          sessionId: session.sessionId ?? null,
-        })
-        .then((prefs) => {
-          if (cancelled) return;
-          applyComposerPrefs(prefs, availableModels);
-          if (session.sessionId) {
-            sessionProviderChip.draftComposerRouteRef.current = null;
-          }
-          const stored = prefs.providerId?.trim() ?? "";
-          const draft = sessionProviderChip.draftComposerRouteRef.current;
-          if (stored) {
-            sessionProviderChip.paint(stored);
-          } else if (session.sessionId || !draft) {
-            sessionProviderChip.paint(null);
-          } else {
-            sessionProviderChip.paint(draft.providerId);
-          }
-        })
-        .catch(() => {});
-    };
-    sessionProviderChip.setAfterProviderList(run);
-    run();
-    return () => {
-      cancelled = true;
-      sessionProviderChip.setAfterProviderList(null);
-    };
-  }, [
-    activeProject?.id,
-    session.sessionId,
+  const reportComposerPrefsResolveError = useCallback((error: unknown) => {
+    console.warn("composer prefs session resolve failed", error);
+    showToastRef.current(trRef.current("error.deck.generic.problem"), 4000);
+  }, []);
+  const composerPrefsReady = useComposerPrefsResolver({
+    projectId: activeProject?.id,
+    sessionId: session.sessionId,
+    forceOfficial: !!activeProject?.sshAlias?.trim(),
     prefsScope,
-    applyComposerPrefs,
-    availableModels,
-    sessionProviderChip,
-  ]);
+    models: availableModels,
+    barrierRef: effortApplyRef,
+    setAfterProviderList: sessionProviderChip.setAfterProviderList,
+    apply: applyComposerPrefs,
+    onError: reportComposerPrefsResolveError,
+  });
 
   // Prompt history browse is per viewed session — leave browse mode on switch / new chat.
   // Cross-session recent ring is not cleared (lives in localStorage).
@@ -3437,6 +3460,7 @@ export function AppWorkbench() {
         turnStartedAtBySessionRef.current.delete(resolveTurnClockKey(null));
       }
     };
+    host.draft.resetComposerMode = resetDraftMode;
     host.draft.resetPlanAndGates = () => {
       setPlan(emptySessionPlan(tr("plan.ready")));
       setPerm(null);
@@ -4213,14 +4237,33 @@ export function AppWorkbench() {
                 }
               : p,
           );
-          const prefs = await api.composerPrefsResolve({
-            projectId: proj.id,
-            sessionId: session.sessionId ?? null,
+          const viewedSessionId =
+            viewingSessionIdRef.current ?? session.sessionId ?? null;
+          await resolveComposerPrefsAfterBarrier({
+            barrier: effortApplyRef.current,
+            currentBarrier: () => effortApplyRef.current,
+            isActive: () =>
+              activeProjectIdRef.current === proj.id &&
+              viewingSessionIdRef.current === viewedSessionId,
+            resolve: () =>
+              api.composerPrefsResolve({
+                projectId: proj.id,
+                sessionId: viewedSessionId,
+              }),
+            apply: (prefs) =>
+              applyComposerPrefs(prefs, availableModels, {
+                sessionId: viewedSessionId,
+                forceOfficial: !!activeProject?.sshAlias?.trim(),
+              }),
+            onError: (error) => {
+              console.warn("project permission prefs resolve failed", error);
+              setLocalError(tr("error.deck.generic.problem"));
+            },
           });
-          applyComposerPrefs(prefs, availableModels);
         }
-      } catch (e) {
-        setLocalError(String(e));
+      } catch (error) {
+        console.warn("project permission update failed", error);
+        setLocalError(tr("error.deck.generic.problem"));
       }
     };
 
@@ -5390,7 +5433,6 @@ export function AppWorkbench() {
     sessionGoalClear.flush(session.sessionId, session.state);
   }, [session.sessionId, session.state]);
 
-  const contextWindowSlashRef = useRef<(args: string) => void>(() => {});
   const contextSlashRef = useRef<(announce: boolean) => void>(() => {});
   const {
     executeSend,
@@ -5446,9 +5488,6 @@ export function AppWorkbench() {
     getDraft,
     requestComposerFocus,
     openWorkflowsSettings,
-    onContextWindowSlash: (args) => {
-      contextWindowSlashRef.current(args);
-    },
     onContextSlash: () => {
       contextSlashRef.current(true);
     },
@@ -6918,15 +6957,8 @@ export function AppWorkbench() {
           composerMode: modeRef.current,
         })
       ) {
-        setMode("agent");
         setGoalMode(false);
-        void api
-          .composerPrefsSet({
-            projectId: activeProject?.id ?? null,
-            sessionId: session.sessionId ?? null,
-            mode: "agent",
-          })
-          .catch((e) => showToast(String(e), 4000));
+        persistComposerMode("agent");
       }
     } catch (e) {
       showToast(String(e), 4500);
@@ -7110,16 +7142,9 @@ export function AppWorkbench() {
    */
   const exitPlanMode = useCallback(() => {
     if (modeRef.current !== "plan") return;
-    setMode("agent");
     setGoalMode(false);
-    void api
-      .composerPrefsSet({
-        projectId: activeProject?.id ?? null,
-        sessionId: session.sessionId ?? null,
-        mode: "agent",
-      })
-      .catch((e) => showToast(String(e), 4000));
-  }, [activeProject?.id, session.sessionId, showToast]);
+    persistComposerMode("agent");
+  }, [persistComposerMode]);
 
   const sendQueue = useSendQueue({
     sessionId: session.sessionId,
@@ -8394,13 +8419,7 @@ export function AppWorkbench() {
       if (!isValidPolicy(next)) return;
 
       const commit = () => {
-        setPolicy(next);
-        void api
-          .sessionSetPolicy(next, {
-            projectId: activeProject?.id ?? null,
-            sessionId: session.sessionId ?? null,
-          })
-          .catch((e) => showToast(String(e), 4000));
+        persistComposerPolicy(next);
       };
 
       if (next !== "always_approve") {
@@ -8427,7 +8446,7 @@ export function AppWorkbench() {
         },
       });
     },
-    [activeProject?.id, session.sessionId, showToast, tr],
+    [persistComposerPolicy, tr],
   );
 
   const applyCreateVideo = useCallback(() => {
@@ -8553,22 +8572,6 @@ export function AppWorkbench() {
         return;
       }
 
-      if (item.kind === "action" && item.action === "context-window") {
-        const stored = getDraft();
-        const leftover = q ? leftoverContextWindowArgs(stored, q.end) : "";
-        if (q) {
-          setDraft((d) =>
-            stripContextWindowSlashFromDraft(d, q.start, q.end),
-          );
-          requestComposerStoredCaret(q.start);
-        }
-        const fromQuery = (q?.query ?? "")
-          .replace(/^context-window\s*/i, "")
-          .trim();
-        contextWindowSlashRef.current(leftover || fromQuery);
-        return;
-      }
-
       if (item.kind === "action" && item.action === "context") {
         if (q) {
           const stored = getDraft();
@@ -8639,19 +8642,12 @@ export function AppWorkbench() {
       if (item.kind === "mode") {
         if (item.mode === "goal") {
           setGoalMode(true);
-          if (mode === "plan") setMode("agent");
+          if (mode === "plan") persistComposerMode("agent");
           return;
         }
         if (item.mode === "plan") {
           setGoalMode(false);
-          setMode("plan");
-          void api
-            .composerPrefsSet({
-              projectId: activeProject?.id ?? null,
-              sessionId: session.sessionId ?? null,
-              mode: "plan",
-            })
-            .catch((e) => showToast(String(e), 4000));
+          persistComposerMode("plan");
           return;
         }
       }
@@ -8853,13 +8849,11 @@ export function AppWorkbench() {
   // welcome logo paints immediately — the SVG itself is inline, not a fetch.
   const [cachedBrandKind, setCachedBrandKind] =
     useState<SuperGrokBrandKind | null>(() => loadCachedSuperGrokBrand());
-  /** Window picked on the new-chat composer, before a chat row exists. */
-  const [draftContextWindow, setDraftContextWindow] = useState<number | null>(
-    null,
-  );
   /** Active inference channel: custom relay identity replaces official account chrome. */
-  const [activeCustomProvider, setActiveCustomProvider] =
-    useState<api.CustomProvider | null>(null);
+  const activeCustomProvider = useMemo(
+    () => customProviders.find((p) => p.id === providerRouteId) ?? null,
+    [customProviders, providerRouteId],
+  );
   /** Session-memory DeepSeek (etc.) balance for sidebar footer / UserMenu. */
   const [providerBalanceCache, setProviderBalanceCache] =
     useState<ProviderBalanceCache | null>(null);
@@ -8869,25 +8863,32 @@ export function AppWorkbench() {
   >(null);
   /** Guards a one-time-per-session re-fetch of live model context windows. */
   const refreshedModelsSidRef = useRef<string | null>(null);
+  /** Custom relay's row window for the selected model, then the channel. */
+  const customModelWindow = useMemo(
+    () =>
+      activeCustomProvider
+        ? resolveProviderContextWindow(activeCustomProvider, modelId)
+        : null,
+    [activeCustomProvider, modelId],
+  );
   const currentModelWindow = useMemo(
     () =>
       resolveContextWindow({
-        activeCustomProvider,
+        activeCustomProvider: activeCustomProvider
+          ? { contextWindow: customModelWindow }
+          : null,
         modelId,
         models: availableModels,
-        // Prefer live agent occupancy denominator (Grok Build 1.0 → 500k).
-        // A new chat has no agent yet; the draft choice is what the menu shows.
-        agentContextWindow:
-          contextUsage.agentContextWindow ??
-          (session.sessionId ? null : draftContextWindow),
+        // Live agent occupancy always wins; a new chat has no agent yet and
+        // falls back to the model's configured window from Settings.
+        agentContextWindow: contextUsage.agentContextWindow,
       }),
     [
       activeCustomProvider,
+      customModelWindow,
       modelId,
       availableModels,
       contextUsage.agentContextWindow,
-      draftContextWindow,
-      session.sessionId,
     ],
   );
   useEffect(() => {
@@ -8950,21 +8951,17 @@ export function AppWorkbench() {
     };
   }, [contextUsage, messages, locale, currentModelWindow]);
   const sessionSpend = useSessionSpend(session.sessionId);
-  const [providerActiveSource, setProviderActiveSource] =
-    useState<string>("official");
-  const [providerActiveId, setProviderActiveId] = useState<string | null>(null);
   const [modelPickBusy, setModelPickBusy] = useState(false);
   const modelPickBusyRef = useRef(false);
+  /** `source` 只是 providerRouteId 的派生视图：非空即自定义路由。 */
+  const providerRouteSource: ProviderRouteSource = providerRouteId
+    ? "custom"
+    : "official";
   const customRouteActive = activeCustomProvider != null;
   const composerProviderInputs = useMemo(
-    () => composerMenuProviders(customProviders),
-    [customProviders],
+    () => composerMenuProviders(activeProject?.sshAlias?.trim() ? [] : customProviders),
+    [customProviders, activeProject?.sshAlias],
   );
-  sessionProviderChip.bind({
-    setProviderActiveSource,
-    setProviderActiveId,
-    setActiveCustomProvider,
-  });
   const refreshProviderRoute = useCallback(async () => {
     if (!api.isTauri()) {
       sessionProviderChip.noteProviderList(null);
@@ -8976,6 +8973,7 @@ export function AppWorkbench() {
       setCustomProviders(list.providers);
       sessionProviderChip.noteProviderList(list);
     } catch {
+      sessionProviderChip.noteProviderListError();
       /* keep previous */
     }
   }, [sessionProviderChip]);
@@ -9093,133 +9091,76 @@ export function AppWorkbench() {
     void refreshVoiceGate();
   }, [customRouteActive, refreshVoiceGate]);
 
-  /** Effort list for the active channel (custom provider catalog or official). */
-  const channelEffortOptions = useMemo(() => {
-    if (providerActiveSource !== "custom" || !activeCustomProvider) {
-      return null;
-    }
-    return effortOptionsFromProvider(
-      resolveProviderEfforts(activeCustomProvider),
-    );
-  }, [providerActiveSource, activeCustomProvider]);
-
-  /**
-   * Active effort catalog for the composer: custom channel efforts, else the
-   * selected official model (Grok 4.7 / Fast / 4.6 are 4-tier with xhigh).
-   */
-  const officialEffortCatalog = useMemo(
-    () =>
-      effortCatalogForRoute({
-        model: findModel(modelId, availableModels),
-      }),
-    [modelId, availableModels],
-  );
-  const activeEffortCatalog = useMemo(
-    () =>
-      effortCatalogForRoute({
-        model: findModel(modelId, availableModels),
-        channelEfforts: channelEffortOptions,
-      }),
-    [modelId, availableModels, channelEffortOptions],
-  );
-  const prevEffortCatalogRef = useRef(activeEffortCatalog);
-
-  // When switching channels / catalogs, map effort into the target list
-  // (DeepSeek high → Grok medium; xhigh/max → Grok high; reverse accordingly).
-  useEffect(() => {
-    const source = prevEffortCatalogRef.current;
-    prevEffortCatalogRef.current = activeEffortCatalog;
-    const next = mapEffortToTargetCatalog(
-      effort,
-      activeEffortCatalog,
-      source,
-    );
-    if (next !== effort) setEffort(next);
-  }, [activeEffortCatalog, effort]);
-
-  const handleEffortPick = useCallback(
-    (nextEffort: string) => {
-      if (!isValidEffort(nextEffort, activeEffortCatalog)) return;
-      setEffort(nextEffort);
-      effortApplyRef.current = queueComposerPreferenceApply(
-        effortApplyRef.current,
-        () =>
-          api.composerPrefsSet({
-            projectId: activeProject?.id ?? null,
-            sessionId: session.sessionId ?? null,
-            effort: nextEffort,
-          }),
-        (error) => showToast(String(error), 4000),
-      );
-    },
-    [activeEffortCatalog, activeProject?.id, session.sessionId, showToast],
-  );
+  const {
+    options: effortOptions,
+    pending: effortOptionsPending,
+    failed: effortOptionsFailed,
+    handleEffortPick,
+    getLatestEffort,
+    isCurrentTarget,
+  } = useSessionComposerEffort({
+    source: providerRouteSource,
+    provider: activeCustomProvider,
+    modelId,
+    officialModels: availableModels,
+    effort,
+    reconcileEnabled: composerPrefsReady,
+    catalogFailed: sessionProviderChip.providersLoadFailed,
+    setEffort,
+    updateDraftEffort: sessionProviderChip.updateDraftEffort,
+    draftRouteRef: sessionProviderChip.draftComposerRouteRef,
+    projectId: activeProject?.id,
+    sessionId: session.sessionId,
+    queueRef: effortApplyRef,
+    showToast,
+    translate: tr,
+  });
 
   const handleModelPick = useCallback(
-    async (pick: ComposerModelPick) => {
+    async (requestedPick: ComposerModelPick) => {
+      const forceOfficial = !!activeProject?.sshAlias?.trim();
+      const pick = pinComposerModelPickToOfficial(requestedPick, forceOfficial, availableModels);
       if (modelPickBusyRef.current) return;
       modelPickBusyRef.current = true;
       setModelPickBusy(true);
       try {
-        const providerId =
-          pick.kind === "official" ? "official" : pick.providerId;
-        let nextEfforts = officialEffortCatalog;
-        if (pick.kind === "official") {
-          if (!isValidModelId(pick.modelId, availableModels)) return;
-          nextEfforts = effortCatalogForRoute({
-            model: findModel(pick.modelId, availableModels),
-          });
-        } else {
-          if (!api.isTauri()) return;
-          const provider = customProviders.find((p) => p.id === pick.providerId);
-          if (!provider) {
+        const providerId = pick.kind === "official" ? "official" : pick.providerId;
+        if (pick.kind === "custom" && !api.isTauri()) return;
+        const resolution = resolvePickedModelEfforts({
+          pick,
+          providers: customProviders,
+          officialModels: availableModels,
+        });
+        if (!resolution) {
+          if (pick.kind === "custom") {
             showToast(tr("prov.err.unknownProvider"), 4000);
-            return;
           }
-          const models = provider.models?.length
-            ? provider.models
-            : [{ id: provider.model, name: provider.model }];
-          const catalog = models.some((m) => m.id === pick.modelId)
-            ? models
-            : [...models, { id: pick.modelId, name: pick.modelId }];
-          nextEfforts =
-            effortOptionsFromProvider(
-              materializeActiveModelChannel({
-                provider,
-                modelId: pick.modelId,
-                models: catalog,
-              }).efforts,
-            ) ?? GROK_BUILD_EFFORTS;
+          return;
         }
-        const clamped = mapEffortToTargetCatalog(
-          effort,
-          nextEfforts,
-          channelEffortOptions ?? officialEffortCatalog,
-        );
-        setModelId(pick.modelId);
-        setEffort(clamped);
-        sessionProviderChip.paint(providerId);
-        if (session.sessionId) {
-          sessionProviderChip.draftComposerRouteRef.current = null;
-        } else {
-          sessionProviderChip.draftComposerRouteRef.current = {
-            providerId,
-            modelId: pick.modelId,
-            effort: clamped,
-          };
-        }
+        const clamped = resolution.supported
+          ? pickSessionEffort(resolution.options, getLatestEffort())
+          : getLatestEffort();
         const providerChanged =
-          (providerId === "official") !== (providerActiveSource === "official") ||
-          (providerId !== "official" && providerActiveId !== providerId);
+          (providerId === "official" ? null : providerId) !== providerRouteId;
         const sid = session.sessionId;
+        const draftRouteAtStart = sid
+          ? null
+          : sessionProviderChip.draftComposerRouteRef.current;
+        let applyFailed = false;
         const apply = queueComposerPreferenceApply(
           effortApplyRef.current,
           async () => {
+            if (
+              sid == null &&
+              !isCurrentTarget(sid, activeProject?.id, draftRouteAtStart)
+            ) {
+              return;
+            }
             await api.composerPrefsSet({
               projectId: activeProject?.id ?? null,
               sessionId: sid,
               modelId: pick.modelId,
-              effort: clamped,
+              effort: resolution.supported ? clamped : null,
               providerId,
             });
             const next = liveHostAfterProviderSwitch(
@@ -9230,16 +9171,36 @@ export function AppWorkbench() {
             if (!next) return;
             liveHostRef.current = next;
             setLiveHost(next);
-            setSession((prev) =>
-              prev.sessionId === sid ? { ...prev, state: next.state } : prev,
+            setSession((prev) => prev.sessionId === sid ? { ...prev, state: next.state } : prev);
+          },
+          (error) => {
+            applyFailed = true;
+            console.warn("composer model save failed", error);
+            showToast(
+              tr(modelEffortErrorMessageKey(classifyModelEffortError(error))),
+              4000,
             );
           },
-          (error) => showToast(String(error), 4000),
         );
         effortApplyRef.current = apply;
         await apply;
-      } catch (e) {
-        showToast(String(e), 4000);
+        if (applyFailed || !isCurrentTarget(sid, activeProject?.id, draftRouteAtStart)) return;
+        setModelId(pick.modelId);
+        if (resolution.supported) setEffort(clamped);
+        sessionProviderChip.paint(providerId);
+        sessionProviderChip.draftComposerRouteRef.current = sid
+          ? null
+          : {
+              providerId,
+              modelId: pick.modelId,
+              effort: resolution.supported ? clamped : null,
+            };
+      } catch (error) {
+        console.warn("composer model pick failed", error);
+        showToast(
+          tr(modelEffortErrorMessageKey(classifyModelEffortError(error)) as MessageKey),
+          4000,
+        );
       } finally {
         modelPickBusyRef.current = false;
         setModelPickBusy(false);
@@ -9249,119 +9210,16 @@ export function AppWorkbench() {
       availableModels,
       customProviders,
       activeProject?.id,
+      activeProject?.sshAlias,
       session.sessionId,
-      effort,
-      channelEffortOptions,
-      officialEffortCatalog,
-      providerActiveSource,
-      providerActiveId,
+      getLatestEffort,
+      providerRouteId,
       sessionProviderChip,
+      isCurrentTarget,
       showToast,
       tr,
     ],
   );
-  const handleContextWindow = useCallback(
-    async (tokens: number) => {
-      if (!api.isTauri()) return false;
-      if (activeCustomProvider) {
-        try {
-          await api.providersUpsert({
-            id: activeCustomProvider.id,
-            model: activeCustomProvider.model,
-            baseUrl: activeCustomProvider.baseUrl,
-            name: activeCustomProvider.name,
-            apiBackend: activeCustomProvider.apiBackend,
-            models: withModelContextWindow(
-              activeCustomProvider.models,
-              activeCustomProvider.model,
-              tokens,
-            ),
-            efforts: activeCustomProvider.efforts,
-            setAsDefault: false,
-            contextWindow: tokens,
-          });
-          await refreshProviderRoute();
-          return true;
-        } catch (e) {
-          showToast(String(e), 4000);
-          return false;
-        }
-      }
-      const model = availableModels.find((m) => m.id === modelId);
-      const options = selectableContextWindows(model);
-      if (!options.includes(tokens)) {
-        showToast(
-          tr("slash.contextWindowUnknown", {
-            token: String(tokens),
-            options: options.map((n) => formatWindowLabel(n)).join(", "),
-          }),
-          4000,
-        );
-        return false;
-      }
-      try {
-        await api.sessionSetContextWindow(tokens, {
-          sessionId: session.sessionId,
-        });
-        if (!session.sessionId) setDraftContextWindow(tokens);
-        setContextUsage((prev) => ({
-          ...prev,
-          agentContextWindow: tokens,
-        }));
-        return true;
-      } catch (e) {
-        showToast(String(e), 4000);
-        return false;
-      }
-    },
-    [
-      activeCustomProvider,
-      availableModels,
-      modelId,
-      refreshProviderRoute,
-      session.sessionId,
-      showToast,
-      tr,
-    ],
-  );
-  const runContextWindowSlash = useCallback(
-    async (args: string) => {
-      const model = availableModels.find((m) => m.id === modelId);
-      const result = resolveContextWindowCommand({
-        args,
-        hasModel: Boolean(modelId),
-        hasSession: Boolean(session.sessionId),
-        options: activeCustomProvider ? [] : selectableContextWindows(model),
-        current: currentModelWindow,
-      });
-      if (result.kind === "switch") {
-        const ok = await handleContextWindow(result.window);
-        if (ok) {
-          showToast(
-            tr("slash.contextWindowSwitched", {
-              size: formatTokenCount(result.window, locale),
-            }),
-            2500,
-          );
-        }
-        return;
-      }
-      const feedback = contextWindowSlashFeedback(result);
-      showToast(tr(feedback.key, feedback.vars), 4000);
-    },
-    [
-      activeCustomProvider,
-      availableModels,
-      currentModelWindow,
-      handleContextWindow,
-      locale,
-      modelId,
-      session.sessionId,
-      showToast,
-      tr,
-    ],
-  );
-  contextWindowSlashRef.current = runContextWindowSlash;
   const runContextSlash = useCallback(
     async (announce: boolean) => {
       if (!api.isTauri() || !session.sessionId) {
@@ -10679,12 +10537,9 @@ export function AppWorkbench() {
   const errorBanner = useMemo(
     () =>
       presentErrorBanner(error, localError, locale, {
-        activeSource:
-          providerActiveSource === "custom" || providerActiveSource === "official"
-            ? providerActiveSource
-            : null,
+        activeSource: providerRouteSource,
       }),
-    [error, localError, locale, providerActiveSource],
+    [error, localError, locale, providerRouteSource],
   );
   /** Prefer in-thread turn error; avoid stacking with the top error banner. */
   const hasChatTurnError = useMemo(
@@ -11935,14 +11790,12 @@ export function AppWorkbench() {
         accountProbeError={accountProbeError}
         acpServerAddr={acpServerAddr}
         activeAccountId={activeAccountId}
-        activeProject={activeProject}
         agentCatalog={agentCatalog}
         agentIdleMinutes={agentIdleMinutes}
         agentProfilePath={agentProfilePath}
         agentsJson={agentsJson}
         allowUnverifiedCliInstall={allowUnverifiedCliInstall}
         allowedTools={allowedTools}
-        applyComposerPrefs={applyComposerPrefs}
         applyGlobalSandboxProfile={applyGlobalSandboxProfile}
         applyPermissionPolicy={applyPermissionPolicy}
         applySkinChoice={applySkinChoice}
@@ -12032,7 +11885,6 @@ export function AppWorkbench() {
         runSwitchAccount={runSwitchAccount}
         sandboxProfile={sandboxProfile}
         savedAccounts={savedAccounts}
-        session={session}
         sessionDataMode={sessionDataMode}
         sessions={sessions}
         setAcpServerAddr={setAcpServerAddr}
@@ -12392,11 +12244,7 @@ export function AppWorkbench() {
               projects={automationProjectOptions(projects)}
               sessionOptions={automationSessionOptions(sessions)}
               providers={customProviders}
-              defaultProviderId={
-                providerActiveSource === "custom"
-                  ? (providerActiveId ?? "official")
-                  : "official"
-              }
+              defaultProviderId={providerRouteId ?? "official"}
               defaultModelId={modelId}
               defaultEffort={effort}
               models={availableModels}
@@ -12627,7 +12475,9 @@ export function AppWorkbench() {
             setProjects={setProjects}
             setLocalError={setLocalError}
             canGuideQueuedMessage={canGuideQueuedMessage}
-            channelEffortOptions={channelEffortOptions}
+            effortOptions={effortOptions}
+            effortOptionsPending={effortOptionsPending}
+            effortOptionsFailed={effortOptionsFailed}
             chatAttachments={chatAttachments}
             clearSlashFilters={clearSlashFilters}
             cliWorktrees={cliWorktrees}
@@ -12654,7 +12504,6 @@ export function AppWorkbench() {
             refreshContextInfo={() => {
               contextSlashRef.current(false);
             }}
-            currentModelWindow={currentModelWindow}
             customRouteActive={customRouteActive}
             cycleAttachedChatScope={cycleAttachedChatScope}
             effectiveCanSend={effectiveCanSend && !modelPickBusy}
@@ -12674,7 +12523,6 @@ export function AppWorkbench() {
             goalMode={goalMode}
             guideQueuedMessage={guideQueuedMessage}
             guidingQueueItemId={guidingQueueItemId}
-            handleContextWindow={handleContextWindow}
             handleEffortPick={handleEffortPick}
             handleModelPick={handleModelPick}
             layout={layout}
@@ -12721,8 +12569,7 @@ export function AppWorkbench() {
             promptHistoryPos={promptHistoryPos}
             promptHistoryScope={promptHistoryScope}
             promptHistoryUnfilteredCount={promptHistoryUnfilteredCount}
-            providerActiveId={providerActiveId}
-            providerActiveSource={providerActiveSource}
+            providerId={providerRouteId}
             queueEditItemId={queueEdit.editItemId}
             queuePreviewLabels={queuePreviewLabels}
             quotes={quotes}
@@ -12750,7 +12597,7 @@ export function AppWorkbench() {
             setCompactNote={compact.setNote}
             setGoalMode={setGoalMode}
             setJsonSchemaDraft={setJsonSchemaDraft}
-            setMode={setMode}
+            persistComposerMode={persistComposerMode}
             setPhoneToolsOpen={setPhoneToolsOpen}
             setPromptHistoryActive={setPromptHistoryActive}
             setPromptHistoryClearOpen={setPromptHistoryClearOpen}
@@ -12908,7 +12755,6 @@ export function AppWorkbench() {
               modePlan: tr("mode.plan"),
               modeAsk: tr("mode.ask"),
               modelGroupOfficial: tr("composer.modelGroupOfficial"),
-              modelViaProvider: tr("composer.modelViaProvider"),
               policyAsk: tr("policy.ask"),
               policyAcceptEdits: tr("policy.accept_edits"),
               policySession: tr("policy.allow_for_session"),
@@ -12920,6 +12766,9 @@ export function AppWorkbench() {
               effortLow: tr("effort.low"),
               effortXhigh: tr("effort.xhigh"),
               effortMax: tr("effort.max"),
+              effortNone: tr("effort.none"),
+              effortUnavailable: tr("composer.effortUnavailable"),
+              effortLoadError: tr("composer.effortLoadError"),
               contextCurrent: tr("context.current"),
               contextUnknown: tr("phone.contextUnknown"),
               contextCompact: tr("context.compactAction"),
@@ -12940,9 +12789,10 @@ export function AppWorkbench() {
             effort={effort}
             models={availableModels}
             providers={composerProviderInputs}
-            activeSource={providerActiveSource}
-            activeProviderId={providerActiveId}
-            channelEfforts={channelEffortOptions}
+            providerRoute={{ providerId: providerRouteId }}
+            efforts={effortOptions}
+            effortOptionsPending={effortOptionsPending}
+            effortOptionsFailed={effortOptionsFailed}
             mode={mode}
             policy={policy}
             contextDisplay={contextUsageDisplay}
@@ -12966,15 +12816,8 @@ export function AppWorkbench() {
             }}
             onEffort={handleEffortPick}
             onMode={(v) => {
-              setMode(v);
               if (v === "plan") setGoalMode(false);
-              void api
-                .composerPrefsSet({
-                  projectId: activeProject?.id ?? null,
-                  sessionId: session.sessionId ?? null,
-                  mode: v,
-                })
-                .catch((e) => showToast(String(e), 4000));
+              persistComposerMode(v);
             }}
             onPolicy={(v: PermissionPolicyId) => {
               applyPermissionPolicy(v);

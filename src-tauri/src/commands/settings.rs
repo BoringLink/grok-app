@@ -65,12 +65,6 @@ pub async fn settings_set(
     let official_aux_inject_flip =
         prev.official_aux_inject != settings.official_aux_inject
             || prev.official_aux_with_user_mcp != settings.official_aux_with_user_mcp;
-    // Keep native-Imagine PreToolUse hook in sync with inject / route (independent home only).
-    if official_aux_inject_flip || session_data_mode_changed {
-        let mode = settings.session_data_mode.clone();
-        let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
-        let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    }
     let no_ask_user_flip = prev.no_ask_user != settings.no_ask_user;
     let disallowed_tools_flip = !crate::acp_client::disallowed_tools_equal(
         &prev.disallowed_tools,
@@ -196,16 +190,6 @@ pub async fn settings_set(
     }
 
     if session_data_mode_changed {
-        // Custom route + shared mode cannot see agent-home config.toml.
-        // Self-heal back to independent and return the value that actually landed.
-        if settings.session_data_mode == "shared"
-            && crate::providers::ensure_independent_for_custom_route()
-        {
-            settings = store::load_settings_async().await;
-            tracing::info!(
-                "settings_set: custom route self-healed session_data_mode shared → independent"
-            );
-        }
         // Rebuild media/fs roots so shared (`~/.grok`) vs independent agent-home
         // switch takes effect for media:// previews immediately.
         crate::path_scope::refresh_from_store();
@@ -330,150 +314,29 @@ pub async fn models_list_available() -> Result<crate::models_catalog::AvailableM
     Ok(crate::models_catalog::list_available_models())
 }
 
-#[tauri::command]
-pub async fn composer_prefs_resolve(
-    project_id: Option<String>,
-    session_id: Option<String>,
-) -> Result<store::ComposerPrefs, String> {
-    Ok(store::resolve_composer_prefs(
-        project_id.as_deref(),
-        session_id.as_deref(),
-    ))
-}
-
-/// Persist composer fields at the configured memory scope + apply live.
-#[tauri::command]
-#[allow(clippy::too_many_arguments)]
-pub async fn composer_prefs_set(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-    project_id: Option<String>,
-    session_id: Option<String>,
-    model_id: Option<String>,
-    effort: Option<String>,
-    mode: Option<String>,
-    permission_policy: Option<String>,
-    provider_id: Option<String>,
-) -> Result<store::ComposerPrefs, String> {
-    // Prefer explicit ids; fall back to live session context.
-    let (live_proj, live_sess) = mgr.current_context_ids();
-    let project_id = project_id.or(live_proj);
-    // Effort is per-chat, so a draft (`sessionId: null`) must keep its `None`:
-    // falling back to the live session wrote the draft's effort into whichever
-    // chat was still running and soft-respawned that agent. Drafts seed the
-    // global default instead, and the row is written once the chat exists.
-    let session_id = if effort.is_some() {
-        session_id
-    } else {
-        session_id.or(live_sess)
-    };
-    let previous_effort = effort.as_ref().map(|_| {
-        store::resolve_composer_prefs(project_id.as_deref(), session_id.as_deref()).effort
-    });
-    let (previous_provider, ssh) = session_provider_and_ssh(session_id.as_deref());
-    let pick = crate::providers::composer_provider_pick(
-        ssh,
-        previous_provider.as_deref(),
-        provider_id.as_deref(),
-        model_id.as_deref(),
-    );
-
-    let prefs = store::save_composer_prefs(
-        project_id.as_deref(),
-        session_id.as_deref(),
-        model_id.clone(),
-        effort.clone(),
-        mode.clone(),
-        permission_policy.clone(),
-        pick.provider_to_persist.clone(),
-    )?;
-    if let (Some(sid), Some(pid)) = (session_id.as_deref(), pick.provider_to_persist.as_deref()) {
-        mgr.remember_session_provider(sid, pid);
-    }
-
-    if let Some(ref pol) = permission_policy {
-        if let Err(e) = mgr.apply_permission_policy(&app, pol).await {
-            tracing::warn!("composer_prefs_set apply_permission: {e}");
-        }
-    }
-    // Empty stored id follows the global route. Comparing the raw column to
-    // the pick treats the first save of that same route as a switch, which
-    // clears the CLI resume id and skips session/set_model. SSH pins both
-    // sides to official, so an official model never respawns that chat.
-    if pick.route_changed {
-        // This chat's process was spawned for the previous provider. Clear
-        // only this session's CLI resume id, then cold-spawn this chat.
-        // `session/load` would restore the old route. Never `recycle_all`.
-        if let Some(sid) = session_id.as_deref() {
-            mgr.invalidate_spawn_flags_for_session(&app, sid, "session_provider")
-                .await;
-        }
-    } else if let Some(mid) = pick.set_model_id {
-        if let Err(e) = mgr.set_model(mid, session_id.as_deref()).await {
-            tracing::warn!("composer_prefs_set set_model soft-fail: {e}");
-        }
-    }
-    if let Some(eff) = effort {
-        let effort_changed = previous_effort.as_deref() != Some(eff.trim());
-        if let Err(e) = mgr
-            .set_effort_and_respawn_needed(
-                &app,
-                eff,
-                session_id.as_deref(),
-                effort_changed,
-            )
-            .await
-        {
-            tracing::warn!("composer_prefs_set set_effort soft-fail: {e}");
-        }
-    }
-    if let Some(m) = mode {
-        if let Err(e) = mgr.apply_product_mode(&app, m).await {
-            tracing::warn!("composer_prefs_set apply_mode soft-fail: {e}");
-        }
-    }
-    Ok(prefs)
-}
-
-fn session_provider_and_ssh(session_id: Option<&str>) -> (Option<String>, bool) {
-    let Some(sid) = session_id.map(str::trim).filter(|s| !s.is_empty()) else {
-        return (None, false);
-    };
-    let row = store::load_sessions_index()
-        .into_iter()
-        .find(|s| s.id == sid);
-    let Some(row) = row else {
-        return (None, false);
-    };
-    let ssh = row.project_id.as_deref().is_some_and(|pid| {
+fn session_provider_and_ssh(
+    session_id: Option<&str>,
+    project_id: Option<&str>,
+) -> (Option<String>, bool, bool) {
+    let row = session_id
+        .map(str::trim)
+        .filter(|session_id| !session_id.is_empty())
+        .and_then(|sid| store::load_sessions_index().into_iter().find(|s| s.id == sid));
+    let provider = row.as_ref().and_then(|session| session.provider_id.clone());
+    let session_model_is_stored = row
+        .as_ref()
+        .and_then(|session| session.model_id.as_deref())
+        .is_some_and(|model_id| !model_id.trim().is_empty());
+    let project_id = row
+        .as_ref()
+        .and_then(|session| session.project_id.as_deref())
+        .or_else(|| project_id.map(str::trim).filter(|id| !id.is_empty()));
+    let ssh = project_id.is_some_and(|pid| {
         store::load_projects()
             .into_iter()
-            .any(|p| p.id == pid && p.is_ssh_remote())
+            .any(|project| project.id == pid && project.is_ssh_remote())
     });
-    (row.provider_id, ssh)
-}
-
-#[tauri::command]
-pub async fn session_set_policy(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-    policy: String,
-    project_id: Option<String>,
-    session_id: Option<String>,
-) -> Result<store::ComposerPrefs, String> {
-    let p = crate::permission::PermissionPolicy::parse(&policy);
-    let (live_proj, live_sess) = mgr.current_context_ids();
-    let prefs = store::save_composer_prefs(
-        project_id.or(live_proj).as_deref(),
-        session_id.or(live_sess).as_deref(),
-        None,
-        None,
-        None,
-        Some(p.as_str().into()),
-        None,
-    )?;
-    mgr.apply_permission_policy(&app, p.as_str()).await?;
-    Ok(prefs)
+    (provider, ssh, session_model_is_stored)
 }
 
 #[tauri::command]
@@ -482,11 +345,24 @@ pub async fn session_set_model(
     model_id: String,
     project_id: Option<String>,
     session_id: Option<String>,
-) -> Result<store::ComposerPrefs, String> {
+) -> Result<ComposerPrefsResolution, String> {
     let (live_proj, live_sess) = mgr.current_context_ids();
     let session_id = session_id.or(live_sess);
+    let target_session_project = session_id.as_deref().and_then(|sid| {
+        store::load_sessions_index()
+            .into_iter()
+            .find(|session| session.id == sid)
+            .and_then(|session| session.project_id)
+    });
+    let project_id = composer_prefs_project_target(
+        project_id,
+        session_id.as_deref(),
+        target_session_project,
+        live_proj,
+        false,
+    )?;
     let prefs = store::save_composer_prefs(
-        project_id.or(live_proj).as_deref(),
+        project_id.as_deref(),
         session_id.as_deref(),
         Some(model_id.clone()),
         None,
@@ -497,20 +373,7 @@ pub async fn session_set_model(
     if let Err(e) = mgr.set_model(model_id, session_id.as_deref()).await {
         tracing::warn!("session_set_model soft-fail: {e}");
     }
-    Ok(prefs)
-}
-
-/// Set the live session context window. Does not rewrite composer model prefs.
-#[tauri::command]
-pub async fn session_set_context_window(
-    mgr: State<'_, Arc<SessionManager>>,
-    tokens: u64,
-    session_id: Option<String>,
-) -> Result<(), String> {
-    let (_live_proj, live_sess) = mgr.current_context_ids();
-    let session_id = session_id.or(live_sess);
-    mgr.set_context_window(tokens, session_id.as_deref())
-        .await
+    Ok(composer_prefs_resolution(prefs, session_id.as_deref()))
 }
 
 /// Live session info for `/context` (`x.ai/session/info`).
@@ -665,8 +528,6 @@ pub async fn secrets_get_masked() -> Result<serde_json::Value, String> {
         crate::providers::ProvidersListResult {
             providers: vec![],
             default_model: None,
-            active_source: "official".into(),
-            active_provider_id: None,
             config_path: String::new(),
             agent_home: String::new(),
             switched_to_independent: false,
@@ -709,7 +570,6 @@ pub async fn secrets_set(
     relay_base_url: Option<String>,
     relay_api_key: Option<String>,
     pexels_api_key: Option<String>,
-    default_model: Option<String>,
     stt_custom_api_key: Option<String>,
     stt_custom_api_key_provider: Option<String>,
 ) -> Result<(), String> {
@@ -735,9 +595,6 @@ pub async fn secrets_set(
     if let Some(k) = pexels_api_key {
         s.pexels_api_key = if k.trim().is_empty() { None } else { Some(k.trim().to_string()) };
     }
-    if let Some(m) = default_model {
-        s.default_model = if m.is_empty() { None } else { Some(m) };
-    }
     if let Some(k) = stt_custom_api_key {
         let provider = stt_custom_api_key_provider
             .map(|p| p.trim().to_string())
@@ -752,88 +609,4 @@ pub async fn secrets_set(
         s.stt_custom_api_key = None;
     }
     store::save_secrets(&s)
-}
-
-#[tauri::command]
-pub async fn provider_ping() -> Result<serde_json::Value, String> {
-    let secrets = store::load_secrets();
-    // Prefer relay if configured, else probe public xAI-ish endpoint with key presence only.
-    if let (Some(base), Some(key)) = (&secrets.relay_base_url, &secrets.relay_api_key) {
-        let url = format!("{}/models", base.trim_end_matches('/'));
-        let client = crate::proxy::apply_to_reqwest(
-            reqwest::Client::builder().timeout(std::time::Duration::from_secs(12)),
-        )
-        .build()
-        .map_err(|e| e.to_string())?;
-        let resp = client
-            .get(&url)
-            .header("Authorization", format!("Bearer {key}"))
-            .send()
-            .await;
-        return match resp {
-            Ok(r) => {
-                let status = r.status().as_u16();
-                if status == 401 || status == 403 {
-                    Ok(serde_json::json!({
-                        "ok": false,
-                        "class": "AUTH_FAILED",
-                        "status": status,
-                        "message": "Provider rejected credentials (401/403)"
-                    }))
-                } else if status >= 500 {
-                    Ok(serde_json::json!({
-                        "ok": false,
-                        "class": "NETWORK_PROVIDER",
-                        "status": status,
-                        "message": "Provider server error"
-                    }))
-                } else if r.status().is_success() {
-                    Ok(serde_json::json!({
-                        "ok": true,
-                        "class": "OK",
-                        "status": status,
-                        "message": "Ping OK"
-                    }))
-                } else {
-                    Ok(serde_json::json!({
-                        "ok": false,
-                        "class": "NETWORK_PROVIDER",
-                        "status": status,
-                        "message": format!("HTTP {status}")
-                    }))
-                }
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                let class = "NETWORK_PROVIDER";
-                Ok(serde_json::json!({
-                    "ok": false,
-                    "class": class,
-                    "message": msg
-                }))
-            }
-        };
-    }
-
-    // CLI auth present?
-    let auth = crate::process_util::user_home().join(".grok").join("auth.json");
-    if auth.is_file() {
-        Ok(serde_json::json!({
-            "ok": true,
-            "class": "OK",
-            "message": "CLI auth.json present (cached_token). Use Doctor + real chat to verify."
-        }))
-    } else if secrets.official_api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
-        Ok(serde_json::json!({
-            "ok": true,
-            "class": "OK",
-            "message": "Official API key stored (not verified over network without base_url)."
-        }))
-    } else {
-        Ok(serde_json::json!({
-            "ok": false,
-            "class": "AUTH_FAILED",
-            "message": "No provider configured. Use Onboarding: official key, relay, or import."
-        }))
-    }
 }

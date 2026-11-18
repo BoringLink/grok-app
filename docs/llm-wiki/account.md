@@ -56,7 +56,6 @@ Syncing the file is not enough while multi-session **parked** / **prewarm** CLI 
 | Login success | `prepare_route_auth_for_agent` (official sync / custom clear) + `recycle_all_agents(..., "account_auth")` |
 | Logout | always wipe `~/.grok/auth.json`, agent-home, and `agent-home-official` (even if `grok logout` exits 0) + `recycle_all_agents(..., "account_auth")` |
 | Multi-account switch | snapshot → `~/.grok/auth.json` + `prepare_route_auth_for_agent` + `recycle_all_agents(..., "account_auth")` |
-| Provider route activate | `prepare_route_auth_for_agent` + `recycle_all_agents(..., "provider_route")` |
 
 `recycle_all_agents` drains **live + background + parked + prewarm**. Do **not** use `session_disconnect` alone after login (that only parks and leaves prewarm alive).
 
@@ -67,7 +66,7 @@ Syncing the file is not enough while multi-session **parked** / **prewarm** CLI 
 | agent-home empty/stale after custom route, UI reads it as signed-out | `read_auth_profile` prefers **better** of `$GROK_HOME` / `~/.grok` / App agent-home (signed-in → refresh → not expired) |
 | `~/.grok/auth.json` wiped but agent-home mirror still signed-in | Rank mirrors for status + token; heal by copying agent-home → `~/.grok` |
 | mtime-only sync skipped restore of good `~/.grok` over newer empty agent-home | `sync_cli_auth_to_agent_home` compares **bytes** |
-| Process reuse gate used `is_custom_provider_id(modelId)` — custom sessions store **upstream** model ids, so custom processes looked "official" and were reused after auth strip | Store `custom_route` on `AcpClient` at spawn from `active_route()`; gate uses that |
+| Process reuse gate used `is_custom_provider_id(modelId)` — custom sessions store **upstream** model ids, so custom processes looked "official" and were reused after auth strip | Store `custom_route` on `AcpClient` at spawn from the chat's stored provider; gate uses that |
 | Warm reuse must not rewrite shared auth | The process `GROK_HOME` is sealed at spawn. Warm reuse does not call `prepare_route_auth`. Shared-mode official still uses `~/.grok`. |
 | Official `authenticate(cached_token)` soft-fail left process with no OIDC | Official path re-syncs auth and **retries authenticate once** |
 
@@ -86,13 +85,13 @@ Each ACP process whose home would be agent-home gets `{app data}/agent-proc/<id>
 
 ### AUTH_FAILED UI subtypes (Error Deck)
 
-Host may still emit `AUTH_FAILED`. The App banner refines with error text + `providers_list.activeSource`:
+Host may still emit `AUTH_FAILED`. The App banner refines it using the current chat's provider route and the error text:
 
 | Deck code | Typical signal | Primary recovery |
 |-----------|----------------|------------------|
 | `AUTH_NO_CONTEXT` | `no auth context` / `auth_kind=none` | Account re-login + **Reconnect** (fresh agent) |
 | `AUTH_API_KEY` | Incorrect / invalid API key (often HTTP 400) | Providers / Account keys |
-| `AUTH_CUSTOM_PROVIDER` | Active route is **custom** | Providers (key / switch Official) — **not** “only re-login” |
+| `AUTH_CUSTOM_PROVIDER` | Current chat uses a **custom provider** | Providers (key / choose Official in the chat model menu) — **not** “only re-login” |
 | `AUTH_FAILED` | Other 401 / expired | Account + Providers |
 
 Never tell the user that official OAuth alone fixes a bad custom relay key.
@@ -181,7 +180,7 @@ Never invent `"SuperGrok"` for paywall bodies (GrowthBook whitelist uses officia
 
 - `subscriptionTier` → `BillingSnapshot.subscriptionTier` (display label)
 - Empty-session brand: `SuperGrokMark` (`supergrok` \| `heavy`) above the floating composer
-- **Custom relay active** (`providers` `activeSource === "custom"`): always show plain **SuperGrok**, never Heavy (Heavy is official membership branding only)
+- **Custom-provider chat** (the current session's provider is custom): always show plain **SuperGrok**, never Heavy (Heavy is official membership branding only)
 - Assets: `docs/svg/SuperGrok.svg`, `docs/svg/SuperGrokHeavy.svg` (Heavy badge via CSS `data-theme`, not Tailwind `dark:`)
 
 UI shows **remaining %** (100 − used), product tags, reset time — same semantics as grok-go Accounts.

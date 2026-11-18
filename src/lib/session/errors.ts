@@ -178,8 +178,52 @@ export function stripErrorNoise(text: string): string {
 /**
  * Parse a stored / live turn-error payload into a friendly chat body.
  * Prefer stable codes; never show raw MCP Connection refused walls of text.
+ *
+ * 已知错误码只展示 friendly copy 时，Host 提取的上游 API 错误
+ * （`payload.upstream`）会作为独立段落追加，让用户看到真实原因
+ * （例如上游拒绝不支持的思考强度并给出受支持档列表）。
  */
+/**
+ * 从存储的 raw content 中提取上游 API 错误段落。
+ *
+ * Host 在 `prepare_turn_error` 里把上游错误 message 作为最后一段追加
+ * (`**CODE**\n\n{RPC detail}\n\n{upstream}`)。journal 重载路径没有
+ * `payload.upstream` 字段，只能从 content 反推：跳过 `**CODE**` 头与
+ * 技术性段落（RPC detail 含 `code -` / `data:` / `http_status` 等），
+ * 取最后一段非技术文本。
+ */
+function upstreamFromStoredContent(content?: string | null): string {
+  const raw = (content || "").trim();
+  if (!raw) return "";
+  const paragraphs = raw
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const TECHNICAL =
+    /code\s*-\d|data:|http_status|stderr|Internal error|API error \(status|stack|at\s+\S+\(/i;
+  const candidates = paragraphs.filter((p) => !TECHNICAL.test(p));
+  return candidates.length > 0 ? candidates[candidates.length - 1]! : "";
+}
+
 export function formatTurnErrorBody(
+  payload: Pick<
+    TurnErrorPayload,
+    "code" | "message" | "content" | "upstream"
+  >,
+  locale: Locale = "en",
+  opts?: Pick<ErrorDeckResolveOpts, "activeSource">,
+): string {
+  const body = formatTurnErrorBodyInner(payload, locale, opts);
+  // live 事件用 payload.upstream；journal 重载从 content 反推。
+  const upstream = (payload.upstream?.trim() ?? "") ||
+    upstreamFromStoredContent(payload.content);
+  if (!upstream || body.includes(upstream)) {
+    return body;
+  }
+  return `${body}\n\n${upstream}`;
+}
+
+function formatTurnErrorBodyInner(
   payload: Pick<TurnErrorPayload, "code" | "message" | "content">,
   locale: Locale = "en",
   opts?: Pick<ErrorDeckResolveOpts, "activeSource">,
@@ -278,7 +322,10 @@ export function formatTurnErrorBody(
   }
 
   if (code) {
-    // Known code → friendly copy only (no technical rest in the bubble).
+    // Known code → friendly copy +（若有）一行紧凑技术原因。
+    // 只有 friendly copy 时用户看不到真实故障（如
+    // `serialization error: missing field "signature"`、上游 400 细节），
+    // 全量 stderr 又会淹没气泡；取 rest 的首条有效行、截断 200 字符。
     // AUTH_FAILED already returned via isAuthDeckCode refine above when message
     // was present; bare code still uses host-aligned copy.
     if (code === "AUTH_FAILED") {
@@ -287,7 +334,12 @@ export function formatTurnErrorBody(
         locale,
       );
     }
-    return errorCopy(code, locale);
+    const detail = compactErrorDetail(rest || cleaned);
+    const copy = errorCopy(code, locale);
+    if (!detail || copy.includes(detail)) {
+      return copy;
+    }
+    return `${copy}\n\n${detail}`;
   }
 
   // Unknown: keep a short, non-bulky line.
@@ -298,6 +350,23 @@ export function formatTurnErrorBody(
       .find((l) => l && !/connection refused|worker quit|hyper_util|reqwest/i.test(l)) ||
     t(locale, "error.requestFailedRetry");
   return first.length > 200 ? `${first.slice(0, 200)}…` : first;
+}
+
+/** 已知错误码气泡的技术原因行：取首条非噪音行，截断 200 字符。 */
+function compactErrorDetail(raw: string): string {
+  const line = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find(
+      (l) =>
+        l &&
+        !/connection refused|worker quit|hyper_util|reqwest|^error=/i.test(l) &&
+        // 上游 API 泛化包装行让位给外层 `upstream` 字段（真实上游
+        // message），避免气泡同时出现两层重复的上游信息。
+        !/http_status|api error \(status/i.test(l),
+    );
+  if (!line) return "";
+  return line.length > 200 ? `${line.slice(0, 200)}…` : line;
 }
 
 const RETRY_CONTINUES_CODES = new Set([

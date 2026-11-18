@@ -68,6 +68,19 @@ impl SessionManager {
                 connect_gave_up_reason(false)
             ));
         };
+        // Consume a respawn queued by an idle-state effort/policy switch
+        // BEFORE the prompt lands on the stale ACP. Hot-switch is async by
+        // design (never interrupts a running turn), but once the chat is
+        // idle the queued respawn must take effect: flush detaches the old
+        // process only when idle, and this send then cold-spawns with the
+        // new flags (connect lock already held here).
+        let flush_target = session_id
+            .clone()
+            .or_else(|| self.inner.lock().as_ref().map(|s| s.app_session_id.clone()));
+        if let Some(target) = flush_target.as_deref() {
+            self.flush_pending_soft_respawn_during_connect(&app, target)
+                .await;
+        }
         if let Some(target) = session_id.as_deref() {
             match self.ensure_promptable_session(&app, target) {
                 Ok(true) => {}
@@ -236,23 +249,36 @@ impl SessionManager {
                 mid,
                 turn_id,
                 user_row,
+                s.meta
+                    .provider_id
+                    .clone()
+                    .unwrap_or_else(|| crate::providers::SESSION_PROVIDER_OFFICIAL.into()),
             ))
         });
         drop(journal_guard);
-        let (backend, app_sid, acp, agent_sid, agent_prompt, message_id, turn_id, user_row) =
-            match open {
-                Some(Ok(v)) => v,
-                Some(Err(e)) => {
-                    self.emit_for_session(&app, &app_sid);
-                    return Err(e);
-                }
-                None => {
-                    return Err(format!(
-                        "{}: chat {app_sid} has no live agent process — reconnect and retry",
-                        AgentErrorCode::ConnectFailed.as_str()
-                    ));
-                }
-            };
+        let (
+            backend,
+            app_sid,
+            acp,
+            agent_sid,
+            agent_prompt,
+            message_id,
+            turn_id,
+            user_row,
+            provider_id,
+        ) = match open {
+            Some(Ok(v)) => v,
+            Some(Err(e)) => {
+                self.emit_for_session(&app, &app_sid);
+                return Err(e);
+            }
+            None => {
+                return Err(format!(
+                    "{}: chat {app_sid} has no live agent process — reconnect and retry",
+                    AgentErrorCode::ConnectFailed.as_str()
+                ));
+            }
+        };
         // The session slot is now in `Streaming` and owns its ACP client. Do
         // not hold the global connect/park lock while host vision or another
         // side-channel performs network/CLI work (official vision can take
@@ -284,7 +310,7 @@ impl SessionManager {
         // ── Host vision (custom text-only main + @image only) ──────────────
         // Official Grok route: never Host-describe (native multimodal).
         // X/web: tools-first via official-aux MCP — no Host keyword pre-search.
-        let host_vision = crate::models_aux::host_vision_will_run(&agent_prompt);
+        let host_vision = crate::models_aux::host_vision_will_run(&agent_prompt, &provider_id);
         let host_tool_id = if host_vision {
             let id = format!("host-vision-{}", Uuid::new_v4());
             let (title, detail_run) = if zh {
@@ -352,6 +378,7 @@ impl SessionManager {
         let prep = crate::models_aux::prepare_agent_prompt_for_main_detailed(
             &agent_prompt,
             vision_progress,
+            &provider_id,
         )
         .await;
         // CLI slash commands run only at byte 0. Put this send's `/goal`

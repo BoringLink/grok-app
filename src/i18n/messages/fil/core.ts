@@ -50,6 +50,7 @@ export const filCore = {
   "effort.low": "Mababa",
   "effort.xhigh": "Napakataas",
   "effort.max": "Napakataas",
+  "effort.none": "Naka-off",
   "mode.agent": "Agent",
   "mode.plan": "Plano",
   "mode.ask": "Magtanong",

@@ -50,6 +50,7 @@ export const ukCore = {
   "effort.low": "Низький",
   "effort.xhigh": "Найвищий",
   "effort.max": "Найвищий",
+  "effort.none": "Вимкнено",
   "mode.agent": "Агент",
   "mode.plan": "План",
   "mode.ask": "Запитати",

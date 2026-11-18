@@ -704,7 +704,8 @@ impl AcpClient {
         let app_session_id = opts.app_session_id.clone();
         let home_override = opts.grok_home_override.clone();
         // Route class is process-scoped (auth material + config.toml). Official
-        // aux override home is always OIDC-side; main home follows active_route.
+        // aux override home is always OIDC-side; the main home is this chat's
+        // Custom routes use agent-home; an unspecified route is official.
         // Custom relays live only in agent-home — force that GROK_HOME even when
         // session_data_mode=shared so third-party keys work without official login (#557).
         let explicit_route = opts
@@ -718,22 +719,14 @@ impl AcpClient {
         } else if let Some(ref id) = explicit_route {
             !crate::providers::is_session_provider_official(id)
         } else {
-            matches!(
-                crate::providers::active_route(),
-                crate::providers::ActiveRoute::Custom { .. }
-            )
+            false
         };
         let route_provider_id = match explicit_route {
             Some(id) if crate::providers::is_session_provider_official(&id) => {
                 crate::providers::SESSION_PROVIDER_OFFICIAL.to_string()
             }
             Some(id) => id,
-            None => match crate::providers::active_route() {
-                crate::providers::ActiveRoute::Custom { id } => id,
-                crate::providers::ActiveRoute::Official => {
-                    crate::providers::SESSION_PROVIDER_OFFICIAL.to_string()
-                }
-            },
+            None => crate::providers::SESSION_PROVIDER_OFFICIAL.to_string(),
         };
         let grok_home = if let Some(ref h) = home_override {
             h.clone()
@@ -771,29 +764,22 @@ impl AcpClient {
             }
         }
 
-        // Composer may hold a catalog id while the active channel is a custom
-        // provider — resolve to the route id Grok Build actually understands.
-        // Override home (official aux): pass model id through as catalog id.
+        // The composer stores a catalog id; resolve it to the route id Grok
+        // Build actually understands for this chat's provider. Override home
+        // (official aux) passes the model id through as a catalog id.
         let grok_build_proxy = if ssh_alias.is_some() || home_override.is_some() {
             None
-        } else if opts.route_provider_id.is_some() {
-            // This chat's provider only. A global proxy default must not attach
-            // to an official chat, and a proxy section must still bind when it
-            // is not `[models].default`.
+        } else {
+            // This chat's provider only. An official chat never binds a proxy
+            // section, and a proxy section binds even when it is not the
+            // legacy `[models].default`.
             crate::providers::session_grok_build_proxy_spawn(
                 &route_provider_id,
                 opts.model_id.as_deref().unwrap_or(""),
             )
-        } else {
-            crate::providers::active_grok_build_proxy_spawn(opts.model_id.as_deref().unwrap_or(""))
         };
         let spawn_model = if ssh_alias.is_some() {
-            let m = opts.model_id.as_deref().unwrap_or("").trim();
-            if m.is_empty() || crate::providers::is_custom_provider_id(m) {
-                crate::providers::OFFICIAL_CATALOG_MODEL.to_string()
-            } else {
-                m.to_string()
-            }
+            crate::providers::official_model_id_for(opts.model_id.as_deref().unwrap_or(""))
         } else if let Some(ref native) = grok_build_proxy {
             native.model.clone()
         } else if home_override.is_some() {
@@ -803,25 +789,14 @@ impl AcpClient {
             } else {
                 m.to_string()
             }
-        } else if opts.route_provider_id.is_some() {
-            let m = opts.model_id.as_deref().unwrap_or("").trim();
-            if m.is_empty() {
-                route_provider_id.clone()
-            } else if custom_route
-                && crate::providers::provider_mode_for_id(&route_provider_id)
-                    != crate::providers::PROVIDER_MODE_GROK_BUILD_PROXY
-            {
-                // Generic: `--model` is the per-model section, not the channel id.
-                // The id passed in may already be that section (connect) or the
-                // catalog id. Proxy relays took the catalog id above.
-                crate::providers::spawn_model_for_provider(&route_provider_id, m)
-            } else if custom_route {
-                route_provider_id.clone()
-            } else {
-                m.to_string()
-            }
         } else {
-            crate::providers::agent_spawn_model_id(opts.model_id.as_deref().unwrap_or(""))
+            // Generic custom routes spawn with the per-model section; official
+            // routes validate the catalog id. Proxy relays took the catalog id
+            // above.
+            crate::providers::spawn_model_for_provider(
+                &route_provider_id,
+                opts.model_id.as_deref().unwrap_or(""),
+            )
         };
 
         // Flag placement (CLI 0.2.x):
@@ -866,8 +841,10 @@ impl AcpClient {
         // Custom main + official-aux inject: block native Imagine tools so the
         // model cannot call image_gen/image_edit against the wrong GROK_HOME
         // (HTTP 400 Incorrect API key). Force official-aux__* instead.
-        let disallowed_tools =
-            crate::official_aux::merge_disallowed_tools_for_main(&settings.disallowed_tools);
+        let disallowed_tools = crate::official_aux::merge_disallowed_tools_for_main(
+            &settings.disallowed_tools,
+            custom_route,
+        );
         let allowed_tools = settings.allowed_tools.clone();
         let todo_gate_enabled = settings.todo_gate_enabled;
         let todo_gate_max_fires = crate::agent_todo_gate::normalize_todo_gate_max_fires(Some(
@@ -927,8 +904,13 @@ impl AcpClient {
             // Custom + inject: PreToolUse hook blocks native Imagine (ACP ignores
             // --disallowed-tools which is headless-only). Official route / inject
             // off removes the managed hook file.
-            let _ = crate::official_aux::sync_native_media_block_hook_for_current(prep_mode);
-            let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(prep_mode);
+            let _ = crate::official_aux::sync_native_media_block_hook(
+                prep_mode,
+                crate::official_aux::should_inject_mcp_for_main_for_route(custom_route),
+                &route_provider_id,
+            );
+            let _ =
+                crate::extensions::sync_user_mcp_for_official_aux_inject(prep_mode, custom_route);
             // Heal duplicate keys left by older upsert bugs (e.g. yolo vs yolo_mode).
             // Valid configs are never rewritten. Soft-fail so spawn still attempts.
             match crate::agent_home_config::ensure_agent_home_config_sane(prep_mode) {
@@ -1104,14 +1086,7 @@ impl AcpClient {
         if !spawn_model.is_empty() {
             cmd.args(["--model", &spawn_model]);
         }
-        if let Some(ref e) = opts.effort {
-            let e = e.trim();
-            // Pass any catalog/channel effort id (low/medium/high, max, …).
-            // Do not hard-allowlist only Grok 3-tier — custom channels use max etc.
-            if is_spawnable_reasoning_effort(e) {
-                cmd.args(["--reasoning-effort", e]);
-            }
-        }
+        cmd.args(reasoning_effort_spawn_flags(opts.effort.as_deref()));
         if should_pass_always_approve(spawn_policy, spawn_product_mode) {
             cmd.arg("--always-approve");
         }
@@ -1547,8 +1522,56 @@ impl AcpClient {
         }
     }
 
+    /// 最近一条 CLI 侧流处理失败的可读原因。
+    ///
+    /// 上游流内容不合法时（例如 thinking block 缺 `signature` 字段），
+    /// CLI 在 stderr 打 `… ERROR Failed to deserialize MessageStreamEvent
+    /// from stream error=… raw_data=…`，而回合 RPC 错误只有泛化的
+    /// `serialization error: missing field …`。取最近一条这类 `ERROR` 行
+    /// （剥掉 CLI 时间戳前缀，从 `ERROR` 起保留）。
+    pub(crate) fn latest_cli_stream_failure(&self) -> Option<String> {
+        let buf = self.stderr_tail.lock();
+        buf.iter().rev().find_map(|line| {
+            let idx = line.find(" ERROR ")?;
+            let rest = line[idx + " ERROR ".len()..].trim();
+            if rest.is_empty() {
+                None
+            } else {
+                Some(rest.to_string())
+            }
+        })
+    }
+
+    /// 测试接缝：直接注入一行 stderr，驱动 `latest_upstream_api_error`。
+    #[cfg(test)]
+    pub(crate) fn push_stderr_for_test(&self, line: &str) {
+        self.push_stderr(line);
+    }
+
     fn stderr_joined(&self) -> String {
         self.stderr_tail.lock().join(" | ")
+    }
+
+    /// 最近一条上游 API 错误的可读 message。
+    ///
+    /// CLI 会把上游（中转 / 模型端）的 SSE error 事件原样写到 stderr：
+    /// `data: {"error":{"message":"Unsupported value: 'minimal' is not
+    /// supported with …","status":400,…}}`。回合因上游 4xx 失败时，
+    /// RPC 错误里只有泛化的 `API error (status 400 …)`，真实原因在这条
+    /// stderr 里。从 tail 里取**最近**一条 `data:` JSON 的
+    /// `error.message`，不回退其它日志行。
+    pub(crate) fn latest_upstream_api_error(&self) -> Option<String> {
+        let buf = self.stderr_tail.lock();
+        buf.iter().rev().find_map(|line| {
+            let rest = line.strip_prefix("data: ")?;
+            let value: serde_json::Value = serde_json::from_str(rest).ok()?;
+            let message = value.pointer("/error/message")?.as_str()?.trim();
+            if message.is_empty() {
+                None
+            } else {
+                Some(message.to_string())
+            }
+        })
     }
 
     fn format_exit_detail(&self, head: &str) -> String {
@@ -2761,12 +2784,14 @@ impl AcpClient {
             )
             .map(str::to_string);
             let budget = crate::extensions::MCP_CONNECT_BUDGET;
+            let custom_route = self.custom_route;
             let servers = match tokio::time::timeout(
                 budget,
                 tauri::async_runtime::spawn_blocking(move || {
                     crate::extensions::build_session_mcp_servers_for_connect(
                         Some(project_cwd.as_str()),
                         app_session_id.as_deref(),
+                        custom_route,
                     )
                 }),
             )
@@ -3027,6 +3052,25 @@ impl AcpClient {
             Err(e) => return Err(e),
         };
         unwrap_session_info(raw)
+    }
+
+    /// Hot-apply a live session config option (standard ACP
+    /// `session/set_config_option`). Used for `reasoning_effort` so a tier
+    /// change takes effect on the next turn without respawning the agent.
+    ///
+    /// `value` is sent as a **plain JSON string** — CLI 1.0.77 rejects the
+    /// nested `{"value": ...}` shape the user guide documents.
+    pub async fn set_config_option_str(
+        &self,
+        session_id: &str,
+        config_id: &str,
+        value: &str,
+    ) -> Result<(), String> {
+        let params = session_set_config_option_params(session_id, config_id, value)?;
+        self.request("session/set_config_option", params)
+            .await
+            .map_err(|e| format!("session/set_config_option: {e}"))?;
+        Ok(())
     }
 
     /// Switch model on an explicit session (`session/set_model`).
@@ -4703,6 +4747,51 @@ fn parse_ask_user_options(v: &Value) -> Vec<AskUserOption> {
         });
     }
     out
+}
+
+#[cfg(test)]
+mod set_config_option_params_tests {
+    use super::*;
+
+    #[test]
+    fn value_is_a_plain_string_not_the_nested_guide_shape() {
+        let params = session_set_config_option_params(" agent-1 ", "reasoning_effort", " instant ")
+            .expect("params");
+        // CLI 1.0.77 拒绝文档示例的 {"value": ...} 嵌套形状（SessionConfigOptionValue
+        // untagged enum 反序列化失败）；wire 上必须是纯字符串。
+        assert_eq!(params["sessionId"], "agent-1");
+        assert_eq!(params["configId"], "reasoning_effort");
+        assert_eq!(params["value"], "instant");
+        assert!(params["value"].is_string());
+    }
+
+    #[test]
+    fn empty_ids_or_values_are_rejected() {
+        assert!(session_set_config_option_params("", "reasoning_effort", "high").is_err());
+        assert!(session_set_config_option_params("agent-1", " ", "high").is_err());
+        assert!(session_set_config_option_params("agent-1", "reasoning_effort", "  ").is_err());
+    }
+}
+
+/// Build `session/set_config_option` params. Plain-string value: the nested
+/// `{"value": ...}` shape fails CLI 1.0.77 deserialization
+/// (`SessionConfigOptionValue` untagged enum).
+pub(crate) fn session_set_config_option_params(
+    session_id: &str,
+    config_id: &str,
+    value: &str,
+) -> Result<Value, String> {
+    let session_id = session_id.trim();
+    let config_id = config_id.trim();
+    let value = value.trim();
+    if session_id.is_empty() || config_id.is_empty() || value.is_empty() {
+        return Err("session/set_config_option: empty id or value".into());
+    }
+    Ok(json!({
+        "sessionId": session_id,
+        "configId": config_id,
+        "value": value,
+    }))
 }
 
 #[cfg(test)]
@@ -6737,6 +6826,25 @@ mod reasoning_effort_spawn_tests {
         assert!(!is_spawnable_reasoning_effort("-high"));
         assert!(!is_spawnable_reasoning_effort("hi gh"));
         assert!(!is_spawnable_reasoning_effort("a".repeat(65).as_str()));
+    }
+
+    #[test]
+    fn omits_the_flag_when_the_effective_effort_is_none() {
+        assert_eq!(reasoning_effort_spawn_flags(None), Vec::<String>::new());
+        assert_eq!(
+            reasoning_effort_spawn_flags(Some("   ")),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            reasoning_effort_spawn_flags(Some("none")),
+            vec!["--reasoning-effort".to_string(), "none".to_string()],
+            "Off is a real value, not an omitted flag"
+        );
+        assert_eq!(
+            reasoning_effort_spawn_flags(Some(" max ")),
+            vec!["--reasoning-effort".to_string(), "max".to_string()],
+            "raw ids pass through verbatim"
+        );
     }
 }
 

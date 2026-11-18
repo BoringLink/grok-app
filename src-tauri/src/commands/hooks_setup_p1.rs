@@ -378,15 +378,11 @@ pub async fn permission_rules_set(
 
 // from PR #82
 
-/// GROK_HOME the live Grok Build process actually gets (Settings session
-/// data mode, plus custom-route override). Same helper as ACP spawn.
+/// GROK_HOME for the Settings session-data mode. Custom chats use agent-home
+/// only for their own spawn, so there is no single custom route here.
 fn live_instruction_grok_home() -> std::path::PathBuf {
     let mode = crate::store::load_settings().session_data_mode;
-    let custom_route = matches!(
-        crate::providers::active_route(),
-        crate::providers::ActiveRoute::Custom { .. }
-    );
-    crate::paths::resolve_inference_grok_home(&mode, custom_route)
+    crate::paths::resolve_agent_grok_home(&mode)
 }
 
 /// Create root `AGENTS.md` stub when missing (idempotent).

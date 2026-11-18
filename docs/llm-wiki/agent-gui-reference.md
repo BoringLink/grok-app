@@ -18,7 +18,7 @@
 
 1. 左、右栏**彻底关闭**（width 0，无 icon rail）；顶栏 `IconPanel` / `IconFiles` 开关。
 2. 右栏 = 当前项目资源查看器（会话项目路径），多格式预览（text/code/md/json/csv/html/image/svg/pdf/audio/video）。
-3. Composer 模型区合并为 ⚡ 菜单：模型 / 推理强度 / 授权模式；高级里放会话 mode。
+3. Composer 模型区合并为 ⚡ 菜单：模型切换 + 推理档位滑块，平铺在同一层；授权模式与会话 mode 使用独立入口。
 4. **Changes（会话 + 工作区）**：右栏 chrome 的 diff 图标 + 侧栏 **Files | Changes** 切换。  
    - **Session**：`session://tool` 中 write/edit 类工具（`isEditToolKind`）与历史 `tool_step` 消息。  
    - **Workspace**：项目路径 `git_status`（soft-fail：无 git / 非仓库）；刷新按钮；分支名提示。  

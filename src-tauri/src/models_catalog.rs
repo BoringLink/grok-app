@@ -466,6 +466,29 @@ pub fn list_available_models() -> AvailableModelsResult {
     )
 }
 
+/// Effective configured context window for an official catalog model.
+///
+/// The window comes from the CLI catalog: the App's 500k default whenever the
+/// model advertises it, otherwise the catalog default. `None` means the
+/// catalog has no window for the model.
+pub fn effective_model_window(model_id: &str) -> Option<u64> {
+    let id = model_id.trim();
+    if id.is_empty() {
+        return None;
+    }
+    let catalog = list_available_models();
+    let model = catalog.models.iter().find(|model| model.id == id)?;
+    effective_window_for_model(model)
+}
+
+/// Window a session should apply for one catalog row.
+///
+/// Prefer the App's 500k default when the model advertises it, then the
+/// catalog default.
+pub fn effective_window_for_model(model: &AvailableModel) -> Option<u64> {
+    app_default_context_window(model).or_else(|| model.context_window.filter(|window| *window > 0))
+}
+
 /// Select one complete snapshot, never a union: newer hidden / removed entries
 /// must not be resurrected from an older home. Valid RFC3339 timestamps win over
 /// missing / invalid timestamps. Ties keep the first path (the configured home).
@@ -872,6 +895,22 @@ mod tests {
             context_window: Some(500_000),
             context_windows: Vec::new(),
         }
+    }
+
+    #[test]
+    fn effective_window_prefers_app_default_then_catalog_default() {
+        let mut catalog = stub_model("catalog-window");
+        catalog.context_window = Some(256_000);
+        catalog.context_windows = vec![256_000, 500_000];
+        assert_eq!(effective_window_for_model(&catalog), Some(500_000));
+
+        let mut declared_only = stub_model("catalog-default");
+        declared_only.context_window = Some(256_000);
+        assert_eq!(effective_window_for_model(&declared_only), Some(256_000));
+
+        let mut none = stub_model("no-window");
+        none.context_window = None;
+        assert_eq!(effective_window_for_model(&none), None);
     }
 
     #[test]

@@ -1,7 +1,5 @@
 /**
- * Props contract for WorkbenchSettingsStage — the settings overlay stage.
- * Extracted from the stage component so the 223-field interface lives in
- * its own module (files_ge_1000 gate) and can be imported by tests.
+ * Props contract for WorkbenchSettingsStage, kept at the host/stage boundary.
  *
  * Field types were inferred from the real AppWorkbench call site via the
  * TS checker; oversized inline shapes use named types
@@ -16,7 +14,6 @@ import type { CompactionModeId, CompactionDetailId } from "@/lib/compactionMode"
 import type { SettingsSectionId } from "@/components/SettingsPage";
 import type { AccountStatus, SavedAccount } from "@/lib/api/account";
 import type { AppDialog } from "@/lib/app/appDialogTypes";
-import type { ComposerPrefs } from "@/lib/api/settings";
 import type { ModelOption, PermissionPolicyId, ComposerPrefsScope } from "@/lib/grokCatalog";
 import type { ProcessLimitEvent } from "@/lib/processBudget";
 import type { ProviderBalanceCache } from "@/lib/providerBalanceFormat";
@@ -50,14 +47,12 @@ export type WorkbenchSettingsStageProps = {
   accountProbeError: unknown;
   acpServerAddr: string;
   activeAccountId: string | null;
-  activeProject: Project | null;
   agentCatalog: { name: string; source: string; }[];
   agentIdleMinutes: number;
   agentProfilePath: string;
   agentsJson: string;
   allowUnverifiedCliInstall: boolean;
   allowedTools: string[];
-  applyComposerPrefs: (prefs: ComposerPrefs, catalog: ModelOption[]) => void;
   applyGlobalSandboxProfile: (nextRaw: string) => void;
   applyPermissionPolicy: (next: PermissionPolicyId) => void;
   applySkinChoice: (next: ThemeSkinId, options?: { applyPreferredTheme?: boolean | undefined; } | undefined) => void;
@@ -147,7 +142,6 @@ export type WorkbenchSettingsStageProps = {
   runSwitchAccount: (id: string) => Promise<void>;
   sandboxProfile: "off" | "workspace" | "read-only" | "strict" | "devbox";
   savedAccounts: SavedAccount[];
-  session: SessionSnapshot;
   sessionDataMode: "shared" | "independent";
   sessions: SessionRow[];
   setAcpServerAddr: Dispatch<SetStateAction<string>>;

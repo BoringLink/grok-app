@@ -22,8 +22,9 @@ pub async fn providers_cc_switch_import(
     })
     .await
     .map_err(|e| e.to_string())??;
-    if result.imported > 0 {
-        mgr.recycle_all_agents(&app, "provider_route").await;
+    for provider_id in &result.affected_provider_ids {
+        mgr.invalidate_sessions_for_provider(&app, provider_id, "provider_route")
+            .await;
     }
     Ok(result)
 }
@@ -53,74 +54,6 @@ pub async fn providers_list() -> Result<crate::providers::ProvidersListResult, S
     .map_err(|e| e.to_string())?
 }
 
-/// Activate official Grok Build or a custom provider; returns updated list.
-///
-/// Recycles warm agents so the next send spawns with rebound auth / config
-/// (no full app restart).
-#[tauri::command]
-pub async fn providers_activate(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-    source: String,
-    provider_id: Option<String>,
-    recycle_agents: Option<bool>,
-) -> Result<crate::providers::ProvidersListResult, String> {
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let result =
-            crate::providers::activate_provider(&source, provider_id.as_deref())?;
-        // Composer model stays a catalog id (UI). Channel is `[models].default`.
-        // When leaving a custom route, drop stale provider ids from settings.
-        let mut settings = store::load_settings();
-        let cur = settings.model_id.clone().unwrap_or_default();
-        if result.active_source == "official" {
-            if cur.is_empty()
-                || crate::providers::is_custom_provider_id(&cur)
-                || cur == crate::providers::OFFICIAL_DEFAULT_MODEL
-            {
-                settings.model_id =
-                    Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
-                let _ = store::save_settings(&settings);
-            }
-        } else if result.active_source == "custom" {
-            // Keep catalog model in settings for the model picker; spawn resolves route id.
-            if cur.is_empty() || crate::providers::is_custom_provider_id(&cur) {
-                if let Some(p) = result
-                    .active_provider_id
-                    .as_ref()
-                    .and_then(|id| result.providers.iter().find(|x| x.id == *id))
-                {
-                    let upstream = p.model.trim();
-                    settings.model_id = Some(if upstream.is_empty() {
-                        crate::providers::OFFICIAL_CATALOG_MODEL.into()
-                    } else {
-                        upstream.to_string()
-                    });
-                } else {
-                    settings.model_id =
-                        Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
-                }
-                let _ = store::save_settings(&settings);
-            }
-        }
-        Ok::<_, String>(result)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    let mode = store::load_settings_async().await.session_data_mode.clone();
-    let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
-    let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    // Settings: drop every warm process so none keeps the old route.
-    // Composer: reload only the live chat. Background and parked processes
-    // on another provider stay up.
-    if recycle_agents.unwrap_or(true) {
-        mgr.recycle_all_agents(&app, "provider_route").await;
-    } else {
-        mgr.soft_respawn_with_reason(&app, "provider_route").await;
-    }
-    Ok(result)
-}
-
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn providers_upsert(
@@ -133,7 +66,6 @@ pub async fn providers_upsert(
     api_key: Option<String>,
     api_backend: Option<String>,
     provider_mode: Option<String>,
-    set_as_default: Option<bool>,
     create_only: Option<bool>,
     models: Option<Vec<crate::providers::ProviderModelEntry>>,
     efforts: Option<Vec<crate::providers::ProviderEffortEntry>>,
@@ -151,28 +83,16 @@ pub async fn providers_upsert(
         if crate::providers::normalize_backend(api_backend.as_deref()) != "responses" {
             return Err("grok_build_proxy requires api_backend=responses".into());
         }
-        let normalized_base = crate::providers::normalize_openai_base_url(
-            &base_url,
-            "responses",
-            base_url_full_path.unwrap_or_else(|| {
-                crate::providers::provider_base_url_full_path_for_id(&id)
-            }),
-        );
-        let remote = crate::providers::list_remote_models(
-            normalized_base,
+        check_grok_build_proxy_live_models(
+            id.clone(),
+            model.clone(),
+            base_url.clone(),
             api_key.clone(),
-            Some(id.clone()),
+            base_url_full_path,
+            models.clone(),
         )
         .await?;
-        let selected = models.clone().unwrap_or_else(|| {
-            vec![crate::providers::ProviderModelEntry::named(
-                model.clone(),
-                model.clone(),
-            )]
-        });
-        crate::providers::validate_grok_build_proxy_models(&remote.models, &selected)?;
     }
-    let set_default_flag = set_as_default.unwrap_or(false);
     let mutated_id = id.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
         let result =
@@ -184,7 +104,6 @@ pub async fn providers_upsert(
                 api_key,
                 api_backend,
                 provider_mode: Some(normalized_provider_mode),
-                set_as_default,
                 create_only,
                 models,
                 efforts,
@@ -206,33 +125,65 @@ pub async fn providers_upsert(
             secrets.default_model = result.default_model.clone();
             // Do not copy api_key into secrets (stays only in config.toml).
             let _ = store::save_secrets(&secrets);
-            if set_as_default.unwrap_or(false) {
-                let mut settings = store::load_settings();
-                // Composer shows upstream request model, not the route slug.
-                let upstream = p.model.trim();
-                settings.model_id = Some(if upstream.is_empty() {
-                    crate::providers::OFFICIAL_CATALOG_MODEL.into()
-                } else {
-                    upstream.to_string()
-                });
-                let _ = store::save_settings(&settings);
-            }
         }
         Ok::<_, String>(result)
     })
     .await
     .map_err(|e| e.to_string())??;
 
-    // Apply active-route / active-provider edits without requiring app restart.
-    // Recycle (not mere park) so parked shells cannot reopen with stale OIDC.
-    if crate::providers::provider_mutation_needs_agent_reload(
-        set_default_flag,
-        &mutated_id,
-        &result,
-    ) {
-        mgr.recycle_all_agents(&app, "provider_route").await;
-    }
+    // Only chats already routed to this provider must cold-spawn. Dropping
+    // every warm agent would interrupt unrelated sessions for one edit.
+    mgr.invalidate_sessions_for_provider(&app, &mutated_id, "provider_route")
+        .await;
     Ok(result)
+}
+
+/// Live `/models` gate for a grok-build-proxy upsert.
+///
+/// Reads the stored catalog so an unchanged, unreadable, or explicitly cleared
+/// one is not re-checked through the channel `model`. `Some([])` on an existing
+/// section is the explicit clear and passes without a request; a create with no
+/// rows is rejected before the round-trip instead of fetching `/models` to
+/// discover the same thing.
+async fn check_grok_build_proxy_live_models(
+    id: String,
+    model: String,
+    base_url: String,
+    api_key: Option<String>,
+    base_url_full_path: Option<bool>,
+    models: Option<Vec<crate::providers::ProviderModelEntry>>,
+) -> Result<(), String> {
+    let provider_id = id.clone();
+    let stored_catalog = tauri::async_runtime::spawn_blocking(move || {
+        crate::providers::stored_provider_model_catalog(&provider_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    if !crate::providers::grok_build_proxy_upsert_needs_live_models(
+        models.as_deref(),
+        stored_catalog.as_ref(),
+    ) {
+        return Ok(());
+    }
+    if stored_catalog.is_none() && models.as_deref().is_some_and(|rows| rows.is_empty()) {
+        return Err("grok_build_proxy requires at least one model".into());
+    }
+    let normalized_base = crate::providers::normalize_openai_base_url(
+        &base_url,
+        "responses",
+        base_url_full_path.unwrap_or_else(|| {
+            crate::providers::provider_base_url_full_path_for_id(&id)
+        }),
+    );
+    let remote =
+        crate::providers::list_remote_models(normalized_base, api_key, Some(id)).await?;
+    let selected = models.unwrap_or_else(|| {
+        vec![crate::providers::ProviderModelEntry::named(
+            model.clone(),
+            model.clone(),
+        )]
+    });
+    crate::providers::validate_grok_build_proxy_models(&remote.models, &selected)
 }
 
 #[tauri::command]
@@ -241,62 +192,24 @@ pub async fn providers_remove(
     mgr: State<'_, Arc<SessionManager>>,
     id: String,
 ) -> Result<crate::providers::ProvidersListResult, String> {
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        crate::providers::remove_custom_provider(&id)
+    let affected_id = crate::providers::sanitize_provider_id(&id)?;
+    let (result, affected_sessions) = tauri::async_runtime::spawn_blocking(move || {
+        let result = crate::providers::remove_custom_provider(&id)?;
+        let sessions = store::fallback_sessions_for_provider(
+            &affected_id,
+            crate::providers::OFFICIAL_CATALOG_MODEL,
+        )?;
+        Ok::<_, String>((result, sessions))
     })
     .await
     .map_err(|e| e.to_string())??;
-    // Removing a provider (esp. the active one) must not leave warm agents on
-    // a deleted route id.
-    let mode = store::load_settings_async().await.session_data_mode.clone();
-    let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
-    let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    mgr.recycle_all_agents(&app, "provider_route").await;
-    Ok(result)
-}
-
-#[tauri::command]
-pub async fn providers_set_default(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-    model_id: String,
-) -> Result<crate::providers::ProvidersListResult, String> {
-    // Prefer activate_provider so auth material is rebound correctly.
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        let id = model_id.trim().to_string();
-        let list = crate::providers::list_custom_providers()?;
-        let result = if list.providers.iter().any(|p| p.id == id) {
-            crate::providers::activate_provider("custom", Some(&id))?
-        } else {
-            crate::providers::activate_provider("official", None)?
-        };
-        let mut settings = store::load_settings();
-        if result.active_source == "custom" {
-            if let Some(p) = result
-                .active_provider_id
-                .as_ref()
-                .and_then(|pid| result.providers.iter().find(|x| x.id == *pid))
-            {
-                let upstream = p.model.trim();
-                settings.model_id = Some(if upstream.is_empty() {
-                    crate::providers::OFFICIAL_CATALOG_MODEL.into()
-                } else {
-                    upstream.to_string()
-                });
-            }
-        } else {
-            settings.model_id = Some(crate::providers::OFFICIAL_CATALOG_MODEL.into());
-        }
-        let _ = store::save_settings(&settings);
-        Ok::<_, String>(result)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    let mode = store::load_settings_async().await.session_data_mode.clone();
-    let _ = crate::official_aux::sync_native_media_block_hook_for_current(&mode);
-    let _ = crate::extensions::sync_user_mcp_for_official_aux_inject(&mode);
-    mgr.recycle_all_agents(&app, "provider_route").await;
+    // A deleted route must not keep a warm process. Chats on other providers
+    // stay connected; its saved route and model already point to official.
+    for session_id in affected_sessions {
+        mgr.invalidate_spawn_flags_for_session(&app, &session_id, "provider_route")
+            .await;
+    }
+    mgr.retire_prewarm().await;
     Ok(result)
 }
 
@@ -348,89 +261,6 @@ pub async fn providers_balance(
     provider_id: Option<String>,
 ) -> Result<crate::providers::ProviderBalanceResult, String> {
     crate::providers::query_provider_balance(base_url, api_key, provider_id).await
-}
-
-// ── Model auxiliary routing (`[models]` side-task slots) ─────────────────────
-
-#[tauri::command]
-pub async fn models_aux_get() -> Result<crate::models_aux::ModelsAuxState, String> {
-    tauri::async_runtime::spawn_blocking(crate::models_aux::get_state)
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-pub async fn models_aux_set(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-    image_description: Option<String>,
-    web_search: Option<String>,
-    session_summary: Option<String>,
-    prompt_suggestion: Option<String>,
-) -> Result<crate::models_aux::ModelsAuxState, String> {
-    let input = crate::models_aux::ModelsAuxSetInput {
-        image_description,
-        web_search,
-        session_summary,
-        prompt_suggestion,
-    };
-    let result = tauri::async_runtime::spawn_blocking(move || crate::models_aux::set_slots(input))
-        .await
-        .map_err(|e| e.to_string())??;
-    mgr.recycle_all_agents(&app, "models_aux").await;
-    Ok(result)
-}
-
-#[tauri::command]
-pub async fn models_aux_apply_save_grok(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-) -> Result<crate::models_aux::ModelsAuxState, String> {
-    let result = tauri::async_runtime::spawn_blocking(crate::models_aux::apply_save_grok)
-        .await
-        .map_err(|e| e.to_string())??;
-    mgr.recycle_all_agents(&app, "models_aux").await;
-    Ok(result)
-}
-
-#[tauri::command]
-pub async fn models_aux_reset_defaults(
-    app: tauri::AppHandle,
-    mgr: State<'_, Arc<SessionManager>>,
-) -> Result<crate::models_aux::ModelsAuxState, String> {
-    let result = tauri::async_runtime::spawn_blocking(crate::models_aux::reset_defaults)
-        .await
-        .map_err(|e| e.to_string())??;
-    mgr.recycle_all_agents(&app, "models_aux").await;
-    Ok(result)
-}
-
-/// Independent side-channel: `grok -p -m <aux>` under agent-home (not live session model).
-#[tauri::command]
-pub async fn models_aux_headless(
-    model_id: String,
-    prompt: String,
-    max_turns: Option<u32>,
-) -> Result<String, String> {
-    let turns = max_turns.unwrap_or(8);
-    tauri::async_runtime::spawn_blocking(move || {
-        crate::models_aux::run_aux_headless(
-            &model_id,
-            &prompt,
-            turns,
-            std::time::Duration::from_secs(180),
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-/// Host web search via aux model headless (ignores live ACP main model).
-#[tauri::command]
-pub async fn models_aux_web_search(query: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || crate::models_aux::headless_web_search(&query))
-        .await
-        .map_err(|e| e.to_string())?
 }
 
 // ── Official aux side-channel (isolated GROK_HOME + grok -p) ─────────────────
@@ -613,5 +443,90 @@ mod project_inspect_tests {
         );
         assert_eq!(out["skills"]["total"], 0);
         assert_eq!(out["error"], "Grok Build CLI not found");
+    }
+}
+
+#[cfg(test)]
+mod grok_build_proxy_gate_tests {
+    use super::check_grok_build_proxy_live_models;
+
+    fn proxy_config(app_models_json: &str) -> String {
+        let quoted =
+            serde_json::to_string(app_models_json).expect("quote app_models for TOML");
+        format!(
+            "\
+[models]
+default = \"relay\"
+
+[model.relay]
+model = \"m1\"
+base_url = \"https://relay.example/v1\"
+name = \"Relay\"
+api_key = \"sk-test-relay\"
+api_backend = \"responses\"
+app_provider_mode = \"grok_build_proxy\"
+app_models = {quoted}
+"
+        )
+    }
+
+    fn with_app_home<T>(config_toml: Option<&str>, run: impl FnOnce() -> T) -> T {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!(
+            "grok-app-proxy-gate-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let previous = std::env::var("GROK_APP_HOME").ok();
+        std::env::set_var("GROK_APP_HOME", &home);
+        if let Some(text) = config_toml {
+            let dir = home.join("agent-home");
+            std::fs::create_dir_all(&dir).expect("agent home");
+            std::fs::write(dir.join("config.toml"), text).expect("config.toml");
+        }
+        let out = run();
+        match previous {
+            Some(value) => std::env::set_var("GROK_APP_HOME", value),
+            None => std::env::remove_var("GROK_APP_HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        out
+    }
+
+    fn gate(models: Option<Vec<crate::providers::ProviderModelEntry>>) -> Result<(), String> {
+        tauri::async_runtime::block_on(check_grok_build_proxy_live_models(
+            "relay".into(),
+            "m1".into(),
+            "https://relay.example/v1".into(),
+            Some("sk-test-relay".into()),
+            None,
+            models,
+        ))
+    }
+
+    #[test]
+    fn explicit_clear_on_an_existing_proxy_skips_the_live_gate() {
+        let config = proxy_config(r#"[{"id":"m1","name":"M1"}]"#);
+        let outcome = with_app_home(Some(&config), || gate(Some(Vec::new())));
+        assert_eq!(outcome, Ok(()));
+    }
+
+    #[test]
+    fn unchanged_corrupt_catalog_skips_the_live_gate_and_the_clear_still_passes() {
+        let config = proxy_config("{not json");
+        let outcome = with_app_home(Some(&config), || {
+            (gate(None), gate(Some(Vec::new())))
+        });
+        assert_eq!(outcome, (Ok(()), Ok(())));
+    }
+
+    #[test]
+    fn explicit_clear_on_create_still_requires_one_model() {
+        let outcome = with_app_home(None, || gate(Some(Vec::new())));
+        assert_eq!(
+            outcome.unwrap_err(),
+            "grok_build_proxy requires at least one model"
+        );
     }
 }

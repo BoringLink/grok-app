@@ -2,8 +2,13 @@
  * Effective inference model shown in composer model chips.
  *
  * Shows the model this chat picked when that id is in the provider catalog.
- * A leftover official catalog id such as Grok 4.5, which is not in the
- * catalog, falls back to the channel `model` (#1337, #1394).
+ * An explicitly cleared catalog (`[]`) offers no row, so only the id the chat
+ * already stored can be shown; the cleared channel `model` is not selectable
+ * and resolves to nothing (BOR-152). A corrupt catalog exposes only its
+ * recovered rows, so a saved id those rows omit is shown and requested as-is,
+ * because the host keeps that session's child section. A leftover official
+ * catalog id such as Grok 4.5, which is not in the catalog, falls back to the
+ * channel `model` (#1337, #1394).
  */
 
 export function resolveCustomRouteDisplay(
@@ -13,6 +18,7 @@ export function resolveCustomRouteDisplay(
         model?: string | null;
         providerMode?: string | null;
         models?: ReadonlyArray<{ id: string; name?: string | null }> | null;
+        modelCatalogCorrupt?: boolean | null;
       }
     | null
     | undefined,
@@ -22,12 +28,25 @@ export function resolveCustomRouteDisplay(
   requestModel: string | null;
 } | null {
   if (!provider) return null;
-  const models = provider.models ?? [];
   const sessionId = sessionModelId.trim();
+  if (provider.models != null && provider.models.length === 0) {
+    if (!sessionId) return null;
+    return {
+      chip: { name: sessionId, model: sessionId },
+      requestModel: sessionId,
+    };
+  }
+  const models = provider.models ?? [];
   const configured = provider.model?.trim() ?? "";
   const sessionEntry = sessionId
     ? models.find((m) => m.id === sessionId)
     : undefined;
+  if (provider.modelCatalogCorrupt === true && sessionId && !sessionEntry) {
+    return {
+      chip: { name: sessionId, model: sessionId },
+      requestModel: sessionId,
+    };
+  }
   const configuredEntry = configured
     ? models.find((m) => m.id === configured)
     : undefined;
@@ -43,21 +62,6 @@ export function resolveCustomRouteDisplay(
     chip: { name: name || model, model: model || name },
     requestModel: sessionEntry ? sessionEntry.id : configured || null,
   };
-}
-
-/**
- * Resolve the model id the composer chip should display.
- *
- * @param modelId Official catalog selection (composer state).
- * @param activeCustomModel Request model of the active custom provider, or
- *   null/undefined when the official route is active.
- */
-export function effectiveComposerModel(
-  modelId: string,
-  activeCustomModel: string | null | undefined,
-): string {
-  const custom = activeCustomModel?.trim();
-  return custom ? custom : modelId;
 }
 
 /**

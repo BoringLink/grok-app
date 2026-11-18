@@ -30,6 +30,10 @@ import { canLiveParticipate } from "@/lib/multiWindow";
 import { isProjectFolderMissing } from "@/lib/projectPath";
 import { resolveSessionWorktreeBadge } from "@/lib/gitWorktree";
 import { isViewedSessionConnecting } from "@/lib/connStatus";
+import {
+  classifyModelEffortError,
+  modelEffortErrorMessageKey,
+} from "@/lib/modelEffortApply";
 import { migrateDraftSendClaim, queueSessionKey } from "@/lib/sendQueue";
 import { IDLE_SNAPSHOT, type ChatMessage, type SessionSnapshot } from "@/lib/session";
 import {
@@ -41,6 +45,10 @@ import { migrateDraftTurnClock } from "@/lib/turnClock";
 import { isSameView, shouldAdoptView, type ViewFocus } from "@/lib/viewFocus";
 import { useLiveMapWhen } from "@/hooks/useSessionLiveMap";
 import { SESSION_CONNECT_CLAIM_WAIT_MS } from "@/lib/sessionConnectTimeout";
+import {
+  saveCurrentDraftComposerRoute,
+  type DraftComposerRoute,
+} from "@/lib/draftComposerRoute";
 
 type TFn = ReturnType<typeof createT>;
 
@@ -61,12 +69,7 @@ export type SessionConnectHost = {
   sendInFlightBySessionRef: MutableRefObject<Set<string>>;
   sendEpochBySessionRef: MutableRefObject<Map<string, number>>;
   sessionJsonSchemaRef: MutableRefObject<string | null>;
-  /** Provider picked on a chat that has no row yet. Stamped before connect. */
-  draftComposerRouteRef: MutableRefObject<{
-    providerId: string;
-    modelId: string;
-    effort: string;
-  } | null>;
+  draftComposerRouteRef: MutableRefObject<DraftComposerRoute | null>;
   currentViewFocus: () => ViewFocus;
   syncViewedTurnClock: (sessionId: string) => void;
   setLocalError: (msg: string | null) => void;
@@ -306,19 +309,75 @@ export function useSessionConnect(opts: {
             heldConnectKeys.delete(connectKey);
             heldConnectKeys.add(materializedKey);
           }
-          const pendingRoute = h.draftComposerRouteRef.current;
-          if (pendingRoute && api.isTauri()) {
-            h.draftComposerRouteRef.current = null;
+          const cleanupUnconfiguredSession = async (reason: string) => {
+            try {
+              await api.sessionDelete(meta.id);
+            } catch (error) {
+              console.warn("failed to remove unconfigured session", {
+                sessionId: meta.id,
+                reason,
+                error,
+              });
+            }
+            try {
+              await h.refreshSessions();
+            } catch (error) {
+              console.warn("failed to refresh sessions after setup failure", {
+                sessionId: meta.id,
+                reason,
+                error,
+              });
+            }
+          };
+          if (api.isTauri() && h.mode.trim().toLowerCase() === "plan") {
             try {
               await api.composerPrefsSet({
                 sessionId: meta.id,
                 projectId: connectProject?.id ?? null,
-                providerId: pendingRoute.providerId,
-                modelId: pendingRoute.modelId,
-                effort: pendingRoute.effort,
+                mode: "plan",
               });
-            } catch {
-              /* connect still follows the global route if the stamp fails */
+            } catch (error) {
+              console.warn("draft plan mode save failed", {
+                sessionId: meta.id,
+                error,
+              });
+              h.setLocalError(h.tr("error.deck.generic.problem"));
+              await cleanupUnconfiguredSession("draft plan mode save");
+              return null;
+            }
+          }
+          const pendingRoute = h.draftComposerRouteRef.current;
+          if (pendingRoute && api.isTauri()) {
+            const result = await saveCurrentDraftComposerRoute({
+              currentRoute: () => h.draftComposerRouteRef.current,
+              save: (route) =>
+                api.composerPrefsSet({
+                  sessionId: meta.id,
+                  projectId: connectProject?.id ?? null,
+                  providerId: route.providerId,
+                  modelId: route.modelId,
+                  effort: route.effort,
+                }),
+            });
+            if (result.status === "saved" && result.routeIsCurrent) {
+              h.draftComposerRouteRef.current = null;
+            }
+            if (result.status === "failed") {
+              console.warn("draft composer route save failed", {
+                sessionId: meta.id,
+                error: result.error,
+              });
+              if (result.routeIsCurrent) {
+                h.setLocalError(
+                  h.tr(
+                    modelEffortErrorMessageKey(
+                      classifyModelEffortError(result.error),
+                    ),
+                  ),
+                );
+                await cleanupUnconfiguredSession("draft composer route save");
+                return null;
+              }
             }
           }
           if (
@@ -458,7 +517,12 @@ export function useSessionConnect(opts: {
             h.viewingSessionIdRef.current === preferredId) ||
           isSameView(originView, h.currentViewFocus())
         ) {
-          h.setLocalError(String(e));
+          const errorMessage = String(e);
+          h.setLocalError(
+            errorMessage.includes("PENDING_SESSION_SETTINGS")
+              ? h.tr("session.pendingSettingsRetry")
+              : errorMessage,
+          );
         }
         return null;
       } finally {

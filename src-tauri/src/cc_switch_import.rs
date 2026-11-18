@@ -71,9 +71,6 @@ pub struct CcSwitchImportRequest {
     /// `skip` | `overwrite` | `rename` (default skip)
     #[serde(default)]
     pub on_conflict: Option<String>,
-    /// After import, activate this suggested/final id (optional).
-    #[serde(default)]
-    pub activate_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -81,6 +78,7 @@ pub struct CcSwitchImportRequest {
 pub struct CcSwitchImportResult {
     pub imported: u32,
     pub skipped: u32,
+    pub affected_provider_ids: Vec<String>,
     pub failed: Vec<CcSwitchImportFailure>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub providers: Option<providers::ProvidersListResult>,
@@ -338,6 +336,7 @@ where
 
     let mut imported = 0u32;
     let mut skipped = 0u32;
+    let mut affected_provider_ids = Vec::new();
     let mut failed = Vec::new();
     let mut last_list = None;
     let mut existing = existing_provider_ids();
@@ -419,7 +418,6 @@ where
             api_key: Some(parsed.api_key.clone()),
             api_backend: Some(parsed.api_backend.clone()),
             provider_mode: Some(provider_mode),
-            set_as_default: Some(false),
             create_only: Some(false),
             models: Some(vec![providers::ProviderModelEntry::named(
                 parsed.model.clone(),
@@ -439,7 +437,8 @@ where
             extra_headers: None,
         }) {
             Ok(list) => {
-                existing.insert(id);
+                existing.insert(id.clone());
+                affected_provider_ids.push(id);
                 imported += 1;
                 last_list = Some(list);
             }
@@ -452,24 +451,6 @@ where
         }
     }
 
-    // Optional activate after import
-    if let Some(act) = req
-        .activate_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        match providers::activate_provider("custom", Some(act)) {
-            Ok(list) => last_list = Some(list),
-            Err(e) => {
-                failed.push(CcSwitchImportFailure {
-                    source_id: act.to_string(),
-                    reason: format!("imported but activate failed: {e}"),
-                });
-            }
-        }
-    }
-
     if last_list.is_none() {
         last_list = providers::list_custom_providers().ok();
     }
@@ -477,6 +458,7 @@ where
     Ok(CcSwitchImportResult {
         imported,
         skipped,
+        affected_provider_ids,
         failed,
         providers: last_list,
     })
@@ -1120,7 +1102,6 @@ app_provider_mode = "grok_build_proxy"
             CcSwitchImportRequest {
                 source_ids: vec!["source-relay".into()],
                 on_conflict: Some("overwrite".into()),
-                activate_id: None,
             },
             |parsed| {
                 assert_eq!(parsed.model, "grok-4.6");
@@ -1130,6 +1111,7 @@ app_provider_mode = "grok_build_proxy"
         )
         .expect("import");
         assert_eq!(result.imported, 1);
+        assert_eq!(result.affected_provider_ids, vec!["relay"]);
         assert!(result.failed.is_empty());
 
         let written = fs::read_to_string(app_home.join("agent-home/config.toml")).expect("config");

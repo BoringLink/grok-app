@@ -1636,6 +1636,17 @@ impl SessionManager {
         let mid = turn_error_message_id(s.streaming_message_id.as_deref(), keep_partial);
         let code = err.code.as_str();
         let detail = sanitize_error_detail(err.message.trim());
+        // 上游 4xx（如不支持的思考强度）时 RPC 错误只有泛化的
+        // `API error (status 400 …)`；把 CLI stderr 里最近一条上游
+        // error 事件的 message 补进来，让用户看到真实原因与受支持值。
+        // journal 内容与事件 payload 都带：journal 渲染 raw content，
+        // 事件路径前端 friendly copy 之后按 `upstream` 字段追加。
+        let upstream = upstream_api_error_detail(err, s.acp.as_ref(), &detail);
+        let detail = match &upstream {
+            Some(u) if detail.is_empty() => u.clone(),
+            Some(u) => format!("{detail}\n\n{u}"),
+            None => detail,
+        };
         // Persist machine-readable code first so the frontend can i18n the summary.
         let content = if detail.is_empty() {
             format!("**{code}**")
@@ -1669,14 +1680,58 @@ impl SessionManager {
                 "code": code,
                 "message": detail,
                 "content": content,
+                "upstream": upstream,
             }),
         }
     }
 }
 
+/// 判定回合错误是否为上游 API 4xx/5xx（RPC 错误含 `http_status` /
+/// `API error (status …)`）或 CLI 流反序列化失败（`serialization error`）
+/// 时，从 ACP 客户端 stderr tail 提取最近一条真实原因（上游 error 事件
+/// 的 message 优先，其次 CLI 的 `ERROR Failed to deserialize …` 行）并
+/// 截断到可读长度；否则返回 `None`（不回退、不附加陈旧错误）。stale
+/// 防护：detail 已包含该 message 时不重复。
+fn upstream_api_error_detail(
+    err: &AgentError,
+    acp: Option<&Arc<AcpClient>>,
+    detail: &str,
+) -> Option<String> {
+    let lower = err.message.to_lowercase();
+    let needs_context = lower.contains("http_status")
+        || lower.contains("api error (status")
+        || lower.contains("serialization error");
+    if !needs_context {
+        return None;
+    }
+    let acp = acp?;
+    // 上游 API 错误（`data: {"error":…}`）优先；CLI 流失败行次之。
+    let message = acp
+        .latest_upstream_api_error()
+        .or_else(|| acp.latest_cli_stream_failure())?;
+    if message.is_empty() || detail.contains(message.as_str()) {
+        return None;
+    }
+    // 截断到 240 字符（char 边界对齐），保持聊天气泡可读。
+    const MAX: usize = 240;
+    if message.len() <= MAX {
+        Some(message)
+    } else {
+        let mut end = MAX;
+        while end > 0 && !message.is_char_boundary(end) {
+            end -= 1;
+        }
+        Some(format!("{}…", &message[..end]))
+    }
+}
+
 #[cfg(test)]
 mod process_accounting_tests {
-    use super::{count_unique_alive_processes, process_recycle_is_blocked, turn_error_message_id};
+    use super::{
+        count_unique_alive_processes, process_recycle_is_blocked, turn_error_message_id,
+        upstream_api_error_detail,
+    };
+    use crate::error::{AgentError, AgentErrorCode};
     use std::collections::HashSet;
 
     #[test]
@@ -1706,6 +1761,77 @@ mod process_accounting_tests {
             stream.contains("fn commit_turn_boundary_persist("),
             "turn-boundary disk/IPC must live in commit_turn_boundary_persist"
         );
+    }
+
+    #[test]
+    fn upstream_api_error_detail_surfaces_latest_upstream_message() {
+        use crate::acp_client::AcpClient;
+        let acp = AcpClient::test_stub(true);
+        acp.push_stderr_for_test("data: {\"error\":{\"message\":\"rate limited\",\"status\":429}}");
+        acp.push_stderr_for_test(
+            "data: {\"error\":{\"message\":\"Unsupported value: 'minimal' is not supported with the 'gpt-6-luna-2026-09-22' model. Supported values are: 'none', 'low', 'medium', 'high', 'xhigh', and 'max'.\",\"status\":400}}",
+        );
+
+        // 上游 API 失败 → 取最近一条上游 message。
+        let err = AgentError::new(
+            AgentErrorCode::AgentCrashed,
+            "Internal error (code -32603, data: {\"http_status\":400,\"message\":\"API error (status 400 Bad Request)\"})",
+        );
+        let detail = upstream_api_error_detail(&err, Some(&acp), "Internal error (code -32603)");
+        assert_eq!(
+            detail.as_deref(),
+            Some("Unsupported value: 'minimal' is not supported with the 'gpt-6-luna-2026-09-22' model. Supported values are: 'none', 'low', 'medium', 'high', 'xhigh', and 'max'.")
+        );
+
+        // 非 API 错误（如纯 RPC 超时）不附加陈旧上游错误。
+        let other = AgentError::new(
+            AgentErrorCode::NetworkProvider,
+            "rpc timeout: session/prompt",
+        );
+        assert!(upstream_api_error_detail(&other, Some(&acp), "rpc timeout").is_none());
+
+        // detail 已含该 message 时不重复附加。
+        let dup = upstream_api_error_detail(
+            &err,
+            Some(&acp),
+            "Unsupported value: 'minimal' is not supported with the 'gpt-6-luna-2026-09-22' model. Supported values are: 'none', 'low', 'medium', 'high', 'xhigh', and 'max'.",
+        );
+        assert!(dup.is_none());
+
+        // 超长 message 截断到 240 字符并带省略号。
+        acp.push_stderr_for_test(&format!(
+            "data: {{\"error\":{{\"message\":\"{}\"}}}}",
+            "x".repeat(500)
+        ));
+        let long = upstream_api_error_detail(&err, Some(&acp), "boom");
+        assert!(long
+            .as_deref()
+            .map(|m| m.chars().count() <= 241)
+            .unwrap_or(false));
+    }
+
+    #[test]
+    fn upstream_api_error_detail_surfaces_cli_stream_failure() {
+        use crate::acp_client::AcpClient;
+        let acp = AcpClient::test_stub(true);
+        acp.push_stderr_for_test(
+            "2026-11-17T10:18:11.527900Z ERROR Failed to deserialize MessageStreamEvent from stream error=missing field `signature` raw_data={\"content_block\":{\"thinking\":\"\",\"type\":\"thinking\"},\"index\":0,\"type\":\"content_block_start\"}",
+        );
+
+        // CLI 流反序列化失败：RPC 只有泛化 serialization error，取 stderr 的真实原因。
+        let err = AgentError::new(
+            AgentErrorCode::AgentCrashed,
+            "Internal error (code -32603, data: {\"message\":\"serialization error: missing field `signature`\"})",
+        );
+        let detail = upstream_api_error_detail(&err, Some(&acp), "Internal error (code -32603)");
+        assert_eq!(
+            detail.as_deref(),
+            Some("Failed to deserialize MessageStreamEvent from stream error=missing field `signature` raw_data={\"content_block\":{\"thinking\":\"\",\"type\":\"thinking\"},\"index\":0,\"type\":\"content_block_start\"}")
+        );
+
+        // 无 ERROR 行时不附加。
+        let clean = AcpClient::test_stub(true);
+        assert!(upstream_api_error_detail(&err, Some(&clean), "boom").is_none());
     }
 
     #[test]

@@ -80,7 +80,7 @@ export type ErrorDeckCode =
 export type ErrorDeckResolveOpts = {
   timeout?: boolean;
   disconnected?: boolean;
-  /** Active provider route from Host `providers_list.activeSource`. */
+  /** Current chat's provider route from its composer preference. */
   activeSource?: "official" | "custom" | null;
 };
 

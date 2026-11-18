@@ -389,33 +389,110 @@ impl SessionManager {
         // chat is now idle, drop the old process before the no-op / unpark
         // paths reuse spawn flags (P0-5 / #598).
         if self.pending_soft_respawn.lock().contains_key(&meta.id) {
-            self.flush_pending_soft_respawn(&app, &meta.id).await;
+            self.flush_pending_soft_respawn_during_connect(&app, &meta.id)
+                .await;
+            let pending_after_flush = self.pending_soft_respawn.lock().contains_key(&meta.id);
+            let session_busy = self.session_is_busy(&meta.id);
+            if pending_after_flush && !session_busy {
+                return Err("PENDING_SESSION_SETTINGS".into());
+            }
         }
 
         // Resolve model / effort / permission / mode for this project+session scope.
         let prefs =
             store::resolve_composer_prefs(meta.project_id.as_deref(), Some(meta.id.as_str()));
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
-        let route =
+        let session_model_is_stored = meta
+            .model_id
+            .as_deref()
+            .is_some_and(|model_id| !model_id.trim().is_empty());
+        let stored_provider_id = meta.provider_id.clone();
+        let requested_route =
             crate::providers::connect_route_id(ssh_alias.is_some(), meta.provider_id.as_deref());
-        let agent_model = if ssh_alias.is_some() {
-            let m = prefs.model_id.trim();
-            if m.is_empty() || crate::providers::is_custom_provider_id(m) {
-                crate::providers::OFFICIAL_CATALOG_MODEL.to_string()
-            } else {
-                m.to_string()
+        let route = crate::providers::existing_session_route(
+            &requested_route,
+            &prefs.model_id,
+            session_model_is_stored,
+        );
+        if ssh_alias.is_none()
+            && !crate::providers::is_session_provider_official(&requested_route)
+            && crate::providers::is_session_provider_official(&route)
+        {
+            let official_provider = crate::providers::SESSION_PROVIDER_OFFICIAL.to_string();
+            if let Err(error) =
+                store::save_provider_on_session(Some(&meta.id), official_provider.clone())
+            {
+                tracing::warn!(
+                    target: "session",
+                    session = %meta.id,
+                    error = %error,
+                    "failed to persist official provider fallback"
+                );
             }
-        } else {
-            crate::providers::spawn_model_for_provider(&route, &prefs.model_id)
-        };
-        // Generic custom set_model repeats the section id. Official and
-        // Grok Build-compatible relays send a catalog id. Spawn `--model`
-        // is the section id, or that catalog id for those two routes.
-        let session_model = if ssh_alias.is_some() {
-            agent_model.clone()
-        } else {
-            crate::providers::session_set_model_id_for(&route, &prefs.model_id)
-        };
+            meta.provider_id = Some(official_provider);
+        }
+        let tracked_route = self
+            .inner
+            .lock()
+            .as_ref()
+            .filter(|session| session.app_session_id == meta.id)
+            .and_then(|session| {
+                session
+                    .acp
+                    .as_ref()
+                    .map(|acp| acp.route_provider_id().to_string())
+            })
+            .or_else(|| {
+                self.background.lock().get(&meta.id).and_then(|session| {
+                    session
+                        .acp
+                        .as_ref()
+                        .map(|acp| acp.route_provider_id().to_string())
+                })
+            })
+            .or_else(|| {
+                self.parked
+                    .lock()
+                    .get(&meta.id)
+                    .map(|session| session.acp.route_provider_id().to_string())
+            });
+        let route_changed = requested_route != route
+            || tracked_route
+                .as_deref()
+                .is_some_and(|active_route| active_route != route);
+        if route_changed {
+            self.queue_pending_soft_respawn(&meta.id, "effort");
+            self.flush_pending_soft_respawn_during_connect(&app, &meta.id)
+                .await;
+            let busy = self.session_is_busy(&meta.id);
+            if self.pending_soft_respawn.lock().contains_key(&meta.id) && !busy {
+                return Err("PENDING_SESSION_SETTINGS".into());
+            }
+            if !busy {
+                meta.agent_session_id = None;
+            }
+        }
+        let composer_model_for_route = crate::providers::session_composer_model_id_for_route(
+            stored_provider_id.as_deref(),
+            &route,
+            &prefs.model_id,
+            session_model_is_stored,
+        );
+        let agent_model = crate::providers::session_model_id_for_route(
+            stored_provider_id.as_deref(),
+            &route,
+            &composer_model_for_route,
+        );
+        let session_model = agent_model.clone();
+        // spawn/session/set_model 使用的 id 可能是通用 provider section id，
+        // 推理目录查找必须使用 Composer 保存的上游 model id。
+        let effort_model = crate::providers::effort_model_id_for_route(
+            &route,
+            &composer_model_for_route,
+            &agent_model,
+        );
+        let effective_effort =
+            crate::providers::effective_reasoning_effort(&route, &effort_model, &prefs.effort);
 
         // Pending CLI --fork-session: must cold-spawn so open can call session/fork.
         // Never no-op / unpark a warm process that still holds the source agent id.
@@ -508,11 +585,20 @@ impl SessionManager {
             let mut guard = self.inner.lock();
             if let Some(s) = guard.as_mut() {
                 if s.app_session_id == meta.id && s.acp.as_ref().is_some_and(|c| c.is_alive()) {
+                    let busy = Self::live_session_is_busy(s);
+                    let route_matches = s
+                        .acp
+                        .as_ref()
+                        .is_none_or(|acp| acp.route_provider_id() == route);
+                    if !route_matches && busy {
+                        self.queue_pending_soft_respawn(&meta.id, "effort");
+                    }
                     let preserve = Self::should_preserve_live_process(s);
                     let ready_match = matches!(s.fsm.state(), SessionState::Ready)
-                        && !Self::live_session_is_busy(s)
+                        && !busy
+                        && route_matches
                         && s.project_path == project_path
-                        && s.effort.as_deref() == Some(prefs.effort.as_str());
+                        && s.effort.as_deref() == effective_effort.as_deref();
                     if preserve || ready_match {
                         Self::touch_activity_locked(s);
                         tracing::info!(
@@ -557,7 +643,7 @@ impl SessionManager {
             if let Some(live) = self.unpark_to_live(&meta.id) {
                 // Spawn flags are process-level. Effort / policy mismatch
                 // cannot be hot-patched — kill and fall through to cold spawn.
-                let effort_ok = live.effort.as_deref() == Some(prefs.effort.as_str());
+                let effort_ok = live.effort.as_deref() == effective_effort.as_deref();
                 let policy_ok = live.policy == policy;
                 let route_ok = live
                     .acp
@@ -567,7 +653,7 @@ impl SessionManager {
                     tracing::info!(
                         session = %meta.id,
                         parked_effort = ?live.effort,
-                        want_effort = %prefs.effort,
+                        want_effort = ?effective_effort,
                         parked_policy = ?live.policy,
                         "unpark spawn-flag mismatch — cold spawn"
                     );
@@ -588,7 +674,7 @@ impl SessionManager {
                     // Refresh prefs on shell (model may have changed in UI).
                     let mut live = live;
                     live.model_id = Some(prefs.model_id.clone());
-                    live.effort = Some(prefs.effort.clone());
+                    live.effort = effective_effort.clone();
                     live.product_mode = Some(prefs.mode.clone());
                     live.policy = policy;
                     live.project_path = project_path.clone();
@@ -623,6 +709,7 @@ impl SessionManager {
                                     tracing::warn!("acp set_mode on unpark soft-fail: {e}");
                                 }
                             }
+                            push_connected_effort(&acp, &sid, effective_effort.as_deref()).await;
                         }
                     }
                     if allowlist_refusal {
@@ -744,7 +831,7 @@ impl SessionManager {
                 stream_last_was_assistant: false,
                 stream_attachments: Vec::new(),
                 model_id: Some(prefs.model_id.clone()),
-                effort: Some(prefs.effort.clone()),
+                effort: effective_effort.clone(),
                 product_mode: Some(prefs.mode.clone()),
                 project_path: project_path.clone(),
                 allow_cache: SessionAllowCache::default(),
@@ -839,8 +926,8 @@ impl SessionManager {
                 // Only an ownerless prewarm process may cross a session boundary.
                 // Mid-turn background keeps exclusive ownership of its process
                 // so session/load on a peer cannot poison that journal.
-                // Route class must follow active_route(), not prefs.model_id.
-                // Custom channels store the *upstream* model in session prefs
+                // Route class follows this chat's stored provider, not
+                // prefs.model_id. Custom channels store the *upstream* model
                 // (e.g. deepseek-v4-flash), which is_custom_provider_id rejects
                 // — processes were mis-labeled official and reused after
                 // auth.json was stripped (#528 intermittent re-login).
@@ -859,7 +946,7 @@ impl SessionManager {
                         p_sandbox,
                         p_custom,
                         policy,
-                        &prefs.effort,
+                        effective_effort.as_deref(),
                         &eff_sandbox,
                         target_custom,
                     )
@@ -879,12 +966,8 @@ impl SessionManager {
                     if p_policy != policy {
                         parts.push(format!("policy {}≠{}", p_policy.as_str(), policy.as_str()));
                     }
-                    if p_effort != Some(prefs.effort.as_str()) {
-                        parts.push(format!(
-                            "effort {:?}≠{:?}",
-                            p_effort,
-                            Some(prefs.effort.as_str())
-                        ));
+                    if p_effort != effective_effort.as_deref() {
+                        parts.push(format!("effort {:?}≠{:?}", p_effort, effective_effort));
                     }
                     if p_sandbox.unwrap_or("off") != eff_sandbox.as_str() {
                         parts.push(format!(
@@ -1018,7 +1101,7 @@ impl SessionManager {
                         target: "session",
                         session = %meta.id,
                         target_policy = %policy.as_str(),
-                        target_effort = %prefs.effort,
+                        target_effort = ?effective_effort,
                         target_sandbox = %eff_sandbox,
                         target_custom_route = target_custom,
                         "connect reuse rejected (cold spawn): {}",
@@ -1064,7 +1147,7 @@ impl SessionManager {
                         // Connect is not a user turn — load replay must drop.
                         s.prompt_in_flight = false;
                         s.model_id = Some(prefs.model_id.clone());
-                        s.effort = Some(prefs.effort.clone());
+                        s.effort = effective_effort.clone();
                         s.product_mode = Some(prefs.mode.clone());
                         s.policy = policy;
                         s.project_path = project_path.clone();
@@ -1092,7 +1175,7 @@ impl SessionManager {
                                 s.process_id = reused_process.clone();
                                 s.meta.agent_session_id = Some(agent_sid.clone());
                                 s.model_id = Some(prefs.model_id.clone());
-                                s.effort = Some(prefs.effort.clone());
+                                s.effort = effective_effort.clone();
                                 s.product_mode = Some(prefs.mode.clone());
                                 s.policy = policy;
                                 s.project_path = project_path.clone();
@@ -1120,20 +1203,14 @@ impl SessionManager {
                         // model while the composer and live shell showed the
                         // resolved one.
                         let session_model = connect_set_model_argument(
-                            ssh_alias.is_some(),
                             &route,
+                            meta.provider_id.as_deref(),
                             &session_model,
                             disk_session_model_id(&meta.id).as_deref(),
                         );
-                        if let Err(err) = apply_connected_model(
-                            self,
-                            &acp_align,
-                            &agent_sid,
-                            &session_model,
-                            resumed,
-                            journal_has_history,
-                        )
-                        .await
+                        if let Err(err) =
+                            apply_connected_model(&acp_align, &agent_sid, &route, &session_model)
+                                .await
                         {
                             return Ok(self
                                 .disconnect_after_allowlist_refusal(
@@ -1304,7 +1381,7 @@ impl SessionManager {
                 prefs.model_id.clone()
             }),
             route_provider_id: Some(cold_start_route_provider_id(ssh_alias.as_deref(), &route)),
-            effort: Some(prefs.effort.clone()),
+            effort: effective_effort.clone(),
             permission_policy: Some(prefs.permission_policy.clone()),
             product_mode: Some(prefs.mode.clone()),
             sandbox_profile: Some(sandbox_for_spawn),
@@ -1331,6 +1408,8 @@ impl SessionManager {
                         .as_ref()
                         .map(|s| s.trim())
                         .filter(|s| !s.is_empty()),
+                    !crate::providers::is_session_provider_official(&route),
+                    &route,
                 )
             },
             max_agent_turns: meta.max_agent_turns,
@@ -1610,7 +1689,7 @@ impl SessionManager {
                         s.meta.effort = Some(prefs.effort.clone());
                         s.meta.permission_policy = Some(prefs.permission_policy.clone());
                         s.model_id = Some(prefs.model_id.clone());
-                        s.effort = Some(prefs.effort.clone());
+                        s.effort = effective_effort.clone();
                         s.product_mode = Some(prefs.mode.clone());
                         s.backend = "grok_agent_stdio".into();
                         s.needs_history_bootstrap = need_bootstrap;
@@ -1642,25 +1721,19 @@ impl SessionManager {
                 // per-model section when one exists (same id as spawn). Official
                 // and proxy relays send the catalog id (#1000, #1394).
                 let session_model = connect_set_model_argument(
-                    ssh_alias.is_some(),
                     &route,
+                    meta.provider_id.as_deref(),
                     &session_model,
                     disk_session_model_id(&meta.id).as_deref(),
                 );
-                if let Err(err) = apply_connected_model(
-                    self,
-                    &client,
-                    &agent_sid,
-                    &session_model,
-                    resumed,
-                    journal_has_history,
-                )
-                .await
+                if let Err(err) =
+                    apply_connected_model(&client, &agent_sid, &route, &session_model).await
                 {
                     return Ok(self
                         .disconnect_after_allowlist_refusal(&app, &client, &process_id, err)
                         .await);
                 }
+                push_connected_effort(&client, &agent_sid, effective_effort.as_deref()).await;
                 emit_host_exit_heal(&app, &meta.id);
                 Ok(self.snapshot())
             }
@@ -1841,6 +1914,24 @@ impl SessionManager {
         self.prewarm_inner(app, true).await;
     }
 
+    /// Drop the ownerless prewarm process. A provider edit can change the
+    /// config.toml that process already read, and its reuse gate only compares
+    /// policy / effort / sandbox / route.
+    pub async fn retire_prewarm(&self) {
+        self.prewarm_epoch
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let ready = {
+            let mut pw = self.prewarm.lock();
+            match std::mem::replace(&mut *pw, PrewarmState::None) {
+                PrewarmState::Ready(p) => Some(p.acp),
+                PrewarmState::Spawning { .. } | PrewarmState::None => None,
+            }
+        };
+        if let Some(acp) = ready {
+            Self::kill_acp_bounded(&acp).await;
+        }
+    }
+
     fn clear_prewarm_if_current(&self, epoch: u64) {
         let mut pw = self.prewarm.lock();
         if self.prewarm_epoch.load(std::sync::atomic::Ordering::SeqCst) == epoch
@@ -1917,14 +2008,48 @@ impl SessionManager {
         // the global defaults when no session exists yet. A global-default
         // prewarm (policy=ask) never matched this user's always-approve(YOLO)
         // sessions, so connect cold-spawned every time.
-        let last_sid = store::load_sessions_index()
+        let last_session = store::load_sessions_index()
             .into_iter()
             .filter(|s| !s.archived)
-            .max_by_key(|s| s.updated_at)
-            .map(|s| s.id.clone());
+            .max_by_key(|s| s.updated_at);
+        let last_sid = last_session.as_ref().map(|s| s.id.clone());
         let prefs = store::resolve_composer_prefs(None, last_sid.as_deref());
         let policy = PermissionPolicy::parse(&prefs.permission_policy);
-        let agent_model = crate::providers::agent_spawn_model_id(&prefs.model_id);
+        // Warm process must match the route the next chat is likely to open.
+        let session_model_is_stored = last_session
+            .as_ref()
+            .and_then(|session| session.model_id.as_deref())
+            .is_some_and(|model_id| !model_id.trim().is_empty());
+        let prewarm_route = crate::providers::existing_session_route(
+            &crate::providers::session_route_provider_id(
+                last_session.as_ref().and_then(|s| s.provider_id.as_deref()),
+            ),
+            &prefs.model_id,
+            session_model_is_stored,
+        );
+        let prewarm_composer_model = crate::providers::session_composer_model_id_for_route(
+            last_session
+                .as_ref()
+                .and_then(|session| session.provider_id.as_deref()),
+            &prewarm_route,
+            &prefs.model_id,
+            session_model_is_stored,
+        );
+        let agent_model = crate::providers::session_model_id_for_route(
+            last_session.as_ref().and_then(|s| s.provider_id.as_deref()),
+            &prewarm_route,
+            &prewarm_composer_model,
+        );
+        let effort_model = crate::providers::effort_model_id_for_route(
+            &prewarm_route,
+            &prewarm_composer_model,
+            &agent_model,
+        );
+        let prewarm_effort = crate::providers::effective_reasoning_effort(
+            &prewarm_route,
+            &effort_model,
+            &prefs.effort,
+        );
         // Default-workspace cwd only. Project sessions with a non-off OS
         // sandbox must cold-spawn (#986) — Seatbelt locks write roots here.
         // Must exist for Command::current_dir (spawn fails silently otherwise).
@@ -1933,11 +2058,16 @@ impl SessionManager {
         let effective_sandbox = store::resolve_sandbox_profile(&settings.sandbox_profile, None);
         let spawn_opts = crate::acp_client::SpawnOptions {
             model_id: Some(agent_model),
-            effort: Some(prefs.effort.clone()),
+            effort: prewarm_effort.clone(),
             permission_policy: Some(prefs.permission_policy.clone()),
             product_mode: Some(prefs.mode.clone()),
             sandbox_profile: Some(effective_sandbox.clone()),
-            extra_rules: crate::official_aux::merge_extra_rules(None),
+            route_provider_id: Some(prewarm_route.clone()),
+            extra_rules: crate::official_aux::merge_extra_rules(
+                None,
+                !crate::providers::is_session_provider_official(&prewarm_route),
+                &prewarm_route,
+            ),
             // Director stays on this default. session/new reads the setting
             // later, so toggling it does not require a new process.
             ..Default::default()
@@ -1980,7 +2110,7 @@ impl SessionManager {
                     acp: client.clone(),
                     process_id,
                     policy,
-                    effort: Some(prefs.effort),
+                    effort: prewarm_effort,
                     sandbox_profile: Some(effective_sandbox),
                     model_id: Some(prefs.model_id),
                     created_at: Instant::now(),
@@ -2067,13 +2197,13 @@ impl SessionManager {
         p_sandbox: Option<&str>,
         p_custom_route: bool,
         policy: PermissionPolicy,
-        effort: &str,
+        effort: Option<&str>,
         sandbox: &str,
         target_custom_route: bool,
     ) -> bool {
         alive
             && p_policy == policy
-            && p_effort == Some(effort)
+            && p_effort == effort
             && p_sandbox.unwrap_or("off") == sandbox
             && p_custom_route == target_custom_route
     }
@@ -2235,28 +2365,21 @@ pub(crate) fn should_kill_parked_after_flag_mismatch(
 
 /// Route id stored on a cold-started ACP process.
 ///
-/// SSH sessions are official-only. `None` follows `active_route()` and would
-/// prepare a custom global relay's auth for a remote official chat.
+/// SSH sessions are official-only; a missing route is official too.
 /// `session/set_model` id for a connect that already spawned.
 ///
 /// A model saved on the row after spawn wins. Empty disk keeps the id this
 /// handshake already resolved.
 pub(crate) fn connect_set_model_argument(
-    ssh: bool,
     route: &str,
+    stored_provider: Option<&str>,
     spawned: &str,
     disk_model: Option<&str>,
 ) -> String {
     let Some(raw) = disk_model.map(str::trim).filter(|s| !s.is_empty()) else {
         return spawned.to_string();
     };
-    if ssh {
-        if crate::providers::is_custom_provider_id(raw) {
-            return crate::providers::OFFICIAL_CATALOG_MODEL.to_string();
-        }
-        return raw.to_string();
-    }
-    crate::providers::session_set_model_id_for(route, raw)
+    crate::providers::session_model_id_for_route(stored_provider, route, raw)
 }
 
 /// CLI `allowed_models` rejection. Other `session/set_model` failures stay soft.
@@ -2269,57 +2392,65 @@ pub(crate) fn set_model_refusal_is_allowlist(err: &str) -> bool {
             || lower.contains("not allowed"))
 }
 
-/// `session/set_model` after open. A window chosen on the new-chat composer
-/// rides along on the first empty session. A resumed chat keeps its own window.
+/// 连接建立后经标准 ACP `session/set_config_option` 显式对齐档位。
+///
+/// CLI 实测（1.0.88）：sealed config 中用户级 `default_reasoning_effort`
+/// 会覆盖 spawn flag `--reasoning-effort`（仅在 `--model` 选中自定义路由
+/// 模型时发生），且 `session/load` 恢复的是 CLI 侧存储档位而非 spawn
+/// 参数。这里以 App prefs 解析出的有效档位为准补一次下发，使档位不再
+/// 依赖 spawn flag 的隐式传递。
+///
+/// value 原样透传用户配置的档位 id（含 none / max / 自定义 id）：CLI
+/// 允许自定义思考强度，非法值由网关上游拒绝，Host 不在 RPC 档集层
+/// 过滤。软失败不影响连接。
+async fn push_connected_effort(client: &AcpClient, agent_sid: &str, effort: Option<&str>) {
+    let Some(id) = effort.map(str::trim).filter(|id| !id.is_empty()) else {
+        return;
+    };
+    if let Err(e) = SessionManager::with_soft_rpc_budget(client.set_config_option_str(
+        agent_sid,
+        "reasoning_effort",
+        id,
+    ))
+    .await
+    {
+        tracing::warn!("acp effort set_config_option after connect soft-fail: {e}");
+    }
+}
+
+/// `session/set_model` after open, with the model's configured context window.
+///
+/// The window comes from the resolved route's model data: the official catalog
+/// value or the custom provider's model row / channel / 1M default. Applying
+/// it here keeps a resumed chat on the same size its model declares, and a
+/// model switch never carries the previous model's window.
 ///
 /// An allowlist refusal is returned so the caller can stop the turn. A transient
 /// RPC error is still logged and ignored.
 async fn apply_connected_model(
-    mgr: &SessionManager,
     client: &AcpClient,
     agent_sid: &str,
+    route: &str,
     session_model: &str,
-    resumed: bool,
-    journal_has_history: bool,
 ) -> Result<(), String> {
-    let staged = if !resumed && !journal_has_history {
-        (*mgr.pending_context_window.lock()).or_else(|| {
-            crate::models_catalog::list_available_models()
-                .models
-                .iter()
-                .find(|model| model.id == session_model)
-                .and_then(crate::models_catalog::app_default_context_window)
-        })
+    let window = if crate::providers::is_session_provider_official(route) {
+        crate::models_catalog::effective_model_window(session_model)
     } else {
-        None
+        crate::providers::provider_model_context_window(route, session_model)
     };
-    if let Some(window) = staged {
-        let supported = crate::models_catalog::list_available_models()
-            .models
-            .iter()
-            .any(|model| {
-                model.id == session_model
-                    && crate::models_catalog::model_supports_context_window(model, window)
-            });
-        if supported {
-            match SessionManager::with_soft_rpc_budget(client.set_context_window_for(
-                agent_sid,
-                session_model,
-                window,
-            ))
-            .await
-            {
-                Ok(()) => {
-                    *mgr.pending_context_window.lock() = None;
-                    return Ok(());
-                }
-                Err(e) if set_model_refusal_is_allowlist(&e) => return Err(e),
-                Err(e) => {
-                    tracing::warn!("acp set_context_window after session open soft-fail: {e}");
-                }
+    if let Some(window) = window {
+        match SessionManager::with_soft_rpc_budget(client.set_context_window_for(
+            agent_sid,
+            session_model,
+            window,
+        ))
+        .await
+        {
+            Ok(()) => return Ok(()),
+            Err(e) if set_model_refusal_is_allowlist(&e) => return Err(e),
+            Err(e) => {
+                tracing::warn!("acp set_context_window after session open soft-fail: {e}");
             }
-        } else {
-            *mgr.pending_context_window.lock() = None;
         }
     }
     match SessionManager::with_soft_rpc_budget(client.set_model_for(agent_sid, session_model)).await
@@ -2405,18 +2536,29 @@ mod connect_preserve_tests {
         let _ = crate::paths::ensure_app_dirs();
 
         assert_eq!(
-            connect_set_model_argument(false, "official", "grok-4.7", None),
+            connect_set_model_argument("official", None, "grok-4.7", None),
             "grok-4.7",
             "no disk model keeps the spawn-time id"
         );
         assert_eq!(
-            connect_set_model_argument(false, "official", "grok-4.7", Some("  ")),
+            connect_set_model_argument("official", None, "grok-4.7", Some("  ")),
             "grok-4.7"
         );
         assert_eq!(
-            connect_set_model_argument(false, "official", "grok-4.7", Some("grok-4.5")),
+            connect_set_model_argument("official", None, "grok-4.7", Some("grok-4.5")),
             "grok-4.5",
             "a model saved after Ready replaces the spawn-time id"
+        );
+
+        assert_eq!(
+            connect_set_model_argument(
+                "official",
+                Some("deleted-relay"),
+                "grok-4.7",
+                Some("grok-4.6"),
+            ),
+            crate::providers::OFFICIAL_CATALOG_MODEL,
+            "a deleted relay's model cannot override the official fallback after spawn",
         );
 
         let session =
@@ -2434,7 +2576,7 @@ mod connect_preserve_tests {
         let disk = disk_session_model_id(&session.id);
         assert_eq!(disk.as_deref(), Some("grok-4.5"));
         assert_eq!(
-            connect_set_model_argument(false, "official", "grok-4.7", disk.as_deref()),
+            connect_set_model_argument("official", None, "grok-4.7", disk.as_deref()),
             "grok-4.5"
         );
 
@@ -2777,7 +2919,7 @@ mod reuse_gate_tests {
             Some("off"),
             true, // custom route
             ask(),
-            "high",
+            Some("high"),
             "off",
             true,
         ));
@@ -2789,7 +2931,7 @@ mod reuse_gate_tests {
             Some("off"),
             true,
             PermissionPolicy::parse("bypassPermissions"),
-            "high",
+            Some("high"),
             "off",
             true,
         ));
@@ -2801,7 +2943,7 @@ mod reuse_gate_tests {
             Some("off"),
             true,
             ask(),
-            "low",
+            Some("low"),
             "off",
             true,
         ));
@@ -2813,7 +2955,7 @@ mod reuse_gate_tests {
             Some("off"),
             true,
             ask(),
-            "high",
+            Some("high"),
             "workspace",
             true,
         ));
@@ -2825,7 +2967,7 @@ mod reuse_gate_tests {
             Some("off"),
             true,
             ask(),
-            "high",
+            Some("high"),
             "off",
             false,
         ));
@@ -2837,7 +2979,30 @@ mod reuse_gate_tests {
             Some("off"),
             true,
             ask(),
-            "high",
+            Some("high"),
+            "off",
+            true,
+        ));
+        // No effective effort (unsupported model) only reuses a no-flag process.
+        assert!(SessionManager::reuse_gate(
+            true,
+            ask(),
+            None,
+            Some("off"),
+            true,
+            ask(),
+            None,
+            "off",
+            true,
+        ));
+        assert!(!SessionManager::reuse_gate(
+            true,
+            ask(),
+            Some("high"),
+            Some("off"),
+            true,
+            ask(),
+            None,
             "off",
             true,
         ));

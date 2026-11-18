@@ -331,4 +331,5 @@ export const trSession = {
   "session.journalLoadTimedOut": "Sohbet geçmişinin yüklenmesi çok uzun sürdü. Varsa önbellekteki döküm gösteriliyor; tekrar denemek için sohbeti yeniden açın.",
   "session.journalLoadFailed": "Sohbet geçmişi yüklenemedi. Varsa önbellekteki döküm gösteriliyor; tekrar denemek için sohbeti yeniden açın.",
   "session.connectClaimTimedOut": "Bu sohbet için başka bir bağlantı hâlâ sürüyor. Birazdan tekrar deneyin.",
+  "session.pendingSettingsRetry": "Bekleyen oturum ayarları uygulanamadı. Yeniden denemek için tekrar bağlanın.",
 };

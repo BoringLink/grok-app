@@ -50,6 +50,7 @@ export const jaCore = {
   "effort.low": "低",
   "effort.xhigh": "最高",
   "effort.max": "最高",
+  "effort.none": "オフ",
   "mode.agent": "エージェント",
   "mode.plan": "プラン",
   "mode.ask": "質問",

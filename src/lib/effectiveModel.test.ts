@@ -1,31 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   composerModelChipLabel,
-  effectiveComposerModel,
   resolveCustomRouteDisplay,
 } from "./effectiveModel";
-
-describe("effectiveComposerModel", () => {
-  it("keeps the official catalog selection on the official route", () => {
-    expect(effectiveComposerModel("grok-4.5", null)).toBe("grok-4.5");
-    expect(effectiveComposerModel("grok-3", undefined)).toBe("grok-3");
-  });
-
-  it("prefers the active custom provider request model", () => {
-    expect(effectiveComposerModel("grok-4.5", "deepseek-v4-flash")).toBe(
-      "deepseek-v4-flash",
-    );
-  });
-
-  it("falls back to the composer selection when provider model is blank", () => {
-    expect(effectiveComposerModel("grok-4.5", "")).toBe("grok-4.5");
-    expect(effectiveComposerModel("grok-4.5", "   ")).toBe("grok-4.5");
-  });
-
-  it("keeps the composer selection when no provider is active", () => {
-    expect(effectiveComposerModel("grok-4.5", "")).toBe("grok-4.5");
-  });
-});
 
 describe("resolveCustomRouteDisplay", () => {
   const provider = {
@@ -62,6 +39,92 @@ describe("resolveCustomRouteDisplay", () => {
     const shown = resolveCustomRouteDisplay(provider, "grok-4.7");
     expect(shown?.chip.name).toBe("DeepSeek Chat");
     expect(shown?.requestModel).toBe("deepseek-chat");
+  });
+});
+
+describe("resolveCustomRouteDisplay with an explicitly cleared catalog", () => {
+  const cleared = {
+    name: "Cleared",
+    model: "deepseek-chat",
+    models: [] as Array<{ id: string; name?: string | null }>,
+  };
+
+  it("shows the model a saved session still routes on", () => {
+    // Act
+    const shown = resolveCustomRouteDisplay(cleared, "deepseek-reasoner");
+
+    // Assert — the stored id, not the cleared channel `model`
+    expect(shown?.chip).toEqual({
+      name: "deepseek-reasoner",
+      model: "deepseek-reasoner",
+    });
+    expect(shown?.requestModel).toBe("deepseek-reasoner");
+  });
+
+  it("shows nothing when the session stores no model", () => {
+    expect(resolveCustomRouteDisplay(cleared, "")).toBeNull();
+    expect(resolveCustomRouteDisplay(cleared, "   ")).toBeNull();
+  });
+
+  it("keeps the channel model for a legacy provider with no catalog", () => {
+    // Arrange — a missing catalog is the legacy read, not a clear
+    const legacy = { name: "Legacy", model: "llama3" };
+    const nullCatalog = { name: "Legacy", model: "llama3", models: null };
+
+    // Act / Assert
+    expect(resolveCustomRouteDisplay(legacy, "")?.chip).toEqual({
+      name: "llama3",
+      model: "llama3",
+    });
+    expect(resolveCustomRouteDisplay(legacy, "")?.requestModel).toBe("llama3");
+    expect(resolveCustomRouteDisplay(nullCatalog, "")?.requestModel).toBe(
+      "llama3",
+    );
+  });
+});
+
+describe("resolveCustomRouteDisplay with a corrupt catalog", () => {
+  const corrupt = {
+    name: "Corrupt",
+    model: "m1",
+    modelCatalogCorrupt: true,
+    models: [{ id: "m1", name: "M1" }],
+  };
+
+  it("shows the saved session id the recovered rows omit", () => {
+    // Act — the host kept the session's own child section
+    const shown = resolveCustomRouteDisplay(corrupt, "m2");
+
+    // Assert — the saved id, not the recovered channel row
+    expect(shown?.chip).toEqual({ name: "m2", model: "m2" });
+    expect(shown?.requestModel).toBe("m2");
+  });
+
+  it("labels a row the recovered rows still list", () => {
+    const shown = resolveCustomRouteDisplay(corrupt, "m1");
+
+    expect(shown?.chip).toEqual({ name: "M1", model: "m1" });
+    expect(shown?.requestModel).toBe("m1");
+  });
+
+  it("keeps the existing fallback for an unknown id on a readable catalog", () => {
+    // Arrange — the flag is what gates the saved id, not the missing row
+    const readable = { ...corrupt, modelCatalogCorrupt: false };
+
+    // Act / Assert
+    expect(resolveCustomRouteDisplay(readable, "m2")?.chip).toEqual({
+      name: "M1",
+      model: "m1",
+    });
+    expect(resolveCustomRouteDisplay(readable, "m2")?.requestModel).toBe("m1");
+  });
+
+  it("does not fabricate a session model when none is stored", () => {
+    const shown = resolveCustomRouteDisplay(corrupt, "");
+
+    // The recovered row is the actual channel fallback, not a saved pick
+    expect(shown?.chip).toEqual({ name: "M1", model: "m1" });
+    expect(shown?.requestModel).toBe("m1");
   });
 });
 

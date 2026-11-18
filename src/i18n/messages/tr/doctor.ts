@@ -39,6 +39,7 @@ export const trDoctor = {
   "setup.account.keyPh": "xai-…",
   "setup.account.relay": "Özel aktarıcı",
   "setup.account.relayHint": "OpenAI uyumlu temel adres + anahtar",
+  "setup.account.relayPerChatHint": "Yeni sohbetler resmi modelle başlar. Her sohbet için composer'da bir relay modeli seçin.",
   "setup.account.basePh": "https://api.example.com/v1",
   "setup.account.relayKeyPh": "API anahtarı",
   "setup.account.protocol": "Mesaj biçimi",

@@ -522,8 +522,13 @@ export function SettingsPage({
     loadComposerDraftStatsPref(),
   );
   /** Pending scroll target after search jump / deep link. */
-  const pendingAnchorRef = useRef<string | null>(null);
+  const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
   const [highlightAnchor, setHighlightAnchor] = useState<string | null>(null);
+  /**
+   * Bumped when a section mounts a queued target that is not painted yet
+   * (provider form anchors): re-runs the pending scroll now that it exists.
+   */
+  const [anchorMountTick, setAnchorMountTick] = useState(0);
 
   // External focus (ship → PR hub): queue scroll when prop arrives.
   // Same-tab re-entry still works because the scroll effect also depends on
@@ -531,8 +536,12 @@ export function SettingsPage({
   useEffect(() => {
     const a = (focusAnchorId ?? "").trim();
     if (!a) return;
-    pendingAnchorRef.current = a;
+    setPendingAnchor(a);
   }, [focusAnchorId]);
+
+  const onPendingAnchorMounted = useCallback(() => {
+    setAnchorMountTick((n) => n + 1);
+  }, []);
   /**
    * Phone drill-down: "index" = section list only; "detail" = one section full-width.
    * Always start on the index so opening 設定 never lands on a squeezed two-column pane.
@@ -1053,7 +1062,7 @@ export function SettingsPage({
       nextTab?: string | null,
       anchorId?: string | null,
     ) => {
-      if (anchorId) pendingAnchorRef.current = anchorId;
+      if (anchorId) setPendingAnchor(anchorId);
       const resolved = resolveTab(id, nextTab ?? defaultTabFor(id));
       // Optimistic: update strip/content before parent re-renders.
       if (id === section) {
@@ -1102,15 +1111,16 @@ export function SettingsPage({
 
   // Scroll + brief highlight after tab/section paint or external focus.
   useEffect(() => {
-    const anchor = pendingAnchorRef.current;
+    const anchor = pendingAnchor;
     if (!anchor) return;
     const timer = window.setTimeout(() => {
       const el = document.getElementById(anchor);
       if (!el) {
-        // Content not painted yet — keep pending for the next section/tab paint.
+        // 目标尚未渲染（如 provider 表单内锚点）：留在 pending，等面板经
+        // onPendingAnchorMounted 或切换 section/tab 后重试。
         return;
       }
-      pendingAnchorRef.current = null;
+      setPendingAnchor(null);
       el.scrollIntoView({ block: "center", behavior: "smooth" });
       setHighlightAnchor(anchor);
       window.setTimeout(() => setHighlightAnchor(null), 1600);
@@ -1118,7 +1128,14 @@ export function SettingsPage({
     }, 60);
     return () => window.clearTimeout(timer);
     // focusAnchorId: re-run when ship deep-link re-focuses the same tab.
-  }, [section, activeTab, focusAnchorId, onFocusAnchorConsumed]);
+  }, [
+    section,
+    activeTab,
+    pendingAnchor,
+    anchorMountTick,
+    focusAnchorId,
+    onFocusAnchorConsumed,
+  ]);
 
   const backToPhoneIndex = useCallback(() => {
     if (!phoneLayout) return;
@@ -1692,6 +1709,8 @@ export function SettingsPage({
     projectPath,
     onOpenProjectFileInResources,
     focusAnchorId,
+    pendingAnchor,
+    onPendingAnchorMounted,
     prHubHighlightPr,
     onFocusAnchorConsumed,
     onSkillsPrefsChanged,

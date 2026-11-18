@@ -59,11 +59,9 @@ import { Tip } from "@/components/ui/tooltip";
 import {
   DEFAULT_EFFORT,
   DEFAULT_MODEL_ID,
-  effortCatalogForRoute,
-  effortOptionsFromProvider,
-  findModel,
-  GROK_BUILD_EFFORTS,
   GROK_BUILD_MODELS,
+  effortDisplayLabel,
+  findModel,
   pickDefaultEffort,
   type ModelOption,
 } from "@/lib/grokCatalog";
@@ -76,7 +74,8 @@ import {
   normalizeAutomationRoute,
   parseAutomationModelValue,
 } from "@/lib/automationModelRoute";
-import { resolveProviderEfforts } from "@/lib/providerModelConfig";
+import { resolveSessionEffortOptions, pickSessionEffort } from "@/lib/sessionEffort";
+import type { CustomProvider } from "@/lib/api";
 import { automationsBackgroundStatus } from "@/lib/automationsBackgroundStatus";
 
 export type AutomationsFilter = "all" | "enabled" | "paused";
@@ -89,14 +88,10 @@ export interface AutomationsProjectOption {
 }
 
 /** Custom provider channel available for scheduled runs. */
-export interface AutomationsProviderOption {
-  id: string;
-  name: string;
-  model: string;
-  baseUrl: string;
-  models?: { id: string; name: string }[];
-  efforts?: { id: string; name?: string; label?: string; isDefault?: boolean }[];
-}
+export type AutomationsProviderOption = Pick<
+  CustomProvider,
+  "id" | "name" | "model" | "baseUrl" | "models" | "efforts"
+>;
 
 /** Chat the user can reuse for a scheduled task. */
 export interface AutomationsSessionOption {
@@ -944,34 +939,44 @@ export function AutomationsPage({
   const selectedProvider = effectiveProviders.find(
     (p) => p.id === form.providerId,
   );
-  const selectedEfforts = selectedProvider
-    ? effortOptionsFromProvider(
-        resolveProviderEfforts(selectedProvider, form.modelId),
-      ) ?? GROK_BUILD_EFFORTS
-    : effortCatalogForRoute({
-        model: findModel(form.modelId, modelCatalog),
+  const effortResolution = selectedProvider
+    ? resolveSessionEffortOptions({
+        source: "custom",
+        provider: selectedProvider,
+        modelId: form.modelId,
+      })
+    : resolveSessionEffortOptions({
+        source: "official",
+        modelId: form.modelId,
+        officialModels: modelCatalog,
       });
+  const selectedEfforts = effortResolution.options;
+  const effortI18nLabels = {
+    low: t("effort.low"),
+    medium: t("effort.medium"),
+    high: t("effort.high"),
+    xhigh: t("effort.xhigh"),
+    max: t("effort.max"),
+    none: t("effort.none"),
+  };
   const effortOptions = selectedEfforts.map((e) => ({
     value: e.id,
-    label:
-      e.label ||
-      (["low", "medium", "high", "xhigh"].includes(e.id)
-        ? t(`effort.${e.id}` as "effort.high")
-        : e.id),
+    label: effortDisplayLabel(e, effortI18nLabels),
   }));
 
   // A legacy effort may not exist on the selected model's ladder. Clamp it
   // before save so the stored value is one the CLI actually accepts.
   useEffect(() => {
-    if (!panelOpen || effortOptions.some((o) => o.value === form.effort)) {
+    if (!panelOpen) return;
+    if (!effortResolution.supported || effortResolution.options.length === 0) {
+      if (form.effort) setForm((f) => ({ ...f, effort: "" }));
       return;
     }
-    const fallback =
-      selectedEfforts.find((e) => e.isDefault)?.id ?? effortOptions[0]?.value;
-    if (fallback) {
+    const fallback = pickSessionEffort(effortResolution.options, form.effort);
+    if (fallback !== form.effort) {
       setForm((f) => ({ ...f, effort: fallback }));
     }
-  }, [form.effort, effortOptions, panelOpen, selectedEfforts]);
+  }, [effortResolution.options, effortResolution.supported, form.effort, panelOpen]);
 
   const freqOptions = [
     { value: "daily", label: t("automations.freq.daily") },
@@ -2003,33 +2008,34 @@ export function AutomationsPage({
                           pick.kind === "official"
                             ? "official"
                             : pick.providerId;
-                        const nextEfforts =
+                        const nextResolution =
                           pick.kind === "official"
-                            ? effortCatalogForRoute({
-                                model: findModel(pick.modelId, modelCatalog),
+                            ? resolveSessionEffortOptions({
+                                source: "official",
+                                modelId: pick.modelId,
+                                officialModels: modelCatalog,
                               })
                             : (() => {
                                 const provider = effectiveProviders.find(
-                                  (p) => p.id === pick.providerId,
+                                  (candidate) => candidate.id === pick.providerId,
                                 );
                                 return provider
-                                  ? effortOptionsFromProvider(
-                                      resolveProviderEfforts(
-                                        provider,
-                                        pick.modelId,
-                                      ),
-                                    ) ?? GROK_BUILD_EFFORTS
-                                  : GROK_BUILD_EFFORTS;
+                                  ? resolveSessionEffortOptions({
+                                      source: "custom",
+                                      provider,
+                                      modelId: pick.modelId,
+                                    })
+                                  : null;
                               })();
                         setForm((f) => ({
                           ...f,
                           providerId: nextProvider,
                           modelId: pick.modelId,
-                          effort: nextEfforts.some((e) => e.id === f.effort)
-                            ? f.effort
-                            : (nextEfforts.find((e) => e.isDefault)?.id ??
-                              nextEfforts[0]?.id ??
-                              f.effort),
+                          effort:
+                            nextResolution?.supported &&
+                            nextResolution.options.length > 0
+                              ? pickSessionEffort(nextResolution.options, f.effort)
+                              : "",
                         }));
                       }}
                       aria-label={t("automations.field.model")}
@@ -2037,12 +2043,18 @@ export function AutomationsPage({
                   </div>
                   <div className="auto-field auto-field--row">
                     <span>{t("automations.field.effort")}</span>
-                    <Select
-                      value={form.effort}
-                      options={effortOptions}
-                      onChange={(v) => setForm((f) => ({ ...f, effort: v }))}
-                      aria-label={t("automations.field.effort")}
-                    />
+                    {effortResolution.supported ? (
+                      <Select
+                        value={form.effort}
+                        options={effortOptions}
+                        onChange={(v) => setForm((f) => ({ ...f, effort: v }))}
+                        aria-label={t("automations.field.effort")}
+                      />
+                    ) : (
+                      <p className="auto-field__hint" role="status">
+                        {t("composer.effortUnavailable")}
+                      </p>
+                    )}
                   </div>
                 </>
               ) : (

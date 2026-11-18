@@ -86,13 +86,12 @@ describe("composer column matches chat width", () => {
       'className="composer__model-bar composer__chip-shell"',
     );
     expect(modelMenu).not.toContain("cmm__nested");
-    expect(modelMenu).toContain("cmm__hub");
     expect(modelMenu).toContain("cmm__stage");
     expect(modelMenu).toContain("cmm__pop--flyout");
-    expect(modelMenu).toContain("cmm__window-edit");
-    expect(modelMenu).toContain('showFlyout("models")');
-    expect(modelMenu).toContain('showFlyout("window")');
-    expect(modelMenu).not.toContain('goPane("models")');
+    expect(modelMenu).toContain("modelsOpen");
+    expect(modelMenu).toContain("showFlyout");
+    expect(modelMenu).not.toContain("cmm__advanced");
+    expect(modelMenu).not.toContain("goPane");
     const modelIdx = app.indexOf("<ComposerModelMenu");
     const accessIdx = app.indexOf("<ComposerAccessMenu");
     const shellIdx = app.indexOf("ref={composerShellRef}");
@@ -101,7 +100,7 @@ describe("composer column matches chat width", () => {
     expect(modelIdx).toBeLessThan(shellIdx);
     expect(accessIdx).toBeGreaterThan(shellIdx);
     expect(app.indexOf("<ComposerModelMenu", modelIdx + 1)).toBe(-1);
-    expect(modelMenu).toContain("cmm__stops");
+    expect(modelMenu).toContain("cmm__stops-rail");
     expect(modelMenu).toMatch(
       /const triggerText = `\$\{modelLabel\} \$\{eLabel\}`/,
     );
@@ -125,18 +124,12 @@ describe("composer column matches chat width", () => {
     expect(composer1).toMatch(
       /\.cmm__pop\.cmm__pop--access\s*\{[^}]*width:\s*300px/s,
     );
-    expect(composer1).toMatch(/\.cmm__stops-rail/);
+    expect(composer1).toMatch(/\.cmm__stops-rail\s*\{/);
     expect(composer1).toMatch(/@keyframes cmm-pop-up/);
     expect(composer1).toMatch(
       /\.cmm__pop\.cmm__pop--portal\.cmm__pop--flyout/,
     );
-    expect(composer1).toMatch(
-      /\.cmm__pop\.cmm__pop--portal\.cmm__pop--flyout\[data-kind="window"\]/,
-    );
-    expect(composer1).toMatch(/\.cmm__window-edit\s*\{/);
-    expect(composer1).toMatch(
-      /\.cmm__inline-save\s*\{[^}]*min-height:\s*32px/s,
-    );
+    expect(composer1).not.toMatch(/\.cmm__effort-slider/);
     expect(composer1).not.toMatch(/\.cmm__nested\s*\{/);
     expect(composer1).not.toMatch(/\.cmm__back\s*\{/);
   });

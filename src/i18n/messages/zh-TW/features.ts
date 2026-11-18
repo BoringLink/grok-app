@@ -172,46 +172,46 @@ export const zhTWFeatures = {
   "managedSetup.error.rejected": "部署金鑰無效或已過期，請與管理員確認。",
   "managedSetup.error.signatureRejectedTitle": "託管簽名被拒絕",
   "managedSetup.error.signatureRejected": "CLI 拒絕了託管設定簽名或信封。請聯絡管理員；App 不會寫入未驗證原則。",
-  "modelAux.title": "輔助模型路由",
-  "modelAux.desc": "主模型負責對話與工具決策；側任務可指到更強的多模態模型（類似 Hermes 的 auxiliary 槽）。只寫入 [models] 任務鍵，絕不改主路由。",
-  "modelAux.loading": "正在載入模型分層…",
-  "modelAux.refresh": "重新整理",
-  "modelAux.saved": "輔助模型已儲存。下一回合將重連 Agent。",
-  "modelAux.sharedReadOnly": "目前為共用工作階段模式：應用程式不會改寫 ~/.grok。請切換到獨立模式，或在 CLI 中編輯 config.toml。",
-  "modelAux.mainDefault": "主模型 [models].default",
-  "modelAux.activeSource": "目前路由",
-  "modelAux.option.auto": "自動（CLI 預設）",
-  "modelAux.slot.imageDescription": "圖片辨識",
-  "modelAux.slot.imageDescriptionDesc": "主模型不支援視覺時，由該模型描述附件圖片。",
-  "modelAux.slot.webSearch": "網頁搜尋",
-  "modelAux.slot.webSearchDesc": "web_search 工具使用的模型（Grok 系對 backend search 支援較好）。",
-  "modelAux.slot.sessionSummary": "工作階段摘要",
-  "modelAux.slot.sessionSummaryDesc": "工作階段摘要 / 壓縮相關側任務使用的模型。",
-  "modelAux.slot.promptSuggestion": "提示建議",
-  "modelAux.slot.promptSuggestionDesc": "CLI 啟用提示建議時使用的模型。",
-  "modelAux.saveGrok": "省 Grok",
-  "modelAux.saveGrokHint": "四個輔助槽全部指向 {model}。主模型不變。",
-  "modelAux.saveGrokNoTarget": "尚無可用的多模態目標。請先設定官方 API Key（帳戶 → 自訂供應商 → 官方）或 Grok 能力中轉（Amux / 雲驛），再試。",
-  "modelAux.saveGrokConfirmTitle": "套用「省 Grok」預設？",
-  "modelAux.saveGrokConfirmBody": "將把圖片辨識、網頁搜尋、工作階段摘要、提示建議全部設為 {model}。主模型與目前路由保持不變。",
-  "modelAux.saveGrokDone": "輔助槽已全部指向 {model}",
-  "modelAux.resetDefaults": "還原官方預設",
-  "modelAux.resetConfirmTitle": "還原 CLI 預設？",
-  "modelAux.resetConfirmBody": "將清除四個輔助槽的自訂覆蓋，恢復 Grok Build 內建預設。主模型與自訂供應商不會改動。若要主路由也回官方，請到「自訂供應商」對官方點 Use。",
-  "modelAux.resetDone": "輔助槽已恢復為 CLI 預設。",
-  "modelAux.footnote": "提示：切回官方訂閱後，可在此點「還原官方預設」，讓側任務不再走自訂中轉。",
-  "modelAux.pathLabel": "設定檔",
-  "modelAux.needOfficialKey": "主路由為自訂中轉時，若要用官方 Grok 做輔助識圖/搜尋，請在「自訂供應商 → 官方」填寫官方 API Key（自訂路由下不會掛 auth.json）。",
-  "modelAux.health.officialIncomplete": "輔助槽指向了官方 Grok，但官方模型設定不完整或缺少 API Key。圖片不會以像素注入（避免 DeepSeek image_url 400）。處理：在「自訂供應商 → 官方」填寫 xAI API Key；或點「還原官方預設」清空壞設定；或新增 Amux/雲驛 後點「省 Grok」。",
-  "modelAux.health.textOnlyNoVision": "主模型為純文字，且識圖輔助尚未就緒。附件圖片目前只會作為路徑說明傳送，設定好多模態輔助槽後即可識圖。",
-  "modelAux.nextStepsTitle": "純文字主模型如何啟用識圖",
-  "modelAux.nextStep1": "方案 A — 官方：帳戶 → 自訂供應商 → 官方 → 貼上 xAI API Key，再把「圖片辨識」設為 Official · grok-4.7（或點「省 Grok」）。",
-  "modelAux.nextStep2": "方案 B — 中轉：新增 Amux / 雲驛（模型含 grok-4.7），把輔助槽指到該通道（或點「省 Grok」）。",
-  "modelAux.nextStep3": "若輔助槽卡在無效的官方 Grok id，請先點「還原官方預設」清空，再重新設定。",
-  "modelAux.goProviders": "開啟自訂供應商",
-  "modelAux.officialAuxTitle": "官方側信道",
-  "modelAux.officialAuxReady": "官方 Grok 側信道就緒（{reason}）。工作階段 MCP「official-aux」提供 web_search 與 x_keyword_search / x_semantic_search / x_user_search / x_thread_fetch / vision_describe，經隔離 grok -p 呼叫（不走 DeepSeek 驗證）。",
-  "modelAux.officialAuxMissing": "官方側信道未就緒。請先 Grok 官方登入（CLI auth）或在「自訂供應商 → 官方」填寫 API Key，然後重新連線工作階段。",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   "costRollup.title": "費用彙總",
   "costRollup.settingsDesc": "依專案或工作階段與日期彙總已知 token 用量（來自即時 usage 與工作階段 journal，若有）。可依專案／工作階段篩選、匯出純文字摘要，或清除本機樣本環。僅為估算 — 非帳單。",
   "costRollup.lead": "近 {days} 天 agent 回報 token。下方可切換依專案 / 依工作階段，並用篩選晶片收窄範圍。無已知用量的工作階段記為「未知」。",

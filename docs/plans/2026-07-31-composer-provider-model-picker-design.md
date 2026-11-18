@@ -1,5 +1,7 @@
 # Composer provider model picker — design
 
+> **SUPERSEDED (2026-11, BOR-151..157):** global provider activation (`providersActivate` / `activeSource` / `effectiveComposerModel`) was replaced by session-scoped routing (`composer_prefs_set` per chat, official fallback). Do not implement from this plan; see docs/llm-wiki/providers.md and model-routing.md.
+
 **Date:** 2026-07-31  
 **Branch:** `feat/composer-effective-model-via-provider`  
 **Status:** Approved
