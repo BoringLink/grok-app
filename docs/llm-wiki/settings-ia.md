@@ -23,7 +23,7 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 |---------|------|
 | general | `composer` · `permissions` · `agent`（含 experimental memory、memory browser、**memory embedding 0.2.117**） · `app` |
 | appearance | `theme`（主题：浅深色 / 皮肤 / 背景 / 文字色与阴影）· `interface`（界面：聊天展示，含默认浏览器 / 打开链接前确认） |
-| account | `official` · `providers` · `extras`（「拓展」：官方工具注入开关） |
+| account | `official` · `providers`（含 `settings-anchor-prov-models` 模型目录/模型齿轮，已登记搜索） · `extras`（「拓展」：官方工具注入开关） |
 | extensions | `plugins`（含 Discover **+** 本地路径安装 `settings-anchor-ext-plugins-install`）· `mcp` · `skills`（含 **探测 Claude/Cursor 技能** 开关，`#/settings/extensions/skills` → `settings-anchor-ext-skills-discover`）· `rules`（Cursor 式规则编辑，写 CLI 真实文件）· `commands`（斜杠命令 markdown）· `agents` · `hooks`（**无** `market` / `apps`；`#/settings/extensions/market` → `plugins` 可安装目录锚点） |
 | runtime | `cli` · `connection` · `ssh` · `network` · `pool` · `tools` · `privacy` |
 | remote_im（远程控制） | `im`（IM 通信）· `mirror`（手机镜像） |
