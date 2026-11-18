@@ -112,9 +112,6 @@ pub struct SessionManager {
     /// effort change, proxy, …). Flushed when the turn becomes idle so
     /// the next process picks up spawn flags (P0-5 / #598).
     pub(super) pending_soft_respawn: Mutex<HashMap<String, String>>,
-    /// Context window chosen on the new-chat composer, before `session/new`.
-    /// Applied on the first empty session, then cleared.
-    pub(super) pending_context_window: Mutex<Option<u64>>,
     /// 测试专用：强制 `set_config_option` 热路径的结果，绕过真实 RPC。
     #[cfg(test)]
     pub(super) hot_effort_result: Mutex<Option<Result<(), String>>>,
@@ -142,7 +139,6 @@ impl SessionManager {
             connect_lock_busy_ticks: AtomicU32::new(0),
             post_turn_journal_locks: Mutex::new(HashMap::new()),
             pending_soft_respawn: Mutex::new(HashMap::new()),
-            pending_context_window: Mutex::new(None),
             #[cfg(test)]
             hot_effort_result: Mutex::new(None),
         }

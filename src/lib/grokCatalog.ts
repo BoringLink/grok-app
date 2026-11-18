@@ -28,9 +28,8 @@ export interface ModelOption {
   /** Model context window in tokens (live-merged from `initialize`). Catalog default. */
   contextWindow?: number | null;
   /**
-   * Selectable windows from CLI `info.context_windows` / `contextWindows`.
-   * More than one entry is what makes `/context-window` and the Advanced
-   * flyout list available. Order is the catalog order.
+   * Windows from CLI `info.context_windows` / `contextWindows`.
+   * Order is the catalog order.
    */
   contextWindows?: number[] | null;
 }

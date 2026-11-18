@@ -17,13 +17,20 @@ Host 同时读取当前会话数据模式的 `GROK_HOME/models_cache.json` 与�
 
 ## 上下文窗口
 
-CLI `models_cache.json` 的 `info.context_window` 是目录默认值（Grok 4.7 / Fast / 4.6 / 4.5 当前为 **256000**）。可选长度在 `info.context_windows`（当前 `[256000, 500000]`）。静态兜底与此相同。`initialize` 的 live 覆盖只改默认值，不抹掉列表。
+**官方模型窗口来自模型目录，App 不提供窗口选择；Composer 只负责模型与推理档，`/context-window` 命令已移除。**
 
-列表多于一项时，用 `/context-window` 命令列出并选择这些长度；Composer 模型菜单只保留模型与推理档，不再嵌入窗口入口。选中后对**当前 live 会话**发 `session/set_model`，只带 `_meta.contextWindow`（正整数 token 数），不带 `reasoningEffort`，CLI 因此保持当前推理档。不改已保存的模型偏好。
+CLI `models_cache.json` 的 `info.context_window` 是目录默认值（Grok 4.7 / Fast / 4.6 / 4.5 当前为 **256000**）。可选长度在 `info.context_windows`（当前 `[256000, 500000]`）。静态兜底与此相同。`initialize` 的 live 覆盖只改目录值，不抹掉列表。
 
-`/context-window` 与 Grok Build pager 相同：接受 `256k` / `1m`（大小写不敏感）或原始 token 数；空参数给出用法和当前值；不在列表里则报未知。新对话还没有 `session/new` 时，选择会记在 composer 上并在第一次建会话的 `session/set_model` 里带上 `_meta.contextWindow`，菜单立刻显示新长度。只有一个或没有可选窗口时命令说明该模型不能选。缩到比当前用量更小的窗口时，自动压缩由 CLI 自己做。
+| 模型来源 | 配置位置 | 生效规则 |
+|----------|----------|----------|
+| 官方模型 | 模型目录（`models_cache.json`） | 目录声明 500k 时新会话用 **500k**，否则用目录默认；每次连接与切换模型按目标模型重新解析。 |
+| 自定义提供商模型 | 设置 → 账户 → Providers → 模型齿轮 | 模型行 `contextWindow` → 通道 `contextWindow` → **1M** 兜底；用户显式值优先于 `/models` 元数据。 |
 
-自定义提供商的上下文窗口在提供商设置 → 模型齿轮里按模型编辑（写入 `app_models` 与通道配置，不走这条 ACP）。API 未提供时使用 **1M** 默认；用户显式值优先于 `/models` 元数据。
+官方模型不写 App 侧的窗口覆盖文件；目录值就是唯一来源。
+
+Host 在**连接**（新建与恢复会话）和**切换模型**时解析当前会话模型的生效窗口，并通过 `session/set_model` 的 `_meta.contextWindow` 下发；切换模型不会沿用上一个模型的窗口。官方模型在目录没有窗口时不下发，交给 CLI 默认；自定义提供商始终下发解析出的窗口（模型行 → 通道 → 1M 兜底），与 Composer 显示保持一致。自定义 provider 的已配置窗口同时写入 config.toml，spawn 与 ACP 两条路径保持一致。
+
+Composer 的 `currentModelWindow` 只用于编辑器上下文用量分母：live 用量优先，其次模型生效窗口。`/context` 仍展示真实用量，不因配置变化伪造数据。
 
 `/context` 读取 live 会话的 `x.ai/session/info`（先 `_x.ai/session/info`）。用量菜单按 pager 拆成系统提示、消息、推理/开销、空闲，工具定义、技能、工作流、MCP 标成已经算进上面的行。自动压缩阈值和剩余 token 用快照里的 `autoCompactThresholdPercent`。没有活动会话时命令报错，不把这行发给模型。会话信息拿不到时，菜单仍用原来的角色估算。
 

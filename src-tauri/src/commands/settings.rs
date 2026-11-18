@@ -376,19 +376,6 @@ pub async fn session_set_model(
     Ok(composer_prefs_resolution(prefs, session_id.as_deref()))
 }
 
-/// Set the live session context window. Does not rewrite composer model prefs.
-#[tauri::command]
-pub async fn session_set_context_window(
-    mgr: State<'_, Arc<SessionManager>>,
-    tokens: u64,
-    session_id: Option<String>,
-) -> Result<(), String> {
-    let (_live_proj, live_sess) = mgr.current_context_ids();
-    let session_id = session_id.or(live_sess);
-    mgr.set_context_window(tokens, session_id.as_deref())
-        .await
-}
-
 /// Live session info for `/context` (`x.ai/session/info`).
 #[tauri::command]
 pub async fn session_context_info(

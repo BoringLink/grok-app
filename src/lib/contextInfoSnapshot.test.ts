@@ -112,7 +112,7 @@ describe("contextShareLabel", () => {
 });
 
 describe("classifyContextSlashLine", () => {
-  it("accepts /context and leaves /context-window alone", () => {
+  it("accepts /context and ignores the removed /context-window name", () => {
     expect(classifyContextSlashLine("/context")).toEqual({ args: "" });
     expect(classifyContextSlashLine("  /Context  ")).toEqual({ args: "" });
     expect(classifyContextSlashLine("/context-window")).toBeNull();

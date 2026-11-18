@@ -1208,15 +1208,9 @@ impl SessionManager {
                             &session_model,
                             disk_session_model_id(&meta.id).as_deref(),
                         );
-                        if let Err(err) = apply_connected_model(
-                            self,
-                            &acp_align,
-                            &agent_sid,
-                            &session_model,
-                            resumed,
-                            journal_has_history,
-                        )
-                        .await
+                        if let Err(err) =
+                            apply_connected_model(&acp_align, &agent_sid, &route, &session_model)
+                                .await
                         {
                             return Ok(self
                                 .disconnect_after_allowlist_refusal(
@@ -1732,15 +1726,8 @@ impl SessionManager {
                     &session_model,
                     disk_session_model_id(&meta.id).as_deref(),
                 );
-                if let Err(err) = apply_connected_model(
-                    self,
-                    &client,
-                    &agent_sid,
-                    &session_model,
-                    resumed,
-                    journal_has_history,
-                )
-                .await
+                if let Err(err) =
+                    apply_connected_model(&client, &agent_sid, &route, &session_model).await
                 {
                     return Ok(self
                         .disconnect_after_allowlist_refusal(&app, &client, &process_id, err)
@@ -2405,11 +2392,6 @@ pub(crate) fn set_model_refusal_is_allowlist(err: &str) -> bool {
             || lower.contains("not allowed"))
 }
 
-/// `session/set_model` after open. A window chosen on the new-chat composer
-/// rides along on the first empty session. A resumed chat keeps its own window.
-///
-/// An allowlist refusal is returned so the caller can stop the turn. A transient
-/// RPC error is still logged and ignored.
 /// 连接建立后经标准 ACP `session/set_config_option` 显式对齐档位。
 ///
 /// CLI 实测（1.0.88）：sealed config 中用户级 `default_reasoning_effort`
@@ -2439,52 +2421,39 @@ async fn push_connected_effort(client: &AcpClient, agent_sid: &str, effort: Opti
     }
 }
 
+/// `session/set_model` after open, with the model's configured context window.
+///
+/// The window comes from the resolved route's model data: the official catalog
+/// value or the custom provider's model row / channel / 1M default. Applying
+/// it here keeps a resumed chat on the same size its model declares, and a
+/// model switch never carries the previous model's window.
+///
+/// An allowlist refusal is returned so the caller can stop the turn. A transient
+/// RPC error is still logged and ignored.
 async fn apply_connected_model(
-    mgr: &SessionManager,
     client: &AcpClient,
     agent_sid: &str,
+    route: &str,
     session_model: &str,
-    resumed: bool,
-    journal_has_history: bool,
 ) -> Result<(), String> {
-    let staged = if !resumed && !journal_has_history {
-        (*mgr.pending_context_window.lock()).or_else(|| {
-            crate::models_catalog::list_available_models()
-                .models
-                .iter()
-                .find(|model| model.id == session_model)
-                .and_then(crate::models_catalog::app_default_context_window)
-        })
+    let window = if crate::providers::is_session_provider_official(route) {
+        crate::models_catalog::effective_model_window(session_model)
     } else {
-        None
+        crate::providers::provider_model_context_window(route, session_model)
     };
-    if let Some(window) = staged {
-        let supported = crate::models_catalog::list_available_models()
-            .models
-            .iter()
-            .any(|model| {
-                model.id == session_model
-                    && crate::models_catalog::model_supports_context_window(model, window)
-            });
-        if supported {
-            match SessionManager::with_soft_rpc_budget(client.set_context_window_for(
-                agent_sid,
-                session_model,
-                window,
-            ))
-            .await
-            {
-                Ok(()) => {
-                    *mgr.pending_context_window.lock() = None;
-                    return Ok(());
-                }
-                Err(e) if set_model_refusal_is_allowlist(&e) => return Err(e),
-                Err(e) => {
-                    tracing::warn!("acp set_context_window after session open soft-fail: {e}");
-                }
+    if let Some(window) = window {
+        match SessionManager::with_soft_rpc_budget(client.set_context_window_for(
+            agent_sid,
+            session_model,
+            window,
+        ))
+        .await
+        {
+            Ok(()) => return Ok(()),
+            Err(e) if set_model_refusal_is_allowlist(&e) => return Err(e),
+            Err(e) => {
+                tracing::warn!("acp set_context_window after session open soft-fail: {e}");
             }
-        } else {
-            *mgr.pending_context_window.lock() = None;
         }
     }
     match SessionManager::with_soft_rpc_budget(client.set_model_for(agent_sid, session_model)).await

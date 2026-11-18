@@ -198,6 +198,12 @@ const APP_PARENT_PROVIDER_KEY: &str = "app_parent_provider";
 pub const PROVIDER_MODE_GENERIC: &str = "generic";
 pub const PROVIDER_MODE_GROK_BUILD_PROXY: &str = "grok_build_proxy";
 
+/// Custom providers without a model-row or channel window use this size, the
+/// same convenience default the App UI shows (`DEFAULT_CUSTOM_CONTEXT_WINDOW`
+/// in `src/lib/grokCatalog.ts`). Applied on connect and model switch so the
+/// CLI occupancy matches the Composer instead of the CLI's own default.
+pub const DEFAULT_CUSTOM_CONTEXT_WINDOW: u64 = 1_000_000;
+
 fn default_provider_mode() -> String {
     PROVIDER_MODE_GENERIC.to_string()
 }
@@ -3062,6 +3068,58 @@ pub fn is_valid_reasoning_effort_for_model(
     CUSTOM_FALLBACK_REASONING_EFFORTS.contains(&effort_id)
 }
 
+/// Effective context window for one custom-provider model.
+///
+/// `model_id` may be a catalog row id or a generic child section id. The
+/// model row wins over the channel field; when neither declares a window the
+/// custom-provider default applies. `None` is returned only when the route is
+/// official or the provider no longer exists, so the caller leaves the CLI
+/// default alone for a route the App cannot resolve.
+pub fn provider_model_context_window(provider_id: &str, model_id: &str) -> Option<u64> {
+    let route = provider_id.trim();
+    if route.is_empty() || is_session_provider_official(route) {
+        return None;
+    }
+    let provider = list_custom_providers()
+        .ok()?
+        .providers
+        .into_iter()
+        .find(|provider| provider.id == route)?;
+    let requested = model_id.trim();
+    let section_model = generic_sections_for_provider(route)
+        .into_iter()
+        .find(|section| section.section_id == requested)
+        .map(|section| section.model_id);
+    let lookup = if requested.is_empty() {
+        provider.model.trim().to_string()
+    } else {
+        requested.to_string()
+    };
+    Some(custom_window_from_row(
+        &provider,
+        &lookup,
+        section_model.as_deref(),
+    ))
+}
+
+/// Row window, then channel window, then [`DEFAULT_CUSTOM_CONTEXT_WINDOW`].
+fn custom_window_from_row(
+    provider: &CustomProvider,
+    model_id: &str,
+    section_model: Option<&str>,
+) -> u64 {
+    let row = provider
+        .models
+        .iter()
+        .find(|model| model.id.trim() == model_id)
+        .or_else(|| {
+            section_model.and_then(|id| provider.models.iter().find(|model| model.id.trim() == id))
+        });
+    row.and_then(|model| model.context_window.filter(|window| *window > 0))
+        .or_else(|| provider.context_window.filter(|window| *window > 0))
+        .unwrap_or(DEFAULT_CUSTOM_CONTEXT_WINDOW)
+}
+
 /// 按 provider/model 解析 CLI 实际使用的推理档位。
 ///
 /// 显式模型档位里的过期 id 回退到该模型默认值；未配置模型档位时使用
@@ -5024,6 +5082,56 @@ base_url = \"http://127.0.0.1:8080/v1\"
             supports_vision: false,
             extra_headers: vec![],
         }
+    }
+
+    #[test]
+    fn provider_model_context_window_prefers_row_then_channel() {
+        let mut provider = sample_provider("relay");
+        provider.model = "m".into();
+        provider.context_window = Some(900_000);
+        let mut row = ProviderModelEntry::named("m", "Model");
+        row.context_window = Some(1_000_000);
+        provider.models = vec![row];
+
+        assert_eq!(
+            custom_window_from_row(&provider, "m", None),
+            1_000_000,
+            "the catalog row wins over the channel field"
+        );
+        assert_eq!(
+            custom_window_from_row(&provider, "relay__m", Some("m")),
+            1_000_000,
+            "a generic child section resolves back to its catalog row"
+        );
+
+        provider.models.clear();
+        assert_eq!(
+            custom_window_from_row(&provider, "relay__m", Some("m")),
+            900_000,
+            "without a row the channel window applies"
+        );
+        provider.context_window = Some(0);
+        assert_eq!(
+            custom_window_from_row(&provider, "m", None),
+            DEFAULT_CUSTOM_CONTEXT_WINDOW,
+            "an unconfigured custom provider still applies the 1M default"
+        );
+    }
+
+    #[test]
+    fn custom_window_from_row_ignores_empty_row_window() {
+        let mut provider = sample_provider("relay");
+        provider.model = "m".into();
+        provider.context_window = None;
+        let mut row = ProviderModelEntry::named("m", "Model");
+        row.context_window = Some(0);
+        provider.models = vec![row];
+
+        assert_eq!(
+            custom_window_from_row(&provider, "m", None),
+            DEFAULT_CUSTOM_CONTEXT_WINDOW,
+            "a zero row window falls through to the 1M default"
+        );
     }
 
     #[test]
