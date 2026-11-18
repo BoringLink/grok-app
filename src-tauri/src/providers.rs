@@ -2459,31 +2459,33 @@ pub fn custom_provider_id_for_model_unique(model: &str) -> Option<String> {
     unique_model_owner(&list.providers, model)
 }
 
-/// [`custom_provider_id_for_model_unique`] that never writes the agent config.
+/// [`list_custom_providers`] that never writes the agent config.
 ///
 /// One-shot migrations must not heal or rewrite `config.toml` as a side effect
 /// (that belongs to the interactive provider list). A missing file means "no
 /// custom providers"; any other read error is reported so a caller holding a
 /// one-shot flag can retry instead of latching "no owner".
-pub fn custom_provider_id_for_model_unique_readonly(model: &str) -> Result<Option<String>, String> {
-    let model = model.trim();
-    if model.is_empty() || is_official_catalog_model(model) {
-        return Ok(None);
-    }
+pub fn list_custom_providers_readonly() -> Result<ProvidersListResult, String> {
     let path = agent_config_toml();
     let text = match fs::read_to_string(&path) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
         Err(error) => return Err(format!("agent config read failed: {error}")),
     };
-    let list = build_list_result(agent_home_dir(), path, &text);
-    Ok(unique_model_owner(&list.providers, model))
+    Ok(build_list_result(agent_home_dir(), path, &text))
 }
 
-fn unique_model_owner(providers: &[CustomProvider], model: &str) -> Option<String> {
-    let mut hits = providers
-        .iter()
-        .filter(|p| p.id != model && (p.model == model || p.models.iter().any(|m| m.id == model)));
+/// Provider that uniquely lists `model` in an already-read provider list.
+///
+/// Pair with [`list_custom_providers_readonly`] so a caller resolving many
+/// model ids parses `config.toml` once.
+pub(crate) fn unique_model_owner(providers: &[CustomProvider], model: &str) -> Option<String> {
+    let mut hits = providers.iter().filter(|p| {
+        // A stored id equal to a provider's own section id is the channel alias
+        // the CLI sends, not a catalog model pick, so it never names an owner;
+        // such rows keep the official fallback.
+        p.id != model && (p.model == model || p.models.iter().any(|m| m.id == model))
+    });
     let first = hits.next()?;
     if hits.next().is_some() {
         return None;
@@ -3828,9 +3830,13 @@ pub fn remove_custom_provider(id: &str) -> Result<ProvidersListResult, String> {
     if parse_model_sections(&text).iter().any(|s| s.id == id) {
         return Err(format!("failed to remove provider `{id}` from config"));
     }
-    // `[models].default` is a legacy CLI key: leave it untouched even when it
-    // names this provider. The deleted chat rows fall back to official in
-    // `fallback_sessions_for_provider`, and a stray default no longer routes.
+    // `[models].default` is a legacy CLI key the App never writes to route a
+    // chat, so a default naming another provider stays as stored. Only a
+    // default pointing at the section just removed is reset: left dangling, a
+    // spawn without `--model` would make the CLI read a deleted section.
+    if get_models_default(&text).as_deref() == Some(id.as_str()) {
+        text = set_models_default(&text, OFFICIAL_DEFAULT_MODEL);
+    }
     write_text(&path, &text)?;
     // The next connect for a chat on this provider falls back to official and
     // prepares its own auth under the spawn lock.
@@ -10107,8 +10113,8 @@ app_parent_provider = "proxy"
         );
         assert_eq!(
             get_models_default(&removed).as_deref(),
-            Some("zhipu"),
-            "removing a provider must not rewrite the legacy [models].default key"
+            Some(OFFICIAL_DEFAULT_MODEL),
+            "removing the provider the legacy default points at must reset it to `grok`"
         );
 
         upsert_custom_provider(UpsertProviderInput {
@@ -10189,6 +10195,24 @@ app_provider_mode = "generic"
 app_parent_provider = "relay"
 "#
         )
+    }
+
+    #[test]
+    fn removing_a_provider_leaves_a_foreign_legacy_default_alone() {
+        let config = "[models]\ndefault = \"keeper\"\n\n[model.keeper]\nmodel = \"keep-me\"\nbase_url = \"https://keep.example/v1\"\napi_key = \"sk-keep\"\n\n[model.doomed]\nmodel = \"doomed-model\"\nbase_url = \"https://doomed.example/v1\"\napi_key = \"sk-doomed\"\n";
+        with_seeded_agent_home("legacy-default-foreign", config, || {
+            remove_custom_provider("doomed").expect("remove");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            assert!(parse_model_sections(&after)
+                .iter()
+                .all(|s| s.id != "doomed"));
+            assert_eq!(
+                get_models_default(&after).as_deref(),
+                Some("keeper"),
+                "a default naming another provider must stay as stored"
+            );
+        });
     }
 
     fn relay_upsert(base_url: &str, provider_mode: &str) -> UpsertProviderInput {

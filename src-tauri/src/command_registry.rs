@@ -172,10 +172,9 @@ pub fn app_invoke_handler(
         commands::session_rewind_points,
         commands::session_rewind_execute,
         commands::session_fork,
-        // ── Secrets & provider ping ──
+        // ── Secrets ──
         commands::secrets_get_masked,
         commands::secrets_set,
-        commands::provider_ping,
         // ── Grok CLI / Go config import ──
         commands::import_grok_cli_config,
         commands::import_grok_go_config,

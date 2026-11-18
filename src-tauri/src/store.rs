@@ -1303,8 +1303,8 @@ pub fn load_settings() -> AppSettings {
 /// One-shot session provider backfill driven from [`load_settings`].
 ///
 /// Returns `true` when the flag was latched and settings must be persisted. A
-/// failed provider read leaves the flag alone so the next launch retries and
-/// keeps the official fallback meanwhile.
+/// failed sessions-index or provider read leaves the flag alone so the next
+/// launch retries and keeps the official fallback meanwhile.
 fn migrate_session_provider_backfill(settings: &mut AppSettings) -> bool {
     if settings.session_provider_backfill_migrated {
         return false;
@@ -1467,12 +1467,10 @@ fn migrate_official_effort_xhigh_rows(global_model_id: Option<&str>) {
 ///
 /// A row that already has a provider id is never rewritten, and `model_id`,
 /// `effort` and `updated_at` stay as stored — a migration must not reorder the
-/// sidebar. A failed provider read aborts the whole pass so the caller can
-/// retry instead of latching an "official" decision.
+/// sidebar. A failed index or provider read aborts the whole pass so the caller
+/// can retry instead of latching an "official" decision.
 pub(crate) fn backfill_session_provider_ids() -> Result<usize, String> {
-    // 每个 model id 只读一次 provider 列表。
-    let mut owners: HashMap<String, Option<String>> = HashMap::new();
-    let plan: HashMap<String, String> = load_sessions_index()
+    let candidates: Vec<(String, String)> = load_sessions_index_checked()?
         .into_iter()
         .filter(|session| {
             session
@@ -1486,21 +1484,23 @@ pub(crate) fn backfill_session_provider_ids() -> Result<usize, String> {
                 .as_deref()
                 .map(str::trim)
                 .filter(|model| !model.is_empty())?;
+            if crate::providers::is_official_catalog_model(model_id) {
+                return None;
+            }
             Some((session.id, model_id.to_string()))
         })
-        .map(|(session_id, model_id)| {
-            if !owners.contains_key(&model_id) {
-                let owner =
-                    crate::providers::custom_provider_id_for_model_unique_readonly(&model_id)?;
-                owners.insert(model_id.clone(), owner);
-            }
-            Ok(owners[&model_id]
-                .as_ref()
-                .map(|provider_id| (session_id, provider_id.clone())))
-        })
-        .collect::<Result<Vec<_>, String>>()?
+        .collect();
+    if candidates.is_empty() {
+        return Ok(0);
+    }
+    // One non-mutating config read for every model id in this pass.
+    let providers = crate::providers::list_custom_providers_readonly()?.providers;
+    let plan: HashMap<String, String> = candidates
         .into_iter()
-        .flatten()
+        .filter_map(|(session_id, model_id)| {
+            let provider_id = crate::providers::unique_model_owner(&providers, &model_id)?;
+            Some((session_id, provider_id))
+        })
         .collect();
     if plan.is_empty() {
         return Ok(0);
@@ -1510,7 +1510,6 @@ pub(crate) fn backfill_session_provider_ids() -> Result<usize, String> {
             let Some(provider_id) = plan.get(&session.id) else {
                 return changed;
             };
-            // 计划基于旧快照：写入前复查，窗口内用户已选的路由必须保留。
             if session
                 .provider_id
                 .as_deref()
@@ -2109,6 +2108,26 @@ pub fn load_sessions_index() -> Vec<SessionMeta> {
     let mut list: Vec<SessionMeta> = read_json_recover(&sessions_index_file());
     sort_sessions_by_pin_then_updated(&mut list);
     list
+}
+
+/// Read the sessions index for a one-shot migration, reporting failures.
+///
+/// [`load_sessions_index`] goes through `read_json_recover`, which quarantines a
+/// corrupt index and returns an empty list. A migration cannot tell that apart
+/// from "no rows to migrate", so it would latch its one-shot flag on a torn
+/// file. Missing file and empty file are an empty index; no repair happens here.
+fn load_sessions_index_checked() -> Result<Vec<SessionMeta>, String> {
+    let _ = ensure_app_dirs();
+    let path = sessions_index_file();
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("sessions index read failed: {error}")),
+    };
+    if text.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    serde_json::from_str(&text).map_err(|error| format!("sessions index parse failed: {error}"))
 }
 
 #[cfg(test)]
@@ -5934,6 +5953,41 @@ mod tests {
             let row = load_session_row(&session.id);
             assert_eq!(row.provider_id, None);
             assert_eq!(row.model_id.as_deref(), Some("glm-4.6"));
+        });
+    }
+
+    #[test]
+    fn backfill_refuses_a_torn_sessions_index() {
+        with_temp_app_home("session-provider-backfill-torn-index", |_| {
+            write_provider_config(&[("relay", "glm-4.6")]);
+            let session = legacy_session("glm-4.6", None);
+            let index = sessions_index_file();
+            let intact = fs::read_to_string(&index).expect("index");
+            const TORN: &str = "[{\"id\": \"torn\"";
+            fs::write(&index, TORN).expect("torn index");
+
+            let mut settings = AppSettings::default();
+            assert!(!migrate_session_provider_backfill(&mut settings));
+            assert!(
+                !settings.session_provider_backfill_migrated,
+                "a failed index read must not latch the one-shot flag"
+            );
+            assert!(backfill_session_provider_ids().is_err());
+            assert_eq!(
+                fs::read_to_string(&index).expect("index"),
+                TORN,
+                "the migration must neither repair nor rewrite a torn index"
+            );
+
+            fs::write(&index, &intact).expect("restore index");
+            assert_eq!(
+                backfill_session_provider_ids().expect("retry after repair"),
+                1
+            );
+            assert_eq!(
+                load_session_row(&session.id).provider_id.as_deref(),
+                Some("relay")
+            );
         });
     }
 
