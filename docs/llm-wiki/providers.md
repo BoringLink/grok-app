@@ -45,7 +45,7 @@ Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` s
 
 **Integer TOML fields:** Host writes `context_window = 1000000` (CLI-compatible). On `providers_list`, legacy quoted string forms are repaired in place. Other model edits must not drop or re-quote this field.
 
-**Official model windows** live in Settings → General → Composer → Available models, not in provider config. The App stores one override per model in `{app_data}/official-model-windows.json` (`{ "version": 1, "models": { "<modelId>": <tokens> } }`) and only accepts sizes the CLI catalog advertises. `models_list_available` reports the effective `contextWindow` with `contextWindowSource` (`user` / `catalog`). Clearing a row deletes the key so the catalog value applies again.
+**Official model windows** come from the CLI catalog. The App stores no per-model override and offers no window picker; `models_list_available` reports `contextWindow` / `contextWindows` as read from the catalog, and connect / model switch resolve the target model's window on the host.
 
 ### Model catalog read/write contract
 

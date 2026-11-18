@@ -314,35 +314,6 @@ pub async fn models_list_available() -> Result<crate::models_catalog::AvailableM
     Ok(crate::models_catalog::list_available_models())
 }
 
-/// Choose (or clear) one official model's context window.
-///
-/// Only sizes the model advertises are accepted. `tokens: None` removes the
-/// override so the CLI catalog value applies again; it stays allowed for a
-/// model that has since left the catalog, so a stale row remains clearable.
-#[tauri::command]
-pub async fn models_set_official_context_window(
-    model_id: String,
-    tokens: Option<u64>,
-) -> Result<crate::models_catalog::AvailableModelsResult, String> {
-    let id = model_id.trim();
-    if id.is_empty() {
-        return Err("model id is empty".into());
-    }
-    let catalog = crate::models_catalog::list_available_models();
-    let model = catalog.models.iter().find(|model| model.id == id);
-    if let Some(window) = tokens {
-        let model = model.ok_or_else(|| "model is not in the catalog".to_string())?;
-        if window == 0 {
-            return Err("context window must be positive".into());
-        }
-        if !crate::models_catalog::model_supports_context_window(model, window) {
-            return Err("context window is not offered by this model".into());
-        }
-    }
-    crate::official_model_windows::set_override(id, tokens)?;
-    Ok(crate::models_catalog::list_available_models())
-}
-
 fn session_provider_and_ssh(
     session_id: Option<&str>,
     project_id: Option<&str>,

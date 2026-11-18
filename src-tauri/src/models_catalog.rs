@@ -64,10 +64,6 @@ pub struct AvailableModel {
     /// Order is the catalog order. Empty when the CLI did not advertise a list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub context_windows: Vec<u64>,
-    /// Which layer produced `context_window`: `user` from Settings, or
-    /// `catalog` from the CLI cache / live handshake.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub context_window_source: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -190,7 +186,6 @@ fn insert_fallback_model(
             reasoning_efforts: efforts,
             context_window: Some(OFFICIAL_FALLBACK_CONTEXT_WINDOW),
             context_windows: OFFICIAL_FALLBACK_CONTEXT_WINDOWS.to_vec(),
-            context_window_source: None,
         },
     );
 }
@@ -462,26 +457,20 @@ pub fn list_available_models() -> AvailableModelsResult {
     let settings = store::load_settings();
     let agent_home = resolve_agent_grok_home(&settings.session_data_mode);
 
-    let mut result = list_available_models_from_caches(
+    list_available_models_from_caches(
         &[
             agent_home.join("models_cache.json"),
             user_grok_home().join("models_cache.json"),
         ],
         settings.model_id.as_deref(),
-    );
-    // App-owned per-model overrides win over the CLI catalog default. Values
-    // the model does not advertise are ignored by the apply step.
-    let overrides = crate::official_model_windows::read_overrides();
-    crate::official_model_windows::apply_overrides(&mut result.models, &overrides);
-    result
+    )
 }
 
 /// Effective configured context window for an official catalog model.
 ///
-/// `list_available_models` already merges Settings overrides. Without a user
-/// choice, keep the App's 500k default whenever the model advertises it;
-/// otherwise use the CLI catalog default. `None` means the catalog has no
-/// window for the model.
+/// The window comes from the CLI catalog: the App's 500k default whenever the
+/// model advertises it, otherwise the catalog default. `None` means the
+/// catalog has no window for the model.
 pub fn effective_model_window(model_id: &str) -> Option<u64> {
     let id = model_id.trim();
     if id.is_empty() {
@@ -494,14 +483,9 @@ pub fn effective_model_window(model_id: &str) -> Option<u64> {
 
 /// Window a session should apply for one catalog row.
 ///
-/// A Settings choice wins. Without one, prefer the App's 500k default when
-/// the model advertises it, then the catalog default.
+/// Prefer the App's 500k default when the model advertises it, then the
+/// catalog default.
 pub fn effective_window_for_model(model: &AvailableModel) -> Option<u64> {
-    if model.context_window_source.as_deref() == Some(crate::official_model_windows::SOURCE_USER) {
-        return model
-            .context_window
-            .filter(|window| model_supports_context_window(model, *window));
-    }
     app_default_context_window(model).or_else(|| model.context_window.filter(|window| *window > 0))
 }
 
@@ -548,7 +532,6 @@ fn list_available_models_from_caches(
                     reasoning_efforts: parsed.reasoning_efforts,
                     context_window: parsed.context_window,
                     context_windows: parsed.context_windows,
-                    context_window_source: None,
                 },
             );
         }
@@ -856,7 +839,6 @@ mod tests {
             reasoning_efforts: Vec::new(),
             context_window: grok.context_window,
             context_windows: grok.context_windows.clone(),
-            context_window_source: None,
         };
         assert!(model_supports_context_window(&supported, 256000));
         assert!(model_supports_context_window(&supported, 500000));
@@ -871,7 +853,6 @@ mod tests {
             reasoning_efforts: Vec::new(),
             context_window: Some(256_000),
             context_windows: vec![128_000, 256_000],
-            context_window_source: None,
         };
         assert_eq!(app_default_context_window(&camel_only), None);
         assert_eq!(
@@ -913,23 +894,19 @@ mod tests {
             reasoning_efforts: Vec::new(),
             context_window: Some(500_000),
             context_windows: Vec::new(),
-            context_window_source: None,
         }
     }
 
     #[test]
-    fn effective_window_prefers_user_then_app_default() {
-        let mut user = stub_model("user-window");
-        user.context_window = Some(256_000);
-        user.context_windows = vec![256_000, 500_000];
-        user.context_window_source = Some("user".into());
-        assert_eq!(effective_window_for_model(&user), Some(256_000));
-
+    fn effective_window_prefers_app_default_then_catalog_default() {
         let mut catalog = stub_model("catalog-window");
         catalog.context_window = Some(256_000);
         catalog.context_windows = vec![256_000, 500_000];
-        catalog.context_window_source = Some("catalog".into());
         assert_eq!(effective_window_for_model(&catalog), Some(500_000));
+
+        let mut declared_only = stub_model("catalog-default");
+        declared_only.context_window = Some(256_000);
+        assert_eq!(effective_window_for_model(&declared_only), Some(256_000));
 
         let mut none = stub_model("no-window");
         none.context_window = None;

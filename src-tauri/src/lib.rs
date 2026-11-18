@@ -130,8 +130,6 @@ mod models_catalog;
 
 mod official_aux;
 
-mod official_model_windows;
-
 mod path_scope;
 
 mod paths;

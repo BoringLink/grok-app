@@ -153,7 +153,6 @@ pub fn app_invoke_handler(
         commands::settings_remember_last_session,
         // ── Models, agents catalog & composer prefs ──
         commands::models_list_available,
-        commands::models_set_official_context_window,
         commands::agents_catalog,
         commands::composer_prefs_resolve,
         commands::composer_prefs_set,
