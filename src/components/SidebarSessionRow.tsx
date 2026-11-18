@@ -306,7 +306,7 @@ function SidebarSessionRowInner({
             title={labels.working}
             aria-label={labels.working}
           >
-            <Spinner size={12} className="tree-l3__spinner" />
+            <Spinner variant="ring" size={12} className="tree-l3__spinner" />
           </span>
         ) : null}
         {showPinBadge && session.pinned ? (

@@ -528,6 +528,7 @@ export function SshRemoteSessionRail({
                                       aria-label={t("sidebar.remoteOpening")}
                                     >
                                       <Spinner
+                                        variant="ring"
                                         size={14}
                                         className="tree-l3__spinner"
                                       />

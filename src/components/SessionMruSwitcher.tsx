@@ -87,7 +87,11 @@ export function SessionMruSwitcher({ locale }: { locale: Locale }) {
                     className="tree-l3__status"
                     aria-label={tr("sidebar.sessionWorking")}
                   >
-                    <Spinner size={14} className="tree-l3__spinner" />
+                    <Spinner
+                      variant="ring"
+                      size={14}
+                      className="tree-l3__spinner"
+                    />
                   </span>
                 ) : null}
               </button>

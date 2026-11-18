@@ -11,6 +11,14 @@ See `docs/llm-wiki/release.md`.
 
 **What's New popup:** each bullet's **first sentence** is what users see. Keep that sentence to one short line (added / fixed / improved — no paths, no implementation, no issue piles). A second short sentence is allowed for GitHub / this file only. Do **not** rewrite already-shipped `## [X.Y.Z]` sections.
 
+## [Unreleased]
+
+### Fixed
+- Session activity indicators now share a centered circular animation.
+
+**中文 · 修复**
+- 会话活动指示器统一为居中旋转的圆环动画。
+
 ## [0.2.54] - 2026-11-11
 
 > **Highlight:** Editing long styled text in the composer no longer yanks the view to the bottom.
