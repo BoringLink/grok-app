@@ -13,11 +13,29 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+> **Highlight:** Model, effort and context window choices now follow each chat.
+>
+> **中文 · 亮点：** 模型、档位与上下文窗口跟随每个会话。
+
+### Added
+- Model, reasoning effort and context window are saved per chat.
+- Custom providers can expose their own reasoning effort levels.
+- Settings search finds the model catalog and per-model options.
+
+**中文 · 新增**
+- 模型、推理档位和上下文窗口按会话保存。
+- 自定义供应商可以定义自己的推理档位。
+- 设置搜索可以找到模型目录与单个模型的选项。
+
 ### Fixed
 - Session activity indicators now share a centered circular animation.
+- An unreadable model catalog is kept instead of being cleared.
+- Older chats recover the provider that owns their model.
 
 **中文 · 修复**
 - 会话活动指示器统一为居中旋转的圆环动画。
+- 无法读取的模型目录会原样保留，不再被清空。
+- 旧会话会找回拥有其模型的供应商。
 
 ## [0.2.54] - 2026-11-11
 
