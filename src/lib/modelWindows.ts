@@ -1,8 +1,7 @@
 /**
- * Context-window list helpers shared by the settings list and the composer.
+ * Context-window list helpers for the official model catalog.
  *
- * The window chosen per model now lives in Settings; the Composer only reads
- * the resulting model value for context-usage display.
+ * Windows come from the CLI catalog only; the App offers no per-model picker.
  */
 
 /**

@@ -25,15 +25,13 @@ export interface ModelOption {
   source?: string;
   /** Per-model reasoning efforts from CLI cache; empty/undefined → static fallback. */
   reasoningEfforts?: EffortOption[];
-  /** Model context window in tokens (live-merged from `initialize`). Effective configured value. */
+  /** Model context window in tokens (live-merged from `initialize`). Catalog default. */
   contextWindow?: number | null;
   /**
-   * Selectable windows from CLI `info.context_windows` / `contextWindows`.
-   * Settings offers this list per official model. Order is the catalog order.
+   * Windows from CLI `info.context_windows` / `contextWindows`.
+   * Order is the catalog order.
    */
   contextWindows?: number[] | null;
-  /** `user` when Settings overrides the window, else `catalog`. */
-  contextWindowSource?: "user" | "catalog" | null;
 }
 
 export interface SessionModeOption {
@@ -465,14 +463,6 @@ export function resolveContextWindow(opts: {
     return DEFAULT_CUSTOM_CONTEXT_WINDOW;
   }
   const m = findModel(modelId, models);
-  // Settings picks one window per official model. It wins over the App's
-  // 500k convenience default, which only applies when the user left it alone.
-  if (m?.contextWindowSource === "user") {
-    const configured = m.contextWindow;
-    if (configured != null && Number.isFinite(configured) && configured > 0) {
-      return Math.floor(configured);
-    }
-  }
   if (
     m &&
     (m.contextWindows?.includes(GROK_BUILD_APP_DEFAULT_CONTEXT_WINDOW) ||

@@ -86,10 +86,8 @@ import { CodebaseIndexingPanel } from "@/components/CodebaseIndexingPanel";
 import { CodebaseSearchPanel } from "@/components/CodebaseSearchPanel";
 import { AgentConfigTomlPanel } from "@/components/AgentConfigTomlPanel";
 import { CliSessionsPanel } from "./CliSessionsPanel";
-import { OfficialModelWindowSelect } from "./OfficialModelWindowSelect";
 import { SettingsTabStrip, UiCheck } from "./shared";
 import { resolveLocale } from "@/i18n";
-import type { ModelOption } from "@/lib/grokCatalog";
 import type { MessageKey } from "@/i18n";
 import * as api from "@/lib/api";
 import { useDirectorSettingEnabled, commitDirectorSetting } from "@/lib/directorSetting";
@@ -276,16 +274,6 @@ export function GeneralSection() {
     };
   }, []);
 
-  // Settings keeps the refreshed catalog from the host so a pick updates this
-  // list immediately; the workbench refreshes its own copy on the next model
-  // load (the host already applies the saved value at connect).
-  const [modelWindowRows, setModelWindowRows] = useState<ModelOption[]>(
-    availableModels,
-  );
-  useEffect(() => {
-    setModelWindowRows(availableModels);
-  }, [availableModels]);
-
   return (
     <>
 <>
@@ -348,7 +336,7 @@ export function GeneralSection() {
                       {t("settings.availableModelsEmpty")}
                     </span>
                   ) : (
-                    modelWindowRows.map((m) => (
+                    availableModels.map((m) => (
                       <div
                         key={m.id}
                         className="settings-models-list__item"
@@ -358,14 +346,6 @@ export function GeneralSection() {
                           {m.label}
                         </span>
                         <span className="settings-models-list__id">{m.id}</span>
-                        <OfficialModelWindowSelect
-                          model={m}
-                          locale={resolveLocale(locale)}
-                          t={t}
-                          onChanged={(next) => {
-                            setModelWindowRows(next.models);
-                          }}
-                        />
                       </div>
                     ))
                   )}

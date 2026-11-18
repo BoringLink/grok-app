@@ -288,8 +288,6 @@ export interface AvailableModel {
   contextWindow?: number | null;
   /** Selectable windows from CLI `info.context_windows` (catalog order). */
   contextWindows?: number[] | null;
-  /** `user` when Settings overrides the window, else `catalog`. */
-  contextWindowSource?: "user" | "catalog" | null;
 }
 
 export interface AvailableModelsResult {
@@ -323,21 +321,6 @@ export async function storeTakeQuarantine() {
 
 export async function modelsListAvailable() {
   return invoke<AvailableModelsResult>("models_list_available");
-}
-
-/**
- * Choose (or clear with `null`) one official model's context window.
- * Only sizes the model advertises are accepted; the host returns the
- * refreshed catalog so Settings can show the new source immediately.
- */
-export async function modelsSetOfficialContextWindow(
-  modelId: string,
-  tokens: number | null,
-) {
-  return invoke<AvailableModelsResult>("models_set_official_context_window", {
-    modelId,
-    tokens,
-  });
 }
 
 export async function composerPrefsResolve(opts?: {
