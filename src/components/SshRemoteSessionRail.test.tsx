@@ -152,7 +152,11 @@ describe("SshRemoteSessionRail", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "qwen35-v001-light" }),
     );
-    expect(await screen.findByLabelText("打开中…")).toBeInTheDocument();
+    const openingIndicator = await screen.findByLabelText("打开中…");
+    expect(openingIndicator).toBeInTheDocument();
+    expect(
+      openingIndicator.querySelector(".session-activity-spinner"),
+    ).toBeInTheDocument();
     resolveOpen({
       ok: true,
       alias: "UTS",

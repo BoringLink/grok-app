@@ -26,6 +26,28 @@
   --color-destructive-foreground: #fff;
 }
 
+@utility session-activity-spinner {
+  display: inline-block;
+  flex: 0 0 auto;
+  border: 1.6px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  transform-origin: center;
+  animation: session-activity-spinner-rotation 0.7s linear infinite;
+}
+
+@keyframes session-activity-spinner-rotation {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-activity-spinner {
+    animation: none;
+  }
+}
+
 /* Streaming status highlight disabled — plain text only. */
 
 /* Conversation surface helpers (work with existing app chrome) */

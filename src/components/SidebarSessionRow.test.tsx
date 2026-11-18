@@ -222,6 +222,7 @@ describe("SidebarSessionRow", () => {
     );
     expect(html).toContain("tree-l3--working");
     expect(html).toContain("tree-l3__spinner");
+    expect(html).toContain("session-activity-spinner");
     expect(html).toContain("tree-l3__actions");
     expect(html).toContain("tabler-icon-pinned");
   });

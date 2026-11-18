@@ -57,10 +57,12 @@ describe("SessionMruSwitcher", () => {
     );
     showPanel();
     render(<SessionMruSwitcher locale="en" />);
+    const workingIndicator = within(
+      screen.getByRole("option", { name: /Alpha/ }),
+    ).getByLabelText("Working…");
+    expect(workingIndicator).toBeInTheDocument();
     expect(
-      within(screen.getByRole("option", { name: /Alpha/ })).getByLabelText(
-        "Working…",
-      ),
+      workingIndicator.querySelector(".session-activity-spinner"),
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole("option", { name: /Beta/ })).queryByLabelText(

@@ -1,12 +1,28 @@
 import { cn } from "@/lib/utils";
 
+type SpinnerProps = {
+  className?: string;
+  size?: number;
+  /** 会话活动状态使用圆环样式。 */
+  variant?: "ring";
+};
+
+/** 加载指示器；会话活动状态使用圆环变体。 */
 export function Spinner({
   className,
   size = 14,
-}: {
-  className?: string;
-  size?: number;
-}) {
+  variant,
+}: SpinnerProps) {
+  if (variant === "ring") {
+    return (
+      <span
+        className={cn("session-activity-spinner", className)}
+        style={{ width: size, height: size }}
+        aria-hidden
+      />
+    );
+  }
+
   return (
     <svg
       className={cn("animate-spin text-[var(--text-tertiary)]", className)}

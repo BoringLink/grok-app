@@ -4,6 +4,7 @@
  */
 import type { Ref } from "react";
 import { IconAlertTriangle, IconCheck } from "@/components/icons";
+import { Spinner } from "@/components/ui/spinner";
 import { createT } from "@/i18n";
 import type { PetBubbleShape, PetBubbleStyle, PetTask } from "@/lib/pet";
 import {
@@ -82,7 +83,7 @@ export function PetTaskBubbles({
                 ) : task.phase === "done" ? (
                   <IconCheck size={13} stroke={2.4} />
                 ) : (
-                  <span className="pet-bubble__spin" />
+                  <Spinner variant="ring" size={11} />
                 )}
               </span>
               <span className="pet-bubble__text">
