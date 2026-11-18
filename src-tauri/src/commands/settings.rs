@@ -528,8 +528,6 @@ pub async fn secrets_get_masked() -> Result<serde_json::Value, String> {
         crate::providers::ProvidersListResult {
             providers: vec![],
             default_model: None,
-            active_source: "official".into(),
-            active_provider_id: None,
             config_path: String::new(),
             agent_home: String::new(),
             switched_to_independent: false,
@@ -572,7 +570,6 @@ pub async fn secrets_set(
     relay_base_url: Option<String>,
     relay_api_key: Option<String>,
     pexels_api_key: Option<String>,
-    default_model: Option<String>,
     stt_custom_api_key: Option<String>,
     stt_custom_api_key_provider: Option<String>,
 ) -> Result<(), String> {
@@ -598,9 +595,6 @@ pub async fn secrets_set(
     if let Some(k) = pexels_api_key {
         s.pexels_api_key = if k.trim().is_empty() { None } else { Some(k.trim().to_string()) };
     }
-    if let Some(m) = default_model {
-        s.default_model = if m.is_empty() { None } else { Some(m) };
-    }
     if let Some(k) = stt_custom_api_key {
         let provider = stt_custom_api_key_provider
             .map(|p| p.trim().to_string())
@@ -615,88 +609,4 @@ pub async fn secrets_set(
         s.stt_custom_api_key = None;
     }
     store::save_secrets(&s)
-}
-
-#[tauri::command]
-pub async fn provider_ping() -> Result<serde_json::Value, String> {
-    let secrets = store::load_secrets();
-    // Prefer relay if configured, else probe public xAI-ish endpoint with key presence only.
-    if let (Some(base), Some(key)) = (&secrets.relay_base_url, &secrets.relay_api_key) {
-        let url = format!("{}/models", base.trim_end_matches('/'));
-        let client = crate::proxy::apply_to_reqwest(
-            reqwest::Client::builder().timeout(std::time::Duration::from_secs(12)),
-        )
-        .build()
-        .map_err(|e| e.to_string())?;
-        let resp = client
-            .get(&url)
-            .header("Authorization", format!("Bearer {key}"))
-            .send()
-            .await;
-        return match resp {
-            Ok(r) => {
-                let status = r.status().as_u16();
-                if status == 401 || status == 403 {
-                    Ok(serde_json::json!({
-                        "ok": false,
-                        "class": "AUTH_FAILED",
-                        "status": status,
-                        "message": "Provider rejected credentials (401/403)"
-                    }))
-                } else if status >= 500 {
-                    Ok(serde_json::json!({
-                        "ok": false,
-                        "class": "NETWORK_PROVIDER",
-                        "status": status,
-                        "message": "Provider server error"
-                    }))
-                } else if r.status().is_success() {
-                    Ok(serde_json::json!({
-                        "ok": true,
-                        "class": "OK",
-                        "status": status,
-                        "message": "Ping OK"
-                    }))
-                } else {
-                    Ok(serde_json::json!({
-                        "ok": false,
-                        "class": "NETWORK_PROVIDER",
-                        "status": status,
-                        "message": format!("HTTP {status}")
-                    }))
-                }
-            }
-            Err(e) => {
-                let msg = e.to_string();
-                let class = "NETWORK_PROVIDER";
-                Ok(serde_json::json!({
-                    "ok": false,
-                    "class": class,
-                    "message": msg
-                }))
-            }
-        };
-    }
-
-    // CLI auth present?
-    let auth = crate::process_util::user_home().join(".grok").join("auth.json");
-    if auth.is_file() {
-        Ok(serde_json::json!({
-            "ok": true,
-            "class": "OK",
-            "message": "CLI auth.json present (cached_token). Use Doctor + real chat to verify."
-        }))
-    } else if secrets.official_api_key.as_ref().map(|k| !k.is_empty()).unwrap_or(false) {
-        Ok(serde_json::json!({
-            "ok": true,
-            "class": "OK",
-            "message": "Official API key stored (not verified over network without base_url)."
-        }))
-    } else {
-        Ok(serde_json::json!({
-            "ok": false,
-            "class": "AUTH_FAILED",
-            "message": "No provider configured. Use Onboarding: official key, relay, or import."
-        }))
-    }
 }

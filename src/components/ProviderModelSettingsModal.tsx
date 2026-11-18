@@ -15,8 +15,8 @@ import type {
   ProviderModelFieldSource,
 } from "@/lib/api";
 import type { FormModel } from "@/lib/providerForm";
+import { DEFAULT_CUSTOM_CONTEXT_WINDOW } from "@/lib/grokCatalog";
 import {
-  DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW,
   defaultProviderModelEfforts,
   effectiveModelContextWindow,
   effectiveModelEfforts,
@@ -169,7 +169,7 @@ export function ProviderModelSettingsModal({
         remote?.contextWindow != null && remote.contextWindow > 0
           ? Math.floor(remote.contextWindow)
           : null;
-      nextWindow = remoteWindow ?? DEFAULT_PROVIDER_MODEL_CONTEXT_WINDOW;
+      nextWindow = remoteWindow ?? DEFAULT_CUSTOM_CONTEXT_WINDOW;
       nextWindowSource = remoteWindow != null ? "remote" : "fallback";
     } else {
       const parsed = parseWindow(trimmed);

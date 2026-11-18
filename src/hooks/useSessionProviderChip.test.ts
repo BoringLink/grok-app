@@ -33,32 +33,20 @@ const relay: CustomProvider = {
   models: [{ id: "grok-4.6", name: "Grok 4.6" }],
 };
 
-/** Boots the hook the way App does: setters bound, provider list loaded. */
+/** Boots the hook the way App does: one route setter, provider list loaded. */
 function mountChip() {
-  const setters = {
-    setProviderActiveSource: vi.fn(),
-    setProviderActiveId: vi.fn(),
-    setActiveCustomProvider: vi.fn(),
-  };
-  const { result } = renderHook(() => useSessionProviderChip());
+  const setProviderId = vi.fn();
+  const { result } = renderHook(() => useSessionProviderChip(setProviderId));
   act(() => {
-    result.current.bind(setters);
     result.current.noteProviderList({ providers: [cleared, relay] });
   });
-  return { chip: result.current, setters };
+  return { chip: result.current, setProviderId };
 }
 
 describe("useSessionProviderChip provider catalog failures", () => {
   it("flags a failed catalog load and clears the flag on the next success", () => {
-    const setters = {
-      setProviderActiveSource: vi.fn(),
-      setProviderActiveId: vi.fn(),
-      setActiveCustomProvider: vi.fn(),
-    };
-    const { result } = renderHook(() => useSessionProviderChip());
-    act(() => {
-      result.current.bind(setters);
-    });
+    const setProviderId = vi.fn();
+    const { result } = renderHook(() => useSessionProviderChip(setProviderId));
 
     expect(result.current.providersLoadFailed).toBe(false);
 
@@ -136,7 +124,7 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
 
   it("pins the official route when the resolve falls back from an empty catalog", () => {
     // Arrange — the cleared provider is also the global route
-    const { chip, setters } = mountChip();
+    const { chip, setProviderId } = mountChip();
     const next = chip.resolvePrefs(
       { modelId: null, effort: null, providerId: "cleared" },
       GROK_BUILD_MODELS,
@@ -152,14 +140,12 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
     );
 
     // Assert — no custom chip or route survives the official fallback
-    expect(setters.setProviderActiveSource).toHaveBeenLastCalledWith("official");
-    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith(null);
-    expect(setters.setActiveCustomProvider).toHaveBeenLastCalledWith(null);
+    expect(setProviderId).toHaveBeenLastCalledWith(null);
   });
 
   it("keeps the stored session provider when the resolve leaves the route alone", () => {
     // Arrange — a saved model keeps routing on its own child section
-    const { chip, setters } = mountChip();
+    const { chip, setProviderId } = mountChip();
     const next = chip.resolvePrefs(
       {
         modelId: "deepseek-reasoner",
@@ -181,56 +167,49 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
     );
 
     // Assert — the session's own provider still paints and still routes
-    expect(setters.setProviderActiveSource).toHaveBeenLastCalledWith("custom");
-    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith("cleared");
-    expect(setters.setActiveCustomProvider).toHaveBeenLastCalledWith(cleared);
+    expect(setProviderId).toHaveBeenLastCalledWith("cleared");
     expect(chip.draftComposerRouteRef.current).toBeNull();
   });
 
   it("keeps the selected route while the provider list reloads", () => {
     // Arrange
-    const { chip, setters } = mountChip();
+    const { chip, setProviderId } = mountChip();
     act(() => chip.applyPrefsRoute({ prefsProviderId: "relay" }));
 
     // Act — the catalog temporarily unloads, then returns
     act(() => chip.noteProviderList(null));
-    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith("relay");
+    expect(setProviderId).toHaveBeenLastCalledWith("relay");
     act(() => chip.noteProviderList({ providers: [relay] }));
 
     // Assert — reloaded metadata restores the matching provider identity
-    expect(setters.setProviderActiveSource).toHaveBeenLastCalledWith("custom");
-    expect(setters.setActiveCustomProvider).toHaveBeenLastCalledWith(relay);
+    expect(setProviderId).toHaveBeenLastCalledWith("relay");
   });
 
   it("paints a custom provider when the stored prefs name one", () => {
     // Arrange — only the stored prefs carry the route
-    const { chip, setters } = mountChip();
+    const { chip, setProviderId } = mountChip();
 
     // Act
     act(() => chip.applyPrefsRoute({ prefsProviderId: "relay" }));
 
     // Assert
-    expect(setters.setProviderActiveSource).toHaveBeenLastCalledWith("custom");
-    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith("relay");
-    expect(setters.setActiveCustomProvider).toHaveBeenLastCalledWith(relay);
+    expect(setProviderId).toHaveBeenLastCalledWith("relay");
   });
 
   it("paints the official chip for a stored official chat", () => {
     // Arrange
-    const { chip, setters } = mountChip();
+    const { chip, setProviderId } = mountChip();
 
     // Act
     act(() => chip.applyPrefsRoute({ prefsProviderId: "official" }));
 
     // Assert
-    expect(setters.setProviderActiveSource).toHaveBeenLastCalledWith("official");
-    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith(null);
-    expect(setters.setActiveCustomProvider).toHaveBeenLastCalledWith(null);
+    expect(setProviderId).toHaveBeenLastCalledWith(null);
   });
 
   it("lets an explicit route win over the stored provider", () => {
     // Arrange
-    const { chip, setters } = mountChip();
+    const { chip, setProviderId } = mountChip();
 
     // Act
     act(() =>
@@ -241,12 +220,12 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
     );
 
     // Assert
-    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith("relay");
+    expect(setProviderId).toHaveBeenLastCalledWith("relay");
   });
 
   it("drops an unsaved draft pick when the chat is already stored", () => {
     // Arrange — the draft belongs to a new chat, not to the stored one
-    const { chip, setters } = mountChip();
+    const { chip, setProviderId } = mountChip();
     act(() => {
       chip.draftComposerRouteRef.current = {
         providerId: "cleared",
@@ -260,12 +239,12 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
 
     // Assert — a stored chat without a provider follows official, not the draft
     expect(chip.draftComposerRouteRef.current).toBeNull();
-    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith(null);
+    expect(setProviderId).toHaveBeenLastCalledWith(null);
   });
 
   it("keeps a new chat's draft provider", () => {
     // Arrange — nothing stored yet, so the in-memory pick is the route
-    const { chip, setters } = mountChip();
+    const { chip, setProviderId } = mountChip();
     act(() => {
       chip.draftComposerRouteRef.current = {
         providerId: "cleared",
@@ -278,23 +257,18 @@ describe("useSessionProviderChip applyPrefsRoute", () => {
     act(() => chip.applyPrefsRoute({ sessionId: null }));
 
     // Assert
-    expect(setters.setProviderActiveSource).toHaveBeenLastCalledWith("custom");
-    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith("cleared");
-    expect(setters.setActiveCustomProvider).toHaveBeenLastCalledWith(cleared);
+    expect(setProviderId).toHaveBeenLastCalledWith("cleared");
   });
 
   it("falls back to official for a new chat with no draft", () => {
     // Arrange — configured providers do not activate a route by themselves
-    const { chip, setters } = mountChip();
+    const { chip, setProviderId } = mountChip();
 
     // Act
     act(() => chip.applyPrefsRoute({}));
 
     // Assert
-    expect(setters.setProviderActiveSource).toHaveBeenLastCalledWith(
-      "official",
-    );
-    expect(setters.setProviderActiveId).toHaveBeenLastCalledWith(null);
+    expect(setProviderId).toHaveBeenLastCalledWith(null);
   });
 
   it("resolves a new chat's draft model against the loaded provider list", () => {

@@ -37,6 +37,7 @@ import {
   composerModelChipLabel,
   resolveCustomRouteDisplay,
 } from "@/lib/effectiveModel";
+import type { ProviderRouteId } from "@/lib/sessionProviderRoute";
 import { Tip } from "@/components/ui/tooltip";
 import {
   IconAlertTriangle,
@@ -337,9 +338,8 @@ export interface ComposerModelMenuProps {
   models?: ModelOption[];
   /** Configured custom providers for grouped menu entries. */
   providers?: ComposerProviderInput[];
-  /** Active inference route: official | custom. */
-  activeSource?: string;
-  activeProviderId?: string | null;
+  /** Active inference route: `providerId === null` means official. */
+  providerRoute: ProviderRouteId;
   labels: {
     model: string;
     effort: string;
@@ -534,8 +534,7 @@ export function ComposerModelMenu({
   effort,
   models = GROK_BUILD_MODELS,
   providers = [],
-  activeSource = "official",
-  activeProviderId = null,
+  providerRoute,
   efforts,
   effortOptionsPending = false,
   effortOptionsFailed = false,
@@ -672,13 +671,13 @@ export function ComposerModelMenu({
     return () => document.removeEventListener("keydown", onKey, true);
   }, [modelMenu.open, modelsOpen]);
 
-  const customRoute =
-    activeSource === "custom"
-      ? resolveCustomRouteDisplay(
-          providers.find((x) => x.id === activeProviderId),
-          modelId,
-        )
-      : null;
+  const routeProviderId = providerRoute.providerId;
+  const customRoute = routeProviderId
+    ? resolveCustomRouteDisplay(
+        providers.find((x) => x.id === routeProviderId),
+        modelId,
+      )
+    : null;
   const activeCustom = customRoute?.chip ?? null;
   const activeRequestModel = customRoute?.requestModel ?? null;
   const officialLabel = activeModel?.label ?? modelId;
@@ -827,8 +826,7 @@ export function ComposerModelMenu({
                             const active = isComposerModelEntryActive(
                               entry,
                               {
-                                activeSource,
-                                activeProviderId,
+                                providerId: routeProviderId,
                                 activeRequestModel,
                                 modelId,
                               },

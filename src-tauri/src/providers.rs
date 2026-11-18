@@ -95,6 +95,9 @@ pub struct CustomProvider {
     /// the CLI can discover server-side capabilities from `/models`.
     #[serde(default = "default_provider_mode")]
     pub provider_mode: String,
+    /// Legacy read-only: mirrors `[models].default` for the secrets compat path
+    /// (`secrets_get_masked`, provider upsert mirroring) and Doctor display.
+    /// Never use it to decide a chat's route.
     pub is_default: bool,
     /// Catalog of selectable models for this channel (App-managed).
     /// Legacy providers without `app_models` read as one row from `model`.
@@ -219,11 +222,9 @@ pub fn normalize_provider_mode(raw: Option<&str>) -> String {
 #[serde(rename_all = "camelCase")]
 pub struct ProvidersListResult {
     pub providers: Vec<CustomProvider>,
+    /// Legacy read of `[models].default` for the secrets mirror / Doctor display.
+    /// A chat's route comes from its own stored provider, never from this key.
     pub default_model: Option<String>,
-    /// `official` = built-in Grok OAuth / xAI path; `custom` = a config.toml model with base_url.
-    pub active_source: String,
-    /// When `active_source == "custom"`, the selected provider id.
-    pub active_provider_id: Option<String>,
     pub config_path: String,
     pub agent_home: String,
     /// True when this call forced `session_data_mode` shared → independent so
@@ -253,15 +254,6 @@ pub fn is_official_catalog_model(id: &str) -> bool {
             | OFFICIAL_CATALOG_MODEL_46
             | OFFICIAL_CATALOG_MODEL_LEGACY
     )
-}
-
-/// Which inference channel the agent should use.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ActiveRoute {
-    /// Built-in xAI / SuperGrok (OIDC via auth.json).
-    Official,
-    /// OpenAI-compatible relay section id in config.toml (`[model.<id>]`).
-    Custom { id: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -946,6 +938,9 @@ fn assignment_key_exact(trimmed: &str) -> Option<&str> {
     crate::agent_home_config::assignment_key(trimmed)
 }
 
+/// Legacy read of `[models].default` for the secrets mirror / Doctor display.
+/// Kept because section rewrites must preserve the key as-is; no App code
+/// activates a route or writes it for activation any more.
 fn get_models_default(text: &str) -> Option<String> {
     let mut in_models = false;
     for line in text.lines() {
@@ -1795,26 +1790,6 @@ fn canonical_wire_effort(id: &str) -> &'static str {
     }
 }
 
-/// CLI `session/set_config_option` 可下发的线级档（1.0.88 实测固定档集：
-/// minimal / low / medium / high / xhigh）。
-///
-/// `none` 无法经该 RPC 表达（CLI 报 `unknown reasoning_effort value`），
-/// `max` 同样超出固定档集——这两档的权威路径是 spawn flag
-/// `--reasoning-effort`（配额 seal 时剔除用户级 `default_reasoning_effort`
-/// 的覆盖）。返回 `None` 表示跳过 RPC 下发。
-///
-/// 同 value 多原始 id 的 ladder 也走本路径：ladder 表
-/// (`model.<id>.reasoning_efforts`) 由 [`encode_cli_reasoning_efforts`] 写入
-/// agent-home，CLI 自己完成 raw id → value 的映射，因此 spawn 腿
-/// `--reasoning-effort <raw>` 与 RPC 腿下发 `canonical_wire_effort(raw)` 在
-/// 线级（API 实际收到的值）完全一致。热切换对该场景是精确的，不需要为
-/// 消除"歧义"而强制 respawn——respawn 会打断运行中的回合，破坏
-/// "下一轮生效"的用户预期。
-pub fn set_config_wire_effort(id: &str) -> Option<&'static str> {
-    let tier = canonical_wire_effort(id);
-    matches!(tier, "minimal" | "low" | "medium" | "high" | "xhigh").then_some(tier)
-}
-
 /// TOML inline array of tables for Grok Build's `model.<id>.reasoning_efforts`.
 ///
 /// `id` is the raw Composer option the App passes to `--reasoning-effort`;
@@ -2285,19 +2260,6 @@ pub fn is_reserved_custom_provider_id(id: &str) -> bool {
     t == OFFICIAL_DEFAULT_MODEL || t == "official"
 }
 
-fn route_from_default(def: Option<&str>, providers: &[CustomProvider]) -> (String, Option<String>) {
-    if let Some(d) = def {
-        let d = d.trim();
-        if !d.is_empty()
-            && !is_reserved_custom_provider_id(d)
-            && providers.iter().any(|p| p.id == d)
-        {
-            return ("custom".into(), Some(d.to_string()));
-        }
-    }
-    ("official".into(), None)
-}
-
 fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListResult {
     let def = get_models_default(text);
     let mut providers = Vec::new();
@@ -2371,12 +2333,9 @@ fn build_list_result(home: PathBuf, path: PathBuf, text: &str) -> ProvidersListR
             extra_headers,
         });
     }
-    let (active_source, active_provider_id) = route_from_default(def.as_deref(), &providers);
     ProvidersListResult {
         providers,
         default_model: def,
-        active_source,
-        active_provider_id,
         config_path: path.display().to_string(),
         agent_home: home.display().to_string(),
         switched_to_independent: false,
@@ -2394,19 +2353,6 @@ pub fn list_custom_providers() -> Result<ProvidersListResult, String> {
     let _ = ensure_generic_model_sections();
     let text = read_text(&path);
     Ok(build_list_result(home, path, &text))
-}
-
-/// Current channel from `[models].default` vs custom provider sections.
-pub fn active_route() -> ActiveRoute {
-    match list_custom_providers() {
-        Ok(list) if list.active_source == "custom" => {
-            if let Some(id) = list.active_provider_id.filter(|s| !s.trim().is_empty()) {
-                return ActiveRoute::Custom { id };
-            }
-            ActiveRoute::Official
-        }
-        _ => ActiveRoute::Official,
-    }
 }
 
 /// Whether `id` is a configured custom provider route (not an official catalog model).
@@ -2490,10 +2436,36 @@ pub fn custom_provider_id_for_model_unique(model: &str) -> Option<String> {
         return None;
     }
     let list = list_custom_providers().ok()?;
-    let mut hits = list
-        .providers
-        .iter()
-        .filter(|p| p.id != model && (p.model == model || p.models.iter().any(|m| m.id == model)));
+    unique_model_owner(&list.providers, model)
+}
+
+/// [`list_custom_providers`] that never writes the agent config.
+///
+/// One-shot migrations must not heal or rewrite `config.toml` as a side effect
+/// (that belongs to the interactive provider list). A missing file means "no
+/// custom providers"; any other read error is reported so a caller holding a
+/// one-shot flag can retry instead of latching "no owner".
+pub fn list_custom_providers_readonly() -> Result<ProvidersListResult, String> {
+    let path = agent_config_toml();
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("agent config read failed: {error}")),
+    };
+    Ok(build_list_result(agent_home_dir(), path, &text))
+}
+
+/// Provider that uniquely lists `model` in an already-read provider list.
+///
+/// Pair with [`list_custom_providers_readonly`] so a caller resolving many
+/// model ids parses `config.toml` once.
+pub(crate) fn unique_model_owner(providers: &[CustomProvider], model: &str) -> Option<String> {
+    let mut hits = providers.iter().filter(|p| {
+        // A stored id equal to a provider's own section id is the channel alias
+        // the CLI sends, not a catalog model pick, so it never names an owner;
+        // such rows keep the official fallback.
+        p.id != model && (p.model == model || p.models.iter().any(|m| m.id == model))
+    });
     let first = hits.next()?;
     if hits.next().is_some() {
         return None;
@@ -2630,9 +2602,9 @@ pub fn effort_model_id_for_route(
 
 /// How a composer provider pick relates to the route this chat already uses.
 ///
-/// An empty stored id means "follow the global route". Writing that same
-/// route onto the row is not a switch: respawning would drop the CLI resume
-/// id and skip `session/set_model`.
+/// An empty stored id resolves to the official route. Writing that same route
+/// onto the row is not a switch: respawning would drop the CLI resume id and
+/// skip `session/set_model`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SessionProviderPick {
     SameRoute,
@@ -3444,17 +3416,8 @@ pub fn session_grok_build_proxy_spawn(
     grok_build_proxy_spawn_for_provider_text(&text, provider_id, composer_model)
 }
 
-/// After official login / account switch: only the official route should
-/// receive a copy of `~/.grok/auth.json` in agent-home. Custom relays must
-/// keep that file out so Grok Build uses `[model.<id>].api_key`.
-pub fn should_sync_cli_auth_after_account_change(route: &ActiveRoute) -> bool {
-    matches!(route, ActiveRoute::Official)
-}
-
-/// Prepare agent-home auth material for the active route.
-///
-/// Custom: strip agent-home `auth.json` so inference uses `api_key` only.
-/// Official: mirror `~/.grok/auth.json` into agent-home for OAuth.
+/// Serializes agent-home `auth.json` preparation so spawns on different routes
+/// never interleave the write.
 pub fn route_auth_lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     &LOCK
@@ -3466,8 +3429,10 @@ pub fn prepare_route_auth_for_agent() {
 }
 
 /// Prepare agent-home auth for one spawn. `custom` strips `auth.json` so the
-/// process uses that provider's `api_key`. Official copies OIDC in.
-/// Callers that spawn different providers must not overlap this write.
+/// process uses that provider's `api_key`. Official copies OIDC in: it is the
+/// only route that may mirror `~/.grok/auth.json` into agent-home, so a custom
+/// relay never receives OIDC. Callers that spawn different providers must not
+/// overlap this write.
 pub fn prepare_route_auth(custom: bool) {
     if custom {
         crate::account::clear_agent_home_auth();
@@ -3476,9 +3441,6 @@ pub fn prepare_route_auth(custom: bool) {
             "custom route spawn: cleared agent-home auth.json (api_key only)"
         );
     } else {
-        debug_assert!(should_sync_cli_auth_after_account_change(
-            &ActiveRoute::Official
-        ));
         if let Err(e) = crate::account::sync_cli_auth_to_agent_home() {
             tracing::warn!(
                 target: "providers",
@@ -3843,13 +3805,16 @@ pub fn remove_custom_provider(id: &str) -> Result<ProvidersListResult, String> {
         // section was already gone or the id did not match (re-add ghosts).
         return Err(format!("provider `{id}` not found"));
     }
-    let def = get_models_default(&text);
     text = remove_section(&text, &id);
     // Verify the section is actually gone before reporting success.
     if parse_model_sections(&text).iter().any(|s| s.id == id) {
         return Err(format!("failed to remove provider `{id}` from config"));
     }
-    if def.as_deref() == Some(id.as_str()) {
+    // `[models].default` is a legacy CLI key the App never writes to route a
+    // chat, so a default naming another provider stays as stored. Only a
+    // default pointing at the section just removed is reset: left dangling, a
+    // spawn without `--model` would make the CLI read a deleted section.
+    if get_models_default(&text).as_deref() == Some(id.as_str()) {
         text = set_models_default(&text, OFFICIAL_DEFAULT_MODEL);
     }
     write_text(&path, &text)?;
@@ -4872,28 +4837,28 @@ mod tests {
     }
 
     #[test]
-    fn set_config_wire_effort_filters_to_cli_fixed_tiers() {
-        // CLI 固定档集内的 App id → 原样透传（canonical 映射后）。
-        assert_eq!(set_config_wire_effort("low"), Some("low"));
-        assert_eq!(set_config_wire_effort("medium"), Some("medium"));
-        assert_eq!(set_config_wire_effort("high"), Some("high"));
-        assert_eq!(set_config_wire_effort("minimal"), Some("minimal"));
-        assert_eq!(set_config_wire_effort("xhigh"), Some("xhigh"));
+    fn canonical_wire_effort_maps_aliases_to_tiers() {
+        // ladder 表编码用的 canonical 映射：raw id → 最近固定档。
+        assert_eq!(canonical_wire_effort("low"), "low");
+        assert_eq!(canonical_wire_effort("medium"), "medium");
+        assert_eq!(canonical_wire_effort("high"), "high");
+        assert_eq!(canonical_wire_effort("minimal"), "minimal");
+        assert_eq!(canonical_wire_effort("xhigh"), "xhigh");
         // instant 是 App 菜单 id，canonical 映射到 minimal。
-        assert_eq!(set_config_wire_effort("instant"), Some("minimal"));
-        // none / max 超出 CLI set_config 固定档集：跳过 RPC，spawn flag 权威。
-        assert_eq!(set_config_wire_effort("none"), None);
-        assert_eq!(set_config_wire_effort("off"), None);
-        assert_eq!(set_config_wire_effort("max"), None);
+        assert_eq!(canonical_wire_effort("instant"), "minimal");
+        assert_eq!(canonical_wire_effort("none"), "none");
+        assert_eq!(canonical_wire_effort("off"), "none");
+        assert_eq!(canonical_wire_effort("max"), "max");
         // 未知 id canonical 兜到 medium。
-        assert_eq!(set_config_wire_effort("bogus"), Some("medium"));
+        assert_eq!(canonical_wire_effort("bogus"), "medium");
     }
 
     #[test]
     fn hot_apply_is_wire_exact_for_duplicate_value_ladder_ids() {
         // 同 value 多原始 id 的 ladder：spawn 腿 `--reasoning-effort <raw>` 由
-        // CLI 按 reasoning_efforts 表映射到 value；RPC 腿下发同一 value。
-        // 两条腿线级一致，热切换精确，不需要为消除"歧义"强制 respawn。
+        // CLI 按 reasoning_efforts 表映射到 value；RPC 腿原样透传 raw id，
+        // CLI 侧同样经表映射。两条腿线级一致，热切换精确，不需要为消除
+        // "歧义"而强制 respawn。
         let ladder = [
             ProviderEffortEntry {
                 id: "instant".into(),
@@ -4912,7 +4877,8 @@ mod tests {
             },
         ];
         let table = encode_cli_reasoning_efforts(&ladder);
-        // 表中每个 id 的 value 与热切换下发值必须一致。
+        // 表中每个 id 的 value 必须存在：CLI 侧 raw id → value 映射的
+        // 唯一来源。
         for effort in &ladder {
             let needle = format!(
                 "id = \"{}\", value = \"{}\"",
@@ -4920,17 +4886,11 @@ mod tests {
                 canonical_wire_effort(&effort.id)
             );
             assert!(table.contains(&needle), "missing row: {needle} in {table}");
-            assert_eq!(
-                set_config_wire_effort(&effort.id),
-                Some(canonical_wire_effort(&effort.id)),
-                "RPC tier must equal the value the CLI maps {id} to",
-                id = effort.id
-            );
         }
         // balanced 与 deliberate 共享 value = medium：线级无差异。
         assert_eq!(
-            set_config_wire_effort("balanced"),
-            set_config_wire_effort("deliberate")
+            canonical_wire_effort("balanced"),
+            canonical_wire_effort("deliberate")
         );
     }
 
@@ -5188,19 +5148,6 @@ base_url = \"http://127.0.0.1:8080/v1\"
             resolved_custom_model_id_for_session(&provider, "grok-4.7", true),
             "grok-4.7"
         );
-    }
-
-    #[test]
-    fn official_default_is_not_a_custom_route_even_if_id_collides() {
-        let grok = [sample_provider("grok")];
-        let (source, pid) = route_from_default(Some("grok"), &grok);
-        assert_eq!(source, "official");
-        assert_eq!(pid, None);
-
-        let relay = [sample_provider("relay")];
-        let (custom_src, custom_id) = route_from_default(Some("relay"), &relay);
-        assert_eq!(custom_src, "custom");
-        assert_eq!(custom_id.as_deref(), Some("relay"));
     }
 
     #[test]
@@ -8567,22 +8514,6 @@ context_window = "1000000"
     }
 
     #[test]
-    fn login_must_not_sync_oidc_into_custom_agent_home() {
-        // grok login always writes ~/.grok/auth.json. Copying that into
-        // agent-home while a custom relay is active makes the next spawn
-        // send OIDC to the relay. Official stays the only route that
-        // should receive the mirror.
-        assert!(!should_sync_cli_auth_after_account_change(
-            &ActiveRoute::Custom {
-                id: "claudex".into()
-            }
-        ));
-        assert!(should_sync_cli_auth_after_account_change(
-            &ActiveRoute::Official
-        ));
-    }
-
-    #[test]
     fn official_route_does_not_remap_a_custom_catalog_model() {
         // A chat without a custom provider preference is official. A stale relay
         // Model id must not silently route it back to that relay.
@@ -8597,7 +8528,7 @@ context_window = "1000000"
         std::env::set_var("GROK_APP_HOME", &home);
         let _ = ensure_agent_home();
 
-        let listed = upsert_custom_provider(UpsertProviderInput {
+        upsert_custom_provider(UpsertProviderInput {
             id: "qwen38-local".into(),
             model: "qwen3.8-27b".into(),
             base_url: "http://127.0.0.1:8080/v1".into(),
@@ -8620,7 +8551,6 @@ context_window = "1000000"
             extra_headers: None,
         })
         .expect("upsert");
-        assert_eq!(listed.active_source, "official");
 
         assert_eq!(
             spawn_model_for_provider("qwen38-local", "qwen3.8-27b"),
@@ -10049,7 +9979,7 @@ app_parent_provider = "proxy"
         let previous = std::env::var_os("GROK_APP_HOME");
         std::env::set_var("GROK_APP_HOME", &home);
         let _ = std::fs::create_dir_all(home.join("agent-home"));
-        let prelude = "# user comment\n\n[model.hand]\nmodel = \"keep-me\"\nbase_url = \"https://hand.example/v1\"\napi_key = \"sk-hand\"\nname = \"Hand\"\n";
+        let prelude = "# user comment\n\n[models]\ndefault = \"zhipu\"\n\n[model.hand]\nmodel = \"keep-me\"\nbase_url = \"https://hand.example/v1\"\napi_key = \"sk-hand\"\nname = \"Hand\"\n";
         std::fs::write(agent_config_toml(), prelude).expect("seed");
 
         let listed = upsert_custom_provider(UpsertProviderInput {
@@ -10156,6 +10086,11 @@ app_parent_provider = "proxy"
             field_of(&removed, "hand", "model").as_deref(),
             Some("keep-me")
         );
+        assert_eq!(
+            get_models_default(&removed).as_deref(),
+            Some(OFFICIAL_DEFAULT_MODEL),
+            "removing the provider the legacy default points at must reset it to `grok`"
+        );
 
         upsert_custom_provider(UpsertProviderInput {
             id: "beef-relay".into(),
@@ -10235,6 +10170,24 @@ app_provider_mode = "generic"
 app_parent_provider = "relay"
 "#
         )
+    }
+
+    #[test]
+    fn removing_a_provider_leaves_a_foreign_legacy_default_alone() {
+        let config = "[models]\ndefault = \"keeper\"\n\n[model.keeper]\nmodel = \"keep-me\"\nbase_url = \"https://keep.example/v1\"\napi_key = \"sk-keep\"\n\n[model.doomed]\nmodel = \"doomed-model\"\nbase_url = \"https://doomed.example/v1\"\napi_key = \"sk-doomed\"\n";
+        with_seeded_agent_home("legacy-default-foreign", config, || {
+            remove_custom_provider("doomed").expect("remove");
+
+            let after = std::fs::read_to_string(agent_config_toml()).expect("config");
+            assert!(parse_model_sections(&after)
+                .iter()
+                .all(|s| s.id != "doomed"));
+            assert_eq!(
+                get_models_default(&after).as_deref(),
+                Some("keeper"),
+                "a default naming another provider must stay as stored"
+            );
+        });
     }
 
     fn relay_upsert(base_url: &str, provider_mode: &str) -> UpsertProviderInput {

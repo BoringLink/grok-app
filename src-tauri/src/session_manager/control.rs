@@ -1193,11 +1193,10 @@ impl SessionManager {
     /// （draft / background / parked / mid-turn / 无 agent id / 档位不变 /
     /// 不支持推理）返回 false，由调用方走 stage 回落路径。
     ///
-    /// RPC 值与连接补发路径（`connect.rs::push_connected_effort`）保持同一
-    /// canonical 映射（`set_config_wire_effort`）：vendor 原始 id 映射到
-    /// 最近固定档；`none` / `max` 无法经该 RPC 表达，直接返回 false 走
-    /// stage 回落，权威路径仍是 spawn flag。记账（live 槽与 meta）保留
-    /// 原始 effective id，复用门控不感知 wire 映射。
+    /// value 直接透传用户配置的原始档位 id：CLI 允许自定义思考强度，
+    /// 非法值由网关上游报错，Host 不在 RPC 档集层过滤。RPC 失败（含
+    /// 上游拒绝）软失败回落 stage 路径（spawn flag 为权威）。记账
+    /// （live 槽与 meta）保留原始 effective id，复用门控不感知 wire 映射。
     async fn try_hot_effort_apply(
         &self,
         session_id: &str,
@@ -1229,12 +1228,10 @@ impl SessionManager {
             self.finish_hot_effort_apply(session_id, stored_effort, effort);
             return true;
         }
-        // CLI 1.0.88 的该 RPC 只认固定档集；vendor 原始 id 统一经
-        // `set_config_wire_effort` 映射，`none` / `max` 返回 None 表示
-        // 无法经 RPC 表达，直接回落 stage 路径（spawn flag 为权威）。
-        let Some(wire) = crate::providers::set_config_wire_effort(effort) else {
-            return false;
-        };
+        // value 原样透传用户配置的档位 id（含 none / max / 自定义 id）：
+        // CLI 允许自定义思考强度，非法值由网关上游拒绝；RPC 软失败时
+        // 回落 stage 路径（spawn flag 为权威）。
+        let wire = effort;
         // 测试接缝：绕过真实 RPC，直接注入 set_config_option 结果。
         #[cfg(test)]
         {
@@ -2431,10 +2428,10 @@ mod recycle_tests {
         );
     }
 
-    /// `none` / `max` 超出 RPC 固定档集：即使 RPC 本身可用也直接回落
-    /// stage 路径（spawn flag 是这两档的权威通道）。
+    /// `none` / `max` / 自定义 id 原样透传 RPC：不再经固定档集过滤，
+    /// 非法值由网关上游拒绝（RPC 失败时回落 stage 路径）。
     #[test]
-    fn hot_effort_unwireable_tiers_fall_back_without_rpc() {
+    fn hot_effort_passes_raw_ids_through_to_rpc() {
         let _lock = crate::paths::APP_HOME_ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -2444,15 +2441,51 @@ mod recycle_tests {
         live.effort = Some("low".into());
         live.acp = Some(crate::acp_client::AcpClient::test_stub(true));
         *mgr.inner.lock() = Some(live);
-        // 注入 Ok 结果证明未走到 RPC 接缝即被档集过滤。
+        // 注入 Ok 结果证明档位原样抵达 RPC 接缝（未被档集过滤拦截）。
         *mgr.hot_effort_result.lock() = Some(Ok(()));
 
         let rt = hot_effort_runtime();
-        assert!(!rt.block_on(mgr.try_hot_effort_apply("hot-wire", "none", Some("none"))));
-        assert!(!rt.block_on(mgr.try_hot_effort_apply("hot-wire", "max", Some("max"))));
+        assert!(rt.block_on(mgr.try_hot_effort_apply("hot-wire", "none", Some("none"))));
         assert!(
-            mgr.hot_effort_result.lock().is_some(),
-            "未消费 RPC 接缝即被档集过滤"
+            mgr.hot_effort_result.lock().is_none(),
+            "RPC 接缝被消费（none 未被过滤）"
+        );
+
+        // 换回 max：同样直达 RPC。
+        mgr.inner.lock().as_mut().unwrap().effort = Some("low".into());
+        *mgr.hot_effort_result.lock() = Some(Ok(()));
+        assert!(rt.block_on(mgr.try_hot_effort_apply("hot-wire", "max", Some("max"))));
+        assert!(mgr.hot_effort_result.lock().is_none());
+
+        // 自定义档位 id 同样透传。
+        mgr.inner.lock().as_mut().unwrap().effort = Some("low".into());
+        *mgr.hot_effort_result.lock() = Some(Ok(()));
+        assert!(rt.block_on(mgr.try_hot_effort_apply("hot-wire", "tier.2", Some("tier.2"))));
+        assert!(mgr.hot_effort_result.lock().is_none());
+    }
+
+    /// 网关上游拒绝自定义/非法档位：RPC 失败软回落 stage 路径，不杀进程。
+    #[test]
+    fn hot_effort_upstream_rejection_falls_back_to_stage() {
+        let _lock = crate::paths::APP_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _home = isolated_hot_home("rej");
+        let mgr = SessionManager::new();
+        let mut live = ready_session("hot-rej", "proc-rej", "agent-rej", "relay");
+        live.effort = Some("low".into());
+        live.acp = Some(crate::acp_client::AcpClient::test_stub(true));
+        *mgr.inner.lock() = Some(live);
+        *mgr.hot_effort_result.lock() = Some(Err("unknown reasoning_effort value".into()));
+
+        let rt = hot_effort_runtime();
+        assert!(!rt.block_on(mgr.try_hot_effort_apply("hot-rej", "tier.9", Some("tier.9"))));
+        assert!(
+            mgr.inner
+                .lock()
+                .as_ref()
+                .is_some_and(|s| s.acp.as_ref().is_some_and(|c| c.is_alive())),
+            "回落不杀进程"
         );
     }
 

@@ -569,6 +569,11 @@ pub struct AppSettings {
     /// One-shot: product workflows default off → on (CLI ≥0.2.111 / 1.0 align).
     #[serde(default)]
     pub workflows_default_migrated: bool,
+    /// One-shot: sessions saved before the per-session provider refactor store
+    /// a custom `model_id` without `provider_id`. Missing field deserializes as
+    /// false so existing installs run the backfill once.
+    #[serde(default)]
+    pub session_provider_backfill_migrated: bool,
     /// When true (default), agents may enter plan mode. When false, spawn with
     /// top-level `--no-plan` so plan mode is disabled for that process.
     #[serde(default = "default_plan_enabled")]
@@ -950,6 +955,7 @@ impl Default for AppSettings {
             official_effort_xhigh_migrated: true,
             official_effort_xhigh_rows_migrated: true,
             workflows_default_migrated: true,
+            session_provider_backfill_migrated: false,
             plan_enabled: default_plan_enabled(),
             director_enabled: false,
             subagents_enabled: true,
@@ -1284,7 +1290,40 @@ pub fn load_settings() -> AppSettings {
         s.workflows_default_migrated = true;
         let _ = write_json(&settings_file(), &s);
     }
+    // One-time: sessions saved before the per-session provider refactor carry
+    // the relay `model_id` but no `provider_id`, so they open on official and
+    // `session_set_model_id_for` rewrites the id to the official default. The
+    // backfill only infers a provider the model uniquely belongs to.
+    if migrate_session_provider_backfill(&mut s) {
+        let _ = write_json(&settings_file(), &s);
+    }
     s
+}
+
+/// One-shot session provider backfill driven from [`load_settings`].
+///
+/// Returns `true` when the flag was latched and settings must be persisted. A
+/// failed sessions-index or provider read leaves the flag alone so the next
+/// launch retries and keeps the official fallback meanwhile.
+fn migrate_session_provider_backfill(settings: &mut AppSettings) -> bool {
+    if settings.session_provider_backfill_migrated {
+        return false;
+    }
+    match backfill_session_provider_ids() {
+        Ok(changed) => {
+            if changed > 0 {
+                tracing::info!(
+                    "settings migration: reattached {changed} session(s) to their provider"
+                );
+            }
+            settings.session_provider_backfill_migrated = true;
+            true
+        }
+        Err(e) => {
+            tracing::warn!("session provider backfill skipped: {e}");
+            false
+        }
+    }
 }
 
 /// Product default effort for cold start / fallback (Grok Build 1.0 = high).
@@ -1416,6 +1455,72 @@ fn migrate_official_effort_xhigh_rows(global_model_id: Option<&str>) {
             tracing::warn!("effort row migration: projects: {e}");
         }
     }
+}
+
+/// Attach the uniquely owning custom provider to sessions saved before the
+/// per-session provider refactor.
+///
+/// Those rows store a relay `model_id` but no `provider_id`, so they fall back
+/// to official and `session_set_model_id_for` rewrites the id to the official
+/// default. Only a model listed by **exactly one** provider is inferred;
+/// official ids, unknown ids and ambiguous owners keep the official fallback.
+///
+/// A row that already has a provider id is never rewritten, and `model_id`,
+/// `effort` and `updated_at` stay as stored — a migration must not reorder the
+/// sidebar. A failed index or provider read aborts the whole pass so the caller
+/// can retry instead of latching an "official" decision.
+pub(crate) fn backfill_session_provider_ids() -> Result<usize, String> {
+    let candidates: Vec<(String, String)> = load_sessions_index_checked()?
+        .into_iter()
+        .filter(|session| {
+            session
+                .provider_id
+                .as_deref()
+                .is_none_or(|id| id.trim().is_empty())
+        })
+        .filter_map(|session| {
+            let model_id = session
+                .model_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|model| !model.is_empty())?;
+            if crate::providers::is_official_catalog_model(model_id) {
+                return None;
+            }
+            Some((session.id, model_id.to_string()))
+        })
+        .collect();
+    if candidates.is_empty() {
+        return Ok(0);
+    }
+    // One non-mutating config read for every model id in this pass.
+    let providers = crate::providers::list_custom_providers_readonly()?.providers;
+    let plan: HashMap<String, String> = candidates
+        .into_iter()
+        .filter_map(|(session_id, model_id)| {
+            let provider_id = crate::providers::unique_model_owner(&providers, &model_id)?;
+            Some((session_id, provider_id))
+        })
+        .collect();
+    if plan.is_empty() {
+        return Ok(0);
+    }
+    update_sessions_index(move |list| {
+        Ok(list.iter_mut().fold(0, |changed, session| {
+            let Some(provider_id) = plan.get(&session.id) else {
+                return changed;
+            };
+            if session
+                .provider_id
+                .as_deref()
+                .is_some_and(|id| !id.trim().is_empty())
+            {
+                return changed;
+            }
+            session.provider_id = Some(provider_id.clone());
+            changed + 1
+        }))
+    })
 }
 
 /// Clamp a remembered effort to the catalog of the resolved model.
@@ -2003,6 +2108,26 @@ pub fn load_sessions_index() -> Vec<SessionMeta> {
     let mut list: Vec<SessionMeta> = read_json_recover(&sessions_index_file());
     sort_sessions_by_pin_then_updated(&mut list);
     list
+}
+
+/// Read the sessions index for a one-shot migration, reporting failures.
+///
+/// [`load_sessions_index`] goes through `read_json_recover`, which quarantines a
+/// corrupt index and returns an empty list. A migration cannot tell that apart
+/// from "no rows to migrate", so it would latch its one-shot flag on a torn
+/// file. Missing file and empty file are an empty index; no repair happens here.
+fn load_sessions_index_checked() -> Result<Vec<SessionMeta>, String> {
+    let _ = ensure_app_dirs();
+    let path = sessions_index_file();
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("sessions index read failed: {error}")),
+    };
+    if text.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    serde_json::from_str(&text).map_err(|error| format!("sessions index parse failed: {error}"))
 }
 
 #[cfg(test)]
@@ -5617,6 +5742,274 @@ mod tests {
         let _ = delete_session(&fresh.id);
         std::env::remove_var("GROK_APP_HOME");
         let _ = fs::remove_dir_all(&tmp);
+    }
+
+    /// 写入 App agent-home 的自定义 provider 配置（每项一个 `[model.<id>]` 段）。
+    fn write_provider_config(providers: &[(&str, &str)]) {
+        let text = providers
+            .iter()
+            .map(|(id, model)| {
+                format!(
+                    "[model.{id}]\nbase_url = \"https://{id}.example/v1\"\n\
+                     api_key = \"sk-test\"\nmodel = \"{model}\"\n\n"
+                )
+            })
+            .collect::<String>();
+        let path = crate::paths::agent_config_toml();
+        fs::create_dir_all(path.parent().expect("agent home")).expect("agent home");
+        fs::write(path, text).expect("write provider config");
+    }
+
+    /// 复刻重构前的会话行：有 model id，通常没有 provider id。
+    fn legacy_session(model_id: &str, provider_id: Option<&str>) -> SessionMeta {
+        let session = create_session(None, Some("Old chat".into()), false).expect("create");
+        save_model_on_session(Some(&session.id), model_id.into()).expect("store model");
+        if let Some(provider_id) = provider_id {
+            save_provider_on_session(Some(&session.id), provider_id.into())
+                .expect("store provider");
+        }
+        load_session_row(&session.id)
+    }
+
+    fn load_session_row(id: &str) -> SessionMeta {
+        load_sessions_index()
+            .into_iter()
+            .find(|session| session.id == id)
+            .expect("session row")
+    }
+
+    #[test]
+    fn backfill_attaches_the_unique_custom_provider() {
+        with_temp_app_home("session-provider-backfill", |_| {
+            write_provider_config(&[("relay", "glm-4.6")]);
+            let session = legacy_session("glm-4.6", None);
+
+            let changed = backfill_session_provider_ids().expect("backfill");
+
+            assert_eq!(changed, 1);
+            let row = load_session_row(&session.id);
+            assert_eq!(row.provider_id.as_deref(), Some("relay"));
+            assert_eq!(
+                row.model_id.as_deref(),
+                Some("glm-4.6"),
+                "the backfill must never rewrite the model id"
+            );
+            assert_eq!(
+                row.updated_at, session.updated_at,
+                "a migration must not reorder the sidebar"
+            );
+
+            let prefs = resolve_composer_prefs(None, Some(&session.id));
+            assert_eq!(prefs.provider_id.as_deref(), Some("relay"));
+            assert_eq!(prefs.model_id, "glm-4.6");
+
+            let route = crate::providers::session_route_provider_id(row.provider_id.as_deref());
+            assert_eq!(route, "relay");
+            let custom_sent = crate::providers::session_set_model_id_for(&route, "glm-4.6");
+            let official_sent = crate::providers::session_set_model_id_for(
+                crate::providers::SESSION_PROVIDER_OFFICIAL,
+                "glm-4.6",
+            );
+            assert_eq!(
+                custom_sent, "relay__glm-4-6",
+                "generic custom route sends the per-model section id"
+            );
+            assert_ne!(
+                custom_sent, official_sent,
+                "without provider_id the custom model id is replaced by the official one"
+            );
+        });
+    }
+
+    #[test]
+    fn backfill_keeps_an_ambiguous_model_on_official() {
+        with_temp_app_home("session-provider-backfill-ambiguous", |_| {
+            write_provider_config(&[("relay-a", "shared-model"), ("relay-b", "shared-model")]);
+            let session = legacy_session("shared-model", None);
+            let before = fs::read_to_string(sessions_index_file()).expect("index");
+
+            let changed = backfill_session_provider_ids().expect("backfill");
+
+            assert_eq!(changed, 0, "two owners must not be guessed");
+            assert_eq!(
+                fs::read_to_string(sessions_index_file()).expect("index"),
+                before
+            );
+            let row = load_session_row(&session.id);
+            assert_eq!(row.provider_id, None);
+            assert_eq!(row.model_id.as_deref(), Some("shared-model"));
+            assert_eq!(
+                resolve_composer_prefs(None, Some(&session.id)).provider_id,
+                None
+            );
+            assert_ne!(
+                crate::providers::session_set_model_id_for(
+                    crate::providers::SESSION_PROVIDER_OFFICIAL,
+                    "shared-model"
+                ),
+                "shared-model",
+                "an ambiguous row keeps the existing official fallback"
+            );
+        });
+    }
+
+    #[test]
+    fn backfill_leaves_official_model_rows_alone() {
+        with_temp_app_home("session-provider-backfill-official", |_| {
+            // A provider may list an official id; an official row still stays official.
+            write_provider_config(&[("relay", DEFAULT_OFFICIAL_MODEL_ID)]);
+            let session = legacy_session(DEFAULT_OFFICIAL_MODEL_ID, None);
+
+            assert_eq!(backfill_session_provider_ids().expect("backfill"), 0);
+
+            let row = load_session_row(&session.id);
+            assert_eq!(row.provider_id, None);
+            assert_eq!(row.model_id.as_deref(), Some(DEFAULT_OFFICIAL_MODEL_ID));
+            assert_eq!(
+                resolve_composer_prefs(None, Some(&session.id)).provider_id,
+                None
+            );
+        });
+    }
+
+    #[test]
+    fn backfill_is_idempotent() {
+        with_temp_app_home("session-provider-backfill-twice", |_| {
+            write_provider_config(&[("relay", "glm-4.6")]);
+            let session = legacy_session("glm-4.6", None);
+
+            assert_eq!(backfill_session_provider_ids().expect("first"), 1);
+            let after_first = fs::read_to_string(sessions_index_file()).expect("index");
+
+            assert_eq!(backfill_session_provider_ids().expect("second"), 0);
+            assert_eq!(
+                fs::read_to_string(sessions_index_file()).expect("index"),
+                after_first,
+                "a second pass must not touch the sessions index"
+            );
+            let row = load_session_row(&session.id);
+            assert_eq!(row.provider_id.as_deref(), Some("relay"));
+            assert_eq!(row.model_id.as_deref(), Some("glm-4.6"));
+        });
+    }
+
+    #[test]
+    fn backfill_never_touches_a_session_that_already_has_a_provider() {
+        with_temp_app_home("session-provider-backfill-keeps", |_| {
+            write_provider_config(&[("relay", "glm-4.6"), ("relay-b", "glm-4.6b")]);
+            let session = legacy_session("glm-4.6", Some("relay-b"));
+            let before = fs::read_to_string(sessions_index_file()).expect("index");
+
+            assert_eq!(backfill_session_provider_ids().expect("backfill"), 0);
+
+            assert_eq!(
+                fs::read_to_string(sessions_index_file()).expect("index"),
+                before
+            );
+            let row = load_session_row(&session.id);
+            assert_eq!(row.provider_id.as_deref(), Some("relay-b"));
+            assert_eq!(row.model_id.as_deref(), Some("glm-4.6"));
+        });
+    }
+
+    #[test]
+    fn backfill_skips_a_corrupt_provider_config() {
+        with_temp_app_home("session-provider-backfill-corrupt", |_| {
+            fs::create_dir_all(crate::paths::agent_home_dir()).expect("agent home");
+            fs::write(crate::paths::agent_config_toml(), "not = [valid toml [[[").expect("corrupt");
+            let session = legacy_session("glm-4.6", None);
+            let before = fs::read_to_string(sessions_index_file()).expect("index");
+
+            assert_eq!(backfill_session_provider_ids().expect("backfill"), 0);
+
+            assert_eq!(
+                fs::read_to_string(sessions_index_file()).expect("index"),
+                before
+            );
+            let row = load_session_row(&session.id);
+            assert_eq!(row.provider_id, None);
+            assert_eq!(row.model_id.as_deref(), Some("glm-4.6"));
+        });
+    }
+
+    #[test]
+    fn backfill_reports_an_unreadable_provider_home() {
+        with_temp_app_home("session-provider-backfill-unreadable", |home| {
+            let session = legacy_session("glm-4.6", None);
+            let before = fs::read_to_string(sessions_index_file()).expect("index");
+            // agent-home 变成普通文件 → provider 列表读取失败。
+            let agent_home = home.join("agent-home");
+            fs::remove_dir_all(&agent_home).expect("drop agent home");
+            fs::write(&agent_home, b"not a directory").expect("plant file");
+
+            let error = backfill_session_provider_ids().expect_err("provider read must fail");
+
+            assert!(!error.is_empty());
+            assert_eq!(
+                fs::read_to_string(sessions_index_file()).expect("index"),
+                before,
+                "a failed provider read must not write anything"
+            );
+            let row = load_session_row(&session.id);
+            assert_eq!(row.provider_id, None);
+            assert_eq!(row.model_id.as_deref(), Some("glm-4.6"));
+        });
+    }
+
+    #[test]
+    fn backfill_refuses_a_torn_sessions_index() {
+        with_temp_app_home("session-provider-backfill-torn-index", |_| {
+            write_provider_config(&[("relay", "glm-4.6")]);
+            let session = legacy_session("glm-4.6", None);
+            let index = sessions_index_file();
+            let intact = fs::read_to_string(&index).expect("index");
+            const TORN: &str = "[{\"id\": \"torn\"";
+            fs::write(&index, TORN).expect("torn index");
+
+            let mut settings = AppSettings::default();
+            assert!(!migrate_session_provider_backfill(&mut settings));
+            assert!(
+                !settings.session_provider_backfill_migrated,
+                "a failed index read must not latch the one-shot flag"
+            );
+            assert!(backfill_session_provider_ids().is_err());
+            assert_eq!(
+                fs::read_to_string(&index).expect("index"),
+                TORN,
+                "the migration must neither repair nor rewrite a torn index"
+            );
+
+            fs::write(&index, &intact).expect("restore index");
+            assert_eq!(
+                backfill_session_provider_ids().expect("retry after repair"),
+                1
+            );
+            assert_eq!(
+                load_session_row(&session.id).provider_id.as_deref(),
+                Some("relay")
+            );
+        });
+    }
+
+    #[test]
+    fn settings_run_the_provider_backfill_once() {
+        with_temp_app_home("session-provider-backfill-flag", |_| {
+            write_provider_config(&[("relay", "glm-4.6"), ("relay-b", "glm-4.7b")]);
+            let first = legacy_session("glm-4.6", None);
+            let mut settings = AppSettings::default();
+
+            assert!(migrate_session_provider_backfill(&mut settings));
+            assert!(settings.session_provider_backfill_migrated);
+            assert_eq!(
+                load_session_row(&first.id).provider_id.as_deref(),
+                Some("relay")
+            );
+
+            // 一次性：之后出现的旧式行不再回填，避免每次启动重扫全表。
+            let later = legacy_session("glm-4.7b", None);
+            assert!(!migrate_session_provider_backfill(&mut settings));
+            assert_eq!(load_session_row(&later.id).provider_id, None);
+        });
     }
 
     #[test]

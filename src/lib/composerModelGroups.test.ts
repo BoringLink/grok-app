@@ -345,8 +345,7 @@ describe("isComposerModelEntryActive", () => {
   it("matches official when route is official and model id equals", () => {
     expect(
       isComposerModelEntryActive(officialEntry, {
-        activeSource: "official",
-        activeProviderId: null,
+        providerId: null,
         modelId: "grok-4.5",
       }),
     ).toBe(true);
@@ -355,8 +354,7 @@ describe("isComposerModelEntryActive", () => {
   it("matches custom when route, provider, and request model equal", () => {
     expect(
       isComposerModelEntryActive(customEntry, {
-        activeSource: "custom",
-        activeProviderId: "yunyi",
+        providerId: "yunyi",
         activeRequestModel: "deepseek-chat",
         modelId: "grok-4.5",
       }),
@@ -366,8 +364,7 @@ describe("isComposerModelEntryActive", () => {
   it("does not mark a custom model active when its request model is unknown", () => {
     expect(
       isComposerModelEntryActive(customEntry, {
-        activeSource: "custom",
-        activeProviderId: "yunyi",
+        providerId: "yunyi",
         modelId: "grok-4.5",
       }),
     ).toBe(false);
@@ -376,8 +373,7 @@ describe("isComposerModelEntryActive", () => {
   it("does not match a different request model on same provider", () => {
     expect(
       isComposerModelEntryActive(customEntry, {
-        activeSource: "custom",
-        activeProviderId: "yunyi",
+        providerId: "yunyi",
         activeRequestModel: "deepseek-reasoner",
         modelId: "grok-4.5",
       }),
@@ -387,8 +383,7 @@ describe("isComposerModelEntryActive", () => {
   it("does not match official while custom route is active", () => {
     expect(
       isComposerModelEntryActive(officialEntry, {
-        activeSource: "custom",
-        activeProviderId: "yunyi",
+        providerId: "yunyi",
         activeRequestModel: "deepseek-chat",
         modelId: "grok-4.5",
       }),

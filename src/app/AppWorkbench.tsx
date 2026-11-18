@@ -2413,7 +2413,9 @@ export function AppWorkbench() {
     };
   }, []);
 
-  const sessionProviderChip = useSessionProviderChip();
+  /** 当前会话的 provider 路由：`null` = 官方，非空 = 已按目录解析的自定义 provider id。 */
+  const [providerRouteId, setProviderRouteId] = useState<string | null>(null);
+  const sessionProviderChip = useSessionProviderChip(setProviderRouteId);
 
   const applyComposerPrefs = useCallback(
     (
@@ -8848,8 +8850,10 @@ export function AppWorkbench() {
   const [cachedBrandKind, setCachedBrandKind] =
     useState<SuperGrokBrandKind | null>(() => loadCachedSuperGrokBrand());
   /** Active inference channel: custom relay identity replaces official account chrome. */
-  const [activeCustomProvider, setActiveCustomProvider] =
-    useState<api.CustomProvider | null>(null);
+  const activeCustomProvider = useMemo(
+    () => customProviders.find((p) => p.id === providerRouteId) ?? null,
+    [customProviders, providerRouteId],
+  );
   /** Session-memory DeepSeek (etc.) balance for sidebar footer / UserMenu. */
   const [providerBalanceCache, setProviderBalanceCache] =
     useState<ProviderBalanceCache | null>(null);
@@ -8947,21 +8951,17 @@ export function AppWorkbench() {
     };
   }, [contextUsage, messages, locale, currentModelWindow]);
   const sessionSpend = useSessionSpend(session.sessionId);
-  const [providerActiveSource, setProviderActiveSource] =
-    useState<ProviderRouteSource>("official");
-  const [providerActiveId, setProviderActiveId] = useState<string | null>(null);
   const [modelPickBusy, setModelPickBusy] = useState(false);
   const modelPickBusyRef = useRef(false);
+  /** `source` 只是 providerRouteId 的派生视图：非空即自定义路由。 */
+  const providerRouteSource: ProviderRouteSource = providerRouteId
+    ? "custom"
+    : "official";
   const customRouteActive = activeCustomProvider != null;
   const composerProviderInputs = useMemo(
     () => composerMenuProviders(activeProject?.sshAlias?.trim() ? [] : customProviders),
     [customProviders, activeProject?.sshAlias],
   );
-  sessionProviderChip.bind({
-    setProviderActiveSource,
-    setProviderActiveId,
-    setActiveCustomProvider,
-  });
   const refreshProviderRoute = useCallback(async () => {
     if (!api.isTauri()) {
       sessionProviderChip.noteProviderList(null);
@@ -9099,7 +9099,7 @@ export function AppWorkbench() {
     getLatestEffort,
     isCurrentTarget,
   } = useSessionComposerEffort({
-    source: providerActiveSource,
+    source: providerRouteSource,
     provider: activeCustomProvider,
     modelId,
     officialModels: availableModels,
@@ -9141,8 +9141,7 @@ export function AppWorkbench() {
           ? pickSessionEffort(resolution.options, getLatestEffort())
           : getLatestEffort();
         const providerChanged =
-          (providerId === "official") !== (providerActiveSource === "official") ||
-          (providerId !== "official" && providerActiveId !== providerId);
+          (providerId === "official" ? null : providerId) !== providerRouteId;
         const sid = session.sessionId;
         const draftRouteAtStart = sid
           ? null
@@ -9214,8 +9213,7 @@ export function AppWorkbench() {
       activeProject?.sshAlias,
       session.sessionId,
       getLatestEffort,
-      providerActiveSource,
-      providerActiveId,
+      providerRouteId,
       sessionProviderChip,
       isCurrentTarget,
       showToast,
@@ -10539,12 +10537,9 @@ export function AppWorkbench() {
   const errorBanner = useMemo(
     () =>
       presentErrorBanner(error, localError, locale, {
-        activeSource:
-          providerActiveSource === "custom" || providerActiveSource === "official"
-            ? providerActiveSource
-            : null,
+        activeSource: providerRouteSource,
       }),
-    [error, localError, locale, providerActiveSource],
+    [error, localError, locale, providerRouteSource],
   );
   /** Prefer in-thread turn error; avoid stacking with the top error banner. */
   const hasChatTurnError = useMemo(
@@ -12249,11 +12244,7 @@ export function AppWorkbench() {
               projects={automationProjectOptions(projects)}
               sessionOptions={automationSessionOptions(sessions)}
               providers={customProviders}
-              defaultProviderId={
-                providerActiveSource === "custom"
-                  ? (providerActiveId ?? "official")
-                  : "official"
-              }
+              defaultProviderId={providerRouteId ?? "official"}
               defaultModelId={modelId}
               defaultEffort={effort}
               models={availableModels}
@@ -12578,8 +12569,7 @@ export function AppWorkbench() {
             promptHistoryPos={promptHistoryPos}
             promptHistoryScope={promptHistoryScope}
             promptHistoryUnfilteredCount={promptHistoryUnfilteredCount}
-            providerActiveId={providerActiveId}
-            providerActiveSource={providerActiveSource}
+            providerId={providerRouteId}
             queueEditItemId={queueEdit.editItemId}
             queuePreviewLabels={queuePreviewLabels}
             quotes={quotes}
@@ -12799,8 +12789,7 @@ export function AppWorkbench() {
             effort={effort}
             models={availableModels}
             providers={composerProviderInputs}
-            activeSource={providerActiveSource}
-            activeProviderId={providerActiveId}
+            providerRoute={{ providerId: providerRouteId }}
             efforts={effortOptions}
             effortOptionsPending={effortOptionsPending}
             effortOptionsFailed={effortOptionsFailed}

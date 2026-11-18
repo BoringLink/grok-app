@@ -60,8 +60,6 @@ const healthyProvider = {
 const listResult: ProvidersListResult = {
   providers: [corruptProvider, healthyProvider],
   defaultModel: null,
-  activeSource: "official",
-  activeProviderId: null,
   configPath: "",
   agentHome: "",
 };
@@ -534,5 +532,121 @@ describe("ProvidersPanel per-model metadata", () => {
 
     const payload = mocks.providersUpsert.mock.calls[0]?.[0];
     expect(payload?.models).toBeUndefined();
+  });
+});
+
+describe("ProvidersPanel pending anchor deep link", () => {
+  it("opens the first provider form so a models anchor can be focused", async () => {
+    const onPendingAnchorMounted = vi.fn();
+    render(
+      <ProvidersPanel
+        locale="en"
+        pendingAnchor="settings-anchor-prov-models"
+        onPendingAnchorMounted={onPendingAnchorMounted}
+      />,
+    );
+
+    expect(await screen.findByTestId("provider-form")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Edit provider" }),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Relay")).toBeInTheDocument();
+    expect(
+      document.getElementById("settings-anchor-prov-models"),
+    ).not.toBeNull();
+    await waitFor(() =>
+      expect(onPendingAnchorMounted).toHaveBeenCalledTimes(1),
+    );
+  });
+
+  it("opens the create form when no provider exists", async () => {
+    mocks.providersList.mockResolvedValue({
+      providers: [],
+      defaultModel: null,
+      configPath: "",
+      agentHome: "",
+    });
+
+    render(
+      <ProvidersPanel
+        locale="en"
+        pendingAnchor="settings-anchor-prov-models"
+      />,
+    );
+
+    expect(await screen.findByTestId("provider-form")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Add provider" }),
+    ).toBeInTheDocument();
+    expect(
+      document.getElementById("settings-anchor-prov-models"),
+    ).not.toBeNull();
+  });
+
+  it.each([
+    "settings-anchor-prov-extra-headers",
+    "settings-anchor-provider-mode",
+  ])("opens the form for %s", async (anchorId) => {
+    const onPendingAnchorMounted = vi.fn();
+    render(
+      <ProvidersPanel
+        locale="en"
+        pendingAnchor={anchorId}
+        onPendingAnchorMounted={onPendingAnchorMounted}
+      />,
+    );
+
+    expect(await screen.findByTestId("provider-form")).toBeInTheDocument();
+    expect(document.getElementById(anchorId)).not.toBeNull();
+    await waitFor(() =>
+      expect(onPendingAnchorMounted).toHaveBeenCalledTimes(1),
+    );
+  });
+
+  it("keeps the empty right pane for anchors outside the form", async () => {
+    render(
+      <ProvidersPanel
+        locale="en"
+        pendingAnchor="settings-anchor-account-providers"
+      />,
+    );
+
+    await screen.findByRole("button", { name: /Relay/ });
+    expect(screen.queryByTestId("provider-form")).toBeNull();
+    expect(
+      screen.getByText("Select a provider or add a new one."),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the empty right pane without a pending anchor", async () => {
+    renderPanel();
+
+    await screen.findByRole("button", { name: /Relay/ });
+    expect(screen.queryByTestId("provider-form")).toBeNull();
+    expect(
+      screen.getByText("Select a provider or add a new one."),
+    ).toBeInTheDocument();
+  });
+
+  it("applies the search-hit highlight to the focused anchor", async () => {
+    render(
+      <ProvidersPanel
+        locale="en"
+        pendingAnchor="settings-anchor-prov-models"
+        rowHighlight={(anchorId) =>
+          anchorId === "settings-anchor-prov-models" ? " is-search-hit" : ""
+        }
+      />,
+    );
+
+    const anchor = await waitFor(() => {
+      const el = document.getElementById("settings-anchor-prov-models");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(anchor.className).toContain("is-search-hit");
+    expect(
+      document.getElementById("settings-anchor-prov-extra-headers")?.className,
+    ).not.toContain("is-search-hit");
   });
 });

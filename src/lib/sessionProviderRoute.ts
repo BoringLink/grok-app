@@ -11,6 +11,13 @@ export type SessionProviderRoute = {
   providerId: string | null;
 };
 
+/**
+ * 单值路由：`providerId` 为 `null` 即官方路由，非空即自定义 provider id。
+ * 调用方须先按 provider 目录归一化（已被删除的 provider 归一化为 `null`），
+ * 因此消费方不必再同时接收 `source`。
+ */
+export type ProviderRouteId = Pick<SessionProviderRoute, "providerId">;
+
 /** Resolves a saved provider identity against the latest provider catalog. */
 export function resolveSessionProviderRoute(input: {
   providerId?: string | null;

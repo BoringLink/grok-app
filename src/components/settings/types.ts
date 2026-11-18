@@ -332,6 +332,10 @@ export interface SettingsPageProps {
     line?: number | null;
   }) => void;
   focusAnchorId?: string | null;
+  /** Anchor queued for scroll/highlight (search hit or external deep link). */
+  pendingAnchor?: string | null;
+  /** A section mounted the queued anchor target — the shell can finish scrolling. */
+  onPendingAnchorMounted?: () => void;
   prHubHighlightPr?: number | null;
   onFocusAnchorConsumed?: () => void;
   onSkillsPrefsChanged?: () => void;

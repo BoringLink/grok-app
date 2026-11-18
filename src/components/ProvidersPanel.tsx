@@ -106,7 +106,23 @@ export interface ProvidersPanelProps {
     providerId: string,
     result: api.ProviderBalanceResult,
   ) => void;
+  /**
+   * Settings search / deep-link anchor queued for focus. Form-internal anchors
+   * only exist inside the create/edit form, so the panel opens that form first.
+   */
+  pendingAnchor?: string | null;
+  /** The queued anchor target is mounted now — the settings shell can scroll. */
+  onPendingAnchorMounted?: () => void;
+  /** Search-hit highlight class helper (` is-search-hit`). */
+  rowHighlight?: (anchorId: string) => string;
 }
+
+/** 仅在 provider 表单（create/edit）内渲染的设置锚点。 */
+const FORM_INTERNAL_ANCHORS: ReadonlySet<string> = new Set([
+  "settings-anchor-prov-models",
+  "settings-anchor-prov-extra-headers",
+  "settings-anchor-provider-mode",
+]);
 
 function FieldHelp({ label, tip }: { label: string; tip: string }) {
   return (
@@ -138,6 +154,9 @@ export function ProvidersPanel({
   onOfficialKeyChanged,
   onToast,
   onBalanceLoaded,
+  pendingAnchor: pendingAnchorProp = null,
+  onPendingAnchorMounted,
+  rowHighlight = () => "",
 }: ProvidersPanelProps) {
   const tr = useMemo(() => createT(locale), [locale]);
   const [list, setList] = useState<api.ProvidersListResult | null>(null);
@@ -240,8 +259,6 @@ export function ProvidersPanel({
         setList({
           providers: [],
           defaultModel: null,
-          activeSource: "official",
-          activeProviderId: null,
           configPath: "",
           agentHome: "",
         });
@@ -294,7 +311,7 @@ export function ProvidersPanel({
     setRightMode(PROVIDER_PRESETS.length > 0 ? "pick" : "create");
   };
 
-  const openCustomCreate = () => {
+  const openCustomCreate = useCallback(() => {
     setSelection(null);
     setEditingId(null);
     setForm(emptyForm());
@@ -304,7 +321,7 @@ export function ProvidersPanel({
     setHint(null);
     setShowKey(false);
     setRightMode("create");
-  };
+  }, []);
 
   const fillPresetForm = (preset: ProviderPreset, endpointId?: string) => {
     setSelection(null);
@@ -491,7 +508,7 @@ export function ProvidersPanel({
     }
   };
 
-  const openEdit = (p: api.CustomProvider) => {
+  const openEdit = useCallback((p: api.CustomProvider) => {
     setSelection(p.id);
     setEditingId(p.id);
     setForm({
@@ -527,7 +544,7 @@ export function ProvidersPanel({
     setHint(null);
     setShowKey(false);
     setRightMode("edit");
-  };
+  }, []);
 
   const closeRight = () => {
     setRightMode("empty");
@@ -538,6 +555,38 @@ export function ProvidersPanel({
     setDraftModelId("");
     setDraftModelName("");
   };
+
+  const pendingAnchor = (pendingAnchorProp ?? "").trim();
+  const formAnchorPending = FORM_INTERNAL_ANCHORS.has(pendingAnchor);
+  const formOpen = rightMode === "create" || rightMode === "edit";
+
+  // 搜索/深链命中表单内锚点：先打开表单（首个 provider，或列表为空时新建），
+  // 锚点才存在于 DOM，settings 外壳随后才能滚动并高亮。
+  useEffect(() => {
+    if (!formAnchorPending || loading || formOpen) return;
+    const first = list?.providers[0];
+    if (first) openEdit(first);
+    else openCustomCreate();
+  }, [
+    formAnchorPending,
+    loading,
+    formOpen,
+    list,
+    openEdit,
+    openCustomCreate,
+  ]);
+
+  /** 每次锚点请求只通知一次外壳，避免重复 scroll 重置高亮计时。 */
+  const notifiedAnchorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!formAnchorPending || !formOpen) {
+      notifiedAnchorRef.current = null;
+      return;
+    }
+    if (notifiedAnchorRef.current === pendingAnchor) return;
+    notifiedAnchorRef.current = pendingAnchor;
+    onPendingAnchorMounted?.();
+  }, [formAnchorPending, formOpen, pendingAnchor, onPendingAnchorMounted]);
 
   const addModelToForm = (modelId: string, displayName?: string) => {
     const id = modelId.trim();
@@ -1573,7 +1622,10 @@ export function ProvidersPanel({
 
                 {/* Models — full-width section, 2 equal columns inside */}
                 <div
-                  className="prov-field prov-field--full prov-section"
+                  className={
+                    "prov-field prov-field--full prov-section" +
+                    rowHighlight("settings-anchor-prov-models")
+                  }
                   id="settings-anchor-prov-models"
                 >
                   <span className="prov-field__label-row">
@@ -1860,7 +1912,10 @@ export function ProvidersPanel({
                 </div>
 
                 <div
-                  className="prov-field prov-field--full"
+                  className={
+                    "prov-field prov-field--full" +
+                    rowHighlight("settings-anchor-prov-extra-headers")
+                  }
                   id="settings-anchor-prov-extra-headers"
                 >
                   <FieldHelp
@@ -1967,7 +2022,10 @@ export function ProvidersPanel({
                 </div>
 
                 <div
-                  className="prov-field prov-field--full"
+                  className={
+                    "prov-field prov-field--full" +
+                    rowHighlight("settings-anchor-provider-mode")
+                  }
                   id="settings-anchor-provider-mode"
                 >
                   <FieldHelp

@@ -189,8 +189,8 @@ export type WorkbenchComposerColumnProps = {
   promptHistoryPos: FloatingPos | null;
   promptHistoryScope: PromptHistoryScope;
   promptHistoryUnfilteredCount: number;
-  providerActiveId: string | null;
-  providerActiveSource: string;
+  /** Active inference route: `null` provider id = official. */
+  providerId: string | null;
   queueEditItemId: string | null;
   queuePreviewLabels: { filesCount: (n: number) => string; chatsCount: (n: number) => string; empty: string; };
   quotes: ComposerQuote[];
@@ -358,8 +358,7 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
     effort,
     availableModels,
     composerProviderInputs,
-    providerActiveSource,
-    providerActiveId,
+    providerId,
     effortOptions,
     effortOptionsPending = false,
     effortOptionsFailed = false,
@@ -1003,8 +1002,7 @@ export function WorkbenchComposerColumn(p: WorkbenchComposerColumnProps) {
                   effort={effort}
                   models={availableModels}
                   providers={composerProviderInputs}
-                  activeSource={providerActiveSource}
-                  activeProviderId={providerActiveId}
+                  providerRoute={{ providerId }}
                   efforts={effortOptions}
                   effortOptionsPending={effortOptionsPending}
                   effortOptionsFailed={effortOptionsFailed}

@@ -40,6 +40,7 @@ import {
   composerModelChipLabel,
   resolveCustomRouteDisplay,
 } from "@/lib/effectiveModel";
+import type { ProviderRouteId } from "@/lib/sessionProviderRoute";
 import {
   formatTokenCount,
   hasContextUsageData,
@@ -122,9 +123,8 @@ export type PhoneComposerToolsSheetProps = {
   models?: ModelOption[];
   /** Configured custom providers for grouped menu entries. */
   providers?: ComposerProviderInput[];
-  /** Active inference route: official | custom. */
-  activeSource?: string;
-  activeProviderId?: string | null;
+  /** Active inference route: `providerId === null` means official. */
+  providerRoute: ProviderRouteId;
   /** Reasoning options for this chat's exact model; `undefined` uses official catalog. */
   efforts?: EffortOption[] | null;
   effortOptionsPending?: boolean;
@@ -231,8 +231,7 @@ export function PhoneComposerToolsSheet({
   effort,
   models = GROK_BUILD_MODELS,
   providers = [],
-  activeSource = "official",
-  activeProviderId = null,
+  providerRoute,
   efforts,
   effortOptionsPending = false,
   effortOptionsFailed = false,
@@ -263,13 +262,13 @@ export function PhoneComposerToolsSheet({
     providers,
     officialGroupTitle: labels.modelGroupOfficial,
   });
-  const customRoute =
-    activeSource === "custom"
-      ? resolveCustomRouteDisplay(
-          providers.find((x) => x.id === activeProviderId),
-          modelId,
-        )
-      : null;
+  const routeProviderId = providerRoute.providerId;
+  const customRoute = routeProviderId
+    ? resolveCustomRouteDisplay(
+        providers.find((x) => x.id === routeProviderId),
+        modelId,
+      )
+    : null;
   const activeCustom = customRoute?.chip ?? null;
   const activeRequestModel = customRoute?.requestModel ?? null;
   const effortOptions =
@@ -481,8 +480,7 @@ export function PhoneComposerToolsSheet({
                   <div className="phone-sheet__section">{group.title}</div>
                   {group.entries.map((entry) => {
                     const active = isComposerModelEntryActive(entry, {
-                      activeSource,
-                      activeProviderId,
+                      providerId: routeProviderId,
                       activeRequestModel,
                       modelId,
                     });

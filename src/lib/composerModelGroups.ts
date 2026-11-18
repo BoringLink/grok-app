@@ -202,22 +202,16 @@ export function filterComposerModelGroups(
 export function isComposerModelEntryActive(
   entry: ComposerModelEntry,
   opts: {
-    activeSource: "official" | "custom" | string;
-    activeProviderId: string | null | undefined;
+    /** `null` = official route; otherwise the resolved custom provider id. */
+    providerId: string | null;
     /** Active custom request model (provider.model). */
     activeRequestModel?: string | null;
     modelId: string;
   },
 ): boolean {
   if (entry.pick.kind === "official") {
-    return (
-      opts.activeSource !== "custom" && entry.pick.modelId === opts.modelId
-    );
+    return opts.providerId === null && entry.pick.modelId === opts.modelId;
   }
   const requestOk = opts.activeRequestModel === entry.pick.modelId;
-  return (
-    opts.activeSource === "custom" &&
-    opts.activeProviderId === entry.pick.providerId &&
-    requestOk
-  );
+  return opts.providerId === entry.pick.providerId && requestOk;
 }
