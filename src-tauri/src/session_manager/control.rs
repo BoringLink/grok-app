@@ -865,7 +865,9 @@ impl SessionManager {
         let agent_model = crate::providers::session_set_model_id_for(&provider, &model_id);
         // A model switch must not keep the previous model's window. Resolve
         // the target model's configured size and send it in the same
-        // `session/set_model` call; an unconfigured size leaves the CLI value.
+        // `session/set_model` call; custom providers fall back to the 1M
+        // convenience default, an official model without a catalog window
+        // leaves the CLI value.
         let window = if crate::providers::is_session_provider_official(&provider) {
             crate::models_catalog::effective_model_window(&agent_model)
         } else {
