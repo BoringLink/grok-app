@@ -2400,20 +2400,17 @@ pub(crate) fn set_model_refusal_is_allowlist(err: &str) -> bool {
 /// 参数。这里以 App prefs 解析出的有效档位为准补一次下发，使档位不再
 /// 依赖 spawn flag 的隐式传递。
 ///
-/// 仅覆盖 CLI 固定档集（minimal–xhigh）；`none` / `max` 超出该集，返回
-/// 前由 `set_config_wire_effort` 过滤，其权威路径仍是 spawn flag。软失败
-/// 不影响连接。
+/// value 原样透传用户配置的档位 id（含 none / max / 自定义 id）：CLI
+/// 允许自定义思考强度，非法值由网关上游拒绝，Host 不在 RPC 档集层
+/// 过滤。软失败不影响连接。
 async fn push_connected_effort(client: &AcpClient, agent_sid: &str, effort: Option<&str>) {
     let Some(id) = effort.map(str::trim).filter(|id| !id.is_empty()) else {
-        return;
-    };
-    let Some(tier) = crate::providers::set_config_wire_effort(id) else {
         return;
     };
     if let Err(e) = SessionManager::with_soft_rpc_budget(client.set_config_option_str(
         agent_sid,
         "reasoning_effort",
-        tier,
+        id,
     ))
     .await
     {

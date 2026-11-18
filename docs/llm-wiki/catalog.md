@@ -69,8 +69,8 @@ Spawn / 应用：`--reasoning-effort <raw id>`，该 id 必须已出现在模型
 档位生效链路（CLI 1.0.88 实测校准）：
 
 - **spawn flag** 是档位的第一传递路径，但会被 agent-home `config.toml` 的用户级 `default_reasoning_effort` **静默覆盖**（仅 `--model` 选中自定义路由模型时发生）。Independent 模式 seal `agent-proc` home 时剔除该键（只动 sealed 副本，规范 agent-home / 共享 `~/.grok` 永不改写）。
-- **连接后补发**：connect 在 `session/set_model` 之后用 ACP `session/set_config_option`（`configId=reasoning_effort`）显式下发有效档位，覆盖 `session/load` 恢复的 CLI 侧存储值与任何 spawn 覆盖（`connect.rs::push_connected_effort`，软失败）。`session/set_config_option` 的 value 是**纯字符串**（CLI 拒绝文档示例的 `{"value": ...}` 嵌套形状）；仅接受 CLI 固定档集 `minimal` / `low` / `medium` / `high` / `xhigh`（`providers::set_config_wire_effort`，canonical 映射后过滤），`none` / `max` 超出该集、跳过补发，spawn flag 是其唯一权威路径。
-- **live 热切换**：空闲 live 会话改档走 `set_config_option` 热路径（`control.rs::try_hot_effort_apply`），RPC 值与连接补发同一 canonical 映射（vendor 原始 id → 最近固定档；`none` / `max` 直接回落 stage），成功保留进程与 resume id（记账仍保留原始 id）；失败回落惰性 pending，由下一次 connect 或 turn-end flush 冷启动。
+- **连接后补发**：connect 在 `session/set_model` 之后用 ACP `session/set_config_option`（`configId=reasoning_effort`）显式下发有效档位，覆盖 `session/load` 恢复的 CLI 侧存储值与任何 spawn 覆盖（`connect.rs::push_connected_effort`，软失败）。`session/set_config_option` 的 value 是**纯字符串**（CLI 拒绝文档示例的 `{"value": ...}` 嵌套形状）；value 原样透传用户配置的档位 id（含 `none` / `max` / 自定义 id），Host 不在 RPC 档集层过滤，非法值由网关上游拒绝后回落 spawn flag（权威路径）。
+- **live 热切换**：空闲 live 会话改档走 `set_config_option` 热路径（`control.rs::try_hot_effort_apply`），RPC 值与连接补发一致——原始档位 id 原样下发，CLI 侧经 ladder 表完成 raw id → value 映射；成功保留进程与 resume id（记账仍保留原始 id）；RPC 失败（含上游拒绝）回落惰性 pending，由下一次 connect 或 turn-end flush 冷启动。
 
 **Live 语义**：更改档位后，live agent 在**回合结束后** soft-respawn，正在运行的回合不会被中断；空闲会话写 prefs，下一条消息 / 下次连接生效。保存或 API 失败时 Composer 选中态保持不变，并按 `classifyModelEffortError` 分类显示本地化提示。
 
@@ -81,7 +81,7 @@ Spawn / 应用：`--reasoning-effort <raw id>`，该 id 必须已出现在模型
 | 控制 | 无 live Agent | Live Agent |
 |------|---------------|------------|
 | 模型 | `next_message`（下条消息 spawn） | `session/set_model` → `immediate_rpc`；不支持则 `soft_respawn` |
-| 推理 | `next_message` | 空闲时 `set_config_option` 热路径（保留进程）；`none` / `max` 或热失败 / mid-turn → `soft_respawn`（回合结束后） |
+| 推理 | `next_message` | 空闲时 `set_config_option` 热路径（保留进程，原始 id 透传）；热失败 / mid-turn → `soft_respawn`（回合结束后） |
 
 不得静默失败：prefs / set_model 错误经 `classifyModelEffortError` 分类 toast。
 

@@ -1790,26 +1790,6 @@ fn canonical_wire_effort(id: &str) -> &'static str {
     }
 }
 
-/// CLI `session/set_config_option` 可下发的线级档（1.0.88 实测固定档集：
-/// minimal / low / medium / high / xhigh）。
-///
-/// `none` 无法经该 RPC 表达（CLI 报 `unknown reasoning_effort value`），
-/// `max` 同样超出固定档集——这两档的权威路径是 spawn flag
-/// `--reasoning-effort`（配额 seal 时剔除用户级 `default_reasoning_effort`
-/// 的覆盖）。返回 `None` 表示跳过 RPC 下发。
-///
-/// 同 value 多原始 id 的 ladder 也走本路径：ladder 表
-/// (`model.<id>.reasoning_efforts`) 由 [`encode_cli_reasoning_efforts`] 写入
-/// agent-home，CLI 自己完成 raw id → value 的映射，因此 spawn 腿
-/// `--reasoning-effort <raw>` 与 RPC 腿下发 `canonical_wire_effort(raw)` 在
-/// 线级（API 实际收到的值）完全一致。热切换对该场景是精确的，不需要为
-/// 消除"歧义"而强制 respawn——respawn 会打断运行中的回合，破坏
-/// "下一轮生效"的用户预期。
-pub fn set_config_wire_effort(id: &str) -> Option<&'static str> {
-    let tier = canonical_wire_effort(id);
-    matches!(tier, "minimal" | "low" | "medium" | "high" | "xhigh").then_some(tier)
-}
-
 /// TOML inline array of tables for Grok Build's `model.<id>.reasoning_efforts`.
 ///
 /// `id` is the raw Composer option the App passes to `--reasoning-effort`;
@@ -4857,28 +4837,28 @@ mod tests {
     }
 
     #[test]
-    fn set_config_wire_effort_filters_to_cli_fixed_tiers() {
-        // CLI 固定档集内的 App id → 原样透传（canonical 映射后）。
-        assert_eq!(set_config_wire_effort("low"), Some("low"));
-        assert_eq!(set_config_wire_effort("medium"), Some("medium"));
-        assert_eq!(set_config_wire_effort("high"), Some("high"));
-        assert_eq!(set_config_wire_effort("minimal"), Some("minimal"));
-        assert_eq!(set_config_wire_effort("xhigh"), Some("xhigh"));
+    fn canonical_wire_effort_maps_aliases_to_tiers() {
+        // ladder 表编码用的 canonical 映射：raw id → 最近固定档。
+        assert_eq!(canonical_wire_effort("low"), "low");
+        assert_eq!(canonical_wire_effort("medium"), "medium");
+        assert_eq!(canonical_wire_effort("high"), "high");
+        assert_eq!(canonical_wire_effort("minimal"), "minimal");
+        assert_eq!(canonical_wire_effort("xhigh"), "xhigh");
         // instant 是 App 菜单 id，canonical 映射到 minimal。
-        assert_eq!(set_config_wire_effort("instant"), Some("minimal"));
-        // none / max 超出 CLI set_config 固定档集：跳过 RPC，spawn flag 权威。
-        assert_eq!(set_config_wire_effort("none"), None);
-        assert_eq!(set_config_wire_effort("off"), None);
-        assert_eq!(set_config_wire_effort("max"), None);
+        assert_eq!(canonical_wire_effort("instant"), "minimal");
+        assert_eq!(canonical_wire_effort("none"), "none");
+        assert_eq!(canonical_wire_effort("off"), "none");
+        assert_eq!(canonical_wire_effort("max"), "max");
         // 未知 id canonical 兜到 medium。
-        assert_eq!(set_config_wire_effort("bogus"), Some("medium"));
+        assert_eq!(canonical_wire_effort("bogus"), "medium");
     }
 
     #[test]
     fn hot_apply_is_wire_exact_for_duplicate_value_ladder_ids() {
         // 同 value 多原始 id 的 ladder：spawn 腿 `--reasoning-effort <raw>` 由
-        // CLI 按 reasoning_efforts 表映射到 value；RPC 腿下发同一 value。
-        // 两条腿线级一致，热切换精确，不需要为消除"歧义"强制 respawn。
+        // CLI 按 reasoning_efforts 表映射到 value；RPC 腿原样透传 raw id，
+        // CLI 侧同样经表映射。两条腿线级一致，热切换精确，不需要为消除
+        // "歧义"而强制 respawn。
         let ladder = [
             ProviderEffortEntry {
                 id: "instant".into(),
@@ -4897,7 +4877,8 @@ mod tests {
             },
         ];
         let table = encode_cli_reasoning_efforts(&ladder);
-        // 表中每个 id 的 value 与热切换下发值必须一致。
+        // 表中每个 id 的 value 必须存在：CLI 侧 raw id → value 映射的
+        // 唯一来源。
         for effort in &ladder {
             let needle = format!(
                 "id = \"{}\", value = \"{}\"",
@@ -4905,17 +4886,11 @@ mod tests {
                 canonical_wire_effort(&effort.id)
             );
             assert!(table.contains(&needle), "missing row: {needle} in {table}");
-            assert_eq!(
-                set_config_wire_effort(&effort.id),
-                Some(canonical_wire_effort(&effort.id)),
-                "RPC tier must equal the value the CLI maps {id} to",
-                id = effort.id
-            );
         }
         // balanced 与 deliberate 共享 value = medium：线级无差异。
         assert_eq!(
-            set_config_wire_effort("balanced"),
-            set_config_wire_effort("deliberate")
+            canonical_wire_effort("balanced"),
+            canonical_wire_effort("deliberate")
         );
     }
 
