@@ -40,6 +40,9 @@ export function AccountSection() {
     onRemoveAccount,
     onSaveAccount,
     onSwitchAccount,
+    pendingAnchor,
+    onPendingAnchorMounted,
+    rowHighlight,
     savedAccounts,
     setSectionTab,
     t,
@@ -100,6 +103,9 @@ export function AccountSection() {
                 onProvidersChanged={onProvidersChanged}
                 onOfficialKeyChanged={onProviderActivated}
                 onBalanceLoaded={onProviderBalanceLoaded}
+                pendingAnchor={pendingAnchor}
+                onPendingAnchorMounted={onPendingAnchorMounted}
+                rowHighlight={rowHighlight}
               />
             ) : activeTab === "extras" ? (
               <OfficialAuxPanel

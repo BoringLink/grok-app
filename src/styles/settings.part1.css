@@ -560,8 +560,10 @@
   app-region: no-drag;
 }
 
+/* .prov-field：provider 表单内锚点（模型 / 请求头 / 模式）不是 card/row 结构 */
 .settings-row.is-search-hit,
-.settings-card.is-search-hit {
+.settings-card.is-search-hit,
+.prov-field.is-search-hit {
   /* Inset outline so parent .settings-card { overflow: hidden } does not clip it */
   outline: 2px solid color-mix(in srgb, var(--accent, #6b8cff) 70%, transparent);
   outline-offset: -2px;
