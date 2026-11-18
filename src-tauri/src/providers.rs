@@ -2456,8 +2456,32 @@ pub fn custom_provider_id_for_model_unique(model: &str) -> Option<String> {
         return None;
     }
     let list = list_custom_providers().ok()?;
-    let mut hits = list
-        .providers
+    unique_model_owner(&list.providers, model)
+}
+
+/// [`custom_provider_id_for_model_unique`] that never writes the agent config.
+///
+/// One-shot migrations must not heal or rewrite `config.toml` as a side effect
+/// (that belongs to the interactive provider list). A missing file means "no
+/// custom providers"; any other read error is reported so a caller holding a
+/// one-shot flag can retry instead of latching "no owner".
+pub fn custom_provider_id_for_model_unique_readonly(model: &str) -> Result<Option<String>, String> {
+    let model = model.trim();
+    if model.is_empty() || is_official_catalog_model(model) {
+        return Ok(None);
+    }
+    let path = agent_config_toml();
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(format!("agent config read failed: {error}")),
+    };
+    let list = build_list_result(agent_home_dir(), path, &text);
+    Ok(unique_model_owner(&list.providers, model))
+}
+
+fn unique_model_owner(providers: &[CustomProvider], model: &str) -> Option<String> {
+    let mut hits = providers
         .iter()
         .filter(|p| p.id != model && (p.model == model || p.models.iter().any(|m| m.id == model)));
     let first = hits.next()?;
