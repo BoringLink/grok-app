@@ -182,7 +182,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-测试隔离:`app_data_root()` 在 `cfg(test)` 下遇到未设置的 `GROK_APP_HOME` 会 panic。会读写 store / settings / paths 的新测试必须用 `crate::test_support::TestAppHome`(或 `with_temp_app_home`)包住，不要手动 `set_var` / `remove_var`。定位漏网用例时串行跑 `cargo test --lib -- --test-threads=1`，并行模式下可能被其他守卫掩盖。
+Test isolation: `app_data_root()` panics in `cfg(test)` when `GROK_APP_HOME` is unset. Tests that read or write store, settings, or paths must use `crate::test_support::TestAppHome` (or `with_temp_app_home`) and must not call `set_var` / `remove_var` manually. To find unguarded tests, run `cargo test --lib -- --test-threads=1`; parallel runs can hide leaks. `pnpm dev` points `HOME` / `USERPROFILE`, `GROK_APP_HOME`, and `GROK_HOME` into the repository-local `.grok-app-dev/` environment. Run `tauri dev` through this launcher to preserve isolation.
 
 CHANGELOG Unreleased first sentences must stay ≤ 90 characters (`whatsNew.test.ts`). Local red = not done. This machine can only run macOS clippy/tests; still run them. Do not assume GitHub CI will catch it.
 
