@@ -321,6 +321,13 @@ const STDIN_WRITE_TIMEOUT_SECS: u64 = 8;
 const PROMPT_IDLE_TIMEOUT_SECS: u64 = 1800;
 /// Poll slice while waiting for the `session/prompt` oneshot.
 const PROMPT_WAIT_SLICE_SECS: u64 = 5;
+/// Max wait for the event pump to apply an **already claimed** prompt terminal.
+///
+/// Once the pump removes the pending waiter, ownership of the turn moved to it
+/// and the idle window no longer fails the prompt. A wedged `apply_terminal`
+/// would then poll forever and Stop could not reach the waiter, so the wait is
+/// bounded here; normal terminals are applied within milliseconds.
+const PROMPT_SETTLE_APPLY_TIMEOUT_SECS: u64 = 45;
 /// Legacy alias used in docs/comments — idle silence window for prompt RPC.
 #[allow(dead_code)]
 const PROMPT_TIMEOUT_SECS: u64 = PROMPT_IDLE_TIMEOUT_SECS;
@@ -356,6 +363,38 @@ fn prompt_wait_should_timeout(
 ) -> bool {
     let baseline = last_update.unwrap_or(wait_started);
     now.saturating_duration_since(baseline) >= idle_timeout
+}
+
+/// Error once a pump-claimed prompt has waited past the settlement apply grace.
+///
+/// `claimed_at` is stamped on the first observation, so the bound covers the
+/// whole post-claim wait rather than one poll slice. `None` means the terminal
+/// may still arrive from the pump.
+fn settlement_grace_expired(
+    id: u64,
+    claimed_at: &mut Option<Instant>,
+    apply_grace: Duration,
+) -> Option<String> {
+    let started = *claimed_at.get_or_insert_with(Instant::now);
+    let waited = started.elapsed();
+    if waited < apply_grace {
+        return None;
+    }
+    Some(format!(
+        "session/prompt (id={id}) settlement was claimed by the event pump but its terminal was not applied within {:.1}s",
+        waited.as_secs_f64()
+    ))
+}
+
+/// Time budgets for one `session/prompt` wait.
+#[derive(Clone, Copy)]
+struct PromptWaitBudget {
+    /// Max silence while this call still owns the waiter.
+    idle: Duration,
+    /// Poll slice that re-checks ownership and the idle window.
+    slice: Duration,
+    /// Max wait for the pump to apply a terminal it already claimed.
+    apply_grace: Duration,
 }
 
 /// Whether a pending prompt belongs to the fallback target session.
@@ -2584,24 +2623,34 @@ impl AcpClient {
             rx,
             prompt_sid.as_deref(),
             wait_started,
-            Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS),
-            Duration::from_secs(PROMPT_WAIT_SLICE_SECS),
+            PromptWaitBudget {
+                idle: Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS),
+                slice: Duration::from_secs(PROMPT_WAIT_SLICE_SECS),
+                apply_grace: Duration::from_secs(PROMPT_SETTLE_APPLY_TIMEOUT_SECS),
+            },
         )
         .await
     }
 
-    /// Wait loop for a dispatched `session/prompt`, with the idle window and
-    /// slice injected so tests can drive the watchdog without waiting minutes.
+    /// Wait loop for a dispatched `session/prompt`, with the wait budgets
+    /// injected so tests can drive the watchdogs without waiting minutes.
     async fn await_prompt_settlement(
         &self,
         id: u64,
         mut rx: oneshot::Receiver<Result<Value, String>>,
         prompt_sid: Option<&str>,
         wait_started: Instant,
-        idle: Duration,
-        slice: Duration,
+        budget: PromptWaitBudget,
     ) -> Result<Value, String> {
         let method = "session/prompt";
+        let PromptWaitBudget {
+            idle,
+            slice,
+            apply_grace,
+        } = budget;
+        // First observation that this call no longer owns the waiter: the pump
+        // claimed the terminal, so only `apply_grace` bounds the wait now.
+        let mut claimed_at: Option<Instant> = None;
         loop {
             tokio::select! {
                 r = &mut rx => {
@@ -2624,10 +2673,23 @@ impl AcpClient {
                     }
                 }
                 _ = tokio::time::sleep(slice) => {
+                    // Claim = the pump removed the pending waiter and now owes
+                    // this turn's terminal. Checked every slice so the apply
+                    // grace starts with the claim, not after the idle window.
+                    if !self.pending.lock().contains_key(&id) {
+                        if let Some(head) =
+                            settlement_grace_expired(id, &mut claimed_at, apply_grace)
+                        {
+                            error!("{head}");
+                            return Err(head);
+                        }
+                        continue;
+                    }
                     if !self.reader_alive.load(Ordering::SeqCst) {
                         if !self.expire_prompt_waiter(id) {
-                            // The pump already claimed the settlement and owns
-                            // this turn's outcome.
+                            // The pump claimed the settlement between the
+                            // ownership check and here; the next slice bounds
+                            // the wait.
                             continue;
                         }
                         let head = format!(
@@ -7810,8 +7872,11 @@ mod prompt_settle_tests {
                     waiter_rx,
                     Some(AGENT_SID),
                     Instant::now(),
-                    Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS),
-                    Duration::from_millis(5),
+                    PromptWaitBudget {
+                        idle: Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS),
+                        slice: Duration::from_millis(5),
+                        apply_grace: Duration::from_secs(PROMPT_SETTLE_APPLY_TIMEOUT_SECS),
+                    },
                 )
                 .await
         });
@@ -7831,6 +7896,188 @@ mod prompt_settle_tests {
             settled.get("stopReason").and_then(Value::as_str),
             Some("end_turn")
         );
+    }
+
+    /// Queue the fallback terminal for `PROMPT_ID` and claim it in a pump task
+    /// whose `apply_terminal` blocks until the returned sender fires.
+    async fn spawn_gated_pump(
+        client: &Arc<AcpClient>,
+        events: &mut mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>,
+    ) -> (
+        tokio::task::JoinHandle<()>,
+        oneshot::Sender<()>,
+        oneshot::Receiver<()>,
+    ) {
+        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        let (_, ev) = events.recv().await.expect("settlement event");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = ev
+        else {
+            panic!("expected PromptRpcSettled, got {ev:?}");
+        };
+        let (claimed_tx, claimed_rx) = oneshot::channel::<()>();
+        let (gate_tx, mut gate_rx) = oneshot::channel::<()>();
+        let pump_client = Arc::clone(client);
+        let pump = tokio::spawn(async move {
+            let mut claimed_tx = Some(claimed_tx);
+            pump_client
+                .consume_prompt_settlement(id, stop_reason, result, async move |_| {
+                    if let Some(claimed_tx) = claimed_tx.take() {
+                        let _ = claimed_tx.send(());
+                    }
+                    let _ = (&mut gate_rx).await;
+                })
+                .await;
+        });
+        (pump, gate_tx, claimed_rx)
+    }
+
+    /// Once the pump claimed the waiter only `apply_terminal` is left. A wedged
+    /// pump used to poll the oneshot forever, and Stop could not reach the
+    /// already-removed waiter.
+    #[tokio::test]
+    async fn pump_claimed_terminal_is_bounded_by_the_apply_grace() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, waiter_rx) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+        let (pump, gate_tx, claimed_rx) = spawn_gated_pump(&client, &mut events).await;
+        claimed_rx.await.expect("pump claimed the waiter");
+
+        let wait_client = Arc::clone(&client);
+        let wait = tokio::spawn(async move {
+            wait_client
+                .await_prompt_settlement(
+                    PROMPT_ID,
+                    waiter_rx,
+                    Some(AGENT_SID),
+                    Instant::now(),
+                    PromptWaitBudget {
+                        idle: Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS),
+                        slice: Duration::from_millis(5),
+                        apply_grace: Duration::from_millis(40),
+                    },
+                )
+                .await
+        });
+        let err = tokio::time::timeout(Duration::from_secs(2), wait)
+            .await
+            .expect("wait ignored the settlement apply grace")
+            .expect("wait task")
+            .expect_err("a wedged terminal must fail the wait");
+        assert!(
+            err.contains("event pump") && err.contains(&format!("id={PROMPT_ID}")),
+            "undiagnosable error: {err}"
+        );
+        assert!(
+            !err.contains("rpc timeout"),
+            "misreported as an agent RPC timeout: {err}"
+        );
+
+        gate_tx.send(()).expect("release the terminal");
+        pump.await.expect("pump task");
+    }
+
+    /// A dead reader must not fail a pump-claimed waiter as a closed stdout:
+    /// the claim still owns the outcome until the apply grace runs out.
+    #[tokio::test]
+    async fn reader_exit_waits_for_a_claimed_terminal_until_the_grace() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, waiter_rx) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+        let (pump, gate_tx, claimed_rx) = spawn_gated_pump(&client, &mut events).await;
+        claimed_rx.await.expect("pump claimed the waiter");
+        client.reader_alive.store(false, Ordering::SeqCst);
+
+        let wait_client = Arc::clone(&client);
+        let wait = tokio::spawn(async move {
+            wait_client
+                .await_prompt_settlement(
+                    PROMPT_ID,
+                    waiter_rx,
+                    Some(AGENT_SID),
+                    Instant::now(),
+                    PromptWaitBudget {
+                        idle: Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS),
+                        slice: Duration::from_millis(5),
+                        apply_grace: Duration::from_millis(40),
+                    },
+                )
+                .await
+        });
+        let err = tokio::time::timeout(Duration::from_secs(2), wait)
+            .await
+            .expect("wait ignored the settlement apply grace")
+            .expect("wait task")
+            .expect_err("a wedged terminal must fail the wait");
+        assert!(
+            err.contains("event pump"),
+            "misreported as a reader exit: {err}"
+        );
+
+        gate_tx.send(()).expect("release the terminal");
+        pump.await.expect("pump task");
+    }
+
+    /// The idle window still fails a waiter this call owns.
+    #[tokio::test]
+    async fn idle_timeout_still_fails_an_owned_waiter() {
+        let (event_tx, _events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, waiter_rx) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+        client.touch_last_update(Some(AGENT_SID), Instant::now() - Duration::from_secs(3600));
+
+        let err = client
+            .await_prompt_settlement(
+                PROMPT_ID,
+                waiter_rx,
+                Some(AGENT_SID),
+                Instant::now(),
+                PromptWaitBudget {
+                    idle: Duration::from_millis(1),
+                    slice: Duration::from_millis(5),
+                    apply_grace: Duration::from_secs(PROMPT_SETTLE_APPLY_TIMEOUT_SECS),
+                },
+            )
+            .await
+            .expect_err("idle timeout must still fail an owned waiter");
+        assert!(err.contains("rpc timeout"), "unexpected error: {err}");
+        assert!(!client.pending.lock().contains_key(&PROMPT_ID));
+    }
+
+    /// The reader-exit branch still fails a waiter this call owns.
+    #[tokio::test]
+    async fn reader_exit_still_fails_an_owned_waiter() {
+        let (event_tx, _events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, waiter_rx) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+        client.reader_alive.store(false, Ordering::SeqCst);
+
+        let err = client
+            .await_prompt_settlement(
+                PROMPT_ID,
+                waiter_rx,
+                Some(AGENT_SID),
+                Instant::now(),
+                PromptWaitBudget {
+                    idle: Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS),
+                    slice: Duration::from_millis(5),
+                    apply_grace: Duration::from_secs(PROMPT_SETTLE_APPLY_TIMEOUT_SECS),
+                },
+            )
+            .await
+            .expect_err("a closed reader must still fail an owned waiter");
+        assert!(
+            err.contains("agent stdout closed"),
+            "unexpected error: {err}"
+        );
+        assert!(!client.pending.lock().contains_key(&PROMPT_ID));
     }
 
     /// The queued terminal is applied *before* the waiter is released: the

@@ -365,12 +365,12 @@ drained. The delayed fallback uses the same queued path for its synthetic
 result. Pumps that end their loop on the terminal event (aux side calls) claim
 and release the waiter in that same iteration.
 
-Failure paths stay off the queue:
+Failure outcomes by path:
 
 | Case | Behavior |
 |------|----------|
-| `session/prompt` RPC error | Waiter receives `Err`; the Host fails the turn on that path — no authoritative `PromptComplete` is synthesized. |
-| timeout / stop / abort | The waiter entry is already removed, so a later settlement claims nothing and applies no terminal. The idle watchdog only fails the turn when it removes the entry itself; if the pump already claimed it, the RPC result is still coming and the wait continues. |
+| `session/prompt` RPC error | The result is queued as `PromptRpcSettled`; the pump claims it and delivers `Err` without synthesizing an authoritative `PromptComplete`. The Host fails the turn on the RPC error path. |
+| timeout / stop / abort | The waiter entry is already removed, so a later settlement claims nothing and applies no terminal. The idle watchdog only fails the turn when it removes the entry itself; if the pump already claimed it, the RPC result is still coming and the wait continues. That post-claim wait is bounded by a terminal-application grace (45s, checked every poll slice): a pump that claims the waiter but never applies the terminal fails the turn with a diagnostic error instead of polling forever. |
 | no pump listening (host-less reader, receiver closed) | `event_tx.send` fails; the reader claims and delivers the result inline. There is no queue to order against and no Host turn state to end. |
 
 `_x.ai/session/prompt_complete` arrives as `authoritative: false` and only
