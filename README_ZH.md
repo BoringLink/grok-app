@@ -305,18 +305,18 @@ Windows（可选）：双击 [`install-latest.cmd`](./install-latest.cmd) 会把
 ## 👥 贡献者
 
 <!-- CONTRIBUTORS:START -->
-感谢所有为 Grok App 做出贡献的人！以下为 GitHub 仓库全部人类贡献者（按 commits 降序，2026-11-11 更新）。
+感谢所有为 Grok App 做出贡献的人！以下为 GitHub 仓库全部人类贡献者（按 commits 降序，2026-11-19 更新）。
 
 <p align="center">
   <a href="https://github.com/RongleCat" title="RongleCat"><img src="https://github.com/RongleCat.png?size=96" width="72" height="72" alt="RongleCat" style="border-radius:50%" /></a>
   <a href="https://github.com/sonnemusk" title="sonnemusk"><img src="https://github.com/sonnemusk.png?size=96" width="72" height="72" alt="sonnemusk" style="border-radius:50%" /></a>
+  <a href="https://github.com/BoringLink" title="BoringLink"><img src="https://github.com/BoringLink.png?size=96" width="72" height="72" alt="BoringLink" style="border-radius:50%" /></a>
   <a href="https://github.com/zhangxaochen" title="zhangxaochen"><img src="https://github.com/zhangxaochen.png?size=96" width="72" height="72" alt="zhangxaochen" style="border-radius:50%" /></a>
   <a href="https://github.com/shiaho777" title="shiaho777"><img src="https://github.com/shiaho777.png?size=96" width="72" height="72" alt="shiaho777" style="border-radius:50%" /></a>
   <a href="https://github.com/yclenove" title="yclenove"><img src="https://github.com/yclenove.png?size=96" width="72" height="72" alt="yclenove" style="border-radius:50%" /></a>
   <a href="https://github.com/AlexZander85" title="AlexZander85"><img src="https://github.com/AlexZander85.png?size=96" width="72" height="72" alt="AlexZander85" style="border-radius:50%" /></a>
   <a href="https://github.com/Dmao233" title="Dmao233"><img src="https://github.com/Dmao233.png?size=96" width="72" height="72" alt="Dmao233" style="border-radius:50%" /></a>
   <a href="https://github.com/pengqian-lu" title="pengqian-lu"><img src="https://github.com/pengqian-lu.png?size=96" width="72" height="72" alt="pengqian-lu" style="border-radius:50%" /></a>
-  <a href="https://github.com/BoringLink" title="BoringLink"><img src="https://github.com/BoringLink.png?size=96" width="72" height="72" alt="BoringLink" style="border-radius:50%" /></a>
   <a href="https://github.com/ynjmxn" title="ynjmxn"><img src="https://github.com/ynjmxn.png?size=96" width="72" height="72" alt="ynjmxn" style="border-radius:50%" /></a>
   <a href="https://github.com/Yy-702" title="Yy-702"><img src="https://github.com/Yy-702.png?size=96" width="72" height="72" alt="Yy-702" style="border-radius:50%" /></a>
   <a href="https://github.com/erict16" title="erict16"><img src="https://github.com/erict16.png?size=96" width="72" height="72" alt="erict16" style="border-radius:50%" /></a>
@@ -338,7 +338,6 @@ Windows（可选）：双击 [`install-latest.cmd`](./install-latest.cmd) 会把
   <a href="https://github.com/salasebas" title="salasebas"><img src="https://github.com/salasebas.png?size=96" width="72" height="72" alt="salasebas" style="border-radius:50%" /></a>
   <a href="https://github.com/Sdefendre" title="Sdefendre"><img src="https://github.com/Sdefendre.png?size=96" width="72" height="72" alt="Sdefendre" style="border-radius:50%" /></a>
   <a href="https://github.com/Thibaultjaigu" title="Thibaultjaigu"><img src="https://github.com/Thibaultjaigu.png?size=96" width="72" height="72" alt="Thibaultjaigu" style="border-radius:50%" /></a>
-  <a href="https://github.com/yuhaouno" title="yuhaouno"><img src="https://github.com/yuhaouno.png?size=96" width="72" height="72" alt="yuhaouno" style="border-radius:50%" /></a>
   <a href="https://github.com/2530185073" title="2530185073"><img src="https://github.com/2530185073.png?size=96" width="72" height="72" alt="2530185073" style="border-radius:50%" /></a>
   <a href="https://github.com/86208620" title="86208620"><img src="https://github.com/86208620.png?size=96" width="72" height="72" alt="86208620" style="border-radius:50%" /></a>
   <a href="https://github.com/apple-ouyang" title="apple-ouyang"><img src="https://github.com/apple-ouyang.png?size=96" width="72" height="72" alt="apple-ouyang" style="border-radius:50%" /></a>
@@ -362,7 +361,7 @@ Windows（可选）：双击 [`install-latest.cmd`](./install-latest.cmd) 会把
   <a href="https://github.com/Yux-c" title="Yux-c"><img src="https://github.com/Yux-c.png?size=96" width="72" height="72" alt="Yux-c" style="border-radius:50%" /></a>
 </p>
 
-[完整贡献图 →](https://github.com/RongleCat/grok-app/graphs/contributors)
+[完整贡献图 →](https://github.com/BoringLink/grok-app/graphs/contributors)
 <!-- CONTRIBUTORS:END -->
 
 ---
