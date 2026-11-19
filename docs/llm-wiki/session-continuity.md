@@ -79,7 +79,15 @@ surviving journal prompts in order, after stripping sole-line attachment paths.
 A matching prompt count alone does not authorize a row: a replacement prompt
 can occupy the removed turn's ordinal. Assistant coverage, extension, and insert
 positions are scoped to the matched turn; unmatched branches contribute neither
-answers nor tool rows. The journal read-modify-write holds the same file lock as
+answers nor tool rows. Mid-turn **interjections** (journal rows with
+`marker: interjection`) are logged by the CLI as ordinary user turns but are not
+prompts: a matching interjection row keeps the surrounding prompt active (and
+the insert anchor at the interjection), so the post-steer answer is still
+recovered and the interjection never consumes a prompt slot. When the Host
+opened the post-steer assistant row but only its `thought` reached the journal,
+the recovered body fills that row in place (id and thought preserved) instead of
+adding a second bubble; rows before the interjection never absorb it. The
+journal read-modify-write holds the same file lock as
 rewind replacement and stream appends, so a delayed recovery snapshot cannot
 reintroduce rows removed by a concurrent rewind.
 Before native rewind, Host captures digests of the abandoned prompts and
@@ -120,11 +128,12 @@ journaled into A (common when A was stuck “thinking”). Host `live_session_is
 must not treat pure sticky Streaming (no `prompt_in_flight` / tools / deferred
 gates) as forever-busy, or demote/focus for other chats stays blocked.
 
-**Turn end journal heal (P0):** after every successful `session/prompt` Ok, Host
-force-finishes sticky Streaming (#522) **and** runs
-`try_reconcile_linked_session` over a short bounded retry window to pull missing
-assistant/tool rows from agent `chat_history`. Filesystem reads run off the async
-executor; every idempotent pass is aggregated before one
+**Turn end journal heal (P0):** the event pump ends the turn with the queued
+`session/prompt` result; if the waiter still observes an open turn (terminal
+event dropped or misrouted), it force-finishes sticky Streaming (#522). The same
+waiter then runs `try_reconcile_linked_session` over a short bounded retry
+window to pull missing assistant/tool rows from agent `chat_history`. Filesystem
+reads run off the async executor; every idempotent pass is aggregated before one
 `session://journal_reconciled` event. This covers both dropped stream chunks and
 a CLI history flush that becomes visible just after the prompt RPC returns
 (user saw endless thinking while CLI already had the full answer). A per-session
@@ -314,10 +323,31 @@ It is set when `session/prompt` is dispatched and cleared **only** by:
 
 | Signal | Note |
 |--------|------|
-| `PromptComplete { authoritative: true }` | The `session/prompt` RPC result — ordered *after* every chunk the agent sent, so clearing here cannot truncate output. |
+| `PromptComplete { authoritative: true }` | The `session/prompt` RPC result — applied by the event pump in FIFO order, so every chunk received ahead of it is already in the journal before the turn clears. |
 | prompt RPC error / timeout | Cleared against the **session id**, not the live slot (the chat may have been demoted mid-turn). |
 | `stop` / `ProcessExited` / recorded turn error | Turn is over either way. |
 | mock backend terminal chunk | Mock has no prompt RPC. |
+
+**Prompt terminal ordering (P0):** the reader never resolves the
+`session/prompt` waiter directly. The result is queued as
+`AcpEvent::PromptRpcSettled`, and the owning event pump — the same single
+consumer that applies stream/tool events — claims the waiter, applies the
+authoritative `PromptComplete`, and only then sends the result. `mpsc::send`
+does not wait for the receiver, so resolving in the reader let the turn task
+finish and clear `stream_buf` while the pump was still behind chunks that
+arrived earlier; those chunks then arrived with `prompt_in_flight=false` and
+were dropped as session-load replay — the App journal kept an empty assistant
+row while the agent-side history already held the body.
+
+The claim is atomic (one pending-map removal). The early `prompt_complete`
+fallback and the real RPC result can both queue a settlement for the same prompt
+before either is drained; only the claim owner applies the terminal and releases
+the waiter. A duplicate, a timeout/abort that already removed the waiter, or a
+waiter whose turn task is gone (closed receiver) applies **no** terminal — a
+stale settlement must never end whatever turn is running when it is finally
+drained. The delayed fallback uses the same queued path for its synthetic
+result. Pumps that end their loop on the terminal event (aux side calls) claim
+and release the waiter in that same iteration.
 
 `_x.ai/session/prompt_complete` arrives as `authoritative: false` and only
 *defers*. `schedule_prompt_complete_fallback` is the escape hatch for an agent

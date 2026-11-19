@@ -1464,6 +1464,15 @@ impl SessionManager {
                     }),
                 );
             }
+            AcpEvent::PromptRpcSettled { .. } => {
+                // Every event pump applies settlements before routing so the
+                // turn sees all earlier chunks; reaching here means a pump
+                // bypassed that path and its prompt waiter would never settle.
+                tracing::error!(
+                    target: "session",
+                    "prompt settlement reached event routing — pump must settle it in order"
+                );
+            }
         }
     }
 }

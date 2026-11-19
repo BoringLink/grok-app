@@ -1504,8 +1504,39 @@ impl SessionManager {
             let mgr = Arc::clone(self);
             let app_ev = app.clone();
             let pid = process_id.clone();
+            let settle_client = Arc::clone(&client);
             tokio::spawn(async move {
                 while let Some((sid, ev)) = events.recv().await {
+                    // `session/prompt` results are queued, never resolved in the
+                    // reader: the turn may only finish after every chunk received
+                    // ahead of this result has been applied (FIFO pump).
+                    if let AcpEvent::PromptRpcSettled {
+                        id,
+                        stop_reason,
+                        result,
+                    } = ev
+                    {
+                        settle_client
+                            .consume_prompt_settlement(
+                                id,
+                                stop_reason,
+                                result,
+                                async |stop_reason| {
+                                    mgr.handle_acp_event(
+                                        &app_ev,
+                                        &pid,
+                                        sid.as_deref(),
+                                        AcpEvent::PromptComplete {
+                                            stop_reason,
+                                            authoritative: true,
+                                        },
+                                    )
+                                    .await;
+                                },
+                            )
+                            .await;
+                        continue;
+                    }
                     mgr.handle_acp_event(&app_ev, &pid, sid.as_deref(), ev)
                         .await;
                 }
@@ -2082,12 +2113,41 @@ impl SessionManager {
         };
         let process_id = Uuid::new_v4().to_string();
         // Drain the event stream (prewarm has no session; events are dropped by
-        // sid routing — but the reader must still consume stdout).
+        // sid routing — but the reader must still consume stdout). The pump also
+        // outlives prewarm adoption, so it owns the ordered prompt settlement.
         {
             let mgr = Arc::clone(self);
             let pid = process_id.clone();
+            let settle_client = Arc::clone(&client);
             tokio::spawn(async move {
-                while let Some((_sid, ev)) = events.recv().await {
+                while let Some((sid, ev)) = events.recv().await {
+                    if let AcpEvent::PromptRpcSettled {
+                        id,
+                        stop_reason,
+                        result,
+                    } = ev
+                    {
+                        settle_client
+                            .consume_prompt_settlement(
+                                id,
+                                stop_reason,
+                                result,
+                                async |stop_reason| {
+                                    mgr.handle_acp_event(
+                                        &app,
+                                        &pid,
+                                        sid.as_deref(),
+                                        AcpEvent::PromptComplete {
+                                            stop_reason,
+                                            authoritative: true,
+                                        },
+                                    )
+                                    .await;
+                                },
+                            )
+                            .await;
+                        continue;
+                    }
                     mgr.handle_acp_event(&app, &pid, None, ev).await;
                 }
             });
@@ -2250,6 +2310,7 @@ impl SessionManager {
             AcpEvent::AskUserQuestion { .. } => "ask_user",
             AcpEvent::PermissionRequest { .. } => "permission",
             AcpEvent::PromptComplete { .. } => "prompt_complete",
+            AcpEvent::PromptRpcSettled { .. } => "prompt_rpc_settled",
             AcpEvent::RetryState { .. } => "retry_state",
             AcpEvent::ContextCompact { .. } => "context_compact",
             AcpEvent::UsageReported { .. } => "usage",

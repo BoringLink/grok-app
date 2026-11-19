@@ -1773,6 +1773,40 @@ pub fn reconcile_journal_from_chat_history(
     Ok(changed)
 }
 
+/// Locate a mid-turn interjection recorded in the App journal inside
+/// `prompt_id`'s turn and matching the agent's user row.
+///
+/// The CLI logs an interjection as an ordinary user turn, but it is not a
+/// prompt: clearing `active_prompt` for it dropped the assistant rows that
+/// followed (they lost their prompt anchor exactly where the user steered).
+/// The returned row index keeps later tool rows in stream order.
+fn interjection_row_in_turn(
+    journal: &[ChatMessageStored],
+    prompt_id: &str,
+    agent_body: &str,
+) -> Option<usize> {
+    let start = journal.iter().position(|m| m.id == prompt_id)?;
+    let end = journal[start + 1..]
+        .iter()
+        .position(store::is_user_prompt_message)
+        .map_or(journal.len(), |offset| start + 1 + offset);
+    (start + 1..end).find(|&idx| {
+        let m = &journal[idx];
+        m.role == "user"
+            && m.marker.as_deref() == Some("interjection")
+            && user_bodies_match(&m.content, agent_body)
+    })
+}
+
+/// Host opened a post-interjection assistant row but only the thought reached
+/// the journal (the body chunk was lost with the turn).
+fn is_assistant_thought_placeholder(m: &ChatMessageStored) -> bool {
+    m.role == "assistant"
+        && !m.is_error
+        && m.content.trim().is_empty()
+        && m.thought.as_deref().is_some_and(|t| !t.trim().is_empty())
+}
+
 /// Match history to actual surviving prompts, never merely their count. After
 /// rewind a new prompt can occupy a removed turn's ordinal while a delayed CLI
 /// disk flush still contains that turn's old answer (#1405).
@@ -1789,6 +1823,10 @@ fn reconcile_history_rows(
         .collect();
     let mut next_prompt = 0;
     let mut active_prompt: Option<String> = None;
+    // Journal row id of the latest matched interjection in the active turn.
+    // Locating it by id keeps the post-steer placeholder scan valid after rows
+    // are inserted earlier in the turn.
+    let mut active_interjection: Option<String> = None;
     let mut matched_pairs = Vec::new();
     let mut changed = 0u32;
     let now = Utc::now();
@@ -1799,7 +1837,19 @@ fn reconcile_history_rows(
 
     for (role, content, tool_call_id) in rows {
         if role == "user" {
+            // A mid-turn interjection stays inside the current prompt's turn:
+            // keep its anchor so the following assistant/tool rows still land
+            // there. It is not a prompt and must not consume a prompt slot.
+            if let Some(idx) = active_prompt
+                .as_deref()
+                .and_then(|prompt_id| interjection_row_in_turn(journal, prompt_id, content))
+            {
+                anchor = Some(idx);
+                active_interjection = Some(journal[idx].id.clone());
+                continue;
+            }
             active_prompt = None;
+            active_interjection = None;
             anchor = None;
             // Identical re-issued prompts have no stable branch identity in
             // legacy CLI logs. Prefer live text over importing an old answer.
@@ -1834,7 +1884,27 @@ fn reconcile_history_rows(
             anchor = Some(start);
         }
         if role == "assistant" {
-            match journal_covers_assistant(&journal[start + 1..end], content) {
+            let cover = journal_covers_assistant(&journal[start + 1..end], content);
+            // Post-steer placeholder: the Host opened the steer's assistant row
+            // and only its thought reached the journal. Fill that row so the
+            // answer keeps its id/thought instead of leaving an empty bubble
+            // next to a duplicate. Only rows after this turn's interjection
+            // qualify — the pre-steer bubble must not absorb the body.
+            if cover == CoverKind::Missing {
+                let placeholder = active_interjection
+                    .as_deref()
+                    .and_then(|id| journal.iter().position(|m| m.id == id))
+                    .and_then(|at| {
+                        (at + 1..end).find(|&idx| is_assistant_thought_placeholder(&journal[idx]))
+                    });
+                if let Some(idx) = placeholder {
+                    journal[idx].content = content.clone();
+                    changed += 1;
+                    anchor = Some(idx);
+                    continue;
+                }
+            }
+            match cover {
                 CoverKind::Covered(idx) => {
                     // usize::MAX = empty body sentinel; never a real anchor.
                     if idx != usize::MAX {

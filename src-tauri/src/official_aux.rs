@@ -503,6 +503,19 @@ No repo edits. Prefer built-in tools. Keep the final answer concise and complete
                     }
                 }
                 AcpEvent::PromptComplete { .. } => break,
+                // The queued `session/prompt` result is the aux turn terminal:
+                // every chunk ahead of it was already accumulated in FIFO order.
+                // Aux has no Host turn state, so only the waiter is released.
+                AcpEvent::PromptRpcSettled {
+                    id,
+                    stop_reason,
+                    result,
+                } => {
+                    client_pump
+                        .consume_prompt_settlement(id, stop_reason, result, async |_| {})
+                        .await;
+                    break;
+                }
                 AcpEvent::ProcessExited { .. } | AcpEvent::Error { .. } => break,
                 AcpEvent::PermissionRequest { rpc_id, .. } => {
                     // Always-approve path: CLI wire optionId (#523).

@@ -81,6 +81,23 @@ pub enum AcpEvent {
         /// treated as terminal.
         authoritative: bool,
     },
+    /// `session/prompt` RPC result or error, queued on the ordered event path.
+    ///
+    /// The waiting turn task must not observe it before the pump has applied
+    /// every stream/tool event received ahead of it. Resolving the oneshot in
+    /// the reader (and only enqueueing the terminal afterwards) let the turn
+    /// finish and clear `stream_buf` first; the buffered chunks then arrived
+    /// after `prompt_in_flight=false` and were dropped as session-load replay.
+    ///
+    /// The pump applies `stop_reason` as an authoritative `PromptComplete`
+    /// (when set) and only then releases the waiter.
+    PromptRpcSettled {
+        id: u64,
+        /// `Some` for a successful prompt result; `None` for an RPC error.
+        stop_reason: Option<String>,
+        /// Full result handed to the waiting `session/prompt` caller.
+        result: Result<Value, String>,
+    },
     /// Provider/API retry loop (sessionUpdate = retry_state). Host caps retries.
     RetryState {
         attempt: u32,
@@ -262,6 +279,24 @@ struct Pending {
     session_id: Option<String>,
 }
 
+/// Claimed `session/prompt` waiter. Exactly one settlement owns it; the claim
+/// decides whether that settlement may apply the turn terminal.
+struct PromptWaiter {
+    tx: oneshot::Sender<Result<Value, String>>,
+}
+
+impl PromptWaiter {
+    /// The waiting turn is gone (timeout / abort dropped the receiver). Applying
+    /// a terminal for it would end whatever turn runs next.
+    fn is_closed(&self) -> bool {
+        self.tx.is_closed()
+    }
+
+    fn deliver(self, result: Result<Value, String>) {
+        let _ = self.tx.send(result);
+    }
+}
+
 const HANDSHAKE_TIMEOUT_SECS: u64 = 45;
 /// session/load replays the full history (and may auto-compact a ~200k-token
 /// context several times) before replying. Field log: 37s ok / >45s timeout on
@@ -376,26 +411,6 @@ fn has_pending_prompt_ids(pending: &HashMap<u64, Pending>, prompt_ids: &[u64]) -
             .get(id)
             .is_some_and(|p| p.method == "session/prompt")
     })
-}
-
-/// Remove only the prompt waiters captured by one fallback generation.
-fn take_pending_prompt_ids(
-    pending: &mut HashMap<u64, Pending>,
-    prompt_ids: &[u64],
-) -> Vec<(u64, Pending)> {
-    prompt_ids
-        .iter()
-        .filter_map(|id| {
-            let is_prompt = pending
-                .get(id)
-                .is_some_and(|p| p.method == "session/prompt");
-            if is_prompt {
-                pending.remove(id).map(|p| (*id, p))
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 /// Pure decision for the `prompt_complete` fallback: release the waiter only
@@ -1595,6 +1610,136 @@ impl AcpClient {
         }
     }
 
+    /// Queue a `session/prompt` settlement behind every event already received.
+    ///
+    /// `mpsc::UnboundedSender::send` only enqueues — it does not wait for the
+    /// receiver. Resolving the waiter here would let the turn task finish and
+    /// clear `stream_buf` while the pump is still behind chunks that arrived
+    /// earlier; those chunks then failed the replay gate. The pump applies the
+    /// settlement in FIFO order and only then releases the waiter.
+    ///
+    /// With no pump listening (host-less reader, tests) there is nothing to
+    /// order against, so resolve inline.
+    fn enqueue_prompt_settlement(
+        &self,
+        id: u64,
+        session_id: Option<String>,
+        stop_reason: Option<String>,
+        result: Result<Value, String>,
+    ) {
+        let event = AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        };
+        if let Err(mpsc::error::SendError((_, AcpEvent::PromptRpcSettled { id, result, .. }))) =
+            self.event_tx.send((session_id, event))
+        {
+            if let Some(waiter) = self.claim_prompt_waiter(id) {
+                if !waiter.is_closed() {
+                    waiter.deliver(result);
+                }
+            }
+        }
+    }
+
+    /// Claim the `session/prompt` waiter for `id`.
+    ///
+    /// The claim is atomic (map removal): when the early `prompt_complete`
+    /// fallback and the real RPC result both queue a settlement for the same
+    /// prompt, only one of them may apply the turn terminal.
+    fn claim_prompt_waiter(&self, id: u64) -> Option<PromptWaiter> {
+        let mut pending = self.pending.lock();
+        if !pending
+            .get(&id)
+            .is_some_and(|p| p.method == "session/prompt")
+        {
+            return None;
+        }
+        pending.remove(&id).map(|p| PromptWaiter { tx: p.tx })
+    }
+
+    /// Apply one queued `session/prompt` settlement.
+    ///
+    /// The waiter is claimed first. A duplicate settlement (early
+    /// `prompt_complete` fallback + real RPC result) then finds nothing and
+    /// must not re-apply the terminal, which by then could end the next turn.
+    /// `apply_terminal` applies the authoritative `PromptComplete` and only
+    /// runs while the waiting turn still listens.
+    pub(crate) async fn consume_prompt_settlement<F>(
+        &self,
+        id: u64,
+        stop_reason: Option<String>,
+        result: Result<Value, String>,
+        apply_terminal: F,
+    ) where
+        F: std::ops::AsyncFnOnce(String),
+    {
+        let Some(waiter) = self.claim_prompt_waiter(id) else {
+            return;
+        };
+        if waiter.is_closed() {
+            return;
+        }
+        if let Some(stop_reason) = stop_reason {
+            apply_terminal(stop_reason).await;
+        }
+        waiter.deliver(result);
+    }
+
+    /// `session/prompt` result.usage is a **billing aggregate** for the turn
+    /// (often summed across modelCalls). Frontend must NOT use it as
+    /// context-window occupancy — that lives on stream params._meta.totalTokens
+    /// (source: context_size).
+    fn emit_usage_from_result(&self, msg: &Value) {
+        let Some(usage) = msg
+            .pointer("/result/usage")
+            .or_else(|| msg.pointer("/result/_meta/usage"))
+        else {
+            return;
+        };
+        let u64_field = |camel: &str, snake: &str| {
+            usage
+                .get(camel)
+                .or_else(|| usage.get(snake))
+                .and_then(|v| v.as_u64())
+                .filter(|n| *n > 0)
+        };
+        let _ = self.event_tx.send((
+            None,
+            AcpEvent::UsageReported {
+                total_tokens: u64_field("totalTokens", "total_tokens"),
+                input_tokens: u64_field("inputTokens", "input_tokens"),
+                output_tokens: u64_field("outputTokens", "output_tokens"),
+                system_tokens: None,
+                tools_tokens: None,
+                history_tokens: None,
+                cached_read_tokens: u64_field("cachedReadTokens", "cache_read_input_tokens"),
+                cache_creation_tokens: u64_field(
+                    "cacheCreationTokens",
+                    "cache_creation_input_tokens",
+                ),
+                reasoning_tokens: u64_field("reasoningTokens", "reasoning_tokens"),
+                cost_usd_ticks: u64_field("costUsdTicks", "cost_usd_ticks"),
+                model_calls: u64_field("modelCalls", "model_calls"),
+                api_duration_ms: u64_field("apiDurationMs", "api_duration_ms"),
+                cost_is_partial: usage
+                    .get("costIsPartial")
+                    .or_else(|| usage.get("cost_is_partial"))
+                    .and_then(|v| v.as_bool()),
+                usage_is_incomplete: usage
+                    .get("usageIsIncomplete")
+                    .or_else(|| usage.get("usage_is_incomplete"))
+                    .and_then(|v| v.as_bool()),
+                context_window: None,
+                percentage: None,
+                // Distinct from sessionUpdate `turn_completed` so
+                // the UI does not double-count the same turn.
+                source: "prompt_result".to_string(),
+            },
+        ));
+    }
+
     async fn handle_line(self: Arc<Self>, line: &str) {
         let msg: Value = match serde_json::from_str(line) {
             Ok(v) => v,
@@ -1607,110 +1752,79 @@ impl AcpClient {
         // Response to our request (result or error present)
         if let Some(id) = json_id_u64(msg.get("id")) {
             if msg.get("result").is_some() || msg.get("error").is_some() {
-                let mut pending_method: Option<String> = None;
-                let mut pending_session: Option<String> = None;
-                if let Some(p) = self.pending.lock().remove(&id) {
-                    pending_method = Some(p.method.clone());
-                    pending_session = p.session_id.clone();
-                    if let Some(err) = msg.get("error") {
-                        let full = format_jsonrpc_error(err);
-                        warn!("acp ← {} id={id} error: {}", p.method, full);
-                        let _ = p.tx.send(Err(full));
-                    } else {
-                        let _ =
-                            p.tx.send(Ok(msg.get("result").cloned().unwrap_or(Value::Null)));
-                    }
-                } else if let Some(err) = msg.get("error") {
+                let pending = self
+                    .pending
+                    .lock()
+                    .get(&id)
+                    .map(|p| (p.method.clone(), p.session_id.clone()));
+                let Some((pending_method, pending_session)) = pending else {
                     // Race: prompt_complete fallback already resolved pending, but the
                     // real RPC error arrived later (official subscription / provider fails).
                     // Must still surface the error — do not drop as "unknown id".
-                    let full = format_jsonrpc_error(err);
-                    warn!("acp late error response id={id} (pending already resolved): {full}");
-                    let _ = self.event_tx.send((
-                        None,
-                        AcpEvent::Error {
-                            error: classify_rpc_error(&full),
-                        },
-                    ));
-                } else {
-                    debug!(
-                        "acp late ok response id={id} (pending already resolved); keys={:?}",
-                        msg.as_object()
-                            .map(|o| o.keys().cloned().collect::<Vec<_>>())
-                    );
-                }
+                    if let Some(err) = msg.get("error") {
+                        let full = format_jsonrpc_error(err);
+                        warn!("acp late error response id={id} (pending already resolved): {full}");
+                        let _ = self.event_tx.send((
+                            None,
+                            AcpEvent::Error {
+                                error: classify_rpc_error(&full),
+                            },
+                        ));
+                    } else {
+                        debug!(
+                            "acp late ok response id={id} (pending already resolved); keys={:?}",
+                            msg.as_object()
+                                .map(|o| o.keys().cloned().collect::<Vec<_>>())
+                        );
+                    }
+                    return;
+                };
+                let outcome = match msg.get("error") {
+                    Some(err) => {
+                        let full = format_jsonrpc_error(err);
+                        warn!("acp ← {pending_method} id={id} error: {full}");
+                        Err(full)
+                    }
+                    None => Ok(msg.get("result").cloned().unwrap_or(Value::Null)),
+                };
+                self.emit_usage_from_result(&msg);
+
                 // Authoritative turn end for session/prompt (#522):
                 // Some CLI builds omit `result.stopReason` even after a successful
-                // RPC. Always emit PromptComplete so Host clears prompt_in_flight
-                // and leaves Streaming/busy. Prefer stopReason → stop_reason → end_turn.
-                let is_prompt = pending_method
-                    .as_deref()
-                    .is_some_and(|m| m == "session/prompt")
-                    || msg.pointer("/result/stopReason").is_some()
-                    || msg.pointer("/result/stop_reason").is_some();
-                if is_prompt && msg.get("result").is_some() {
+                // RPC. Always end the turn so Host clears prompt_in_flight and
+                // leaves Streaming/busy. Prefer stopReason → stop_reason → end_turn.
+                if pending_method == "session/prompt" {
+                    let stop_reason = outcome.as_ref().ok().map(|result| {
+                        result
+                            .get("stopReason")
+                            .or_else(|| result.get("stop_reason"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("end_turn")
+                            .to_string()
+                    });
+                    self.enqueue_prompt_settlement(id, pending_session, stop_reason, outcome);
+                    return;
+                }
+
+                if let Some(p) = self.pending.lock().remove(&id) {
+                    let _ = p.tx.send(outcome);
+                }
+                // A non-prompt result that still carries a stop reason ends a turn
+                // (#522 legacy wire shapes).
+                if msg.get("result").is_some()
+                    && (msg.pointer("/result/stopReason").is_some()
+                        || msg.pointer("/result/stop_reason").is_some())
+                {
                     let sr = msg
                         .pointer("/result/stopReason")
                         .or_else(|| msg.pointer("/result/stop_reason"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("end_turn");
                     let _ = self.event_tx.send((
-                        pending_session.clone(),
+                        pending_session,
                         AcpEvent::PromptComplete {
                             stop_reason: sr.to_string(),
                             authoritative: true,
-                        },
-                    ));
-                }
-                // session/prompt result.usage is a **billing aggregate** for the
-                // turn (often summed across modelCalls). Frontend must NOT use it
-                // as context-window occupancy — that lives on stream
-                // params._meta.totalTokens (source: context_size).
-                if let Some(usage) = msg
-                    .pointer("/result/usage")
-                    .or_else(|| msg.pointer("/result/_meta/usage"))
-                {
-                    let u64_field = |camel: &str, snake: &str| {
-                        usage
-                            .get(camel)
-                            .or_else(|| usage.get(snake))
-                            .and_then(|v| v.as_u64())
-                            .filter(|n| *n > 0)
-                    };
-                    let _ = self.event_tx.send((
-                        None,
-                        AcpEvent::UsageReported {
-                            total_tokens: u64_field("totalTokens", "total_tokens"),
-                            input_tokens: u64_field("inputTokens", "input_tokens"),
-                            output_tokens: u64_field("outputTokens", "output_tokens"),
-                            system_tokens: None,
-                            tools_tokens: None,
-                            history_tokens: None,
-                            cached_read_tokens: u64_field(
-                                "cachedReadTokens",
-                                "cache_read_input_tokens",
-                            ),
-                            cache_creation_tokens: u64_field(
-                                "cacheCreationTokens",
-                                "cache_creation_input_tokens",
-                            ),
-                            reasoning_tokens: u64_field("reasoningTokens", "reasoning_tokens"),
-                            cost_usd_ticks: u64_field("costUsdTicks", "cost_usd_ticks"),
-                            model_calls: u64_field("modelCalls", "model_calls"),
-                            api_duration_ms: u64_field("apiDurationMs", "api_duration_ms"),
-                            cost_is_partial: usage
-                                .get("costIsPartial")
-                                .or_else(|| usage.get("cost_is_partial"))
-                                .and_then(|v| v.as_bool()),
-                            usage_is_incomplete: usage
-                                .get("usageIsIncomplete")
-                                .or_else(|| usage.get("usage_is_incomplete"))
-                                .and_then(|v| v.as_bool()),
-                            context_window: None,
-                            percentage: None,
-                            // Distinct from sessionUpdate `turn_completed` so
-                            // the UI does not double-count the same turn.
-                            source: "prompt_result".to_string(),
                         },
                     ));
                 }
@@ -1931,13 +2045,33 @@ impl AcpClient {
     }
 
     /// If agent never returned a session/prompt result after prompt_complete, free waiters.
+    ///
+    /// The synthetic result is still a turn terminal for the Host, so it rides
+    /// the ordered path like a real RPC result instead of resolving the waiter
+    /// from this timer task.
     fn complete_pending_prompt_fallback(&self, prompt_ids: &[u64], stop_reason: &str) {
-        let prompts = take_pending_prompt_ids(&mut self.pending.lock(), prompt_ids);
-        for (id, p) in prompts {
+        let targets: Vec<(u64, Option<String>)> = {
+            let pending = self.pending.lock();
+            prompt_ids
+                .iter()
+                .filter_map(|id| {
+                    pending
+                        .get(id)
+                        .filter(|p| p.method == "session/prompt")
+                        .map(|p| (*id, p.session_id.clone()))
+                })
+                .collect()
+        };
+        for (id, session_id) in targets {
             info!(
                 "acp completing session/prompt id={id} via delayed prompt_complete fallback (no RPC result yet)"
             );
-            let _ = p.tx.send(Ok(json!({ "stopReason": stop_reason })));
+            self.enqueue_prompt_settlement(
+                id,
+                session_id,
+                Some(stop_reason.to_string()),
+                Ok(json!({ "stopReason": stop_reason })),
+            );
         }
     }
 
@@ -6425,9 +6559,8 @@ mod prompt_fallback_tests {
             },
         );
 
-        // The stale fallback exits and cannot remove the newer waiter.
+        // The stale fallback exits and cannot free the newer waiter.
         assert!(!has_pending_prompt_ids(&pending, &captured));
-        assert!(take_pending_prompt_ids(&mut pending, &captured).is_empty());
         assert!(pending.contains_key(&5));
     }
 }
@@ -7497,5 +7630,398 @@ mod workflow_followup_host_tests {
                 .iter()
                 .any(|ev| matches!(ev, AcpEvent::WorkflowFollowup(_)))
         );
+    }
+}
+
+#[cfg(test)]
+mod prompt_settle_tests {
+    use super::*;
+    use std::sync::atomic::AtomicUsize;
+
+    const PROMPT_ID: u64 = 41;
+    const AGENT_SID: &str = "agent-settle";
+
+    impl AcpClient {
+        fn test_client(event_tx: mpsc::UnboundedSender<(Option<String>, AcpEvent)>) -> Arc<Self> {
+            Arc::new(Self {
+                child: AsyncMutex::new(None),
+                child_pid: None,
+                owns_local_process_tree: false,
+                stdin: AsyncMutex::new(None),
+                next_id: AtomicU64::new(1),
+                pending: ParkingMutex::new(HashMap::new()),
+                event_tx,
+                agent_session_id: ParkingMutex::new(None),
+                cli_path: PathBuf::new(),
+                cwd: PathBuf::new(),
+                stopped: AtomicBool::new(false),
+                reader_alive: AtomicBool::new(true),
+                reader_stop: Arc::new(Notify::new()),
+                stderr_tail: ParkingMutex::new(Vec::new()),
+                last_update_by_session: ParkingMutex::new(HashMap::new()),
+                last_update_unstamped: ParkingMutex::new(None),
+                empty_mcp_servers: false,
+                app_session_id: None,
+                sandbox_profile: ParkingMutex::new(None),
+                custom_route: false,
+                route_provider_id: crate::providers::SESSION_PROVIDER_OFFICIAL.to_string(),
+                rewind_supported: ParkingMutex::new(None),
+                ssh_alias: None,
+                wsl_active: false,
+                proc_home: std::sync::Mutex::new(None),
+                use_app_director_rules: true,
+            })
+        }
+
+        fn insert_prompt_waiter(&self, id: u64, tx: oneshot::Sender<Result<Value, String>>) {
+            self.pending.lock().insert(
+                id,
+                Pending {
+                    method: "session/prompt".into(),
+                    tx,
+                    session_id: Some(AGENT_SID.into()),
+                },
+            );
+        }
+    }
+
+    fn tail_chunk() -> AcpEvent {
+        AcpEvent::Stream {
+            kind: StreamKind::Assistant,
+            text: "tail".into(),
+            message_id: None,
+            done: false,
+        }
+    }
+
+    /// A successful `session/prompt` result must not release the waiting turn
+    /// task before the pump applied the chunks queued ahead of it: that race
+    /// finished the turn, cleared `stream_buf`, and the queued chunk then hit
+    /// the load-replay gate.
+    #[tokio::test]
+    async fn prompt_result_waits_for_chunks_queued_before_it() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, mut waiter) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+        client
+            .event_tx
+            .send((Some(AGENT_SID.into()), tail_chunk()))
+            .expect("queue chunk");
+
+        Arc::clone(&client)
+            .handle_line(r#"{"jsonrpc":"2.0","id":41,"result":{"stopReason":"end_turn"}}"#)
+            .await;
+
+        assert!(
+            waiter.try_recv().is_err(),
+            "prompt waiter resolved before the event pump applied buffered chunks"
+        );
+        assert!(client.pending.lock().contains_key(&PROMPT_ID));
+
+        let (sid, ev) = events.recv().await.expect("stream event");
+        assert_eq!(sid.as_deref(), Some(AGENT_SID));
+        assert!(matches!(ev, AcpEvent::Stream { .. }));
+
+        let (sid, ev) = events.recv().await.expect("settlement event");
+        assert_eq!(sid.as_deref(), Some(AGENT_SID));
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = ev
+        else {
+            panic!("expected PromptRpcSettled, got {ev:?}");
+        };
+        assert_eq!(id, PROMPT_ID);
+        assert_eq!(stop_reason.as_deref(), Some("end_turn"));
+
+        client
+            .consume_prompt_settlement(id, stop_reason, result, async |_| {})
+            .await;
+        let settled = waiter.try_recv().expect("waiter resolved");
+        assert!(settled.is_ok());
+        assert!(!client.pending.lock().contains_key(&PROMPT_ID));
+    }
+
+    /// The early-`prompt_complete` fallback is also a terminal for the turn and
+    /// had the same out-of-order release: it must ride the ordered path too.
+    #[tokio::test]
+    async fn prompt_complete_fallback_keeps_the_waiter_queued() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, mut waiter) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+        client
+            .event_tx
+            .send((Some(AGENT_SID.into()), tail_chunk()))
+            .expect("queue chunk");
+
+        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+
+        assert!(
+            waiter.try_recv().is_err(),
+            "fallback resolved the waiter outside the ordered event path"
+        );
+
+        let (_, ev) = events.recv().await.expect("stream event");
+        assert!(matches!(ev, AcpEvent::Stream { .. }));
+        let (_, ev) = events.recv().await.expect("settlement event");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = ev
+        else {
+            panic!("expected PromptRpcSettled, got {ev:?}");
+        };
+        assert_eq!(id, PROMPT_ID);
+        assert_eq!(stop_reason.as_deref(), Some("end_turn"));
+
+        client
+            .consume_prompt_settlement(id, stop_reason, result, async |_| {})
+            .await;
+        let settled = waiter.try_recv().expect("waiter resolved").expect("ok");
+        assert_eq!(
+            settled.get("stopReason").and_then(Value::as_str),
+            Some("end_turn")
+        );
+    }
+
+    /// RPC errors travel the same path but carry no terminal stop reason, so the
+    /// pump does not fabricate an authoritative `PromptComplete`.
+    #[tokio::test]
+    async fn prompt_error_settles_without_a_terminal_stop() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, mut waiter) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+
+        Arc::clone(&client)
+            .handle_line(r#"{"jsonrpc":"2.0","id":41,"error":{"code":-32000,"message":"boom"}}"#)
+            .await;
+
+        assert!(waiter.try_recv().is_err());
+
+        let (_, ev) = events.recv().await.expect("settlement event");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = ev
+        else {
+            panic!("expected PromptRpcSettled, got {ev:?}");
+        };
+        assert!(stop_reason.is_none());
+        assert!(result.is_err());
+
+        client
+            .consume_prompt_settlement(id, stop_reason, result, async |_| {})
+            .await;
+        assert!(waiter.try_recv().expect("waiter resolved").is_err());
+    }
+
+    /// Host-less readers (tests, diagnostics) have no pump to order against;
+    /// the settlement then resolves inline instead of waiting forever.
+    #[tokio::test]
+    async fn settlement_resolves_inline_without_a_pump() {
+        let (event_tx, events) = mpsc::unbounded_channel();
+        drop(events);
+        let client = AcpClient::test_client(event_tx);
+        let (tx, mut waiter) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+
+        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+
+        let settled = waiter.try_recv().expect("waiter resolved").expect("ok");
+        assert_eq!(
+            settled.get("stopReason").and_then(Value::as_str),
+            Some("end_turn")
+        );
+        assert!(!client.pending.lock().contains_key(&PROMPT_ID));
+    }
+
+    /// Early `prompt_complete` fallback and the real RPC result can both queue a
+    /// settlement before the pump drains either one. Exactly one may apply the
+    /// terminal and release the waiter.
+    #[tokio::test]
+    async fn duplicate_settlements_apply_the_terminal_once() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, mut waiter) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+
+        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        Arc::clone(&client)
+            .handle_line(r#"{"jsonrpc":"2.0","id":41,"result":{"stopReason":"end_turn"}}"#)
+            .await;
+
+        let terminals = Arc::new(AtomicUsize::new(0));
+        let mut settled = Vec::new();
+        for _ in 0..2 {
+            let (_, ev) = events.recv().await.expect("queued settlement");
+            let AcpEvent::PromptRpcSettled {
+                id,
+                stop_reason,
+                result,
+            } = ev
+            else {
+                panic!("expected PromptRpcSettled, got {ev:?}");
+            };
+            let terminals = Arc::clone(&terminals);
+            client
+                .consume_prompt_settlement(id, stop_reason, result, async move |_| {
+                    terminals.fetch_add(1, Ordering::SeqCst);
+                })
+                .await;
+            settled.push(waiter.try_recv().is_ok());
+        }
+
+        assert_eq!(
+            terminals.load(Ordering::SeqCst),
+            1,
+            "a duplicate settlement must not re-apply the turn terminal"
+        );
+        assert_eq!(settled, vec![true, false]);
+        assert!(!client.pending.lock().contains_key(&PROMPT_ID));
+    }
+
+    /// A stale settlement must not end whatever turn is running when the pump
+    /// finally drains it.
+    #[tokio::test]
+    async fn stale_settlement_cannot_end_the_next_turn() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, _waiter) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+
+        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        Arc::clone(&client)
+            .handle_line(r#"{"jsonrpc":"2.0","id":41,"result":{"stopReason":"end_turn"}}"#)
+            .await;
+
+        let terminals = Arc::new(AtomicUsize::new(0));
+        let (_, first) = events.recv().await.expect("first settlement");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = first
+        else {
+            panic!("expected PromptRpcSettled");
+        };
+        let counter = Arc::clone(&terminals);
+        client
+            .consume_prompt_settlement(id, stop_reason, result, async move |_| {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
+            .await;
+
+        // The next turn starts before the stale settlement is drained.
+        const NEXT_PROMPT_ID: u64 = 42;
+        let (next_tx, mut next_waiter) = oneshot::channel();
+        client.pending.lock().insert(
+            NEXT_PROMPT_ID,
+            Pending {
+                method: "session/prompt".into(),
+                tx: next_tx,
+                session_id: Some(AGENT_SID.into()),
+            },
+        );
+
+        let (_, stale) = events.recv().await.expect("stale settlement");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = stale
+        else {
+            panic!("expected PromptRpcSettled");
+        };
+        let counter = Arc::clone(&terminals);
+        client
+            .consume_prompt_settlement(id, stop_reason, result, async move |_| {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
+            .await;
+
+        assert_eq!(
+            terminals.load(Ordering::SeqCst),
+            1,
+            "stale settlement applied a terminal to the next turn"
+        );
+        assert!(next_waiter.try_recv().is_err());
+        assert!(client.pending.lock().contains_key(&NEXT_PROMPT_ID));
+    }
+
+    /// The turn task may already be gone (dropped receiver / aborted). A
+    /// terminal applied then would hit whatever turn runs next.
+    #[tokio::test]
+    async fn closed_waiter_never_receives_a_terminal() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, waiter) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+        drop(waiter);
+
+        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        let (_, ev) = events.recv().await.expect("settlement event");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = ev
+        else {
+            panic!("expected PromptRpcSettled, got {ev:?}");
+        };
+
+        let terminals = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&terminals);
+        client
+            .consume_prompt_settlement(id, stop_reason, result, async move |_| {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
+            .await;
+
+        assert_eq!(
+            terminals.load(Ordering::SeqCst),
+            0,
+            "terminal applied after the waiting turn disappeared"
+        );
+        assert!(!client.pending.lock().contains_key(&PROMPT_ID));
+    }
+
+    /// Timeout / abort remove the pending entry; a queued settlement then has no
+    /// turn to end and must not apply a terminal.
+    #[tokio::test]
+    async fn settlement_after_timeout_applies_no_terminal() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, _waiter) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+
+        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        let (_, ev) = events.recv().await.expect("settlement event");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = ev
+        else {
+            panic!("expected PromptRpcSettled, got {ev:?}");
+        };
+
+        // Timeout / user abort path owns the waiter now.
+        client.pending.lock().remove(&PROMPT_ID);
+
+        let terminals = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&terminals);
+        client
+            .consume_prompt_settlement(id, stop_reason, result, async move |_| {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
+            .await;
+
+        assert_eq!(terminals.load(Ordering::SeqCst), 0);
     }
 }
