@@ -13,6 +13,8 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.55] - 2026-11-19
+
 > **Highlight:** Model, effort and context window choices now follow each chat.
 >
 > **中文 · 亮点：** 模型、档位与上下文窗口跟随每个会话。
