@@ -11,6 +11,7 @@ const PKG = resolve(ROOT, "package.json");
 const BASE_CONF = resolve(ROOT, "src-tauri/tauri.conf.json");
 const DEV_CONF = resolve(ROOT, "src-tauri/tauri.dev.conf.json");
 const DEV_LAUNCHER = resolve(ROOT, "scripts/dev-isolated.mjs");
+const VITE_CONFIG = resolve(ROOT, "vite.config.ts");
 
 describe("tauri dev identifier overlay", () => {
   it("ships a distinct identifier from the release bundle", () => {
@@ -36,5 +37,10 @@ describe("tauri dev identifier overlay", () => {
     expect(launcher).toContain('GROK_APP_HOME: appHome');
     expect(launcher).toContain('GROK_HOME: grokHome');
     expect(launcher).toContain("src-tauri/tauri.dev.conf.json");
+  });
+
+  it("keeps the repository-local Dev data tree out of Vite watch", () => {
+    const viteConfig = readFileSync(VITE_CONFIG, "utf8");
+    expect(viteConfig).toContain('"**/.grok-app-dev/**"');
   });
 });
