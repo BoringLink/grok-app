@@ -513,6 +513,7 @@ mod tests {
 
     #[test]
     fn compact_strips_nested_chat_tokens() {
+        let _home = crate::test_support::TestAppHome::new("session-attach");
         let a = "11111111-1111-4111-8111-111111111111";
         let msgs = vec![msg("user", &format!("[[chat:{a}]]\ndo it"))];
         let body = compact_user_assistant_turns(&msgs, 16, 2000, 14000).unwrap();

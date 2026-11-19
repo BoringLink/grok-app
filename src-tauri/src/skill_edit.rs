@@ -661,6 +661,7 @@ mod tests {
 
     #[test]
     fn skill_create_project_scope_idempotent() {
+        let _home = crate::test_support::TestAppHome::new("skill-edit");
         let proj =
             std::env::temp_dir().join(format!("grok-skill-create-proj-{}", std::process::id()));
         let _ = fs::remove_dir_all(&proj);

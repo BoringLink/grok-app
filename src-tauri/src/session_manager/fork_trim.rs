@@ -78,8 +78,6 @@ mod tests {
         update_session_meta, ChatMessageStored,
     };
     use chrono::Utc;
-    use std::fs;
-    use uuid::Uuid;
 
     #[test]
     fn trim_plan_rewinds_only_resumed_partial() {
@@ -143,18 +141,7 @@ mod tests {
 
     #[test]
     fn rewind_fail_inflated_child_bootstraps_cut_and_keeps_ten_turns() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-rewind-fail-safe-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = crate::paths::ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("rewind-fail-safe");
 
         let mut src = create_session(None, Some("src".into()), false).expect("create");
         src.agent_session_id = Some("agent-parent".into());
@@ -183,8 +170,5 @@ mod tests {
         let kept = load_messages(&child.id);
         assert_eq!(kept.len(), 10);
         assert_eq!(kept.last().map(|m| m.content.as_str()), Some("a5"));
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 }

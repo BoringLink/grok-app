@@ -28,31 +28,13 @@ mod integration {
         dir
     }
 
-    struct RestoreHome(Option<String>);
-    impl Drop for RestoreHome {
-        fn drop(&mut self) {
-            match self.0.take() {
-                Some(v) => std::env::set_var("GROK_APP_HOME", v),
-                None => std::env::remove_var("GROK_APP_HOME"),
-            }
-        }
-    }
-
     /// Isolate GROK_APP_HOME and serialize against store/path_scope tests.
     fn with_isolated_project_store(f: impl FnOnce()) {
-        let _home = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _home = crate::test_support::TestAppHome::new("projects-store");
         let _guard = PROJECTS_STORE_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let home = unique_dir();
-        let prev = std::env::var("GROK_APP_HOME").ok();
-        std::env::set_var("GROK_APP_HOME", &home);
-        let _restore = RestoreHome(prev);
-        crate::paths::ensure_app_dirs().ok();
         f();
-        let _ = fs::remove_dir_all(&home);
     }
 
     #[test]

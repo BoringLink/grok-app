@@ -1,30 +1,19 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::paths::APP_HOME_ENV_LOCK;
     use std::sync::Mutex;
 
     fn with_temp_home<F: FnOnce(PathBuf)>(f: F) {
-        let _env = APP_HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _env = crate::test_support::TestAppHome::new("audit-test");
         // Serialize tests that touch the ledger path.
         static TEST_LOCK: Mutex<()> = Mutex::new(());
         let _t = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-
-        let dir = std::env::temp_dir().join(format!(
-            "grok-audit-test-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        std::env::set_var("GROK_APP_HOME", &dir);
-        f(dir.clone());
-        let _ = fs::remove_dir_all(&dir);
-        std::env::remove_var("GROK_APP_HOME");
+        f(_env.path().to_path_buf());
     }
 
     #[test]
     fn sanitize_redacts_and_caps() {
+        let _home = crate::test_support::TestAppHome::new("audit-sanitize");
         let s = sanitize_field(
             &format!("path /tmp/x sk-abcdefghijklmnopqrstuvwxyz012345 {}", "y".repeat(300)),
             MAX_SUMMARY_CHARS,
@@ -44,6 +33,7 @@ mod tests {
 
     #[test]
     fn parse_entry_line_accepts_camel_case() {
+        let _home = crate::test_support::TestAppHome::new("audit-parse");
         let line = r#"{"ts":"2026-01-01T00:00:00.000Z","sessionId":"s1","toolName":"bash","event":"tool_end","outcome":"ok","summary":"ls"}"#;
         let e = parse_entry_line(line).expect("parse");
         assert_eq!(e.session_id.as_deref(), Some("s1"));

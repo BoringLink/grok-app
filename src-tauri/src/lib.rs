@@ -134,6 +134,9 @@ mod path_scope;
 
 mod paths;
 
+#[cfg(test)]
+mod test_support;
+
 mod workflow_followup;
 
 mod plan_chrome;

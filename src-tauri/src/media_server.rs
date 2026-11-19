@@ -740,6 +740,7 @@ mod tests {
     #[tokio::test]
     async fn ipc_file_read_is_allowlisted_and_chunked() {
         let _scope = crate::path_scope::TEST_LOCK.lock().await;
+        let _home = crate::test_support::TestAppHome::new("media-server");
         let dir = std::env::temp_dir().join(format!("grok-media-ipc-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("wallpaper.png");
@@ -760,6 +761,7 @@ mod tests {
     #[tokio::test]
     async fn ipc_file_read_rejects_path_outside_allowlist() {
         let _scope = crate::path_scope::TEST_LOCK.lock().await;
+        let _home = crate::test_support::TestAppHome::new("media-server");
         let missing = std::path::PathBuf::from(format!(
             "/grok-app-untrusted-ipc-{}/nope.png",
             uuid::Uuid::new_v4()
@@ -782,6 +784,7 @@ mod tests {
     #[tokio::test]
     async fn serves_allowed_file_with_token() {
         let _scope = crate::path_scope::TEST_LOCK.lock().await;
+        let _home = crate::test_support::TestAppHome::new("media-server");
         let dir = std::env::temp_dir().join(format!("grok-media-srv-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("hi.png");
@@ -818,6 +821,7 @@ mod tests {
     #[tokio::test]
     async fn serves_full_body_for_large_image_without_range() {
         let _scope = crate::path_scope::TEST_LOCK.lock().await;
+        let _home = crate::test_support::TestAppHome::new("media-server");
         // Regression: >2 MiB images must be 200 + full body so <img> can decode.
         let dir = std::env::temp_dir().join(format!("grok-media-img-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -845,6 +849,7 @@ mod tests {
     #[tokio::test]
     async fn large_non_image_without_range_returns_first_chunk_206() {
         let _scope = crate::path_scope::TEST_LOCK.lock().await;
+        let _home = crate::test_support::TestAppHome::new("media-server");
         let dir = std::env::temp_dir().join(format!("grok-media-bin-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("clip.bin");
@@ -869,6 +874,7 @@ mod tests {
     #[tokio::test]
     async fn missing_file_is_404_not_403() {
         let _scope = crate::path_scope::TEST_LOCK.lock().await;
+        let _home = crate::test_support::TestAppHome::new("media-server");
         // Error honesty: a path that does not exist is NOT FOUND (404), not a
         // path_scope denial (403) — the frontend must not blame a corrupt blob
         // for an allowlist failure.
@@ -889,6 +895,7 @@ mod tests {
     #[tokio::test]
     async fn outside_allowlist_is_403_even_when_missing() {
         let _scope = crate::path_scope::TEST_LOCK.lock().await;
+        let _home = crate::test_support::TestAppHome::new("media-server");
         // No existence oracle: untrusted missing paths stay 403 (not 404).
         // Must NOT use temp_dir — `refresh_from_store` always allowlists it
         // (Linux `/tmp` has no symlink split, so that path would be 404).

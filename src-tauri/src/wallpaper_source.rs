@@ -2917,6 +2917,7 @@ mod tests {
 
     #[tokio::test]
     async fn active_cli_cancellation_returns_before_execution_timeout() {
+        let _home = crate::test_support::TestAppHome::new("wallpaper-cli-cancel");
         let test_dir =
             std::env::temp_dir().join(format!("wallpaper-cancel-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&test_dir).unwrap();
@@ -2970,6 +2971,7 @@ mod tests {
 
     #[test]
     fn wallpaper_cli_drains_large_stdout_and_stderr_before_exit() {
+        let _home = crate::test_support::TestAppHome::new("wallpaper-cli-drain");
         let test_dir = std::env::temp_dir().join(format!(
             "grok-app-wallpaper-pipe-drain-{}",
             uuid::Uuid::new_v4()
@@ -3022,6 +3024,7 @@ mod tests {
 
     #[test]
     fn wallpaper_cli_rejects_oversized_stdout_after_draining_it() {
+        let _home = crate::test_support::TestAppHome::new("wallpaper-cli-oversize");
         let test_dir = std::env::temp_dir().join(format!(
             "grok-app-wallpaper-pipe-limit-{}",
             uuid::Uuid::new_v4()
@@ -3486,14 +3489,8 @@ and https://pbs.twimg.com/media/HNccFG2X0AE8gQ6.jpg?format=jpg&name=small
 
     #[test]
     fn library_delete_soft_and_scoped() {
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = test_tmp_home("del");
-        // SAFETY: test-only, mutex-serialized GROK_APP_HOME mutation.
-        unsafe {
-            std::env::set_var("GROK_APP_HOME", &tmp);
-        }
+        let _home = crate::test_support::TestAppHome::new("wallpaper-library-del");
+        let tmp = _home.path().to_path_buf();
         ensure_wallpaper_dirs();
         let root = wallpapers_root();
         let file = root.join("imagine").join("2026-08-01");
@@ -3511,22 +3508,11 @@ and https://pbs.twimg.com/media/HNccFG2X0AE8gQ6.jpg?format=jpg&name=small
         let err = library_delete(&outside.display().to_string()).unwrap_err();
         assert_eq!(err, "path_not_allowed");
         assert!(outside.exists());
-
-        unsafe {
-            std::env::remove_var("GROK_APP_HOME");
-        }
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn library_list_collects_x_and_imagine() {
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = test_tmp_home("list");
-        unsafe {
-            std::env::set_var("GROK_APP_HOME", &tmp);
-        }
+        let _home = crate::test_support::TestAppHome::new("wallpaper-library-list");
         ensure_wallpaper_dirs();
         let root = wallpapers_root();
         let xdir = root.join("x").join("2026-08-01");
@@ -3544,11 +3530,6 @@ and https://pbs.twimg.com/media/HNccFG2X0AE8gQ6.jpg?format=jpg&name=small
         assert!(sources.contains("x"));
         assert!(sources.contains("imagine"));
         assert!(list.iter().all(|e| e.kind == "image"));
-
-        unsafe {
-            std::env::remove_var("GROK_APP_HOME");
-        }
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

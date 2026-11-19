@@ -366,15 +366,7 @@ mod tests {
 
     #[test]
     fn upsert_and_mark_stale_round_trip() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-plan-chrome-test-{}",
-            uuid::Uuid::new_v4()
-        ));
-        let _ = fs::create_dir_all(&tmp);
-        std::env::set_var("GROK_APP_HOME", &tmp);
+        let _home = crate::test_support::TestAppHome::new("plan-chrome");
         let sid = format!("test-plan-chrome-{}", uuid::Uuid::new_v4());
         upsert_from_plan_event(
             &sid,
@@ -392,7 +384,5 @@ mod tests {
         assert!(stale.rpc_id.is_none());
         assert!(stale.gate_stale);
         assert!(stale.body.contains("Plan"));
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 }

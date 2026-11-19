@@ -1,5 +1,12 @@
 # HANDOFF — 修复 cargo test 写穿真实 settings.json 的测试隔离缺陷
 
+> **状态:已实施(2026-11-19)。** 采用下方方案 1–3:
+> `app_data_root()` 在 `cfg(test)` 下遇未设置的 `GROK_APP_HOME` 直接 panic;
+> 新增 `src-tauri/src/test_support.rs` 的 `TestAppHome` / `with_temp_app_home`
+> 作为唯一隔离助手;泄漏点与全部未守卫用例已迁移。验证:连续 5 轮
+> `cargo test --lib` 后真实 `settings.json` 的 md5 与 mtime 不变,
+> `cargo test --lib -- --test-threads=1` 全绿,沙箱 env 运行后沙箱目录为空。
+
 - 分支:`fix/test-isolation-clobbers-real-settings`(基于 `main` @ `82b280df` v0.2.55)
 - Worktree:`/Users/soren/personal-git/grok-app-test-isolation`
 - 目标:测试套件(`cargo test`,lib 与集成)在任何情况下都不得读写真实数据根

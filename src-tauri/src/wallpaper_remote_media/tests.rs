@@ -1,8 +1,6 @@
 use std::io::Cursor;
 use std::path::Path;
 
-use crate::paths::APP_HOME_ENV_LOCK;
-
 use super::*;
 
 #[test]
@@ -212,16 +210,8 @@ fn probe_http_failures_have_stable_categories() {
 
 #[test]
 fn stored_remote_images_stay_in_their_source_directory() {
-    let _environment = APP_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    let home = std::env::temp_dir().join(format!(
-        "grok-app-remote-image-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4().simple()
-    ));
-    // SAFETY: test-only mutation serialized by APP_HOME_ENV_LOCK.
-    unsafe { std::env::set_var("GROK_APP_HOME", &home) };
+    let _home = crate::test_support::TestAppHome::new("remote-image");
+    let home = _home.path().to_path_buf();
     let mut png = vec![0u8; 128];
     png[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
     let saved = save_image(
@@ -233,7 +223,4 @@ fn stored_remote_images_stay_in_their_source_directory() {
     .expect("save remote image");
     assert!(Path::new(&saved.path).is_file());
     assert!(Path::new(&saved.path).starts_with(home.join("wallpapers").join("web")));
-
-    unsafe { std::env::remove_var("GROK_APP_HOME") };
-    let _ = fs::remove_dir_all(home);
 }

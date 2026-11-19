@@ -579,6 +579,9 @@ mod tests {
 
     #[test]
     fn seal_strips_default_reasoning_effort_from_sealed_copy_only() {
+        let _home = crate::test_support::TestAppHome::new(
+            "seal_strips_default_reasoning_effort_from_sealed_copy_only",
+        );
         let tmp = std::env::temp_dir().join(format!(
             "grok-seal-strip-{}-{}",
             std::process::id(),

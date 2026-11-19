@@ -46,6 +46,7 @@ mod tests {
     /// DingTalk start path hits gateway open endpoint (real protocol entry).
     #[tokio::test]
     async fn dingtalk_start_attempts_gateway_open() {
+        let _home = crate::test_support::TestAppHome::new("dingtalk_start_attempts_gateway_open");
         let (base, state, _shutdown) = spawn_fixture().await;
         state.set_route(
             "gateway/connections/open",
@@ -79,6 +80,7 @@ mod tests {
     /// WeCom webhook mode binds TCP (real entry) — smoke with cancel.
     #[tokio::test]
     async fn wecom_webhook_start_binds_port() {
+        let _home = crate::test_support::TestAppHome::new("wecom-webhook");
         let mut secrets = HashMap::new();
         secrets.insert("connect_mode".into(), "webhook".into());
         secrets.insert("corp_id".into(), "ww".into());

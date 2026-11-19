@@ -2371,6 +2371,7 @@ mod tests {
 
     #[test]
     fn connect_inject_opts_skip_oauth_and_keep_stdio() {
+        let _home = crate::test_support::TestAppHome::new("extensions-connect");
         // Connect path must never require network OAuth: remote without a
         // usable bearer is skipped; stdio still injects.
         let defs = vec![
@@ -2513,6 +2514,7 @@ enabled = true
 
     #[test]
     fn parse_mcp_servers_from_toml_stdio_and_http() {
+        let _home = crate::test_support::TestAppHome::new("extensions-parse");
         let raw = r#"
 [ui]
 yolo = false

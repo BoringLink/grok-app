@@ -814,6 +814,7 @@ mod tests {
 
     #[test]
     fn sanitize_and_staging_path_are_absolute() {
+        let _home = crate::test_support::TestAppHome::new("side-browser");
         let p = staging_download_path("hello world.pdf");
         assert!(p.is_absolute());
         assert!(p

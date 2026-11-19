@@ -35,13 +35,7 @@ fn reconcile_disk_rewind_corrupt_history_fails_closed() {
 }
 
 fn reconcile_disk_rewind_scenario(same_prompt: bool, corrupt_history: bool) {
-    let _guard = crate::paths::APP_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let app_home = std::env::temp_dir().join(format!("grok-rewind-test-{}", Uuid::new_v4()));
-    fs::create_dir_all(&app_home).unwrap();
-    std::env::set_var("GROK_APP_HOME", &app_home);
-    crate::paths::ensure_app_dirs().unwrap();
+    let _home = crate::test_support::TestAppHome::new("rewind-reconcile");
     let agent_id = "rewind-reconcile-disk";
     let dir = crate::paths::agent_home_dir()
         .join("sessions")
@@ -125,8 +119,6 @@ fn reconcile_disk_rewind_scenario(same_prompt: bool, corrupt_history: bool) {
             "recovered fresh answer"
         );
     }
-    std::env::remove_var("GROK_APP_HOME");
-    fs::remove_dir_all(&app_home).unwrap();
 }
 
 #[test]

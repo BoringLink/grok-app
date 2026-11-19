@@ -292,6 +292,7 @@ mod tests {
 
     #[test]
     fn list_with_icons_shape() {
+        let _home = crate::test_support::TestAppHome::new("editors-icons");
         let r = list_editors_with_icons();
         let _ = r.editors;
         let _ = r.finder_icon;

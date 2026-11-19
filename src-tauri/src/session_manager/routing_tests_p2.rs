@@ -1,15 +1,7 @@
 
 #[test]
 fn journal_assistant_after_last_user_detects_answered_turn() {
-    let _lock = crate::paths::APP_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let tmp =
-        std::env::temp_dir().join(format!("grok-app-replay-gate-test-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&tmp);
-    let _ = std::fs::create_dir_all(&tmp);
-    std::env::set_var("GROK_APP_HOME", &tmp);
-    let _ = crate::paths::ensure_app_dirs();
+    let _home = crate::test_support::TestAppHome::new("replay-gate");
     let sid = "replay-gate-test-session";
     let _ = store::append_message(
         sid,
@@ -39,8 +31,6 @@ fn journal_assistant_after_last_user_detects_answered_turn() {
         },
     );
     assert!(SessionManager::journal_has_assistant_after_last_user(sid));
-    std::env::remove_var("GROK_APP_HOME");
-    let _ = std::fs::remove_dir_all(&tmp);
 }
 
 #[test]

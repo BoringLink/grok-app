@@ -28,6 +28,7 @@ mod tests {
     /// with base_url = fixture (not hand-built DTO, not raw re-GET).
     #[tokio::test]
     async fn shipped_scan_begin_then_poll_wait_then_confirmed() {
+        let _home = crate::test_support::TestAppHome::new("weixin-scan");
         let _guard = scan_lock().lock().await;
         let (base, state, _shutdown) = spawn_fixture().await;
         state.set_route(
@@ -101,6 +102,7 @@ mod tests {
     /// Plan step 3: expired status → shipped poll refreshes QR and returns wait + new URI/key.
     #[tokio::test]
     async fn shipped_scan_poll_expired_refreshes_and_returns_new_uri() {
+        let _home = crate::test_support::TestAppHome::new("weixin-expire");
         let _guard = scan_lock().lock().await;
         let (base, state, _shutdown) = spawn_fixture().await;
         state.set_route_sequence(
@@ -158,6 +160,7 @@ mod tests {
     /// Connector long-poll + send (shipped weixin::run / send_text).
     #[tokio::test]
     async fn long_poll_getupdates_delivers_inbound_and_send_uses_context_token() {
+        let _home = crate::test_support::TestAppHome::new("weixin-poll");
         let (base, state, _shutdown) = spawn_fixture().await;
         state.set_route(
             "getupdates",

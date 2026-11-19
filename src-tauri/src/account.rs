@@ -2054,6 +2054,7 @@ mod tests {
 
     #[test]
     fn logout_auth_paths_cover_cli_agent_home_and_official_aux() {
+        let _home = crate::test_support::TestAppHome::new("account-auth-paths");
         let paths = logout_auth_paths();
         let joined: Vec<String> = paths
             .iter()
@@ -2229,6 +2230,7 @@ mod tests {
 
     #[test]
     fn profile_without_auth_is_signed_out() {
+        let _home = crate::test_support::TestAppHome::new("account-profile");
         // Just ensure function is callable; may be signed in on developer machines.
         let _ = read_auth_profile();
     }
@@ -2334,6 +2336,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn login_watchdog_kills_hanging_cli() {
+        let _home = crate::test_support::TestAppHome::new("account-login-watchdog");
         use std::io::Write;
         use std::os::unix::fs::PermissionsExt;
 

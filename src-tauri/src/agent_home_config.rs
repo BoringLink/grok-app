@@ -613,24 +613,6 @@ pub fn update_config_toml_if_independent(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn temp_app_home(label: &str) -> PathBuf {
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let p = std::env::temp_dir().join(format!(
-            "grok-agent-home-cfg-{}-{}-{}",
-            label,
-            std::process::id(),
-            nanos
-        ));
-        let _ = fs::remove_dir_all(&p);
-        fs::create_dir_all(&p).unwrap();
-        p
-    }
-
     #[test]
     fn refuse_shared_path_resolve() {
         let err = resolve_writable_config_path("shared").unwrap_err();
@@ -846,11 +828,8 @@ command = \"y\"
 
     #[test]
     fn ensure_sane_noops_on_valid_and_heals_dups() {
-        let _guard = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let home = temp_app_home("heal");
-        std::env::set_var("GROK_APP_HOME", &home);
+        let _home = crate::test_support::TestAppHome::new("agent-home-config-heal");
+        let home = _home.path().to_path_buf();
         let agent_home = home.join("agent-home");
         fs::create_dir_all(&agent_home).unwrap();
         let cfg = agent_home.join("config.toml");
@@ -889,18 +868,11 @@ command = \"y\"
         let r3 = ensure_agent_home_config_sane("shared").unwrap();
         assert!(!r3.changed);
         assert_eq!(r3.note, "shared_mode");
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&home);
     }
 
     #[test]
     fn shared_soft_skip_and_independent_write() {
-        let _guard = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let home = temp_app_home("write");
-        std::env::set_var("GROK_APP_HOME", &home);
+        let _home = crate::test_support::TestAppHome::new("agent-home-config-write");
 
         assert_eq!(
             update_config_toml_if_independent("shared", |t| set_top_level_bool(
@@ -922,8 +894,5 @@ command = \"y\"
         assert!(path.ends_with("config.toml"));
         let disk = fs::read_to_string(&path).unwrap();
         assert_eq!(get_top_level_bool(&disk, "auto_wake_enabled"), Some(true));
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&home);
     }
 }

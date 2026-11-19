@@ -247,6 +247,7 @@ fn media_display_name_keeps_safe_file_names() {
 
 #[test]
 fn prompt_failure_notes_stay_on_one_line() {
+    let _home = crate::test_support::TestAppHome::new("feishu-prompt");
     let mut note = None;
     push_media_failure(&mut note, "HTTP 403\n<script>");
     let note = note.expect("note");
@@ -258,6 +259,7 @@ fn prompt_failure_notes_stay_on_one_line() {
 
 #[tokio::test]
 async fn fetch_message_to_staging_writes_file_and_hash() {
+    let _home = crate::test_support::TestAppHome::new("feishu-write");
     let (base, state, _stop) = crate::remote_im::fixture_http::spawn_fixture().await;
     state.set_route("/resources/img_1", 200, "PNGDATA");
     let client = http_client().expect("client");
@@ -296,6 +298,7 @@ async fn fetch_message_to_staging_writes_file_and_hash() {
 
 #[tokio::test]
 async fn fetch_message_to_staging_surfaces_http_error() {
+    let _home = crate::test_support::TestAppHome::new("feishu-http-error");
     let (base, state, _stop) = crate::remote_im::fixture_http::spawn_fixture().await;
     state.set_route("/resources/img_403", 403, "no permission");
     let client = http_client().expect("client");
@@ -328,6 +331,7 @@ async fn fetch_message_to_staging_surfaces_http_error() {
 
 #[tokio::test]
 async fn fetch_message_to_staging_rejects_oversized_body_and_cleans_up() {
+    let _home = crate::test_support::TestAppHome::new("feishu-oversize");
     let (base, state, _stop) = crate::remote_im::fixture_http::spawn_fixture().await;
     state.set_route("/resources/big", 200, "x".repeat(128));
     let client = http_client().expect("client");

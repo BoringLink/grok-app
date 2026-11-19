@@ -2197,6 +2197,7 @@ mod tests {
 
     #[test]
     fn official_home_path_under_app_data() {
+        let _home = crate::test_support::TestAppHome::new("official_home_path_under_app_data");
         let h = official_aux_home();
         assert!(h.to_string_lossy().contains("agent-home-official"));
     }
@@ -2333,6 +2334,7 @@ A UI screenshot.
 
     #[test]
     fn merge_rules_appends_inject() {
+        let _home = crate::test_support::TestAppHome::new("merge_rules_appends_inject");
         // Without credentials inject may be None — still ok to call.
         let m = merge_extra_rules(Some("prefer tests"), false, "official");
         assert!(m.as_deref().unwrap_or("").contains("prefer tests"));
@@ -2364,6 +2366,9 @@ A UI screenshot.
 
     #[test]
     fn inject_gate_is_the_session_route_not_a_global_default() {
+        let _home = crate::test_support::TestAppHome::new(
+            "inject_gate_is_the_session_route_not_a_global_default",
+        );
         // The inject gate takes the chat's route explicitly; an official
         // subscription session (`custom_route = false`) never injects, and the
         // Host no longer derives a route from `[models].default`.
@@ -2377,6 +2382,9 @@ A UI screenshot.
 
     #[test]
     fn merge_disallowed_includes_imagine_tools_when_list_nonempty() {
+        let _home = crate::test_support::TestAppHome::new(
+            "merge_disallowed_includes_imagine_tools_when_list_nonempty",
+        );
         // When inject is off, merge still returns settings tools only (no panic).
         let base = vec!["Bash".into()];
         let merged = merge_disallowed_tools_for_main(&base, false);

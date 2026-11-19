@@ -262,6 +262,7 @@ fn empty_run_does_not_signal_when_assistant_body_exists_without_tools() {
 
 #[test]
 fn empty_run_signals_when_no_body_and_no_tools() {
+    let _home = crate::test_support::TestAppHome::new("routing-empty-run");
     let s = sample_live_for_empty_run("", "thinking only", 0, "agent");
     let sig = SessionManager::empty_run_signal_from_live(&s, "end_turn")
         .expect("thought-only zero-tool turn should soft-signal");

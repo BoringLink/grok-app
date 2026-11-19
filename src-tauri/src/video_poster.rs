@@ -328,14 +328,8 @@ mod tests {
 
     #[test]
     fn save_client_roundtrip_under_app_home() {
-        let _lock = paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let home =
-            std::env::temp_dir().join(format!("grok-app-poster-home-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&home);
-        fs::create_dir_all(&home).unwrap();
-        std::env::set_var("GROK_APP_HOME", &home);
+        let _home = crate::test_support::TestAppHome::new("poster-home");
+        let home = _home.path().to_path_buf();
         path_scope::refresh_from_store();
 
         let vid_dir = home.join("clips");
@@ -357,9 +351,5 @@ mod tests {
         let r2 = save_client_poster(vid.to_str().unwrap(), &jpeg).expect("cache hit");
         assert!(r2.from_cache);
         assert_eq!(r.poster_path, r2.poster_path);
-
-        std::env::remove_var("GROK_APP_HOME");
-        path_scope::refresh_from_store();
-        let _ = fs::remove_dir_all(&home);
     }
 }

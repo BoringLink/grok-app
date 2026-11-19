@@ -153,13 +153,7 @@ mod tests {
 
     #[test]
     fn reconcile_fence_write_failure_keeps_journal_intact() {
-        let _guard = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let home = std::env::temp_dir().join(format!("grok-rewind-fence-test-{}", Uuid::new_v4()));
-        fs::create_dir_all(&home).unwrap();
-        std::env::set_var("GROK_APP_HOME", &home);
-        crate::paths::ensure_app_dirs().unwrap();
+        let _home = crate::test_support::TestAppHome::new("rewind-fence");
         let session = store::create_session(None, None, false).unwrap();
         let row = ChatMessageStored {
             id: "keep".into(),
@@ -177,26 +171,16 @@ mod tests {
             .replace_journal(&session.id, &[])
             .is_err());
         assert_eq!(store::load_messages(&session.id)[0].content, "keep me");
-        std::env::remove_var("GROK_APP_HOME");
-        fs::remove_dir_all(&home).unwrap();
     }
 
     #[test]
     fn reconcile_corrupt_fence_blocks_disk_rows_after_reload() {
-        let _guard = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let home = std::env::temp_dir().join(format!("grok-rewind-fence-test-{}", Uuid::new_v4()));
-        fs::create_dir_all(&home).unwrap();
-        std::env::set_var("GROK_APP_HOME", &home);
-        crate::paths::ensure_app_dirs().unwrap();
+        let _home = crate::test_support::TestAppHome::new("rewind-fence");
         let session = store::create_session(None, None, false).unwrap();
         fs::write(RewindFence::path(&session.id), "corrupt").unwrap();
         let loaded = RewindFence::load(&session.id);
         assert!(loaded.blocks("assistant", "old answer", None));
         assert!(loaded.blocks("tool", "old output", Some("old-tool")));
         assert!(loaded.blocks_prompt("same prompt"));
-        std::env::remove_var("GROK_APP_HOME");
-        fs::remove_dir_all(&home).unwrap();
     }
 }

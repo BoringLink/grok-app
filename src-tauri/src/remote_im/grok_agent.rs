@@ -731,11 +731,8 @@ mod tests {
 
     #[test]
     fn remote_grok_home_matches_app_session_data_mode() {
-        // Reads App settings and resolves through them, so it must not run while
-        // another test repoints `GROK_APP_HOME` at its own temp home.
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _home = crate::test_support::TestAppHome::new("remote-grok-home");
+        // Reads App settings and resolves through them under the same isolated home.
         let mode = crate::store::load_settings().session_data_mode;
         let home = resolve_remote_grok_home();
         let expected = crate::paths::resolve_agent_grok_home(&mode);
@@ -753,6 +750,8 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn cancellation_kills_and_reaps_the_grok_child() {
+        let _home =
+            crate::test_support::TestAppHome::new("cancellation_kills_and_reaps_the_grok_child");
         use std::os::unix::fs::PermissionsExt;
 
         let test_dir = std::env::temp_dir().join(format!(
@@ -836,6 +835,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn cancellation_kills_descendants_holding_pipes_after_the_leader_exits() {
+        let _home = crate::test_support::TestAppHome::new("pipe-cancel");
         use std::os::unix::fs::PermissionsExt;
 
         let test_dir = std::env::temp_dir().join(format!(

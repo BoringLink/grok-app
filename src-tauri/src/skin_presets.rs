@@ -616,41 +616,29 @@ pub fn disk_usage() -> serde_json::Value {
 mod tests {
     use super::*;
 
-    fn home() -> (std::sync::MutexGuard<'static, ()>, PathBuf) {
-        let g = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
-        let dir = std::env::temp_dir().join(format!(
-            "grok-skin-presets-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        std::env::set_var("GROK_APP_HOME", &dir);
-        let _ = crate::paths::ensure_app_dirs();
-        (g, dir)
+    fn home() -> (crate::test_support::TestAppHome, PathBuf) {
+        let home = crate::test_support::TestAppHome::new("skin-presets");
+        let dir = home.path().to_path_buf();
+        (home, dir)
     }
 
     #[test]
     fn reserved_name_not_overwritten() {
         assert!(reserved(UNDO_ID));
-        let (_g, dir) = home();
+        let (_g, _dir) = home();
         let err = rename_preset(UNDO_ID, "x").unwrap_err();
         assert!(
             err.contains("reserved") || err.contains("not_found"),
             "{err}"
         );
-        let _ = fs::remove_dir_all(&dir);
-        std::env::remove_var("GROK_APP_HOME");
     }
 
     #[test]
     fn index_atomic_roundtrip() {
-        let (_g, dir) = home();
+        let (_g, _dir) = home();
         write_index(&[]).unwrap();
         assert!(index_path().is_file());
         assert!(list_presets().unwrap().is_empty());
-        let _ = fs::remove_dir_all(&dir);
-        std::env::remove_var("GROK_APP_HOME");
     }
 
     #[test]
@@ -683,8 +671,6 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].id, saved.id);
         assert_eq!(listed[0].name, "New");
-        let _ = fs::remove_dir_all(&home_dir);
-        std::env::remove_var("GROK_APP_HOME");
     }
 
     #[test]
@@ -723,13 +709,11 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().starts_with(".export-"))
             .collect();
         assert!(leftover.is_empty(), "unexpected export zips: {leftover:?}");
-        let _ = fs::remove_dir_all(&home_dir);
-        std::env::remove_var("GROK_APP_HOME");
     }
 
     #[test]
     fn preset_thumb_path_skips_raw_video() {
-        let (_g, home_dir) = home();
+        let (_g, _home_dir) = home();
         let id = "vid-preset";
         let dir = paths::skin_presets_dir().join(id);
         fs::create_dir_all(dir.join("assets")).unwrap();
@@ -746,7 +730,5 @@ mod tests {
                 .unwrap_or(true),
             "must not return raw video path: {thumb:?}"
         );
-        let _ = fs::remove_dir_all(&home_dir);
-        std::env::remove_var("GROK_APP_HOME");
     }
 }
