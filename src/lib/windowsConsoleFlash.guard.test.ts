@@ -35,7 +35,8 @@ describe("Windows console-flash guard", () => {
       }
     }
     expect(hits).toEqual([]);
-  });
+    // 遍历 src-tauri 全树受文件系统缓存影响，默认 5s 在并发跑全量测试时会误超时。
+  }, 30_000);
 
   it("settings inputs inherit color-scheme and hide number spinners", () => {
     const css = readFileSync(

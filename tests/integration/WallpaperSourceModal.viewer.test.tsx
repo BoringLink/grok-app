@@ -174,8 +174,8 @@ vi.mock("@/components/Select", () => ({
   Select: ({ value }: { value: string }) => <span>{value}</span>,
 }));
 
-import { ImageViewerProvider } from "./ImageViewer";
-import { WallpaperSourceModal } from "./WallpaperSourceModal";
+import { ImageViewerProvider } from "@/components/ImageViewer";
+import { WallpaperSourceModal } from "@/components/WallpaperSourceModal";
 import { setMediaEndpoint } from "@/lib/imageSrc";
 import * as api from "@/lib/api";
 

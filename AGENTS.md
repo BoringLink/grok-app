@@ -24,6 +24,7 @@
    - [chatcut.md](docs/llm-wiki/chatcut.md) — **ChatCut Codex plugin**: adapter, MCP surface header, Resources browser handoff, re-pull migration
    - [appearance-skins.md](docs/llm-wiki/appearance-skins.md) — **appearance packs**: `.grokskin` layout, K19 allowlist, `grok://` + `grok-app:`, never auto-apply
    - [desktop-e2e.md](docs/llm-wiki/desktop-e2e.md) — **desktop E2E**: `agent-desktop` drives the real app's accessibility tree (`Grok Dev` under `pnpm dev`); permissions, snapshot/ref loop, verification
+   - [testing.md](docs/llm-wiki/testing.md) — **测试结构**: 任务验收 vs 产品回归；unit / guard / integration / e2e 位置与命令；验收用例验收后销毁
    - [pr-monitor.md](docs/llm-wiki/pr-monitor.md) — **PR monitor**: session-owned watches over the repo's open PRs (one row per PR, inline bell, chip count), host poll + fingerprint dedup, the host delivers the localized follow-up into the chat; **the agent gets its own MCP tools** (`pr_watch` / `pr_unwatch` / `pr_watches` over loopback `/v1/pr-monitor/watches`) so it watches the PR it just opened and stops when the PR is done; process-lifetime, watches not persisted (ADR 0005)
 
 1b. **Release (AI handoff)** — **[docs/llm-wiki/release.md](docs/llm-wiki/release.md)** is the single source for ship steps. Platforms / local build: [docs/BUILD.md](docs/BUILD.md). Window chrome: `tauri.macos.conf.json` (Overlay) vs `tauri.windows.conf.json` (frameless).  
@@ -60,6 +61,8 @@
    1. **Interaction Logic** — the full click/keyboard/busy/error/empty path, not only the visible control.
    2. **Visual Consistency** — same chrome, spacing, menus, and states as the rest of the app. Do not invent a parallel skin.
    3. **Feature Parity** — same capability as the existing product surface it sits next to (local session, CLI, the other row in the same list). A control that looks like rewind/rollback/fork but does nothing is a Feature Parity miss — same class as the current rewind bug.
+
+9. **Tests** — every case has one scenario: product regression (long-lived, ships in `pnpm test`) or task acceptance (proves one task, destroyed after verification). Unit and guard tests stay next to their source under `src/`; integration tests go in `tests/integration/`; acceptance tests go in `tests/acceptance/<date>-<task>/` and never into the default suite. See [testing.md](docs/llm-wiki/testing.md).
 
 ## Agent skills
 

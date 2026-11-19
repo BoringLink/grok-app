@@ -184,6 +184,8 @@ cargo test
 
 CHANGELOG Unreleased first sentences must stay ≤ 90 characters (`whatsNew.test.ts`). Local red = not done. This machine can only run macOS clippy/tests; still run them. Do not assume GitHub CI will catch it.
 
+验收测试不进入上述闸门：任务验收时单独执行 `pnpm test:acceptance`，验收后 `pnpm test:acceptance:clean -- --apply` 删除。分层规则见 [testing.md](testing.md)。
+
 ---
 
 ## Branch hygiene (merged / finished work)
