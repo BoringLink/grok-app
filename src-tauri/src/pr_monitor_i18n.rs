@@ -358,6 +358,7 @@ mod tests {
 
     #[test]
     fn unknown_locale_falls_back_to_english() {
+        let _home = crate::test_support::TestAppHome::new("pr-monitor-i18n");
         assert_eq!(t("he", MessageKey::PromptUpdates), "What changed:");
         assert_eq!(t("", MessageKey::UpdateState), "PR state: {from} → {to}");
         assert_eq!(t("zh_CN", MessageKey::PromptUpdates), "变更内容：");

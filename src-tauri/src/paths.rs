@@ -4,22 +4,37 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+#[cfg(not(test))]
 use directories::ProjectDirs;
 
 #[cfg(test)]
 pub(crate) static APP_HOME_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 pub fn app_data_root() -> PathBuf {
-    if let Ok(custom) = std::env::var("GROK_APP_HOME") {
+    // os 值避免非 UTF-8 绕开隔离；空值按未设置处理，防止相对路径写进 cwd。
+    if let Some(custom) = std::env::var_os("GROK_APP_HOME").filter(|v| !v.is_empty()) {
         return PathBuf::from(custom);
     }
-    if let Some(proj) = ProjectDirs::from("com", "grokapp", "grok-app") {
-        return proj.data_dir().to_path_buf();
+    // 测试必须显式隔离；静默回落到真实数据根会改写用户配置。
+    // 注意：`cfg(test)` 只覆盖 lib 单测；新增 `tests/*.rs` 集成测试时需
+    // 自行设置 `GROK_APP_HOME`，否则这里会静默使用真实数据根。
+    #[cfg(test)]
+    {
+        panic!(
+            "test touched the real app data root: set GROK_APP_HOME via \
+             crate::test_support::TestAppHome / with_temp_app_home"
+        );
     }
-    // Fallback
-    dirs_fallback()
+    #[cfg(not(test))]
+    {
+        if let Some(proj) = ProjectDirs::from("com", "grokapp", "grok-app") {
+            return proj.data_dir().to_path_buf();
+        }
+        dirs_fallback()
+    }
 }
 
+#[cfg(not(test))]
 fn dirs_fallback() -> PathBuf {
     #[cfg(target_os = "windows")]
     {
@@ -418,8 +433,10 @@ mod tests {
 
     #[test]
     fn app_data_root_is_absolute_or_relative_path() {
+        let _home = crate::test_support::TestAppHome::new("paths-root");
         let p = app_data_root();
         assert!(!p.as_os_str().is_empty());
+        assert_eq!(p, _home.path());
     }
 
     #[test]
@@ -440,6 +457,7 @@ mod tests {
 
     #[test]
     fn inference_home_custom_route_uses_agent_home_even_when_shared() {
+        let _home = crate::test_support::TestAppHome::new("paths-inference-home");
         let shared_official = resolve_inference_grok_home("shared", false);
         assert!(
             shared_official.ends_with(".grok"),

@@ -156,39 +156,27 @@ pub fn abort_inspect(inspect_id: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
-    fn home_guard() -> (std::sync::MutexGuard<'static, ()>, std::path::PathBuf) {
-        let g = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-skin-staging-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = crate::paths::ensure_app_dirs();
-        (g, tmp)
+    fn home_guard() -> (crate::test_support::TestAppHome, std::path::PathBuf) {
+        let home = crate::test_support::TestAppHome::new("skin-staging");
+        let tmp = home.path().to_path_buf();
+        (home, tmp)
     }
 
     #[test]
     fn second_begin_is_busy() {
-        let (_g, tmp) = home_guard();
+        let (_g, _tmp) = home_guard();
         let a = begin_upload().expect("first begin");
         let err = begin_upload().unwrap_err();
         assert!(err.starts_with("busy"), "{err}");
         abort_upload(&a.upload_id).unwrap();
-        let _ = fs::remove_dir_all(&tmp);
-        std::env::remove_var("GROK_APP_HOME");
     }
 
     #[test]
     fn inspect_does_not_block_upload() {
-        let (_g, tmp) = home_guard();
+        let (_g, _tmp) = home_guard();
         let inspect_id = Uuid::new_v4().to_string();
         fs::create_dir_all(inspect_dir(&inspect_id)).unwrap();
         let a = begin_upload().expect("upload while inspect exists");
         abort_upload(&a.upload_id).unwrap();
-        let _ = fs::remove_dir_all(&tmp);
-        std::env::remove_var("GROK_APP_HOME");
     }
 }

@@ -128,6 +128,7 @@ mod tests {
 
     #[test]
     fn boot_theme_script_marks_the_editor_shell() {
+        let _home = crate::test_support::TestAppHome::new("theme-editor");
         let s = boot_theme_script();
         assert!(s.contains("data-theme-editor-shell"));
         assert!(s.contains("__GROK_BOOT_THEME__"));

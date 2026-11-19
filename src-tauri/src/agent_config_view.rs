@@ -306,6 +306,7 @@ mod tests {
 
     #[test]
     fn config_path_independent_is_agent_home() {
+        let _home = crate::test_support::TestAppHome::new("agent-config-view");
         let p = config_toml_path("independent");
         assert!(
             p.ends_with("agent-home/config.toml") || p.ends_with("agent-home\\config.toml"),

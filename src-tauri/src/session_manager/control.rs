@@ -2172,15 +2172,7 @@ mod recycle_tests {
 
     #[test]
     fn set_model_retunes_only_the_live_target_session() {
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp =
-            std::env::temp_dir().join(format!("grok-app-set-model-scope-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&tmp);
-        let _ = std::fs::create_dir_all(&tmp);
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = crate::paths::ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("set-model-scope");
 
         let mgr = SessionManager::new();
         let mut fsm = SessionFsm::new();
@@ -2292,9 +2284,6 @@ mod recycle_tests {
             assert_eq!(s.model_id.as_deref(), Some("grok-4.7"));
             assert_eq!(s.meta.model_id.as_deref(), Some("grok-4.7"));
         }
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     // ───────────── set_config_option 热路径（免重启换档） ─────────────
@@ -2308,23 +2297,14 @@ mod recycle_tests {
             .expect("test runtime")
     }
 
-    fn isolated_hot_home(tag: &str) -> std::path::PathBuf {
-        let home =
-            std::env::temp_dir().join(format!("grok-app-hot-effort-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&home);
-        let _ = std::fs::create_dir_all(&home);
-        std::env::set_var("GROK_APP_HOME", &home);
-        let _ = crate::paths::ensure_app_dirs();
-        home
+    fn isolated_hot_home(tag: &str) -> crate::test_support::TestAppHome {
+        crate::test_support::TestAppHome::new(&format!("hot-effort-{tag}"))
     }
 
     /// 热路径成功：进程保留、effort 对齐、无 pending 重启、resume id 不清。
     /// vendor 原始 id（balanced）经 canonical 映射后 RPC 成功，记账保留原始 id。
     #[test]
     fn hot_effort_apply_keeps_process_and_clears_pending_effort_marker() {
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _home = isolated_hot_home("ok");
         let mgr = SessionManager::new();
         let mut live = ready_session("hot-ok", "proc-hot", "agent-hot", "relay");
@@ -2364,9 +2344,6 @@ mod recycle_tests {
     /// 热路径失败（旧 CLI / 档位不在菜单）：回落惰性失效，同样不杀进程。
     #[test]
     fn hot_effort_failure_falls_back_to_lazy_pending_without_kill() {
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _home = isolated_hot_home("err");
         let mgr = SessionManager::new();
         let mut live = ready_session("hot-err", "proc-err", "agent-err", "relay");
@@ -2400,9 +2377,6 @@ mod recycle_tests {
     /// mid-turn：热路径跳过（即使 RPC 可用），排队等待 turn-end flush。
     #[test]
     fn hot_effort_skipped_while_mid_turn() {
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _home = isolated_hot_home("busy");
         let mgr = SessionManager::new();
         let mut live = ready_session("hot-busy", "proc-busy", "agent-busy", "relay");
@@ -2432,9 +2406,6 @@ mod recycle_tests {
     /// 非法值由网关上游拒绝（RPC 失败时回落 stage 路径）。
     #[test]
     fn hot_effort_passes_raw_ids_through_to_rpc() {
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _home = isolated_hot_home("wire");
         let mgr = SessionManager::new();
         let mut live = ready_session("hot-wire", "proc-wire", "agent-wire", "relay");
@@ -2467,9 +2438,6 @@ mod recycle_tests {
     /// 网关上游拒绝自定义/非法档位：RPC 失败软回落 stage 路径，不杀进程。
     #[test]
     fn hot_effort_upstream_rejection_falls_back_to_stage() {
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _home = isolated_hot_home("rej");
         let mgr = SessionManager::new();
         let mut live = ready_session("hot-rej", "proc-rej", "agent-rej", "relay");
@@ -2492,9 +2460,6 @@ mod recycle_tests {
     /// 档位不变：不发 RPC，也不产生任何重启标记。
     #[test]
     fn hot_effort_no_change_is_a_noop() {
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let _home = isolated_hot_home("same");
         let mgr = SessionManager::new();
         let mut live = ready_session("hot-same", "proc-same", "agent-same", "relay");

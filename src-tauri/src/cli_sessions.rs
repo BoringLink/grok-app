@@ -2945,13 +2945,7 @@ mod tests {
 
     #[test]
     fn bulk_eligibility_matches_list_and_reports_complete_import_failure() {
-        let _guard = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let app_home = std::env::temp_dir().join(format!("cli-bulk-eligible-{}", Uuid::new_v4()));
-        fs::create_dir_all(&app_home).unwrap();
-        std::env::set_var("GROK_APP_HOME", &app_home);
-        crate::paths::ensure_app_dirs().unwrap();
+        let _home = crate::test_support::TestAppHome::new("cli-bulk-eligible");
         let dir = make_fake_cli_session(&crate::paths::agent_home_dir(), "bulk-eligible");
         let rows = list_cli_sessions("independent").unwrap();
         assert_eq!(rows.len(), 1);
@@ -2966,20 +2960,11 @@ mod tests {
         ));
         fs::write(dir.join("chat_history.jsonl"), "{invalid json}").unwrap();
         assert!(import_all_cli_sessions("independent", 50).is_err());
-        std::env::remove_var("GROK_APP_HOME");
-        fs::remove_dir_all(app_home).unwrap();
     }
 
     #[test]
     fn import_all_does_not_resurrect_deleted_app_session() {
-        use crate::paths::APP_HOME_ENV_LOCK;
-
-        let _guard = APP_HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let app_home = std::env::temp_dir().join(format!("cli-resurrect-{}", Uuid::new_v4()));
-        let _ = fs::remove_dir_all(&app_home);
-        fs::create_dir_all(&app_home).unwrap();
-        std::env::set_var("GROK_APP_HOME", &app_home);
-        let _ = crate::paths::ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("cli-resurrect");
 
         let agent_home = crate::paths::agent_home_dir();
         let agent_id = "agent-resurrect-aaaa";
@@ -3006,21 +2991,11 @@ mod tests {
                 .all(|s| s.agent_session_id.as_deref() != Some(agent_id)),
             "index grew a new row for the deleted agent id"
         );
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&app_home);
     }
 
     #[test]
     fn forget_removes_agent_home_session_when_mode_is_shared() {
-        use crate::paths::APP_HOME_ENV_LOCK;
-
-        let _guard = APP_HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let app_home = std::env::temp_dir().join(format!("cli-mode-switch-{}", Uuid::new_v4()));
-        let _ = fs::remove_dir_all(&app_home);
-        fs::create_dir_all(&app_home).unwrap();
-        std::env::set_var("GROK_APP_HOME", &app_home);
-        let _ = crate::paths::ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("cli-mode-switch");
 
         let agent_home = crate::paths::agent_home_dir();
         let agent_id = "agent-mode-switch-bbbb";
@@ -3029,21 +3004,11 @@ mod tests {
 
         forget_app_linked_cli_session(agent_id, "shared").expect("forget cli");
         assert!(!dir.exists(), "agent-home CLI dir should be gone");
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&app_home);
     }
 
     #[test]
     fn import_all_skips_tombstoned_id_even_if_cli_dir_remains() {
-        use crate::paths::APP_HOME_ENV_LOCK;
-
-        let _guard = APP_HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let app_home = std::env::temp_dir().join(format!("cli-tombstone-{}", Uuid::new_v4()));
-        let _ = fs::remove_dir_all(&app_home);
-        fs::create_dir_all(&app_home).unwrap();
-        std::env::set_var("GROK_APP_HOME", &app_home);
-        let _ = crate::paths::ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("cli-tombstone");
 
         let agent_home = crate::paths::agent_home_dir();
         let agent_id = "agent-tombstone-cccc";
@@ -3069,21 +3034,11 @@ mod tests {
             "tombstone should block resurrection, got {}",
             again.len()
         );
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&app_home);
     }
 
     #[test]
     fn archived_row_is_already_linked_so_import_all_skips() {
-        use crate::paths::APP_HOME_ENV_LOCK;
-
-        let _guard = APP_HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let app_home = std::env::temp_dir().join(format!("cli-arch-{}", Uuid::new_v4()));
-        let _ = fs::remove_dir_all(&app_home);
-        fs::create_dir_all(&app_home).unwrap();
-        std::env::set_var("GROK_APP_HOME", &app_home);
-        let _ = crate::paths::ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("cli-arch");
 
         let agent_home = crate::paths::agent_home_dir();
         let agent_id = "agent-archived-bbbb";
@@ -3106,8 +3061,6 @@ mod tests {
         assert!(again.is_empty());
 
         let _ = crate::store::delete_session(&imported.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&app_home);
     }
 
     #[test]
@@ -3148,10 +3101,10 @@ mod tests {
 
     #[test]
     fn find_latest_prefers_newest_under_encoded_cwd() {
-        use crate::paths::{percent_encode_path_component, APP_HOME_ENV_LOCK};
+        use crate::paths::percent_encode_path_component;
 
-        let _guard = APP_HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let app_home = std::env::temp_dir().join(format!("cli-cont-{}", Uuid::new_v4()));
+        let _home = crate::test_support::TestAppHome::new("cli-cont");
+        let app_home = _home.path().to_path_buf();
         let agent_home = app_home.join("agent-home");
         let proj = "/Users/me/continue-proj";
         let cwd_enc = percent_encode_path_component(proj);
@@ -3189,7 +3142,6 @@ mod tests {
         .unwrap();
         fs::write(other.join("chat_history.jsonl"), "").unwrap();
 
-        std::env::set_var("GROK_APP_HOME", &app_home);
         let hit = find_latest_cli_session_for_cwd(proj, "independent")
             .unwrap()
             .expect("should find session");
@@ -3205,17 +3157,14 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&app_home);
     }
 
     #[test]
     fn find_latest_matches_trailing_slash_variant() {
-        use crate::paths::{percent_encode_path_component, APP_HOME_ENV_LOCK};
+        use crate::paths::percent_encode_path_component;
 
-        let _guard = APP_HOME_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let app_home = std::env::temp_dir().join(format!("cli-cont2-{}", Uuid::new_v4()));
+        let _home = crate::test_support::TestAppHome::new("cli-cont2");
+        let app_home = _home.path().to_path_buf();
         let agent_home = app_home.join("agent-home");
         let proj = "/Users/me/slash-proj";
         let dir = agent_home
@@ -3230,13 +3179,10 @@ mod tests {
         .unwrap();
         fs::write(dir.join("chat_history.jsonl"), "").unwrap();
 
-        std::env::set_var("GROK_APP_HOME", &app_home);
         let hit = find_latest_cli_session_for_cwd("/Users/me/slash-proj/", "independent")
             .unwrap()
             .expect("trailing slash should still match");
         assert_eq!(hit.agent_session_id, "agent-slash");
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&app_home);
     }
 
     #[test]

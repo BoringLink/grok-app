@@ -149,6 +149,7 @@ mod tests {
 
     #[test]
     fn logs_dir_under_app_data() {
+        let _home = crate::test_support::TestAppHome::new("logs_dir_under_app_data");
         let dir = logs_dir();
         assert!(dir.ends_with("logs"), "{dir:?}");
     }

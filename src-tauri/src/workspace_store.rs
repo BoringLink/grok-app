@@ -546,18 +546,8 @@ mod tests {
 
     #[test]
     fn bind_default_workspace_if_unbound_inherits_project_workspace() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-ws-inherit-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = crate::paths::ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("grok-ws-inherit");
+        let tmp = _home.path().to_path_buf();
 
         let primary = tmp.join("primary");
         let extra = tmp.join("extra");
@@ -628,9 +618,6 @@ mod tests {
             resolve_spawn_sandbox("workspace", None, detached.workspace_id.as_deref()),
             "workspace"
         );
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]

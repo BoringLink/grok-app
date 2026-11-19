@@ -329,6 +329,8 @@ mod tests {
 
     #[test]
     fn extract_managed_settings_from_inspect_json() {
+        let _home =
+            crate::test_support::TestAppHome::new("extract_managed_settings_from_inspect_json");
         let v = serde_json::json!({
             "permissions": {
                 "managedSettingsActive": true,
@@ -393,6 +395,9 @@ mod tests {
 
     #[test]
     fn build_status_presence_only_without_verify_claim() {
+        let _home = crate::test_support::TestAppHome::new(
+            "build_status_presence_only_without_verify_claim",
+        );
         let st = build_managed_setup_status(
             true,
             Some(Path::new("/tmp/fake-grok")),

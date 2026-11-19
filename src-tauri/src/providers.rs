@@ -8865,6 +8865,7 @@ context_window = "1000000"
 
     #[test]
     fn unknown_official_model_falls_back_to_the_official_default() {
+        let _home = crate::test_support::TestAppHome::new("providers-official-default");
         let unknown = format!("not-an-official-model-{}", uuid::Uuid::new_v4());
         assert_eq!(
             session_set_model_id_for(SESSION_PROVIDER_OFFICIAL, &unknown),

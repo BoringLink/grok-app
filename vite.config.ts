@@ -60,6 +60,7 @@ export default defineConfig(() => ({
       ignored: [
         "**/src-tauri/**",
         "**/.grok-app-dev-home/**",
+        "**/.grok-app-dev/**",
         "**/.cargo-home/**",
         "**/*.tsbuildinfo",
       ],

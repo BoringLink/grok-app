@@ -2402,17 +2402,7 @@ mod tests {
 
     #[test]
     fn persist_queue_roundtrip_and_take() {
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-session-api-q-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4()
-        ));
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(&tmp).unwrap();
-        std::env::set_var("GROK_APP_HOME", &tmp);
+        let _home = crate::test_support::TestAppHome::new("session-api-queue");
         persist_queue_item(PersistedQueueItem {
             session_id: "s1".into(),
             item_id: "q-1".into(),
@@ -2431,8 +2421,6 @@ mod tests {
         let rest = load_persisted_queue();
         assert_eq!(rest.items.len(), 1);
         assert_eq!(rest.items[0].item_id, "q-2");
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[tokio::test]

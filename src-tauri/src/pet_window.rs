@@ -1514,6 +1514,7 @@ mod tests {
 
     #[test]
     fn pet_init_script_hides_boot_gate() {
+        let _home = crate::test_support::TestAppHome::new("pet-boot-gate");
         let script = pet_init_script(&PetPrefs::default());
         assert!(script.contains("data-pet-shell"));
         assert!(script.contains("boot-gate"));
@@ -1533,6 +1534,7 @@ mod tests {
 
     #[test]
     fn pet_init_script_embeds_saved_color() {
+        let _home = crate::test_support::TestAppHome::new("pet-embed-color");
         let prefs = PetPrefs {
             color: "violet".into(),
             shape: "cloud".into(),

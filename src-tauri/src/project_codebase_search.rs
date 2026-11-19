@@ -802,6 +802,7 @@ mod tests {
 
     #[test]
     fn soft_fail_empty_query() {
+        let _home = crate::test_support::TestAppHome::new("cbs-empty");
         let dir = make_tmp("emptyq");
         let r = search_project_codebase(dir.to_str().unwrap(), "   ", Some("all"), Some(10), false);
         assert_eq!(r.soft_fail.as_deref(), Some("empty_query"));
@@ -812,6 +813,7 @@ mod tests {
 
     #[test]
     fn empty_name_query_lists_files() {
+        let _home = crate::test_support::TestAppHome::new("cbs-list");
         let dir = make_tmp("list");
         fs::write(dir.join("alpha.txt"), "a").unwrap();
         fs::write(dir.join("beta.txt"), "b").unwrap();
@@ -828,6 +830,7 @@ mod tests {
 
     #[test]
     fn directory_hits_are_opt_in() {
+        let _home = crate::test_support::TestAppHome::new("cbs-dirs");
         let dir = make_tmp("dirhits");
         fs::create_dir_all(dir.join("components")).unwrap();
         fs::write(dir.join("components/Button.tsx"), "x").unwrap();
@@ -851,6 +854,7 @@ mod tests {
 
     #[test]
     fn finds_name_and_content() {
+        let _home = crate::test_support::TestAppHome::new("cbs-find");
         let dir = make_tmp("find");
         let src = dir.join("src");
         fs::create_dir_all(&src).unwrap();

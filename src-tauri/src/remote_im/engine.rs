@@ -2458,6 +2458,7 @@ mod tests {
 
     #[tokio::test]
     async fn stop_cancels_all_active_turns_in_the_scope_only() {
+        let _home = crate::test_support::TestAppHome::new("remote-engine-stop");
         let engine = Engine::new_ephemeral(OutboundRouter::new(), false);
         let (_first, first_rx) = engine.register_active_turn("scope-a");
         let (_second, second_rx) = engine.register_active_turn("scope-a");
@@ -2495,6 +2496,7 @@ mod tests {
 
     #[test]
     fn stop_marks_registered_turn_so_thinking_reply_is_skipped() {
+        let _home = crate::test_support::TestAppHome::new("remote-engine-turn");
         let engine = Engine::new_ephemeral(OutboundRouter::new(), false);
         let (_turn, mut cancel_rx) = engine.register_active_turn("scope-stop");
         assert!(!grok_agent::cancellation_signaled(&mut cancel_rx));
@@ -2504,6 +2506,7 @@ mod tests {
 
     #[test]
     fn empty_scope_and_narrowed_binding_do_not_spawn() {
+        let _home = crate::test_support::TestAppHome::new("remote-engine-scope");
         assert!(projects::default_work_dir(&json!({ "allow": [] })).is_none());
         assert!(!projects::binding_allowed_in_scope(
             None,
@@ -2539,9 +2542,7 @@ mod tests {
 
     #[test]
     fn engine_lang_follows_product_locale_not_hardcoded_zh() {
-        let _home = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _home = crate::test_support::TestAppHome::new("remote-engine-lang");
         let engine = Engine::new_ephemeral(OutboundRouter::new(), false);
         let lang = engine.lang();
         // Checked against the shipped roster rather than a literal list:
@@ -2557,6 +2558,9 @@ mod tests {
 
     #[test]
     fn completion_and_stop_have_a_single_atomic_winner() {
+        let _home = crate::test_support::TestAppHome::new(
+            "completion_and_stop_have_a_single_atomic_winner",
+        );
         let engine = Engine::new_ephemeral(OutboundRouter::new(), false);
 
         let (mut completed_first, completed_rx) = engine.register_active_turn("completed-first");
@@ -2632,6 +2636,7 @@ mod tests {
 
     #[tokio::test]
     async fn handle_slash_p_does_not_deadlock_on_pending_lookup() {
+        let _home = crate::test_support::TestAppHome::new("remote-engine-slash");
         let outbound = OutboundRouter::new();
         let engine = Engine::new_ephemeral(outbound.clone(), false);
         let mut secrets = HashMap::new();

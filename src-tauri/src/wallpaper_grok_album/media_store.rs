@@ -212,22 +212,9 @@ mod tests {
         bytes
     }
 
-    fn test_home(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "grok-app-album-media-{label}-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4().simple()
-        ))
-    }
-
     #[test]
     fn stable_cache_reuses_one_validated_file_and_rebuilds_damage() {
-        let _environment = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let home = test_home("reuse");
-        // SAFETY: test-only mutation serialized by APP_HOME_ENV_LOCK.
-        unsafe { std::env::set_var("GROK_APP_HOME", &home) };
+        let _home = crate::test_support::TestAppHome::new("album-media-reuse");
         let url = "https://assets.grok.com/users/test/generated/stable.png";
 
         let first = save(url, "image/png", test_png()).expect("initial save");
@@ -245,19 +232,11 @@ mod tests {
         assert!(lookup(url).expect("deleted lookup").is_none());
         let restored = save(url, "image/png", test_png()).expect("restore deleted cache");
         assert_eq!(first.path, restored.path);
-
-        unsafe { std::env::remove_var("GROK_APP_HOME") };
-        let _ = fs::remove_dir_all(home);
     }
 
     #[test]
     fn concurrent_requests_commit_one_stable_file() {
-        let _environment = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let home = test_home("concurrent");
-        // SAFETY: test-only mutation serialized by APP_HOME_ENV_LOCK.
-        unsafe { std::env::set_var("GROK_APP_HOME", &home) };
+        let _home = crate::test_support::TestAppHome::new("album-media-concurrent");
         let url = "https://assets.grok.com/users/test/generated/concurrent.png";
         let writes = AtomicUsize::new(0);
 
@@ -286,8 +265,5 @@ mod tests {
             .filter(|entry| entry.path().is_file())
             .collect::<Vec<_>>();
         assert_eq!(files.len(), 1);
-
-        unsafe { std::env::remove_var("GROK_APP_HOME") };
-        let _ = fs::remove_dir_all(home);
     }
 }

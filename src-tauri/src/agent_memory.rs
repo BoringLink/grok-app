@@ -1248,14 +1248,8 @@ mod tests {
 
     #[test]
     fn list_and_delete_memory_files_in_temp() {
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-mem-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let _home = crate::test_support::TestAppHome::new("mem-list");
+        let tmp = _home.path().to_path_buf();
         let mem = tmp.join("memory");
         let slug = "demo-proj-deadbeef";
         let ws = mem.join(slug);
@@ -1274,12 +1268,6 @@ mod tests {
         fs::write(sessions.join("2026-01-01-session.md"), "session log\n").unwrap();
         fs::write(ws.join("index.sqlite"), b"SQLite format 3\0fake").unwrap();
 
-        // Point independent mode agent home at tmp via GROK_APP_HOME.
-        let _guard = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        // Safety: only for this process during test.
-        std::env::set_var("GROK_APP_HOME", &tmp);
         // agent-home is under app data; memory for independent is agent-home/memory
         // so place files under agent-home/memory instead.
         let agent_mem = tmp.join("agent-home").join("memory");
@@ -1348,9 +1336,6 @@ mod tests {
         let outside = tmp.join("agent-home").join("config.toml");
         let _ = fs::File::create(&outside).and_then(|mut f| f.write_all(b"x"));
         assert!(delete_memory_file(&outside, "independent").is_err());
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
@@ -1431,18 +1416,8 @@ mod tests {
 
     #[test]
     fn search_finds_content_and_redacts_snippet() {
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-mem-search-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let _guard = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        std::env::set_var("GROK_APP_HOME", &tmp);
+        let _home = crate::test_support::TestAppHome::new("mem-search");
+        let tmp = _home.path().to_path_buf();
         let agent_mem = tmp.join("agent-home").join("memory");
         let slug = "demo-search-cafe0123";
         let proj_path = tmp.join("demo-search");
@@ -1544,9 +1519,6 @@ mod tests {
         if listed_match_count_md_like(&proj_path) > 1 {
             assert!(capped.truncated, "{capped:?}");
         }
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     fn listed_match_count_md_like(proj: &std::path::Path) -> usize {

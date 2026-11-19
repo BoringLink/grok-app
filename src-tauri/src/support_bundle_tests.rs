@@ -2,40 +2,25 @@ use super::*;
 
 #[test]
 fn reset_keeps_secrets_when_requested() {
-    let _g = crate::paths::APP_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let tmp = std::env::temp_dir().join(format!(
-        "grok-app-reset-test-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4()
-    ));
+    let _home = crate::test_support::TestAppHome::new("support-reset");
+    let tmp = _home.path().to_path_buf();
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(tmp.join("sessions")).unwrap();
     fs::write(tmp.join("sessions_index.json"), "[]").unwrap();
     fs::write(tmp.join("secrets.json"), r#"{"officialApiKey":"sk-test"}"#).unwrap();
     fs::write(tmp.join("settings.json"), "{}").unwrap();
 
-    std::env::set_var("GROK_APP_HOME", &tmp);
     let result = reset_app_data(true).expect("reset");
     assert!(result["ok"].as_bool().unwrap());
     assert!(tmp.join("secrets.json").is_file());
     assert!(!tmp.join("sessions_index.json").is_file());
     assert!(tmp.join("sessions").is_dir()); // recreated empty
-    std::env::remove_var("GROK_APP_HOME");
-    let _ = fs::remove_dir_all(&tmp);
 }
 
 #[test]
 fn reset_removes_skin_dirs_keeps_wallpaper_library() {
-    let _g = crate::paths::APP_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let tmp = std::env::temp_dir().join(format!(
-        "grok-app-reset-skin-{}-{}",
-        std::process::id(),
-        uuid::Uuid::new_v4()
-    ));
+    let _home = crate::test_support::TestAppHome::new("support-skin");
+    let tmp = _home.path().to_path_buf();
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(tmp.join("skin-presets").join("abc")).unwrap();
     fs::create_dir_all(tmp.join("skin-catalog-cache").join("official")).unwrap();
@@ -45,7 +30,6 @@ fn reset_removes_skin_dirs_keeps_wallpaper_library() {
         b"x",
     )
     .unwrap();
-    std::env::set_var("GROK_APP_HOME", &tmp);
     let result = reset_app_data(true).expect("reset");
     assert!(result["ok"].as_bool().unwrap());
     assert!(!tmp.join("skin-presets").join("abc").exists());
@@ -55,16 +39,12 @@ fn reset_removes_skin_dirs_keeps_wallpaper_library() {
         .join("library")
         .join("keep.jpg")
         .is_file());
-    std::env::remove_var("GROK_APP_HOME");
-    let _ = fs::remove_dir_all(&tmp);
 }
 
 #[test]
 fn support_bundle_creates_zip_without_secrets() {
-    let _g = crate::paths::APP_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let tmp = std::env::temp_dir().join(format!("grok-app-bundle-test-{}", std::process::id()));
+    let _home = crate::test_support::TestAppHome::new("support-bundle");
+    let tmp = _home.path().to_path_buf();
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(tmp.join("logs")).unwrap();
     fs::write(
@@ -79,7 +59,6 @@ fn support_bundle_creates_zip_without_secrets() {
     )
     .unwrap();
 
-    std::env::set_var("GROK_APP_HOME", &tmp);
     let zip_path = write_support_bundle(r#"{"summary":{"ok":1}}"#, None).expect("bundle");
     assert!(zip_path.is_file());
     let bytes = fs::read(&zip_path).unwrap();
@@ -108,12 +87,11 @@ fn support_bundle_creates_zip_without_secrets() {
     assert!(!meta_body.contains("sk-secret"));
 
     let _ = fs::remove_file(&zip_path);
-    std::env::remove_var("GROK_APP_HOME");
-    let _ = fs::remove_dir_all(&tmp);
 }
 
 #[test]
 fn redact_text_scrubs_api_keys_from_doctor_payload() {
+    let _home = crate::test_support::TestAppHome::new("support-redact");
     // Prove support-bundle redaction path for doctor JSON (no secrets leak).
     let raw = r#"{"msg":"token sk-doctor-secret-value-long","ok":true}"#;
     let scrubbed = store::redact_text(raw);
@@ -126,10 +104,8 @@ fn redact_text_scrubs_api_keys_from_doctor_payload() {
 
 #[test]
 fn support_bundle_includes_redacted_stall_timeline() {
-    let _g = crate::paths::APP_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let tmp = std::env::temp_dir().join(format!("grok-app-bundle-stall-{}", std::process::id()));
+    let _home = crate::test_support::TestAppHome::new("support-stall");
+    let tmp = _home.path().to_path_buf();
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(&tmp).unwrap();
     fs::write(tmp.join("settings.json"), r#"{"locale":"en"}"#).unwrap();
@@ -140,7 +116,6 @@ fn support_bundle_includes_redacted_stall_timeline() {
     )
     .unwrap();
 
-    std::env::set_var("GROK_APP_HOME", &tmp);
     let timeline = r#"{
   "kind": "stall_timeline",
   "source": "reliability_center",
@@ -181,19 +156,12 @@ fn support_bundle_includes_redacted_stall_timeline() {
     assert!(body.contains("[REDACTED]") || !body.contains("sk-stall"));
 
     let _ = fs::remove_file(&zip_path);
-    std::env::remove_var("GROK_APP_HOME");
-    let _ = fs::remove_dir_all(&tmp);
 }
 
 #[test]
 fn session_bundle_includes_messages_without_secrets() {
-    let _g = crate::paths::APP_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let tmp = std::env::temp_dir().join(format!(
-        "grok-app-session-bundle-test-{}",
-        std::process::id()
-    ));
+    let _home = crate::test_support::TestAppHome::new("support-session");
+    let tmp = _home.path().to_path_buf();
     let _ = fs::remove_dir_all(&tmp);
     fs::create_dir_all(tmp.join("sessions")).unwrap();
     fs::create_dir_all(tmp.join("logs")).unwrap();
@@ -213,7 +181,6 @@ fn session_bundle_includes_messages_without_secrets() {
     )
     .unwrap();
 
-    std::env::set_var("GROK_APP_HOME", &tmp);
     let session =
         store::create_session(None, Some("Export test".into()), false).expect("create session");
     store::append_message(
@@ -261,6 +228,4 @@ fn session_bundle_includes_messages_without_secrets() {
         "bundle must include host forensic logs"
     );
     let _ = fs::remove_file(&zip_path);
-    std::env::remove_var("GROK_APP_HOME");
-    let _ = fs::remove_dir_all(&tmp);
 }

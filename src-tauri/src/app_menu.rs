@@ -227,6 +227,7 @@ mod tests {
 
     #[test]
     fn close_label_non_empty() {
+        let _home = crate::test_support::TestAppHome::new("app-menu");
         assert!(!close_menu_label().is_empty());
     }
 }

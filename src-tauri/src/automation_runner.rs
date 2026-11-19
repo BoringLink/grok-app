@@ -738,6 +738,9 @@ mod tests {
 
     #[test]
     fn effective_provider_prefers_explicit_route_and_infers_legacy_official() {
+        let _home = crate::test_support::TestAppHome::new(
+            "effective_provider_prefers_explicit_route_and_infers_legacy_official",
+        );
         let mut a = sample("daily", "09:00", vec![]);
         assert_eq!(effective_automation_provider_id(&a), None);
 

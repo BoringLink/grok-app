@@ -1365,6 +1365,7 @@ mod tests {
 
     #[test]
     fn rejects_escape() {
+        let _home = crate::test_support::TestAppHome::new("rejects_escape");
         let dir = tempfile_dir();
         let err = list_dir(dir.to_str().unwrap(), "../").unwrap_err();
         assert!(
@@ -1376,6 +1377,7 @@ mod tests {
 
     #[test]
     fn lists_and_reads() {
+        let _home = crate::test_support::TestAppHome::new("lists_and_reads");
         let dir = tempfile_dir();
         let f = dir.join("hello.md");
         let mut file = fs::File::create(&f).unwrap();
@@ -1419,6 +1421,7 @@ mod tests {
 
     #[test]
     fn nested_relative_paths() {
+        let _home = crate::test_support::TestAppHome::new("nested_relative_paths");
         let dir = tempfile_dir();
         fs::create_dir_all(dir.join("src")).unwrap();
         fs::write(dir.join("src/a.ts"), "export const x = 1;\n").unwrap();
@@ -1432,6 +1435,7 @@ mod tests {
 
     #[test]
     fn hides_git_directory() {
+        let _home = crate::test_support::TestAppHome::new("hides_git_directory");
         let dir = tempfile_dir();
         fs::create_dir_all(dir.join(".git")).unwrap();
         fs::write(dir.join(".git/config"), "x").unwrap();
@@ -1708,6 +1712,7 @@ mod tests {
 
     #[test]
     fn reads_minimal_docx() {
+        let _home = crate::test_support::TestAppHome::new("reads_minimal_docx");
         let dir = tempfile_dir();
         let docx = dir.join("sample.docx");
         write_minimal_docx(&docx, "Hello DOCX preview");
@@ -1726,6 +1731,7 @@ mod tests {
 
     #[test]
     fn write_text_roundtrip_and_mtime() {
+        let _home = crate::test_support::TestAppHome::new("write_text_roundtrip_and_mtime");
         let dir = tempfile_dir();
         let rel = "notes/hello.md";
         fs::create_dir_all(dir.join("notes")).unwrap();
@@ -1740,6 +1746,7 @@ mod tests {
 
     #[test]
     fn write_text_conflict_when_mtime_differs() {
+        let _home = crate::test_support::TestAppHome::new("write_text_conflict_when_mtime_differs");
         let dir = tempfile_dir();
         let rel = "a.txt";
         fs::write(dir.join(rel), b"disk\n").unwrap();
@@ -1761,6 +1768,7 @@ mod tests {
 
     #[test]
     fn write_text_rejects_escape() {
+        let _home = crate::test_support::TestAppHome::new("write_text_rejects_escape");
         let dir = tempfile_dir();
         let err = write_text_file(dir.to_str().unwrap(), "../x.txt", "nope", None).unwrap_err();
         assert!(err.contains("escape") || err.contains("absolute"), "{err}");

@@ -24,6 +24,12 @@ Desktop never reimplements tools/sampling. It is an ACP client + UI shell.
 
 Custom providers are written to **`$GROK_HOME/config.toml`** as `[model.<id>]` sections so the agent can use `base_url` + `api_key` without OAuth fallback.
 
+### Grok Dev isolation
+
+`pnpm dev` launches the `Grok Dev` app identity with its own persistent environment under the repository's `.grok-app-dev/` directory. It redirects `HOME` / `USERPROFILE`, `GROK_APP_HOME`, and `GROK_HOME` into that environment while preserving the installed Rust toolchain and Grok CLI executable path. In `shared` mode, Grok Dev uses `.grok-app-dev/.grok`, preserving shared-mode behavior within the isolated environment. In `independent` mode, it uses `.grok-app-dev/app-data/agent-home`. Settings and app sessions stay under `.grok-app-dev/app-data/`.
+
+Do not launch the Dev build through bare `tauri dev`; use `pnpm dev` so the isolated environment is set up consistently.
+
 ## Provider model (L2)
 
 | Field | Role |

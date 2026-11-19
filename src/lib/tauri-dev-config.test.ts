@@ -10,6 +10,8 @@ const ROOT = resolve(__dirname, "../..");
 const PKG = resolve(ROOT, "package.json");
 const BASE_CONF = resolve(ROOT, "src-tauri/tauri.conf.json");
 const DEV_CONF = resolve(ROOT, "src-tauri/tauri.dev.conf.json");
+const DEV_LAUNCHER = resolve(ROOT, "scripts/dev-isolated.mjs");
+const VITE_CONFIG = resolve(ROOT, "vite.config.ts");
 
 describe("tauri dev identifier overlay", () => {
   it("ships a distinct identifier from the release bundle", () => {
@@ -24,9 +26,21 @@ describe("tauri dev identifier overlay", () => {
     expect(dev.productName).toBe("Grok Dev");
   });
 
-  it("wires pnpm dev to merge the overlay", () => {
+  it("routes pnpm dev through the repository-local isolated launcher", () => {
     const pkg = JSON.parse(readFileSync(PKG, "utf8")) as { scripts: { dev: string } };
-    expect(pkg.scripts.dev).toContain("--config");
-    expect(pkg.scripts.dev).toContain("src-tauri/tauri.dev.conf.json");
+    expect(pkg.scripts.dev).toBe("node scripts/dev-isolated.mjs");
+
+    const launcher = readFileSync(DEV_LAUNCHER, "utf8");
+    expect(launcher).toContain('join(repoRoot, ".grok-app-dev")');
+    expect(launcher).toContain('HOME: devHome');
+    expect(launcher).toContain('USERPROFILE: devHome');
+    expect(launcher).toContain('GROK_APP_HOME: appHome');
+    expect(launcher).toContain('GROK_HOME: grokHome');
+    expect(launcher).toContain("src-tauri/tauri.dev.conf.json");
+  });
+
+  it("keeps the repository-local Dev data tree out of Vite watch", () => {
+    const viteConfig = readFileSync(VITE_CONFIG, "utf8");
+    expect(viteConfig).toContain('"**/.grok-app-dev/**"');
   });
 });

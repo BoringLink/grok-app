@@ -4,8 +4,6 @@
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
-use uuid::Uuid;
-
 use crate::journal_throttle::JournalWriteThrottle;
 use crate::permission::{PermissionPolicy, SessionAllowCache};
 use crate::session_fsm::{SessionFsm, SessionState};
@@ -18,24 +16,7 @@ use serde_json::json;
 /// Isolate store writes (`force_end` → journal/meta) from the real app home.
 /// Without this, stall heal tests once rewrote production `sessions_index.json`.
 fn with_temp_app_home<R>(f: impl FnOnce() -> R) -> R {
-    let _lock = crate::paths::APP_HOME_ENV_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let tmp = std::env::temp_dir().join(format!(
-        "grok-app-stall-test-{}-{}",
-        std::process::id(),
-        Uuid::new_v4()
-    ));
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).expect("tmp home");
-    std::env::set_var("GROK_APP_HOME", &tmp);
-    let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
-    std::env::remove_var("GROK_APP_HOME");
-    let _ = std::fs::remove_dir_all(&tmp);
-    match out {
-        Ok(v) => v,
-        Err(payload) => std::panic::resume_unwind(payload),
-    }
+    crate::test_support::with_temp_app_home("stall-test", |_| f())
 }
 
 fn streaming_session(now: Instant, mut patch: impl FnMut(&mut LiveSession)) -> LiveSession {

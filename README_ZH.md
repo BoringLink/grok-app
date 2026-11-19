@@ -279,7 +279,7 @@ cd src-tauri && cargo test
 pnpm build
 ```
 
-`pnpm dev` 会 merge `src-tauri/tauri.dev.conf.json`（`identifier` 为 `com.grokapp.desktop.dev`，产品名 **Grok Dev**），可与已安装的 **Grok** 并排运行。会话/设置仍共用同一套 App data，除非设置 `GROK_APP_HOME`。裸跑 `tauri dev`（不带 `--config`）会用正式版 identifier，抢走已安装实例。
+`pnpm dev` 会 merge `src-tauri/tauri.dev.conf.json`（`identifier` 为 `com.grokapp.desktop.dev`，产品名 **Grok Dev**），并将运行数据隔离在仓库内的 `.grok-app-dev/`。Shared 模式使用 `.grok-app-dev/.grok`，Independent 模式使用 `.grok-app-dev/app-data/agent-home`，Dev 会话和设置因此与已安装版 **Grok** 分开。裸跑 `tauri dev`（不带 `--config`）会用正式版 identifier，抢走已安装实例。
 
 Windows（可选）：双击 [`install-latest.cmd`](./install-latest.cmd) 会把 `main` fast-forward 到 `origin/main`，并静默安装一份未签名的并排 **grok-app-latest**（不覆盖正式版 **Grok**）。需要 VS Build Tools + Rust MSVC；详见 [docs/BUILD.md](./docs/BUILD.md)。
 

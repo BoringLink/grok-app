@@ -279,7 +279,7 @@ cd src-tauri && cargo test
 pnpm build
 ```
 
-`pnpm dev` подмешивает `src-tauri/tauri.dev.conf.json` (`identifier` `com.grokapp.desktop.dev`, имя **Grok Dev`), поэтому его можно запускать рядом с установленным **Grok**. Сессии по-прежнему общие, если не задан `GROK_APP_HOME`. Голый `tauri dev` без `--config` берёт официальный identifier и перехватывает установленный экземпляр.
+`pnpm dev` подмешивает `src-tauri/tauri.dev.conf.json` (`identifier` `com.grokapp.desktop.dev`, имя **Grok Dev**), поэтому его можно запускать рядом с установленным **Grok**. Данные Dev изолированы в `.grok-app-dev/` внутри репозитория: режим Shared использует `.grok-app-dev/.grok`, а Independent — `.grok-app-dev/app-data/agent-home`. Сессии и настройки Dev отделены от установленного приложения. Голый `tauri dev` без `--config` берёт официальный identifier и перехватывает установленный экземпляр.
 
 Windows (необязательно): дважды щёлкните [`install-latest.cmd`](./install-latest.cmd), чтобы fast-forward `origin/main` и тихо поставить неподписанный рядом стоящий **grok-app-latest** (официальный **Grok** не заменяется). Нужны VS Build Tools + Rust MSVC; подробности в [docs/BUILD.md](./docs/BUILD.md).
 

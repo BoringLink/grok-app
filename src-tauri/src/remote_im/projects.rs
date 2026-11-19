@@ -9,55 +9,41 @@ use super::types::TrustedProject;
 use crate::paths::app_data_root;
 use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
 
 pub fn load_trusted_projects() -> Vec<TrustedProject> {
-    let roots = [
-        app_data_root(),
-        PathBuf::from(std::env::var("GROK_APP_HOME").unwrap_or_default()),
-    ];
-    for root in roots {
-        if root.as_os_str().is_empty() {
+    let file = app_data_root().join("projects.json");
+    let Ok(raw) = fs::read_to_string(&file) else {
+        return Vec::new();
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else {
+        return Vec::new();
+    };
+    let Some(arr) = v.as_array() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for p in arr {
+        let trusted = p.get("trusted").and_then(|x| x.as_bool()).unwrap_or(false);
+        if !trusted {
             continue;
         }
-        let file = root.join("projects.json");
-        if !file.is_file() {
+        let id = p.get("id").and_then(|x| x.as_str()).unwrap_or("");
+        let path = p.get("path").and_then(|x| x.as_str()).unwrap_or("");
+        if id.is_empty() || path.is_empty() {
             continue;
         }
-        let Ok(raw) = fs::read_to_string(&file) else {
-            continue;
-        };
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else {
-            continue;
-        };
-        let Some(arr) = v.as_array() else {
-            continue;
-        };
-        let mut out = Vec::new();
-        for p in arr {
-            let trusted = p.get("trusted").and_then(|x| x.as_bool()).unwrap_or(false);
-            if !trusted {
-                continue;
-            }
-            let id = p.get("id").and_then(|x| x.as_str()).unwrap_or("");
-            let path = p.get("path").and_then(|x| x.as_str()).unwrap_or("");
-            if id.is_empty() || path.is_empty() {
-                continue;
-            }
-            let name = p
-                .get("name")
-                .and_then(|x| x.as_str())
-                .unwrap_or(id)
-                .to_string();
-            out.push(TrustedProject {
-                id: id.to_string(),
-                name,
-                path: path.to_string(),
-            });
-        }
-        return out;
+        let name = p
+            .get("name")
+            .and_then(|x| x.as_str())
+            .unwrap_or(id)
+            .to_string();
+        out.push(TrustedProject {
+            id: id.to_string(),
+            name,
+            path: path.to_string(),
+        });
     }
-    Vec::new()
+    out
 }
 
 /// Allow-list of project ids when scope is whitelist; `None` = all trusted.
@@ -252,6 +238,8 @@ mod tests {
 
     #[test]
     fn default_work_dir_is_none_for_empty_allow() {
+        let _home =
+            crate::test_support::TestAppHome::new("default_work_dir_is_none_for_empty_allow");
         assert!(default_work_dir(&json!({ "allow": [] })).is_none());
         assert!(default_work_dir(&json!("weird")).is_none());
     }

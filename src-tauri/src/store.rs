@@ -3945,16 +3945,7 @@ pub fn save_composer_prefs(
 mod tests {
     use super::*;
     use chrono::TimeZone;
-    use std::{
-        ffi::OsString,
-        path::{Path, PathBuf},
-        thread,
-    };
-
-    struct TempAppHome {
-        path: PathBuf,
-        previous: Option<OsString>,
-    }
+    use std::{path::Path, thread};
 
     #[test]
     fn automation_session_target_defaults_to_new_chat() {
@@ -4040,33 +4031,8 @@ mod tests {
         });
     }
 
-    impl Drop for TempAppHome {
-        fn drop(&mut self) {
-            match self.previous.take() {
-                Some(value) => std::env::set_var("GROK_APP_HOME", value),
-                None => std::env::remove_var("GROK_APP_HOME"),
-            }
-            let _ = fs::remove_dir_all(&self.path);
-        }
-    }
-
     fn with_temp_app_home<R>(label: &str, f: impl FnOnce(&Path) -> R) -> R {
-        let _lock = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let path = std::env::temp_dir().join(format!(
-            "grok-app-{label}-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        fs::create_dir_all(&path).expect("create isolated app home");
-        let home = TempAppHome {
-            previous: std::env::var_os("GROK_APP_HOME"),
-            path,
-        };
-        std::env::set_var("GROK_APP_HOME", &home.path);
-        ensure_app_dirs().expect("initialize isolated app home");
-        f(&home.path)
+        crate::test_support::with_temp_app_home(label, f)
     }
 
     fn write_proxy_settings_fixture(mode: &str, proxy_url: Option<&str>) {
@@ -4148,6 +4114,7 @@ mod tests {
 
     #[test]
     fn redact_scrubs_long_tokenish() {
+        let _home = crate::test_support::TestAppHome::new("store-redact");
         let s = "header Bearer sk-abcdefghijklmnopqrstuvwxyz123456 tail";
         let r = redact_text(s);
         assert!(
@@ -4998,6 +4965,7 @@ mod tests {
 
     #[test]
     fn general_workspace_dir_exists_without_sidebar_project() {
+        let _home = crate::test_support::TestAppHome::new("general-workspace");
         let _ = ensure_app_dirs();
         let path = ensure_general_workspace_dir().expect("ensure dir");
         assert!(path.is_dir());
@@ -5015,39 +4983,15 @@ mod tests {
     fn create_session_defaults_to_orphan() {
         // Isolated home: parallel tests share default data dir and can race
         // atomic renames into sessions_index (macOS CI flake).
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-create-orphan-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("create-orphan");
         let meta = create_session(None, Some("t".into()), false).expect("create");
         assert!(meta.project_id.is_none(), "got {:?}", meta.project_id);
         let _ = delete_session(&meta.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn fork_session_partial_stores_rewind_index() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-fork-rewind-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("fork-rewind");
 
         let mut src = create_session(None, Some("src".into()), false).expect("create");
         src.agent_session_id = Some("agent-parent".into());
@@ -5089,25 +5033,11 @@ mod tests {
         assert_eq!(journal_only.fork_rewind_prompt_index, None);
         assert!(journal_only.agent_session_id.is_none());
         assert_eq!(load_messages(&journal_only.id).len(), 10);
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn fork_session_copies_workspace_binding() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-fork-ws-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("fork-ws");
 
         let mut src = create_session(None, Some("src".into()), false).expect("create");
         src.workspace_id = Some("ws_abc".into());
@@ -5128,8 +5058,6 @@ mod tests {
 
         let _ = delete_session(&src.id);
         let _ = delete_session(&fork.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     fn eight_turn_parent_msgs() -> Vec<ChatMessageStored> {
@@ -5145,18 +5073,7 @@ mod tests {
 
     #[test]
     fn retruncate_child_journal_to_cut_persists_inflated_partial_fork() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-retruncate-inflated-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("retruncate-inflated");
 
         let mut src = create_session(None, Some("src".into()), false).expect("create");
         src.agent_session_id = Some("agent-parent".into());
@@ -5178,25 +5095,11 @@ mod tests {
         assert_eq!(kept.len(), 10);
         assert_eq!(kept.last().map(|m| m.content.as_str()), Some("a5"));
         assert_eq!(load_messages(&src.id).len(), 16, "parent journal unchanged");
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn retruncate_child_journal_to_cut_skips_unchanged_partial_fork() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-retruncate-unchanged-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("retruncate-unchanged");
 
         let mut src = create_session(None, Some("src".into()), false).expect("create");
         src.agent_session_id = Some("agent-parent".into());
@@ -5211,25 +5114,11 @@ mod tests {
         assert_eq!(after, 10);
         assert!(!persisted);
         assert_eq!(load_messages(&child.id).len(), 10);
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn clear_fork_oneshots_clears_rewind_index() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-fork-oneshot-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("fork-oneshot");
 
         let mut src = create_session(None, Some("src".into()), false).expect("create");
         src.agent_session_id = Some("agent-parent".into());
@@ -5248,25 +5137,11 @@ mod tests {
         assert!(!cleared.fork_agent_session);
         assert_eq!(cleared.fork_rewind_prompt_index, None);
         assert_eq!(cleared.agent_session_id.as_deref(), Some("agent-parent"));
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn clear_session_fork_after_connect_failure_partial_drops_agent_id() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-fork-fail-partial-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("fork-fail-partial");
 
         let mut meta = create_session(None, Some("partial-fail".into()), false).expect("create");
         meta.agent_session_id = Some("agent-parent".into());
@@ -5278,25 +5153,11 @@ mod tests {
         assert!(cleared.agent_session_id.is_none());
         assert!(!cleared.fork_agent_session);
         assert_eq!(cleared.fork_rewind_prompt_index, None);
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn clear_session_fork_after_connect_failure_full_keeps_agent_id() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-fork-fail-full-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("fork-fail-full");
 
         let mut meta = create_session(None, Some("full-fail".into()), false).expect("create");
         meta.agent_session_id = Some("agent-parent".into());
@@ -5308,25 +5169,11 @@ mod tests {
         assert_eq!(cleared.agent_session_id.as_deref(), Some("agent-parent"));
         assert!(!cleared.fork_agent_session);
         assert_eq!(cleared.fork_rewind_prompt_index, None);
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn set_session_worktree_marks_and_clears() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-wt-meta-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("wt-meta");
         let meta = create_session(None, Some("wt".into()), false).expect("create");
         assert!(!meta.is_worktree_session);
         assert!(meta.worktree_path.is_none());
@@ -5343,8 +5190,6 @@ mod tests {
         assert!(!cleared.is_worktree_session);
         assert!(cleared.worktree_path.is_none());
         let _ = delete_session(&meta.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
@@ -5364,18 +5209,7 @@ mod tests {
 
     #[test]
     fn migrate_legacy_general_project_rehomes_sessions() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-migrate-general-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("migrate-general");
         // Seed a legacy system:general row + bound session.
         let mut projects: Vec<Project> = read_json_recover(&projects_file());
         projects.retain(|p| p.id != GENERAL_PROJECT_ID);
@@ -5443,9 +5277,6 @@ mod tests {
         let reloaded = load_sessions_index();
         let hit = reloaded.iter().find(|s| s.id == sid).expect("session");
         assert!(hit.project_id.is_none(), "got {:?}", hit.project_id);
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
@@ -5543,18 +5374,7 @@ mod tests {
 
     #[test]
     fn set_project_pinned_moves_to_group_end() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-pin-order-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("pin-order");
         let t = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
         let seed = vec![
             sample_project("p1", true, t),
@@ -5572,8 +5392,6 @@ mod tests {
         let ids2: Vec<&str> = listed2.iter().map(|p| p.id.as_str()).collect();
         // p1 unpinned → end of unpinned group.
         assert_eq!(ids2, vec!["u1", "u2", "p1"]);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
@@ -5589,18 +5407,7 @@ mod tests {
 
     #[test]
     fn model_stays_per_session_under_global_scope() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-model-scope-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("model-scope");
 
         let a = create_session(None, Some("a".into()), false).expect("create a");
         let b = create_session(None, Some("b".into()), false).expect("create b");
@@ -5644,24 +5451,11 @@ mod tests {
         let _ = delete_session(&a.id);
         let _ = delete_session(&b.id);
         let _ = delete_session(&fresh.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn provider_stays_per_session_under_global_scope() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-provider-scope-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("provider-scope");
 
         let a = create_session(None, Some("a".into()), false).expect("create a");
         let b = create_session(None, Some("b".into()), false).expect("create b");
@@ -5740,8 +5534,6 @@ mod tests {
         let _ = delete_session(&a.id);
         let _ = delete_session(&b.id);
         let _ = delete_session(&fresh.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     /// 写入 App agent-home 的自定义 provider 配置（每项一个 `[model.<id>]` 段）。
@@ -6017,18 +5809,7 @@ mod tests {
         // Effort is a per-chat decision even when model/mode memory is global:
         // raising it in one chat used to rewrite `settings.effort` and therefore
         // every other chat that had already picked its own.
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-effort-scope-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("effort-scope");
 
         let a = create_session(None, Some("a".into()), false).expect("create a");
         let b = create_session(None, Some("b".into()), false).expect("create b");
@@ -6060,26 +5841,13 @@ mod tests {
 
         let _ = delete_session(&a.id);
         let _ = delete_session(&b.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn draft_effort_seeds_global_without_touching_existing_sessions() {
         // A draft chat has no row yet, so its effort seeds the default for the
         // next chat — it must not leak into a chat that already chose one.
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-effort-draft-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("effort-draft");
 
         let existing = create_session(None, Some("kept".into()), false).expect("create");
         save_composer_prefs(
@@ -6106,24 +5874,11 @@ mod tests {
         assert_eq!(resolve_composer_prefs(None, None).effort, "low");
 
         let _ = delete_session(&existing.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn sessions_index_transaction_preserves_concurrent_mutations() {
-        let _env = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-store-index-rmw-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("grok-store-index-rmw");
 
         let mut workers = Vec::new();
         for n in 0..8 {
@@ -6147,25 +5902,11 @@ mod tests {
         for n in 0..8 {
             assert!(ids.contains(&format!("concurrent-session-{n}")));
         }
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn sessions_index_mutation_error_does_not_commit_partial_changes() {
-        let _env = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-store-index-error-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("grok-store-index-error");
         let original = sample_session("original", false, Utc::now());
         update_sessions_index({
             let original = original.clone();
@@ -6186,25 +5927,11 @@ mod tests {
             .map(|session| session.id)
             .collect();
         assert_eq!(ids, vec!["original"]);
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn merged_message_save_keeps_concurrent_append_and_replace_truncates() {
-        let _env = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-store-journal-rmw-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("grok-store-journal-rmw");
 
         let session = create_session(None, Some("journal race".into()), false).expect("session");
         let at = Utc::now();
@@ -6243,25 +5970,11 @@ mod tests {
         let truncated = load_messages(&session.id);
         assert_eq!(truncated.len(), 1);
         assert_eq!(truncated[0].id, "user-1");
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn journal_writes_compact_json() {
-        let _env = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-store-journal-compact-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("grok-store-journal-compact");
 
         let session = create_session(None, Some("compact journal".into()), false).expect("session");
         let row = stored_msg("u1", "user", "hello", None);
@@ -6278,9 +5991,6 @@ mod tests {
         let loaded = load_messages(&session.id);
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].id, "u1");
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     fn stored_msg(id: &str, role: &str, content: &str, marker: Option<&str>) -> ChatMessageStored {
@@ -6356,20 +6066,9 @@ mod tests {
 
     #[test]
     fn set_session_project_keeps_agent_id_for_fork_restore() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-set-project-keep-agent-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("set-project-keep-agent");
 
-        let folder = tmp.join("proj");
+        let folder = _home.path().join("proj");
         fs::create_dir_all(&folder).expect("proj dir");
         let proj = add_project(folder.to_string_lossy().to_string(), true).expect("add");
         let mut meta = create_session(None, Some("fork".into()), false).expect("create");
@@ -6383,26 +6082,13 @@ mod tests {
         assert!(bound.fork_agent_session);
 
         let _ = delete_session(&meta.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn move_session_to_project_clears_agent_and_worktree() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-move-session-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("move-session");
 
-        let folder = tmp.join("proj");
+        let folder = _home.path().join("proj");
         fs::create_dir_all(&folder).expect("proj dir");
         let proj = add_project(folder.to_string_lossy().to_string(), true).expect("add");
 
@@ -6430,29 +6116,16 @@ mod tests {
         assert!(back.agent_session_id.is_none());
 
         let _ = delete_session(&meta.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn precheck_session_move_validates_before_any_write() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-move-precheck-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("move-precheck");
 
-        let folder = tmp.join("proj");
+        let folder = _home.path().join("proj");
         fs::create_dir_all(&folder).expect("proj dir");
         let proj = add_project(folder.to_string_lossy().to_string(), true).expect("add");
-        let unsafe_folder = tmp.join("unsafe");
+        let unsafe_folder = _home.path().join("unsafe");
         fs::create_dir_all(&unsafe_folder).expect("unsafe dir");
         let untrusted =
             add_project(unsafe_folder.to_string_lossy().to_string(), false).expect("untrusted");
@@ -6490,26 +6163,13 @@ mod tests {
         );
 
         let _ = delete_session(&meta.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn move_session_to_project_refuses_untrusted_and_missing() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-move-refuse-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("move-refuse");
 
-        let folder = tmp.join("unsafe");
+        let folder = _home.path().join("unsafe");
         fs::create_dir_all(&folder).expect("proj dir");
         let untrusted =
             add_project(folder.to_string_lossy().to_string(), false).expect("add untrusted");
@@ -6519,7 +6179,7 @@ mod tests {
             move_session_to_project(&meta.id, Some(untrusted.id.clone())).expect_err("untrusted");
         assert!(err.contains("session_move_untrusted"), "got {err}");
 
-        let missing_folder = tmp.join("gone");
+        let missing_folder = _home.path().join("gone");
         fs::create_dir_all(&missing_folder).expect("gone dir");
         let missing =
             add_project(missing_folder.to_string_lossy().to_string(), true).expect("add missing");
@@ -6534,8 +6194,6 @@ mod tests {
         );
 
         let _ = delete_session(&meta.id);
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
@@ -6558,18 +6216,7 @@ mod tests {
 
     #[test]
     fn load_projects_repairs_ssh_alias_and_merges_duplicates() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-ssh-repair-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("ssh-repair");
 
         let older = Utc.with_ymd_and_hms(2026, 8, 24, 11, 0, 0).unwrap();
         let newer = Utc.with_ymd_and_hms(2026, 8, 24, 12, 0, 0).unwrap();
@@ -6603,25 +6250,11 @@ mod tests {
             .find(|s| s.id == "bound-stale")
             .expect("sess");
         assert_eq!(hit.project_id.as_deref(), Some(good.id.as_str()));
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn add_ssh_project_rebinds_same_path_without_alias() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-ssh-rebind-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("ssh-rebind");
 
         let mut orphan = sample_project("orphan-ssh", false, Utc::now());
         orphan.name = "my remote".into();
@@ -6642,26 +6275,11 @@ mod tests {
                 .count(),
             1
         );
-
-        std::env::remove_var("GROK_APP_HOME");
-        let _ = fs::remove_dir_all(&tmp);
     }
 
     #[test]
     fn connect_writeback_keeps_provider_and_model_saved_during_handshake() {
-        let _g = crate::paths::APP_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let tmp = std::env::temp_dir().join(format!(
-            "grok-app-meta-preserve-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ));
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).expect("tmp home");
-        let previous = std::env::var_os("GROK_APP_HOME");
-        std::env::set_var("GROK_APP_HOME", &tmp);
-        let _ = ensure_app_dirs();
+        let _home = crate::test_support::TestAppHome::new("grok-app-meta-preserve");
 
         let mut snap = create_session(None, Some("chat".into()), false).expect("session");
         snap.agent_session_id = Some("old-agent".into());
@@ -6695,11 +6313,5 @@ mod tests {
         assert_eq!(row.provider_id.as_deref(), Some("relay-b"));
         assert_eq!(row.model_id.as_deref(), Some("deepseek-v4-flash"));
         assert_eq!(row.agent_session_id.as_deref(), Some("spawned-agent"));
-
-        match previous {
-            Some(value) => std::env::set_var("GROK_APP_HOME", value),
-            None => std::env::remove_var("GROK_APP_HOME"),
-        }
-        let _ = fs::remove_dir_all(&tmp);
     }
 }

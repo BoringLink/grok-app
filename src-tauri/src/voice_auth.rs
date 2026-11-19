@@ -71,6 +71,7 @@ mod tests {
 
     #[test]
     fn resolve_is_callable() {
+        let _home = crate::test_support::TestAppHome::new("voice-auth");
         let _ = resolve_bearer_token();
     }
 }

@@ -819,6 +819,7 @@ mod tests {
 
     #[tokio::test]
     async fn transcribe_without_auth_is_not_available() {
+        let _home = crate::test_support::TestAppHome::new("voice-stt");
         // When this machine has no official speech token, STT must fail closed.
         // If a token is present we only assert the call returns a structured result.
         let r = voice_transcribe("AAAA".into(), Some("t.webm".into()), None, None).await;

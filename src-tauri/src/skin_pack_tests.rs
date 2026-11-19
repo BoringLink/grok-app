@@ -2,18 +2,10 @@ use super::*;
 use std::io::Write;
 use zip::write::SimpleFileOptions;
 
-fn tmp() -> (std::sync::MutexGuard<'static, ()>, PathBuf) {
-    let g = crate::paths::APP_HOME_ENV_LOCK.lock().unwrap();
-    let dir = std::env::temp_dir().join(format!(
-        "grok-skin-pack-{}-{}",
-        std::process::id(),
-        Uuid::new_v4()
-    ));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap();
-    std::env::set_var("GROK_APP_HOME", &dir);
-    let _ = crate::paths::ensure_app_dirs();
-    (g, dir)
+fn tmp() -> (crate::test_support::TestAppHome, PathBuf) {
+    let home = crate::test_support::TestAppHome::new("skin-pack");
+    let dir = home.path().to_path_buf();
+    (home, dir)
 }
 
 fn tiny_png() -> Vec<u8> {
@@ -65,8 +57,6 @@ fn reject_zip_slip() {
     write_zip(&zip, &[("../evil.txt", b"{}", CompressionMethod::Stored)]);
     let e = inspect_pack(&zip, "file").unwrap_err();
     assert!(e.starts_with("invalid_pack"), "{e}");
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -89,8 +79,6 @@ fn reject_entry_count_bomb() {
         e.starts_with("too_large") || e.starts_with("invalid_pack"),
         "{e}"
     );
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -124,8 +112,6 @@ fn reject_uncompressed_cap() {
     fs::write(&zip, bytes).unwrap();
     let e = inspect_pack(&zip, "file").unwrap_err();
     assert!(e.starts_with("too_large"), "{e}");
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -145,8 +131,6 @@ fn reject_unknown_top_level() {
     );
     let e = inspect_pack(&zip, "file").unwrap_err();
     assert!(e.starts_with("invalid_pack"), "{e}");
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -163,8 +147,6 @@ fn reject_missing_manifest() {
     );
     let e = inspect_pack(&zip, "file").unwrap_err();
     assert!(e.contains("manifest"), "{e}");
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -184,8 +166,6 @@ fn accepts_case_aliases() {
     let p = inspect_pack(&zip, "file").expect("case alias");
     assert_eq!(p.skin, "ocean");
     assert!(p.wallpaper.is_some());
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -210,8 +190,6 @@ fn reject_duplicate_normalized_names() {
     let e = inspect_pack(&zip, "file").unwrap_err();
     assert!(e.starts_with("invalid_pack"), "{e}");
     assert!(e.to_lowercase().contains("duplicate"), "{e}");
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -241,8 +219,6 @@ fn reject_unknown_compression() {
     fs::write(&zip, bytes).unwrap();
     let e = inspect_pack(&zip, "file").unwrap_err();
     assert!(e.starts_with("invalid_pack"), "{e}");
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -258,8 +234,6 @@ fn reject_tokens_style_css() {
         let e = inspect_pack(&zip, "file").unwrap_err();
         assert!(e.starts_with("unsupported_schema"), "{key}: {e}");
     }
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -276,8 +250,6 @@ fn reject_schema_not_one() {
     );
     let e = inspect_pack(&zip, "file").unwrap_err();
     assert!(e.starts_with("unsupported_schema"), "{e}");
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -295,8 +267,6 @@ fn reject_hash_mismatch() {
     );
     let e = inspect_pack(&zip, "file").unwrap_err();
     assert!(e.starts_with("hash_mismatch"), "{e}");
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -339,8 +309,6 @@ fn round_trip_export_inspect() {
     assert_eq!(p2.scrim, p.scrim);
     assert_eq!(p2.wallpaper.is_some(), p.wallpaper.is_some());
     assert_eq!(p2.warnings, p.warnings);
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }
 
 #[test]
@@ -370,6 +338,4 @@ fn inspect_fixture_twice_stable() {
         a.wallpaper.is_some(),
         a.warnings
     );
-    let _ = fs::remove_dir_all(&dir);
-    std::env::remove_var("GROK_APP_HOME");
 }

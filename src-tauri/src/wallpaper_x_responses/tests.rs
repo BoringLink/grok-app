@@ -316,6 +316,7 @@ fn wallpaper_x_responses_parallel_error_priority_prevents_cli_double_spend() {
 
 #[tokio::test]
 async fn wallpaper_x_responses_success_parses_gallery_and_fixed_contract() {
+    let _home = crate::test_support::TestAppHome::new("wallpaper-x-success");
     assert_eq!(
         count_x_search_calls(&[json!({
             "type": "custom_tool_call",
@@ -427,6 +428,7 @@ fn wallpaper_x_responses_counts_only_completed_call_records() {
 
 #[tokio::test]
 async fn wallpaper_x_responses_classifies_http_failures() {
+    let _home = crate::test_support::TestAppHome::new("wallpaper-x-http");
     for (status, expected) in [
         (
             StatusCode::BAD_REQUEST,
@@ -461,6 +463,7 @@ async fn wallpaper_x_responses_classifies_http_failures() {
 
 #[tokio::test]
 async fn wallpaper_x_responses_classifies_timeout_invalid_json_and_empty() {
+    let _home = crate::test_support::TestAppHome::new("wallpaper-x-timeout");
     let (endpoint, _state, task) = spawn_mock(
         StatusCode::OK,
         success_payload(1),
@@ -592,6 +595,7 @@ async fn wallpaper_x_responses_classifies_tls_markers_and_timeout_transport_fail
 
 #[tokio::test]
 async fn wallpaper_x_responses_cancellation_aborts_inflight_http() {
+    let _home = crate::test_support::TestAppHome::new("wallpaper-x-cancel");
     let (endpoint, state, task) =
         spawn_mock(StatusCode::OK, success_payload(1), Duration::from_secs(10)).await;
     let cancellation = WallpaperSearchCancellation::default();
@@ -633,6 +637,7 @@ async fn wallpaper_x_responses_cancellation_aborts_inflight_http() {
 
 #[tokio::test]
 async fn wallpaper_x_responses_rejects_bad_structured_output_and_tool_overrun() {
+    let _home = crate::test_support::TestAppHome::new("wallpaper-x-schema");
     let invalid_output = json!({
         "output": [
             { "type": "x_search_call", "status": "completed" },
@@ -735,6 +740,7 @@ async fn redirect_target(State(state): State<RedirectState>, headers: HeaderMap)
 
 #[tokio::test]
 async fn wallpaper_x_responses_never_replays_authorization_across_redirect() {
+    let _home = crate::test_support::TestAppHome::new("wallpaper-x-redirect");
     let target_listener = TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind redirect target");
