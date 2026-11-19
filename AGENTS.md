@@ -23,6 +23,7 @@
    - [maintain.md](docs/llm-wiki/maintain.md) — **open-source maintenance**: Issues triage, PR review, community intake, ship loop, **branch hygiene**, commit-then-push, **no remote-ahead after merge**, local CI before PR
    - [chatcut.md](docs/llm-wiki/chatcut.md) — **ChatCut Codex plugin**: adapter, MCP surface header, Resources browser handoff, re-pull migration
    - [appearance-skins.md](docs/llm-wiki/appearance-skins.md) — **appearance packs**: `.grokskin` layout, K19 allowlist, `grok://` + `grok-app:`, never auto-apply
+   - [desktop-e2e.md](docs/llm-wiki/desktop-e2e.md) — **desktop E2E**: `agent-desktop` drives the real app's accessibility tree (`Grok Dev` under `pnpm dev`); permissions, snapshot/ref loop, verification
    - [pr-monitor.md](docs/llm-wiki/pr-monitor.md) — **PR monitor**: session-owned watches over the repo's open PRs (one row per PR, inline bell, chip count), host poll + fingerprint dedup, the host delivers the localized follow-up into the chat; **the agent gets its own MCP tools** (`pr_watch` / `pr_unwatch` / `pr_watches` over loopback `/v1/pr-monitor/watches`) so it watches the PR it just opened and stops when the PR is done; process-lifetime, watches not persisted (ADR 0005)
 
 1b. **Release (AI handoff)** — **[docs/llm-wiki/release.md](docs/llm-wiki/release.md)** is the single source for ship steps. Platforms / local build: [docs/BUILD.md](docs/BUILD.md). Window chrome: `tauri.macos.conf.json` (Overlay) vs `tauri.windows.conf.json` (frameless).  
@@ -73,4 +74,11 @@ Five canonical roles: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-fo
 ### Domain docs
 
 Single-context: `CONTEXT.md` plus `docs/adr/`. See `docs/agents/domain.md`.
+
+### Desktop E2E
+
+Use `agent-desktop` to see and operate the real desktop app. Before the first use, run
+`agent-desktop status`, `agent-desktop skills get desktop`, and `agent-desktop skills get platform`, and follow them.
+Verify UI-facing changes in the running `Grok Dev` app (`pnpm dev`) when the flow is reachable, and report what you exercised.
+Setup, permissions, and the snapshot/ref loop: [docs/llm-wiki/desktop-e2e.md](docs/llm-wiki/desktop-e2e.md).
 
