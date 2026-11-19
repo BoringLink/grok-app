@@ -298,7 +298,7 @@ python -c "import tomllib; p=r'$env:APPDATA\Roaming\grokapp\grok-app\data\agent-
 2. `agent-home/config.toml` 存在且非空
 3. 严格解析失败 **或** 行级扫描发现「同 table 同 key ≥ 2 次」
 4. 自愈输出能通过严格解析
-5. 写盘前备份：`config.toml.bak-heal-<timestamp>`
+5. 去重后直接写盘（保留最后一次赋值），不生成备份文件
 
 **保守去重算法：**
 
@@ -357,7 +357,7 @@ python -c "import tomllib; p=r'$env:APPDATA\Roaming\grokapp\grok-app\data\agent-
 |------|------|
 | 精确键匹配 + 表头尾注释 | `src-tauri/src/agent_home_config.rs`（`assignment_key` / `parse_table_header` / `set_table_key`） |
 | 写锁（cascade 防交错 RMW） | `with_config_write_lock` / `update_config_toml` |
-| 去重自愈 + backup | `dedupe_assignment_keys` / `ensure_agent_home_config_sane` → `config.toml.bak-heal-<unix>` |
+| 去重自愈（直接写盘，无备份文件） | `dedupe_assignment_keys` / `ensure_agent_home_config_sane` |
 | spawn 前调用 | `src-tauri/src/acp_client.rs`（independent cascade 之后） |
 | prefs / subagents / memory 统一写入口 | `agent_prefs` / `agent_subagents` / `agent_memory` |
 | providers `[models]` 精确键 | `providers.rs`（`default` / `max_retries` 不再 `starts_with`） |
