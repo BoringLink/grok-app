@@ -1806,22 +1806,16 @@ fn is_interjection_row(m: &ChatMessageStored) -> bool {
     m.role == "user" && m.marker.as_deref() == Some("interjection")
 }
 
-/// Earliest unfilled post-steer assistant row in the turn.
+/// Earliest journal interjection marker inside `prompt_id`'s turn.
 ///
-/// Used when the CLI history omits the steer's own user row, so no marker is
-/// matched and the answer would otherwise insert a duplicate bubble. A
-/// thought-only row before the first interjection belongs to the pre-steer
-/// segment: filling anything after the steer would jump it.
-fn pending_post_interjection_placeholder(
+/// Bounds post-steer coverage when the agent history omits the steer's own
+/// user row, so no marker is matched.
+fn first_interjection_in_turn(
     journal: &[ChatMessageStored],
     start: usize,
     end: usize,
 ) -> Option<usize> {
-    let first_interjection = (start + 1..end).find(|&idx| is_interjection_row(&journal[idx]))?;
-    if (start + 1..first_interjection).any(|idx| is_assistant_thought_placeholder(&journal[idx])) {
-        return None;
-    }
-    (start + 1..end).find(|&idx| is_assistant_thought_placeholder(&journal[idx]))
+    (start + 1..end).find(|&idx| is_interjection_row(&journal[idx]))
 }
 
 /// Host opened a post-interjection assistant row but only the thought reached
@@ -1913,28 +1907,47 @@ fn reconcile_history_rows(
             anchor = Some(start);
         }
         if role == "assistant" {
-            // A matched steer owns everything the agent logs after it. Coverage
-            // must not reach back into the pre-steer segment: a pre-steer
-            // fragment that is a strict prefix of the post-steer body would
-            // otherwise be extended, leaving the post-steer row empty.
-            let active_interjection_at = active_interjection
+            // A steer owns everything the agent logs after it. Coverage must
+            // not reach back into the pre-steer segment: a pre-steer fragment
+            // that is a strict prefix of the post-steer body would otherwise
+            // be extended, leaving the post-steer row empty. History that omits
+            // the steer's user row matches no marker, so the turn's journal
+            // marker still bounds the segment.
+            let matched_interjection_at = active_interjection
                 .as_deref()
                 .and_then(|id| journal.iter().position(|m| m.id == id))
                 .filter(|&at| at > start && at < end);
-            let segment_start = active_interjection_at.map_or(start + 1, |at| at + 1);
+            let interjection_at =
+                matched_interjection_at.or_else(|| first_interjection_in_turn(journal, start, end));
+            // Without a matched marker the body's segment is unknown. A
+            // pre-steer row that already holds it keeps ownership: the steer
+            // logged no text of its own, so stretching the row into the
+            // placeholder would show the same answer twice.
+            if matched_interjection_at.is_none() {
+                if let Some(at) = interjection_at {
+                    if let CoverKind::Covered(idx) =
+                        journal_covers_assistant(&journal[start + 1..at], content)
+                    {
+                        if idx != usize::MAX {
+                            anchor = Some(start + 1 + idx);
+                        }
+                        continue;
+                    }
+                }
+            }
+            let segment_start = interjection_at.map_or(start + 1, |at| at + 1);
             let cover = journal_covers_assistant(&journal[segment_start..end], content);
             // Post-steer placeholder: the Host opened the steer's assistant row
             // and only its thought reached the journal. Fill that row so the
             // answer keeps its id/thought instead of leaving an empty bubble
             // next to a duplicate. Only rows after this turn's interjection
-            // qualify — the pre-steer bubble must not absorb the body. A steer
-            // missing from the history has no matched marker, so fall back to
-            // the turn's earliest unfilled post-steer row.
+            // qualify — the pre-steer bubble must not absorb the body.
             if cover == CoverKind::Missing {
-                let placeholder = match active_interjection_at {
-                    Some(_) => (segment_start..end)
-                        .find(|&idx| is_assistant_thought_placeholder(&journal[idx])),
-                    None => pending_post_interjection_placeholder(journal, start, end),
+                let placeholder = if interjection_at.is_some() {
+                    (segment_start..end)
+                        .find(|&idx| is_assistant_thought_placeholder(&journal[idx]))
+                } else {
+                    None
                 };
                 if let Some(idx) = placeholder {
                     journal[idx].content = content.clone();

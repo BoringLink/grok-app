@@ -789,9 +789,9 @@ fn reconcile_omitted_interjection_fill_stays_inside_its_turn() {
 }
 
 #[test]
-fn reconcile_omitted_interjection_keeps_a_pre_steer_placeholder_empty() {
-    // The pending reply precedes the steer: never jump a pre-steer placeholder
-    // to reach the post-steer row.
+fn reconcile_omitted_interjection_fills_only_the_post_steer_placeholder() {
+    // The unfilled pre-steer placeholder keeps its own (lost) reply: the body
+    // belongs to the post-steer row, not to the older pending one.
     let mut journal = vec![
         reconcile_test_message("u1", "user", "question"),
         reconcile_test_thought_placeholder("a1", "pre-steer thought"),
@@ -816,9 +816,150 @@ fn reconcile_omitted_interjection_keeps_a_pre_steer_placeholder_empty() {
     );
     assert_eq!(journal[1].content, "");
     assert_eq!(journal[1].thought.as_deref(), Some("pre-steer thought"));
-    assert_eq!(journal[3].content, "");
+    assert_eq!(journal[3].id, "a2");
+    assert_eq!(journal[3].content, "part two");
     assert_eq!(journal[3].thought.as_deref(), Some("post-steer thought"));
-    assert_eq!(journal[4].content, "part two");
+}
+
+#[test]
+fn reconcile_omitted_interjection_does_not_extend_the_pre_steer_row() {
+    // The history omits the steer's user row, so no marker matches. The merged
+    // body starts with the pre-steer fragment; whole-turn coverage extended
+    // that row and left the post-steer placeholder empty.
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "question"),
+        reconcile_test_message("a1", "assistant", "part one"),
+        reconcile_test_interjection("i1", "steer"),
+        reconcile_test_thought_placeholder("a2", "post-steer thought"),
+    ];
+    let rows = reconcile_test_rows(&[
+        ("user", "question"),
+        ("assistant", "part one, then the steered run"),
+    ]);
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        1
+    );
+    assert_eq!(journal.len(), 4, "no extra assistant row");
+    assert_eq!(journal[1].content, "part one");
+    assert_eq!(journal[3].id, "a2");
+    assert_eq!(journal[3].content, "part one, then the steered run");
+    assert_eq!(journal[3].thought.as_deref(), Some("post-steer thought"));
+}
+
+#[test]
+fn reconcile_omitted_interjection_keeps_an_exact_pre_steer_body() {
+    // A body equal to the pre-steer row means the steer logged no text of its
+    // own; filling the placeholder would show the same answer twice.
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "question"),
+        reconcile_test_message("a1", "assistant", "part one"),
+        reconcile_test_interjection("i1", "steer"),
+        reconcile_test_thought_placeholder("a2", "post-steer thought"),
+    ];
+    let rows = reconcile_test_rows(&[("user", "question"), ("assistant", "part one")]);
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        0
+    );
+    assert_eq!(
+        reconcile_test_bodies(&journal),
+        vec!["question", "part one", "steer", ""]
+    );
+    assert_eq!(journal[3].thought.as_deref(), Some("post-steer thought"));
+}
+
+#[test]
+fn reconcile_omitted_interjection_inserts_when_no_post_steer_placeholder_exists() {
+    // Nothing after the steer can safely take the body, so insert a new row
+    // inside this turn instead of jumping the pre-steer placeholder.
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "question"),
+        reconcile_test_thought_placeholder("a1", "pre-steer thought"),
+        reconcile_test_interjection("i1", "steer"),
+        reconcile_test_message("u2", "user", "next"),
+    ];
+    let rows = reconcile_test_rows(&[
+        ("user", "question"),
+        ("assistant", "steered answer"),
+        ("user", "next"),
+        ("assistant", "next answer"),
+    ]);
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        2
+    );
+    assert_eq!(
+        reconcile_test_bodies(&journal),
+        vec![
+            "question",
+            "",
+            "steer",
+            "steered answer",
+            "next",
+            "next answer"
+        ]
+    );
+    assert_eq!(journal[1].thought.as_deref(), Some("pre-steer thought"));
+}
+
+#[test]
+fn reconcile_omitted_interjection_keeps_the_next_prompt_out_of_the_steer_turn() {
+    // The following prompt starts with the steer text but is a prompt, not a
+    // second steer: the boundary must not cross it in either direction.
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "start"),
+        reconcile_test_message("a1", "assistant", "part one"),
+        reconcile_test_interjection("i1", "yes"),
+        reconcile_test_thought_placeholder("a2", "post-steer thought"),
+        reconcile_test_message("u2", "user", "yes, and revert"),
+    ];
+    let rows = reconcile_test_rows(&[
+        ("user", "start"),
+        ("assistant", "part one, then the steered run"),
+        ("user", "yes, and revert"),
+        ("assistant", "final answer"),
+    ]);
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        2
+    );
+    assert_eq!(
+        reconcile_test_bodies(&journal),
+        vec![
+            "start",
+            "part one",
+            "yes",
+            "part one, then the steered run",
+            "yes, and revert",
+            "final answer",
+        ]
+    );
+    assert_eq!(journal[5].content, "final answer");
 }
 
 #[test]

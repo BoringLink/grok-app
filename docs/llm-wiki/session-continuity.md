@@ -79,8 +79,8 @@ surviving journal prompts in order, after stripping sole-line attachment paths.
 A matching prompt count alone does not authorize a row: a replacement prompt
 can occupy the removed turn's ordinal. Assistant coverage, extension, and insert
 positions are scoped to the matched turn; unmatched branches contribute neither
-answers nor tool rows. A matched steer also splits its turn: assistant coverage
-and extension then start after that marker, so a pre-steer fragment is never
+answers nor tool rows. A steer also splits its turn: assistant coverage and
+extension then start after the steer marker, so a pre-steer fragment is never
 extended by the post-steer body. Mid-turn **interjections** (journal rows with
 `marker: interjection`) are logged by the CLI as ordinary user turns but are not
 prompts: a matching interjection row keeps the surrounding prompt active (and
@@ -93,10 +93,13 @@ so two identical steers in one turn keep their own rows and stream order. When
 the Host opened the post-steer assistant row but only its `thought` reached the
 journal, the recovered body fills that row in place (id and thought preserved)
 instead of adding a second bubble; rows before the interjection never absorb it.
-Builds that omit the steer's user row from the history leave no matched marker;
-the turn's earliest unfilled post-steer placeholder then takes the body, unless
-an unfilled pre-steer placeholder precedes the steer (the pending reply would
-have to be older than the steer — the insert path stays). The
+Builds that omit the steer's user row from the history leave no matched marker,
+so the turn's own journal interjection bounds coverage the same way. The merge
+body therefore lands in the earliest post-steer placeholder even when a
+pre-steer placeholder is still unfilled; without one it is inserted inside the
+turn, never attached to another prompt. A body equal to the pre-steer row means
+the steer logged no text of its own: that row keeps the body and the placeholder
+stays empty instead of repeating the answer. The
 journal read-modify-write holds the same file lock as
 rewind replacement and stream appends, so a delayed recovery snapshot cannot
 reintroduce rows removed by a concurrent rewind.
