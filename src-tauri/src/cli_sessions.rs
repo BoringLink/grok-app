@@ -1913,7 +1913,16 @@ fn reconcile_history_rows(
             anchor = Some(start);
         }
         if role == "assistant" {
-            let cover = journal_covers_assistant(&journal[start + 1..end], content);
+            // A matched steer owns everything the agent logs after it. Coverage
+            // must not reach back into the pre-steer segment: a pre-steer
+            // fragment that is a strict prefix of the post-steer body would
+            // otherwise be extended, leaving the post-steer row empty.
+            let active_interjection_at = active_interjection
+                .as_deref()
+                .and_then(|id| journal.iter().position(|m| m.id == id))
+                .filter(|&at| at > start && at < end);
+            let segment_start = active_interjection_at.map_or(start + 1, |at| at + 1);
+            let cover = journal_covers_assistant(&journal[segment_start..end], content);
             // Post-steer placeholder: the Host opened the steer's assistant row
             // and only its thought reached the journal. Fill that row so the
             // answer keeps its id/thought instead of leaving an empty bubble
@@ -1922,10 +1931,9 @@ fn reconcile_history_rows(
             // missing from the history has no matched marker, so fall back to
             // the turn's earliest unfilled post-steer row.
             if cover == CoverKind::Missing {
-                let placeholder = match active_interjection.as_deref() {
-                    Some(id) => journal.iter().position(|m| m.id == id).and_then(|at| {
-                        (at + 1..end).find(|&idx| is_assistant_thought_placeholder(&journal[idx]))
-                    }),
+                let placeholder = match active_interjection_at {
+                    Some(_) => (segment_start..end)
+                        .find(|&idx| is_assistant_thought_placeholder(&journal[idx])),
                     None => pending_post_interjection_placeholder(journal, start, end),
                 };
                 if let Some(idx) = placeholder {
@@ -1939,11 +1947,11 @@ fn reconcile_history_rows(
                 CoverKind::Covered(idx) => {
                     // usize::MAX = empty body sentinel; never a real anchor.
                     if idx != usize::MAX {
-                        anchor = Some(start + 1 + idx);
+                        anchor = Some(segment_start + idx);
                     }
                 }
                 CoverKind::Extend(idx) => {
-                    let idx = start + 1 + idx;
+                    let idx = segment_start + idx;
                     journal[idx].content = content.clone();
                     changed += 1;
                     anchor = Some(idx);

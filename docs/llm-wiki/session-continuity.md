@@ -79,7 +79,9 @@ surviving journal prompts in order, after stripping sole-line attachment paths.
 A matching prompt count alone does not authorize a row: a replacement prompt
 can occupy the removed turn's ordinal. Assistant coverage, extension, and insert
 positions are scoped to the matched turn; unmatched branches contribute neither
-answers nor tool rows. Mid-turn **interjections** (journal rows with
+answers nor tool rows. A matched steer also splits its turn: assistant coverage
+and extension then start after that marker, so a pre-steer fragment is never
+extended by the post-steer body. Mid-turn **interjections** (journal rows with
 `marker: interjection`) are logged by the CLI as ordinary user turns but are not
 prompts: a matching interjection row keeps the surrounding prompt active (and
 the insert anchor at the interjection), so the post-steer answer is still
@@ -365,7 +367,7 @@ Failure paths stay off the queue:
 | Case | Behavior |
 |------|----------|
 | `session/prompt` RPC error | Waiter receives `Err`; the Host fails the turn on that path — no authoritative `PromptComplete` is synthesized. |
-| timeout / stop / abort | The waiter entry is already removed, so a later settlement claims nothing and applies no terminal. |
+| timeout / stop / abort | The waiter entry is already removed, so a later settlement claims nothing and applies no terminal. The idle watchdog only fails the turn when it removes the entry itself; if the pump already claimed it, the RPC result is still coming and the wait continues. |
 | no pump listening (host-less reader, receiver closed) | `event_tx.send` fails; the reader claims and delivers the result inline. There is no queue to order against and no Host turn state to end. |
 
 `_x.ai/session/prompt_complete` arrives as `authoritative: false` and only

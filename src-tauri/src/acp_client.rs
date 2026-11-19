@@ -2579,10 +2579,29 @@ impl AcpClient {
         let wait_started = Instant::now();
         // Mark activity at dispatch so pure silence is measured from send time.
         self.touch_last_update(prompt_sid.as_deref(), wait_started);
-        let idle = Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS);
-        let slice = Duration::from_secs(PROMPT_WAIT_SLICE_SECS);
-        let mut rx = rx;
+        self.await_prompt_settlement(
+            id,
+            rx,
+            prompt_sid.as_deref(),
+            wait_started,
+            Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS),
+            Duration::from_secs(PROMPT_WAIT_SLICE_SECS),
+        )
+        .await
+    }
 
+    /// Wait loop for a dispatched `session/prompt`, with the idle window and
+    /// slice injected so tests can drive the watchdog without waiting minutes.
+    async fn await_prompt_settlement(
+        &self,
+        id: u64,
+        mut rx: oneshot::Receiver<Result<Value, String>>,
+        prompt_sid: Option<&str>,
+        wait_started: Instant,
+        idle: Duration,
+        slice: Duration,
+    ) -> Result<Value, String> {
+        let method = "session/prompt";
         loop {
             tokio::select! {
                 r = &mut rx => {
@@ -2606,17 +2625,26 @@ impl AcpClient {
                 }
                 _ = tokio::time::sleep(slice) => {
                     if !self.reader_alive.load(Ordering::SeqCst) {
-                        self.pending.lock().remove(&id);
+                        if !self.expire_prompt_waiter(id) {
+                            // The pump already claimed the settlement and owns
+                            // this turn's outcome.
+                            continue;
+                        }
                         let head = format!(
                             "agent stdout closed while waiting for {method} (id={id})"
                         );
                         error!("{}", self.format_exit_detail(&head));
                         return Err(head);
                     }
-                    let last = self.last_update_for(prompt_sid.as_deref());
+                    let last = self.last_update_for(prompt_sid);
                     let now = Instant::now();
                     if prompt_wait_should_timeout(last, wait_started, now, idle) {
-                        self.pending.lock().remove(&id);
+                        if !self.expire_prompt_waiter(id) {
+                            // The pump already claimed the settlement: the RPC
+                            // result is still coming, so keep awaiting it
+                            // instead of failing a live prompt as a timeout.
+                            continue;
+                        }
                         let idle_secs = last
                             .unwrap_or(wait_started)
                             .elapsed()
@@ -2632,6 +2660,15 @@ impl AcpClient {
                 }
             }
         }
+    }
+
+    /// Claim this call's pending waiter so the watchdog may fail the turn.
+    ///
+    /// `false` means the entry is gone: the event pump already claimed the
+    /// settlement, so the queued terminal is the authoritative outcome and the
+    /// caller must keep awaiting the original oneshot instead of erroring.
+    fn expire_prompt_waiter(&self, id: u64) -> bool {
+        self.pending.lock().remove(&id).is_some()
     }
 
     async fn notify(&self, method: &str, params: Value) -> Result<(), String> {
@@ -7720,6 +7757,80 @@ mod prompt_settle_tests {
         let settled = waiter.try_recv().expect("waiter resolved");
         assert!(settled.is_ok());
         assert!(!client.pending.lock().contains_key(&PROMPT_ID));
+    }
+
+    /// The idle watchdog may only fail the turn while this call still owns the
+    /// pending entry. Once the pump claims the waiter the RPC result is already
+    /// on its way; failing then reported a live prompt as an RPC timeout and
+    /// threw away the terminal the pump was applying.
+    #[tokio::test]
+    async fn idle_watchdog_keeps_a_pump_claimed_prompt_waiting() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, waiter_rx) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+        // Idle already expired, so the first slice runs the watchdog.
+        client.touch_last_update(Some(AGENT_SID), Instant::now() - Duration::from_secs(3600));
+
+        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        let (_, ev) = events.recv().await.expect("settlement event");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = ev
+        else {
+            panic!("expected PromptRpcSettled, got {ev:?}");
+        };
+
+        // Pump claims the waiter, then holds the terminal open.
+        let (claimed_tx, claimed_rx) = oneshot::channel::<()>();
+        let (gate_tx, gate_rx) = oneshot::channel::<()>();
+        let pump_client = Arc::clone(&client);
+        let pump = tokio::spawn(async move {
+            let mut claimed_tx = Some(claimed_tx);
+            let mut gate_rx = gate_rx;
+            pump_client
+                .consume_prompt_settlement(id, stop_reason, result, async move |_| {
+                    if let Some(claimed_tx) = claimed_tx.take() {
+                        let _ = claimed_tx.send(());
+                    }
+                    let _ = (&mut gate_rx).await;
+                })
+                .await;
+        });
+        claimed_rx.await.expect("pump claimed the waiter");
+        assert!(!client.pending.lock().contains_key(&PROMPT_ID));
+
+        let wait_client = Arc::clone(&client);
+        let wait = tokio::spawn(async move {
+            wait_client
+                .await_prompt_settlement(
+                    PROMPT_ID,
+                    waiter_rx,
+                    Some(AGENT_SID),
+                    Instant::now(),
+                    Duration::from_secs(PROMPT_IDLE_TIMEOUT_SECS),
+                    Duration::from_millis(5),
+                )
+                .await
+        });
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        assert!(
+            !wait.is_finished(),
+            "idle watchdog failed a pump-claimed prompt as a timeout"
+        );
+
+        gate_tx.send(()).expect("release the terminal");
+        pump.await.expect("pump task");
+        let settled = wait
+            .await
+            .expect("wait task")
+            .expect("terminal delivery after the claim");
+        assert_eq!(
+            settled.get("stopReason").and_then(Value::as_str),
+            Some("end_turn")
+        );
     }
 
     /// The queued terminal is applied *before* the waiter is released: the

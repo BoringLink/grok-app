@@ -369,6 +369,71 @@ fn reconcile_places_post_interjection_tool_rows_in_stream_order() {
 }
 
 #[test]
+fn reconcile_post_steer_body_does_not_extend_the_pre_steer_row() {
+    // The pre-steer fragment is a strict prefix of the recovered post-steer
+    // body. Extending against the whole turn overwrote the pre-steer row and
+    // left the post-steer placeholder empty — crossing the steer's ownership.
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "question"),
+        reconcile_test_message("a1", "assistant", "part one"),
+        reconcile_test_interjection("i1", "steer"),
+        reconcile_test_thought_placeholder("a2", "post-steer thought"),
+    ];
+    let rows = reconcile_test_rows(&[
+        ("user", "question"),
+        ("assistant", "part one"),
+        ("user", "steer"),
+        ("assistant", "part one, then the steered run"),
+    ]);
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        1
+    );
+    assert_eq!(journal.len(), 4, "no extra assistant row");
+    assert_eq!(journal[1].content, "part one");
+    assert_eq!(journal[3].id, "a2");
+    assert_eq!(journal[3].content, "part one, then the steered run");
+    assert_eq!(journal[3].thought.as_deref(), Some("post-steer thought"));
+}
+
+#[test]
+fn reconcile_extends_the_post_steer_row_within_its_segment() {
+    // Segment-scoped coverage must still extend a truncated post-steer row.
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "question"),
+        reconcile_test_message("a1", "assistant", "part one"),
+        reconcile_test_interjection("i1", "steer"),
+        reconcile_test_message("a2", "assistant", "steered intro"),
+    ];
+    let rows = reconcile_test_rows(&[
+        ("user", "question"),
+        ("assistant", "part one"),
+        ("user", "steer"),
+        ("assistant", "steered intro and tail"),
+    ]);
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        1
+    );
+    assert_eq!(journal.len(), 4);
+    assert_eq!(journal[1].content, "part one");
+    assert_eq!(journal[3].id, "a2");
+    assert_eq!(journal[3].content, "steered intro and tail");
+}
+
+#[test]
 fn reconcile_fills_thought_only_placeholder_after_interjection() {
     // Live race: the Host opened the post-steer assistant row and only the
     // thought reached the journal. The agent history still has the body; fill
