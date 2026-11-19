@@ -918,7 +918,6 @@ impl AcpClient {
                     tracing::info!(
                         target: "acp_client",
                         removed = report.removed_duplicates,
-                        backup = ?report.backup_path,
                         "agent-home config.toml healed before spawn"
                     );
                 }

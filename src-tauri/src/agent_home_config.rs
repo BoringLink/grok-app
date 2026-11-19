@@ -13,13 +13,11 @@
 //! - [`ensure_agent_home_config_sane`] dedupes broken files only; valid configs are
 //!   never rewritten.
 
+use crate::paths::{agent_config_toml, ensure_app_dirs};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-use crate::paths::{agent_config_toml, ensure_app_dirs};
 
 /// Serialize independent agent-home config writers (cascade sync + heal + prefs).
 static CONFIG_WRITE_LOCK: Mutex<()> = Mutex::new(());
@@ -482,8 +480,6 @@ pub struct ConfigHealReport {
     pub path: Option<String>,
     /// Number of duplicate assignment lines removed.
     pub removed_duplicates: usize,
-    /// Backup path when a heal write occurred.
-    pub backup_path: Option<String>,
     /// Short reason when skipped / no-op.
     pub note: &'static str,
 }
@@ -494,14 +490,13 @@ impl ConfigHealReport {
             changed: false,
             path: None,
             removed_duplicates: 0,
-            backup_path: None,
             note,
         }
     }
 }
 
-/// If independent agent-home `config.toml` has duplicate keys, backup and
-/// dedupe (keep last). **Valid files are never written.**
+/// If independent agent-home `config.toml` has duplicate keys, dedupe
+/// (keep last). **Valid files are never written.**
 ///
 /// Shared mode: no-op. Missing / empty file: no-op.
 pub fn ensure_agent_home_config_sane(session_data_mode: &str) -> Result<ConfigHealReport, String> {
@@ -519,7 +514,7 @@ pub fn ensure_agent_home_config_sane(session_data_mode: &str) -> Result<ConfigHe
                 changed: false,
                 path: Some(path.display().to_string()),
                 removed_duplicates: 0,
-                backup_path: None,
+
                 note: "missing",
             });
         }
@@ -529,7 +524,7 @@ pub fn ensure_agent_home_config_sane(session_data_mode: &str) -> Result<ConfigHe
                 changed: false,
                 path: Some(path.display().to_string()),
                 removed_duplicates: 0,
-                backup_path: None,
+
                 note: "empty",
             });
         }
@@ -540,7 +535,7 @@ pub fn ensure_agent_home_config_sane(session_data_mode: &str) -> Result<ConfigHe
                 changed: false,
                 path: Some(path.display().to_string()),
                 removed_duplicates: 0,
-                backup_path: None,
+
                 note: "ok",
             });
         }
@@ -551,7 +546,7 @@ pub fn ensure_agent_home_config_sane(session_data_mode: &str) -> Result<ConfigHe
                 changed: false,
                 path: Some(path.display().to_string()),
                 removed_duplicates: 0,
-                backup_path: None,
+
                 note: "dedupe_noop",
             });
         }
@@ -563,18 +558,11 @@ pub fn ensure_agent_home_config_sane(session_data_mode: &str) -> Result<ConfigHe
             ));
         }
 
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        let backup = path.with_file_name(format!("config.toml.bak-heal-{nanos}"));
-        fs::copy(&path, &backup).map_err(|e| format!("backup config.toml: {e}"))?;
         fs::write(&path, &healed).map_err(|e| format!("write healed config.toml: {e}"))?;
 
         tracing::warn!(
             target: "agent_home_config",
             path = %path.display(),
-            backup = %backup.display(),
             removed,
             examples = %examples.join(","),
             "healed agent-home config.toml duplicate keys (kept last assignment)"
@@ -584,7 +572,6 @@ pub fn ensure_agent_home_config_sane(session_data_mode: &str) -> Result<ConfigHe
             changed: true,
             path: Some(path.display().to_string()),
             removed_duplicates: removed,
-            backup_path: Some(backup.display().to_string()),
             note: "healed",
         })
     })
@@ -876,7 +863,7 @@ command = \"y\"
         assert_eq!(r.note, "ok");
         assert_eq!(fs::read_to_string(&cfg).unwrap(), before);
 
-        // Dup → heal + backup.
+        // Dup → heal, no backup file left behind.
         fs::write(
             &cfg,
             "[ui]\nyolo = true\nyolo = false\npermission_mode = \"always-approve\"\n",
@@ -885,7 +872,15 @@ command = \"y\"
         let r2 = ensure_agent_home_config_sane("independent").unwrap();
         assert!(r2.changed);
         assert!(r2.removed_duplicates >= 1);
-        assert!(r2.backup_path.is_some());
+        let bak_files: Vec<_> = fs::read_dir(&agent_home)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .filter(|n| n.to_string_lossy().starts_with("config.toml.bak"))
+            .collect();
+        assert!(
+            bak_files.is_empty(),
+            "no backup files expected: {bak_files:?}"
+        );
         let after = fs::read_to_string(&cfg).unwrap();
         assert_eq!(count_duplicate_assignments(&after).0, 0, "{after}");
         assert!(after.contains("yolo = false"), "{after}");
