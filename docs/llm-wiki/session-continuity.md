@@ -83,10 +83,18 @@ answers nor tool rows. Mid-turn **interjections** (journal rows with
 `marker: interjection`) are logged by the CLI as ordinary user turns but are not
 prompts: a matching interjection row keeps the surrounding prompt active (and
 the insert anchor at the interjection), so the post-steer answer is still
-recovered and the interjection never consumes a prompt slot. When the Host
-opened the post-steer assistant row but only its `thought` reached the journal,
-the recovered body fills that row in place (id and thought preserved) instead of
-adding a second bubble; rows before the interjection never absorb it. The
+recovered and the interjection never consumes a prompt slot. The interjection
+match is the exact normalized steer body (sole-line attachment paths stripped);
+a real prompt that merely starts with the steer text (`yes` → `yes, and
+revert`) stays a prompt. Each marker is claimed by at most one history user row,
+so two identical steers in one turn keep their own rows and stream order. When
+the Host opened the post-steer assistant row but only its `thought` reached the
+journal, the recovered body fills that row in place (id and thought preserved)
+instead of adding a second bubble; rows before the interjection never absorb it.
+Builds that omit the steer's user row from the history leave no matched marker;
+the turn's earliest unfilled post-steer placeholder then takes the body, unless
+an unfilled pre-steer placeholder precedes the steer (the pending reply would
+have to be older than the steer — the insert path stays). The
 journal read-modify-write holds the same file lock as
 rewind replacement and stream appends, so a delayed recovery snapshot cannot
 reintroduce rows removed by a concurrent rewind.
@@ -328,8 +336,8 @@ It is set when `session/prompt` is dispatched and cleared **only** by:
 | `stop` / `ProcessExited` / recorded turn error | Turn is over either way. |
 | mock backend terminal chunk | Mock has no prompt RPC. |
 
-**Prompt terminal ordering (P0):** the reader never resolves the
-`session/prompt` waiter directly. The result is queued as
+**Prompt terminal ordering (P0):** on the normal pump path the reader never
+resolves the `session/prompt` waiter directly. The result is queued as
 `AcpEvent::PromptRpcSettled`, and the owning event pump — the same single
 consumer that applies stream/tool events — claims the waiter, applies the
 authoritative `PromptComplete`, and only then sends the result. `mpsc::send`
@@ -337,7 +345,10 @@ does not wait for the receiver, so resolving in the reader let the turn task
 finish and clear `stream_buf` while the pump was still behind chunks that
 arrived earlier; those chunks then arrived with `prompt_in_flight=false` and
 were dropped as session-load replay — the App journal kept an empty assistant
-row while the agent-side history already held the body.
+row while the agent-side history already held the body. `prompt_for` adds no
+events after the RPC: the queued terminal's finish path takes the pending
+stream payload with `done: true`, so the UI stream settles without a separate
+done tick or a duplicate `PromptComplete`.
 
 The claim is atomic (one pending-map removal). The early `prompt_complete`
 fallback and the real RPC result can both queue a settlement for the same prompt
@@ -348,6 +359,14 @@ stale settlement must never end whatever turn is running when it is finally
 drained. The delayed fallback uses the same queued path for its synthetic
 result. Pumps that end their loop on the terminal event (aux side calls) claim
 and release the waiter in that same iteration.
+
+Failure paths stay off the queue:
+
+| Case | Behavior |
+|------|----------|
+| `session/prompt` RPC error | Waiter receives `Err`; the Host fails the turn on that path — no authoritative `PromptComplete` is synthesized. |
+| timeout / stop / abort | The waiter entry is already removed, so a later settlement claims nothing and applies no terminal. |
+| no pump listening (host-less reader, receiver closed) | `event_tx.send` fails; the reader claims and delivers the result inline. There is no queue to order against and no Host turn state to end. |
 
 `_x.ai/session/prompt_complete` arrives as `authoritative: false` and only
 *defers*. `schedule_prompt_complete_fallback` is the escape hatch for an agent

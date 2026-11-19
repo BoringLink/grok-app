@@ -41,6 +41,48 @@ impl Drop for ConnectHolderGuard {
     }
 }
 
+/// A queued `session/prompt` settlement as the pump received it.
+struct PromptSettlement {
+    id: u64,
+    stop_reason: Option<String>,
+    result: Result<serde_json::Value, String>,
+}
+
+/// Apply a queued `session/prompt` settlement on the Host event path.
+///
+/// Claim → authoritative `PromptComplete` → release the waiter. The claim keeps
+/// a duplicate settlement (early fallback + real result) from re-applying a
+/// terminal to whatever turn runs next. Shared by the live connect pump and the
+/// prewarm pump, which outlives prewarm adoption.
+async fn consume_prompt_settlement_on_host(
+    mgr: &Arc<SessionManager>,
+    client: &AcpClient,
+    app: &AppHandle,
+    process_id: &str,
+    session_id: Option<&str>,
+    settlement: PromptSettlement,
+) {
+    let PromptSettlement {
+        id,
+        stop_reason,
+        result,
+    } = settlement;
+    client
+        .consume_prompt_settlement(id, stop_reason, result, async |stop_reason| {
+            mgr.handle_acp_event(
+                app,
+                process_id,
+                session_id,
+                AcpEvent::PromptComplete {
+                    stop_reason,
+                    authoritative: true,
+                },
+            )
+            .await;
+        })
+        .await;
+}
+
 fn emit_host_exit_heal(app: &AppHandle, session_id: &str) {
     let Some(message_id) = crate::turn_interrupt::heal_interrupted_turn(session_id) else {
         return;
@@ -1516,25 +1558,19 @@ impl SessionManager {
                         result,
                     } = ev
                     {
-                        settle_client
-                            .consume_prompt_settlement(
+                        consume_prompt_settlement_on_host(
+                            &mgr,
+                            &settle_client,
+                            &app_ev,
+                            &pid,
+                            sid.as_deref(),
+                            PromptSettlement {
                                 id,
                                 stop_reason,
                                 result,
-                                async |stop_reason| {
-                                    mgr.handle_acp_event(
-                                        &app_ev,
-                                        &pid,
-                                        sid.as_deref(),
-                                        AcpEvent::PromptComplete {
-                                            stop_reason,
-                                            authoritative: true,
-                                        },
-                                    )
-                                    .await;
-                                },
-                            )
-                            .await;
+                            },
+                        )
+                        .await;
                         continue;
                     }
                     mgr.handle_acp_event(&app_ev, &pid, sid.as_deref(), ev)
@@ -2112,9 +2148,11 @@ impl SessionManager {
             }
         };
         let process_id = Uuid::new_v4().to_string();
-        // Drain the event stream (prewarm has no session; events are dropped by
-        // sid routing — but the reader must still consume stdout). The pump also
-        // outlives prewarm adoption, so it owns the ordered prompt settlement.
+        // Drain the event stream (prewarm starts with no session — the reader
+        // must consume stdout). The pump outlives prewarm adoption, so it owns
+        // the ordered prompt settlement and forwards each event's sessionId:
+        // once a chat reuses this process, stamped stream/tool events must route
+        // to their exact owner instead of the unstamped heuristics.
         {
             let mgr = Arc::clone(self);
             let pid = process_id.clone();
@@ -2127,28 +2165,22 @@ impl SessionManager {
                         result,
                     } = ev
                     {
-                        settle_client
-                            .consume_prompt_settlement(
+                        consume_prompt_settlement_on_host(
+                            &mgr,
+                            &settle_client,
+                            &app,
+                            &pid,
+                            sid.as_deref(),
+                            PromptSettlement {
                                 id,
                                 stop_reason,
                                 result,
-                                async |stop_reason| {
-                                    mgr.handle_acp_event(
-                                        &app,
-                                        &pid,
-                                        sid.as_deref(),
-                                        AcpEvent::PromptComplete {
-                                            stop_reason,
-                                            authoritative: true,
-                                        },
-                                    )
-                                    .await;
-                                },
-                            )
-                            .await;
+                            },
+                        )
+                        .await;
                         continue;
                     }
-                    mgr.handle_acp_event(&app, &pid, None, ev).await;
+                    mgr.handle_acp_event(&app, &pid, sid.as_deref(), ev).await;
                 }
             });
         }

@@ -3394,37 +3394,15 @@ impl AcpClient {
         // Fire and wait for completion in background via request future
         let this_params = wire_session_prompt_params(&sid, text);
 
-        let result = self
-            .request_prompt(this_params)
+        self.request_prompt(this_params)
             .await
             .map_err(|e| classify_rpc_error(&e))?;
 
-        let stop = result
-            .get("stopReason")
-            .or_else(|| result.get("stop_reason"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("end_turn")
-            .to_string();
-
-        let _ = self.event_tx.send((
-            Some(sid.clone()),
-            AcpEvent::Stream {
-                kind: StreamKind::Assistant,
-                text: String::new(),
-                message_id: None,
-                done: true,
-            },
-        ));
-        // Belt-and-suspenders with handle_line's unconditional PromptComplete
-        // for session/prompt Ok (#522). Duplicate authoritative completes are
-        // safe: second pass finds prompt_in_flight already false.
-        let _ = self.event_tx.send((
-            Some(sid),
-            AcpEvent::PromptComplete {
-                stop_reason: stop,
-                authoritative: true,
-            },
-        ));
+        // No trailing events: the queued `PromptRpcSettled` that released this
+        // waiter already applied the authoritative `PromptComplete` in FIFO
+        // order, and the finish path flushes the final stream payload with
+        // `done: true`. Extra terminal events here would bypass the claim
+        // protocol and could land after the next turn started.
         Ok(())
     }
 
@@ -7744,6 +7722,57 @@ mod prompt_settle_tests {
         assert!(!client.pending.lock().contains_key(&PROMPT_ID));
     }
 
+    /// The queued terminal is applied *before* the waiter is released: the
+    /// waiting turn task may only finish once `PromptComplete` reached the UI,
+    /// and the callback must never see a already-settled prompt.
+    #[tokio::test]
+    async fn waiter_is_released_only_after_apply_terminal_returns() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        let (tx, mut waiter) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, tx);
+
+        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        let (_, ev) = events.recv().await.expect("settlement event");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = ev
+        else {
+            panic!("expected PromptRpcSettled, got {ev:?}");
+        };
+
+        let (entered_tx, entered_rx) = oneshot::channel::<()>();
+        let (gate_tx, mut gate_rx) = oneshot::channel::<()>();
+        let pump_client = Arc::clone(&client);
+        let pump = tokio::spawn(async move {
+            let mut entered_tx = Some(entered_tx);
+            pump_client
+                .consume_prompt_settlement(id, stop_reason, result, async move |_| {
+                    if let Some(entered_tx) = entered_tx.take() {
+                        let _ = entered_tx.send(());
+                    }
+                    let _ = (&mut gate_rx).await;
+                })
+                .await;
+        });
+
+        entered_rx.await.expect("terminal applied");
+        assert!(
+            waiter.try_recv().is_err(),
+            "waiter resolved while apply_terminal was still running"
+        );
+        gate_tx.send(()).expect("release the terminal");
+        pump.await.expect("settlement task");
+
+        let settled = waiter
+            .try_recv()
+            .expect("waiter resolved after apply_terminal returned");
+        assert!(settled.is_ok());
+        assert!(!client.pending.lock().contains_key(&PROMPT_ID));
+    }
+
     /// The early-`prompt_complete` fallback is also a terminal for the turn and
     /// had the same out-of-order release: it must ride the ordered path too.
     #[tokio::test]
@@ -8023,5 +8052,57 @@ mod prompt_settle_tests {
             .await;
 
         assert_eq!(terminals.load(Ordering::SeqCst), 0);
+    }
+
+    /// The queued settlement is the only turn terminal on the normal pump path.
+    /// `prompt_for` must not append a second `PromptComplete` / done tick after
+    /// the waiter is released: those bypass the claim protocol and can land
+    /// after the next turn started.
+    #[tokio::test]
+    async fn prompt_for_leaves_no_second_terminal_on_the_pump_path() {
+        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let client = AcpClient::test_client(event_tx);
+        // Fake agent stdin so `session/prompt` can be dispatched for real.
+        let (wire, _agent_side) = tokio::io::duplex(4096);
+        *client.stdin.lock().await = Some(Box::new(wire));
+
+        let prompt_client = Arc::clone(&client);
+        let prompt =
+            tokio::spawn(async move { prompt_client.prompt_for(AGENT_SID, "hello").await });
+
+        let id = loop {
+            if let Some(id) = client.pending.lock().keys().next().copied() {
+                break id;
+            }
+            tokio::task::yield_now().await;
+        };
+        Arc::clone(&client)
+            .handle_line(&format!(
+                r#"{{"jsonrpc":"2.0","id":{id},"result":{{"stopReason":"end_turn"}}}}"#
+            ))
+            .await;
+
+        let (_, ev) = events.recv().await.expect("settlement event");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = ev
+        else {
+            panic!("expected PromptRpcSettled, got {ev:?}");
+        };
+        let terminals = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&terminals);
+        client
+            .consume_prompt_settlement(id, stop_reason, result, async move |_| {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
+            .await;
+
+        prompt.await.expect("prompt task").expect("prompt ok");
+        assert_eq!(terminals.load(Ordering::SeqCst), 1);
+        if let Ok((_, ev)) = events.try_recv() {
+            panic!("prompt_for queued a terminal outside the claim protocol: {ev:?}");
+        }
     }
 }

@@ -1779,23 +1779,49 @@ pub fn reconcile_journal_from_chat_history(
 /// The CLI logs an interjection as an ordinary user turn, but it is not a
 /// prompt: clearing `active_prompt` for it dropped the assistant rows that
 /// followed (they lost their prompt anchor exactly where the user steered).
-/// The returned row index keeps later tool rows in stream order.
+/// The returned row index keeps later tool rows in stream order. `claimed`
+/// holds the markers earlier history rows already own, so two identical steers
+/// fill their own rows in journal order instead of both matching the first.
 fn interjection_row_in_turn(
     journal: &[ChatMessageStored],
     prompt_id: &str,
     agent_body: &str,
+    claimed: &HashSet<String>,
 ) -> Option<usize> {
     let start = journal.iter().position(|m| m.id == prompt_id)?;
     let end = journal[start + 1..]
         .iter()
         .position(store::is_user_prompt_message)
         .map_or(journal.len(), |offset| start + 1 + offset);
+    // Exact normalized body: a real prompt that merely starts with the steer
+    // text (`yes` → `yes, and revert`) is a new prompt, not a second steer.
+    let body = user_body_key(agent_body);
     (start + 1..end).find(|&idx| {
         let m = &journal[idx];
-        m.role == "user"
-            && m.marker.as_deref() == Some("interjection")
-            && user_bodies_match(&m.content, agent_body)
+        is_interjection_row(m) && !claimed.contains(&m.id) && user_body_key(&m.content) == body
     })
+}
+
+fn is_interjection_row(m: &ChatMessageStored) -> bool {
+    m.role == "user" && m.marker.as_deref() == Some("interjection")
+}
+
+/// Earliest unfilled post-steer assistant row in the turn.
+///
+/// Used when the CLI history omits the steer's own user row, so no marker is
+/// matched and the answer would otherwise insert a duplicate bubble. A
+/// thought-only row before the first interjection belongs to the pre-steer
+/// segment: filling anything after the steer would jump it.
+fn pending_post_interjection_placeholder(
+    journal: &[ChatMessageStored],
+    start: usize,
+    end: usize,
+) -> Option<usize> {
+    let first_interjection = (start + 1..end).find(|&idx| is_interjection_row(&journal[idx]))?;
+    if (start + 1..first_interjection).any(|idx| is_assistant_thought_placeholder(&journal[idx])) {
+        return None;
+    }
+    (start + 1..end).find(|&idx| is_assistant_thought_placeholder(&journal[idx]))
 }
 
 /// Host opened a post-interjection assistant row but only the thought reached
@@ -1827,6 +1853,9 @@ fn reconcile_history_rows(
     // Locating it by id keeps the post-steer placeholder scan valid after rows
     // are inserted earlier in the turn.
     let mut active_interjection: Option<String> = None;
+    // Journal ids of interjections already mapped to a history user row, so
+    // repeated identical steers keep advancing through the turn.
+    let mut claimed_interjections: HashSet<String> = HashSet::new();
     let mut matched_pairs = Vec::new();
     let mut changed = 0u32;
     let now = Utc::now();
@@ -1840,10 +1869,10 @@ fn reconcile_history_rows(
             // A mid-turn interjection stays inside the current prompt's turn:
             // keep its anchor so the following assistant/tool rows still land
             // there. It is not a prompt and must not consume a prompt slot.
-            if let Some(idx) = active_prompt
-                .as_deref()
-                .and_then(|prompt_id| interjection_row_in_turn(journal, prompt_id, content))
-            {
+            if let Some(idx) = active_prompt.as_deref().and_then(|prompt_id| {
+                interjection_row_in_turn(journal, prompt_id, content, &claimed_interjections)
+            }) {
+                claimed_interjections.insert(journal[idx].id.clone());
                 anchor = Some(idx);
                 active_interjection = Some(journal[idx].id.clone());
                 continue;
@@ -1889,14 +1918,16 @@ fn reconcile_history_rows(
             // and only its thought reached the journal. Fill that row so the
             // answer keeps its id/thought instead of leaving an empty bubble
             // next to a duplicate. Only rows after this turn's interjection
-            // qualify — the pre-steer bubble must not absorb the body.
+            // qualify — the pre-steer bubble must not absorb the body. A steer
+            // missing from the history has no matched marker, so fall back to
+            // the turn's earliest unfilled post-steer row.
             if cover == CoverKind::Missing {
-                let placeholder = active_interjection
-                    .as_deref()
-                    .and_then(|id| journal.iter().position(|m| m.id == id))
-                    .and_then(|at| {
+                let placeholder = match active_interjection.as_deref() {
+                    Some(id) => journal.iter().position(|m| m.id == id).and_then(|at| {
                         (at + 1..end).find(|&idx| is_assistant_thought_placeholder(&journal[idx]))
-                    });
+                    }),
+                    None => pending_post_interjection_placeholder(journal, start, end),
+                };
                 if let Some(idx) = placeholder {
                     journal[idx].content = content.clone();
                     changed += 1;

@@ -329,6 +329,23 @@ pub struct OfficialAcpProgress {
 /// Callback type for streaming progress into the main session UI.
 pub type OfficialProgressCb = Arc<dyn Fn(OfficialAcpProgress) + Send + Sync>;
 
+/// Whether an event ends the aux pump loop.
+///
+/// `_x.ai/session/prompt_complete` fires early while the answer is still
+/// streaming, so only the queued `session/prompt` result is terminal for the
+/// side job.
+fn aux_pump_stops_on(ev: &AcpEvent) -> bool {
+    match ev {
+        // The early notification fires while the answer is still streaming and
+        // only *defers* on the Host side; treating it as terminal truncated the
+        // aux output because the receiver closed before the queued result.
+        AcpEvent::PromptComplete { authoritative, .. } => *authoritative,
+        AcpEvent::PromptRpcSettled { .. } => true,
+        AcpEvent::ProcessExited { .. } | AcpEvent::Error { .. } => true,
+        _ => false,
+    }
+}
+
 fn clip_detail(s: &str, max: usize) -> String {
     let t = s.trim();
     if t.chars().count() <= max {
@@ -446,6 +463,23 @@ No repo edits. Prefer built-in tools. Keep the final answer concise and complete
     let client_pump = Arc::clone(&client);
     let pump = tokio::spawn(async move {
         while let Some((_sid, ev)) = events.recv().await {
+            // The queued `session/prompt` result is the aux turn terminal:
+            // every chunk ahead of it was already accumulated in FIFO order.
+            // Aux has no Host turn state, so only the waiter is released.
+            if let AcpEvent::PromptRpcSettled {
+                id,
+                stop_reason,
+                result,
+            } = ev
+            {
+                client_pump
+                    .consume_prompt_settlement(id, stop_reason, result, async |_| {})
+                    .await;
+                break;
+            }
+            if aux_pump_stops_on(&ev) {
+                break;
+            }
             match ev {
                 AcpEvent::Stream { kind, text, .. } => {
                     if text.is_empty() {
@@ -502,21 +536,6 @@ No repo edits. Prefer built-in tools. Keep the final answer concise and complete
                         });
                     }
                 }
-                AcpEvent::PromptComplete { .. } => break,
-                // The queued `session/prompt` result is the aux turn terminal:
-                // every chunk ahead of it was already accumulated in FIFO order.
-                // Aux has no Host turn state, so only the waiter is released.
-                AcpEvent::PromptRpcSettled {
-                    id,
-                    stop_reason,
-                    result,
-                } => {
-                    client_pump
-                        .consume_prompt_settlement(id, stop_reason, result, async |_| {})
-                        .await;
-                    break;
-                }
-                AcpEvent::ProcessExited { .. } | AcpEvent::Error { .. } => break,
                 AcpEvent::PermissionRequest { rpc_id, .. } => {
                     // Always-approve path: CLI wire optionId (#523).
                     let _ = client_pump
@@ -2200,6 +2219,47 @@ mod tests {
     fn dispatch_rejects_unknown() {
         let err = dispatch_tool("nope", &serde_json::json!({})).unwrap_err();
         assert!(err.contains("unknown"), "{err}");
+    }
+
+    #[test]
+    fn aux_pump_continues_past_early_prompt_complete() {
+        // `_x.ai/session/prompt_complete` (`authoritative: false`) fires while
+        // the answer is still streaming. Breaking there closed the receiver, so
+        // the later `PromptRpcSettled` never ran and the aux output truncated.
+        assert!(!aux_pump_stops_on(&AcpEvent::PromptComplete {
+            stop_reason: "end_turn".into(),
+            authoritative: false,
+        }));
+        assert!(!aux_pump_stops_on(&AcpEvent::Stream {
+            kind: StreamKind::Assistant,
+            text: "still going".into(),
+            message_id: None,
+            done: false,
+        }));
+        assert!(!aux_pump_stops_on(&AcpEvent::ToolCall {
+            tool_call_id: "call-1".into(),
+            title: "read".into(),
+            kind: "read".into(),
+            status: "in_progress".into(),
+            raw: serde_json::json!({}),
+        }));
+
+        assert!(aux_pump_stops_on(&AcpEvent::PromptComplete {
+            stop_reason: "end_turn".into(),
+            authoritative: true,
+        }));
+        assert!(aux_pump_stops_on(&AcpEvent::PromptRpcSettled {
+            id: 1,
+            stop_reason: Some("end_turn".into()),
+            result: Ok(serde_json::json!({ "stopReason": "end_turn" })),
+        }));
+        assert!(aux_pump_stops_on(&AcpEvent::ProcessExited { code: None }));
+        assert!(aux_pump_stops_on(&AcpEvent::Error {
+            error: crate::error::AgentError::new(
+                crate::error::AgentErrorCode::AgentCrashed,
+                "boom",
+            ),
+        }));
     }
 
     #[test]

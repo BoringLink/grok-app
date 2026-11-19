@@ -539,6 +539,224 @@ fn reconcile_imports_answer_when_agent_log_omits_the_interjection_row() {
 }
 
 #[test]
+fn reconcile_does_not_let_a_new_prompt_reconsume_an_interjection_prefix() {
+    // The journal interjection `yes` and the real follow-up prompt
+    // `yes, and revert` share a prefix. Prefix matching made the prompt look
+    // like a second interjection, so its answer stayed in the first turn.
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "start"),
+        reconcile_test_message("a1", "assistant", "part one"),
+        reconcile_test_interjection("i1", "yes"),
+        reconcile_test_message("u2", "user", "yes, and revert"),
+    ];
+    let rows = reconcile_test_rows(&[
+        ("user", "start"),
+        ("assistant", "part one"),
+        ("user", "yes"),
+        ("assistant", "steered answer"),
+        ("user", "yes, and revert"),
+        ("assistant", "final answer"),
+    ]);
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        2
+    );
+    assert_eq!(
+        reconcile_test_bodies(&journal),
+        vec![
+            "start",
+            "part one",
+            "yes",
+            "steered answer",
+            "yes, and revert",
+            "final answer",
+        ]
+    );
+    assert_eq!(journal[5].content, "final answer");
+}
+
+#[test]
+fn reconcile_matches_interjection_body_after_stripping_attachment_lines() {
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "question"),
+        reconcile_test_interjection("i1", "see this\n@/Users/me/shot.png"),
+    ];
+    let rows = reconcile_test_rows(&[
+        ("user", "question"),
+        ("user", "see this"),
+        ("assistant", "describes the screenshot"),
+    ]);
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        1
+    );
+    assert_eq!(
+        reconcile_test_bodies(&journal),
+        vec![
+            "question",
+            "see this\n@/Users/me/shot.png",
+            "describes the screenshot"
+        ]
+    );
+}
+
+#[test]
+fn reconcile_assigns_identical_interjections_to_their_own_rows() {
+    // Two same-text steers in one turn: each history user row must claim its
+    // own marker so the answer and tool rows stay in stream order.
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "question"),
+        reconcile_test_message("a1", "assistant", "part one"),
+        reconcile_test_interjection("i1", "retry"),
+        reconcile_test_thought_placeholder("a2", "first thought"),
+        reconcile_test_interjection("i2", "retry"),
+        reconcile_test_thought_placeholder("a3", "second thought"),
+    ];
+    let mut rows = reconcile_test_rows(&[
+        ("user", "question"),
+        ("assistant", "part one"),
+        ("user", "retry"),
+        ("assistant", "answer one"),
+        ("user", "retry"),
+    ]);
+    rows.push(("tool".into(), "exit: 0".into(), Some("call-1".into())));
+    rows.push(("assistant".into(), "answer two".into(), None));
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        3
+    );
+    let roles: Vec<(&str, &str)> = journal
+        .iter()
+        .map(|m| (m.role.as_str(), m.content.as_str()))
+        .collect();
+    assert_eq!(roles[0], ("user", "question"));
+    assert_eq!(roles[1], ("assistant", "part one"));
+    assert_eq!(roles[2], ("user", "retry"));
+    assert_eq!(roles[3], ("assistant", "answer one"));
+    assert_eq!(roles[4], ("user", "retry"));
+    assert_eq!(roles[5].0, "tool");
+    assert!(roles[5].1.starts_with("tool_step|"));
+    assert_eq!(roles[6], ("assistant", "answer two"));
+    assert_eq!(journal[3].id, "a2");
+    assert_eq!(journal[3].thought.as_deref(), Some("first thought"));
+    assert_eq!(journal[6].id, "a3");
+    assert_eq!(journal[6].thought.as_deref(), Some("second thought"));
+}
+
+#[test]
+fn reconcile_fills_thought_placeholder_when_history_omits_the_interjection_row() {
+    // Some CLI builds steer without logging the steer's user row: the plain
+    // prompt match leaves no marker behind, but the post-steer placeholder
+    // still has to take the body instead of a duplicate bubble.
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "question"),
+        reconcile_test_message("a1", "assistant", "part one"),
+        reconcile_test_interjection("i1", "steer"),
+        reconcile_test_thought_placeholder("a2", "considering the steer"),
+    ];
+    let rows = reconcile_test_rows(&[
+        ("user", "question"),
+        ("assistant", "part one"),
+        ("assistant", "part two"),
+    ]);
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        1
+    );
+    assert_eq!(journal.len(), 4);
+    assert_eq!(journal[3].id, "a2");
+    assert_eq!(journal[3].content, "part two");
+    assert_eq!(journal[3].thought.as_deref(), Some("considering the steer"));
+}
+
+#[test]
+fn reconcile_omitted_interjection_fill_stays_inside_its_turn() {
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "question"),
+        reconcile_test_interjection("i1", "steer"),
+        reconcile_test_thought_placeholder("a1", "a thought"),
+        reconcile_test_message("u2", "user", "next"),
+    ];
+    let rows = reconcile_test_rows(&[
+        ("user", "question"),
+        ("user", "next"),
+        ("assistant", "next answer"),
+    ]);
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        1
+    );
+    assert_eq!(
+        reconcile_test_bodies(&journal),
+        vec!["question", "steer", "", "next", "next answer"]
+    );
+    assert_eq!(journal[2].thought.as_deref(), Some("a thought"));
+}
+
+#[test]
+fn reconcile_omitted_interjection_keeps_a_pre_steer_placeholder_empty() {
+    // The pending reply precedes the steer: never jump a pre-steer placeholder
+    // to reach the post-steer row.
+    let mut journal = vec![
+        reconcile_test_message("u1", "user", "question"),
+        reconcile_test_thought_placeholder("a1", "pre-steer thought"),
+        reconcile_test_interjection("i1", "steer"),
+        reconcile_test_thought_placeholder("a2", "post-steer thought"),
+    ];
+    let rows = reconcile_test_rows(&[
+        ("user", "question"),
+        ("assistant", "part two"),
+        ("user", "next"),
+        ("assistant", "next answer"),
+    ]);
+
+    assert_eq!(
+        reconcile_history_rows(
+            &mut journal,
+            &rows,
+            &HashMap::new(),
+            &rewind_fence::RewindFence::default()
+        ),
+        1
+    );
+    assert_eq!(journal[1].content, "");
+    assert_eq!(journal[1].thought.as_deref(), Some("pre-steer thought"));
+    assert_eq!(journal[3].content, "");
+    assert_eq!(journal[3].thought.as_deref(), Some("post-steer thought"));
+    assert_eq!(journal[4].content, "part two");
+}
+
+#[test]
 fn reconcile_unmatched_user_row_still_clears_the_prompt_anchor() {
     // Anything that is not this turn's interjection keeps the conservative
     // reset: a stray prompt must not adopt the previous turn's answer.

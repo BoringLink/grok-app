@@ -350,9 +350,16 @@ impl SessionManager {
                 let empty_run = {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
-                        // Take any buffered stream before turn-end signals.
-                        if let Some(p) = Self::take_pending_stream_emit(s) {
-                            pending_emits.push(p);
+                        // A non-authoritative completion is progress: flush the
+                        // buffered text. An authoritative result is the turn
+                        // terminal — leave the pending payload for the finish
+                        // path, which takes it with `done: true` so the UI
+                        // stream settles (this replaced prompt_for's extra
+                        // done tick).
+                        if !authoritative {
+                            if let Some(p) = Self::take_pending_stream_emit(s) {
+                                pending_emits.push(p);
+                            }
                         }
                         Self::touch_stream_progress_locked(s);
                         // Only the RPC result ends the turn. It is ordered after
