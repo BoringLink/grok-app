@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.57] - 2026-11-20
+
+> **Highlight:** Reopened chats verify and restore agent context before sending.
+>
+> **中文 · 亮点：** 重开会话会先核对并恢复 Agent 上下文。
+
 ### Fixed
 - Reopened chats verify saved agent context and restore it from history.
 - The chat shows when context is unverified or restored.
