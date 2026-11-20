@@ -1,5 +1,3 @@
-import type { SessionContinuitySnapshot } from "../sessionContinuity";
-
 export type SessionState =
   | "idle"
   | "connecting"
@@ -22,6 +20,23 @@ export type AgentErrorCode =
 export interface AgentError {
   code: AgentErrorCode;
   message: string;
+}
+
+export type ContinuityStatus = "unverified" | "bootstrap_pending" | "verified";
+
+/** `session://state` / `SessionSnapshot.continuity` 的安全子集（不含任何提示文本）。 */
+export interface SessionContinuitySnapshot {
+  status: ContinuityStatus;
+  reason?: string | null;
+  pendingPromptId?: string | null;
+  bootstrapPromptId?: string | null;
+  coveredMessageIds?: string[];
+  coveredPromptCount?: number;
+  bootstrapIncludedMessageIds?: string[];
+  bootstrapOmittedFromMessageId?: string | null;
+  bootstrapOmittedThroughMessageId?: string | null;
+  bootstrapIncluded?: number;
+  bootstrapOmitted?: number;
 }
 
 export interface SessionSnapshot {
