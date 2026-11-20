@@ -501,6 +501,26 @@ pub fn decide_coverage(coverage: &CoverageReport) -> CoverageDecision {
     CoverageDecision::Recover
 }
 
+/// 发送前的覆盖决策。
+///
+/// 刚创建的 Agent 会话面对空 journal 时没有可恢复内容；沿用它可避免每次新会话
+/// 首条消息都多开一个 Agent 会话，也能保住已持久化的 Agent 链接。
+pub fn decide_coverage_for_send(
+    checkpoint_reason: Option<ContinuityReason>,
+    coverage: &CoverageReport,
+) -> CoverageDecision {
+    if checkpoint_reason == Some(ContinuityReason::NewAgentSession)
+        && coverage.total_prompt_count == 0
+        && matches!(
+            coverage.verdict,
+            CoverageVerdict::Empty | CoverageVerdict::Missing
+        )
+    {
+        return CoverageDecision::Fresh;
+    }
+    decide_coverage(coverage)
+}
+
 /// 在 `session/load` / `session/new` 完成后更新检查点。
 ///
 /// 此处不读取 Agent 历史，避免重开会话时解析大型 transcript。此前的 `Verified` 状态会降级，
