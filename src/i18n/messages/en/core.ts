@@ -124,7 +124,7 @@ export const enCore = {
   "shortcuts.toggleRightPane": "Show/hide sidebar",
   "shortcuts.sideFiles": "Side workbench · Files",
   "shortcuts.sideBrowser": "Side workbench · Browser",
-  "shortcuts.sideTerminal": "Terminal",
+  "shortcuts.sideTerminal": "Side workbench · Terminal",
   "shortcuts.closeSideTab": "Close side tab (window when none open)",
   "shortcuts.sidebarSessionNav": "Next / previous chat in sidebar (focus in list)",
   "shortcuts.recentSessionMru": "Next / previous recently used chat",

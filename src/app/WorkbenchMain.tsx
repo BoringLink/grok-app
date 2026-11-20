@@ -7,7 +7,6 @@ import { createPortal } from "react-dom";
 import { Tip } from "@/components/ui/tooltip";
 import { OpenLocationButton } from "@/components/OpenLocationButton";
 import { EnvInfoButton } from "@/components/side-workbench/EnvInfoButton";
-import { BottomTerminalToggle } from "@/components/bottom-terminal/BottomTerminalToggle";
 import { PaneToggleButton } from "@/components/PaneToggleButton";
 import {
   IconAttach,
@@ -74,8 +73,6 @@ export type WorkbenchMainProps = {
   sidebarToggleUnread: boolean;
   openSessionMenu: (e: MouseEvent, s: SessionRow) => void;
   onOpenPhoneAccount: () => void;
-  bottomTerminalOpen: boolean;
-  onToggleBottomTerminal: () => void;
   mirrorLinkOk: boolean;
   mirrorHostLabel: string | null;
   connPill: ConnPill;
@@ -119,8 +116,6 @@ export function WorkbenchMain(props: WorkbenchMainProps) {
     sidebarToggleUnread,
     openSessionMenu,
     onOpenPhoneAccount,
-    bottomTerminalOpen,
-    onToggleBottomTerminal,
     mirrorLinkOk,
     mirrorHostLabel,
     connPill,
@@ -297,11 +292,6 @@ export function WorkbenchMain(props: WorkbenchMainProps) {
               >
                 <IconUser size={20} />
               </button>
-              <BottomTerminalToggle
-                locale={locale}
-                open={bottomTerminalOpen}
-                onToggle={onToggleBottomTerminal}
-              />
             </>
           ) : (
             <>
@@ -431,11 +421,6 @@ export function WorkbenchMain(props: WorkbenchMainProps) {
                   }}
                 />
               ) : null}
-              <BottomTerminalToggle
-                locale={locale}
-                open={bottomTerminalOpen}
-                onToggle={onToggleBottomTerminal}
-              />
             </>
           )}
         </div>

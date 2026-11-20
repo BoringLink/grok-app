@@ -123,7 +123,7 @@ export const ptBRCore = {
   "shortcuts.toggleRightPane": "Mostrar/ocultar barra lateral",
   "shortcuts.sideFiles": "Bancada lateral · Arquivos",
   "shortcuts.sideBrowser": "Bancada lateral · Navegador",
-  "shortcuts.sideTerminal": "Terminal",
+  "shortcuts.sideTerminal": "Bancada lateral · Terminal",
   "shortcuts.closeSideTab": "Fechar aba lateral (janela quando nenhuma estiver aberta)",
   "shortcuts.sidebarSessionNav": "Próximo / anterior chat na barra lateral (foco na lista)",
   "shortcuts.recentSessionMru": "Chat recente seguinte / anterior",

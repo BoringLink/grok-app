@@ -123,7 +123,7 @@ export const jaCore = {
   "shortcuts.toggleRightPane": "サイドバーの表示 / 非表示",
   "shortcuts.sideFiles": "サイドワークベンチ · ファイル",
   "shortcuts.sideBrowser": "サイドワークベンチ · ブラウザ",
-  "shortcuts.sideTerminal": "ターミナル",
+  "shortcuts.sideTerminal": "サイドワークベンチ · ターミナル",
   "shortcuts.closeSideTab": "サイドタブを閉じる（開いていないときはウィンドウ）",
   "shortcuts.sidebarSessionNav": "サイドバーで次 / 前のチャット（リストにフォーカス時）",
   "shortcuts.recentSessionMru": "最近使ったチャットの次 / 前",

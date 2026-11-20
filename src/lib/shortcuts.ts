@@ -222,7 +222,7 @@ export const SHORTCUTS: ShortcutRow[] = [
     win: "Ctrl T",
   },
   {
-    /** Toggle the chat-column bottom terminal (VS Code / common ⌘`). */
+    /** Open a terminal tab in the Side Workbench (⌘` / Ctrl `). */
     id: "sideTerminal",
     labelKey: "shortcuts.sideTerminal",
     group: "navigation",

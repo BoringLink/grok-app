@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Changed
+- The terminal is now available in the Side Workbench.
+
+**中文 · 优化**
+- 终端现统一在侧边工作台中使用。
+
 ### Fixed
 - Scrolling past the edge of a thought or tool block now moves the chat.
 - 思考块或工具块滚动到边界后，继续滚动会带动会话视口。

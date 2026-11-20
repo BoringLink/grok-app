@@ -9,13 +9,12 @@
 /** How long the second Ctrl+Q counts as confirm. */
 export const QUIT_DOUBLE_PRESS_MS = 2000;
 
-/** Side/bottom terminal surfaces that own Ctrl+Q as XON (not quit). */
+/** Side terminal surfaces that own Ctrl+Q as XON (not quit). */
 export const PTY_QUIT_PASSTHROUGH_SEL = [
   ".xterm",
   ".xterm-helper-textarea",
   ".sw-terminal",
   "[data-testid='side-terminal-xterm']",
-  "[data-testid='bottom-terminal']",
 ].join(", ");
 
 /** True when focus is inside the embedded PTY / xterm panel. */

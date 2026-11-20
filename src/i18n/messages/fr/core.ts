@@ -123,7 +123,7 @@ export const frCore = {
   "shortcuts.toggleRightPane": "Afficher/masquer la barre latérale",
   "shortcuts.sideFiles": "Établi latéral · Fichiers",
   "shortcuts.sideBrowser": "Établi latéral · Navigateur",
-  "shortcuts.sideTerminal": "Terminal",
+  "shortcuts.sideTerminal": "Établi latéral · Terminal",
   "shortcuts.closeSideTab": "Fermer l’onglet latéral (fenêtre si aucun ouvert)",
   "shortcuts.sidebarSessionNav": "Conversation suivante / précédente dans la barre latérale (focus dans la liste)",
   "shortcuts.recentSessionMru": "Conversation récente suivante / précédente",

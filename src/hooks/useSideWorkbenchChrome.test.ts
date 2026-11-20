@@ -96,6 +96,18 @@ describe("useSideWorkbenchChrome", () => {
     expect(host.openAsidePane).toHaveBeenCalled();
   });
 
+  it("openPicker(terminal) creates a side terminal tab and opens the aside", () => {
+    const { result, host } = setup();
+
+    act(() => {
+      result.current.openPicker("terminal");
+    });
+
+    expect(result.current.sideWorkbench.tabs).toHaveLength(1);
+    expect(result.current.sideWorkbench.tabs[0]?.kind).toBe("terminal");
+    expect(host.openAsidePane).toHaveBeenCalledOnce();
+  });
+
   it("openPicker(review) is a no-op until git is confirmed", () => {
     const { result } = setup();
     act(() => {

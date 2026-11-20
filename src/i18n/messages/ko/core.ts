@@ -123,7 +123,7 @@ export const koCore = {
   "shortcuts.toggleRightPane": "사이드바 표시 / 숨기기",
   "shortcuts.sideFiles": "사이드 작업대 · 파일",
   "shortcuts.sideBrowser": "사이드 작업대 · 브라우저",
-  "shortcuts.sideTerminal": "터미널",
+  "shortcuts.sideTerminal": "사이드 작업대 · 터미널",
   "shortcuts.closeSideTab": "사이드 탭 닫기 (열린 탭이 없으면 창)",
   "shortcuts.sidebarSessionNav": "사이드바에서 다음 / 이전 대화 (목록에 포커스)",
   "shortcuts.recentSessionMru": "최근 사용한 대화 다음 / 이전",

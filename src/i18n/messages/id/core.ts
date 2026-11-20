@@ -123,7 +123,7 @@ export const idCore = {
   "shortcuts.toggleRightPane": "Tampilkan/sembunyikan bilah sisi",
   "shortcuts.sideFiles": "Workbench sisi · Berkas",
   "shortcuts.sideBrowser": "Workbench sisi · Peramban",
-  "shortcuts.sideTerminal": "Terminal",
+  "shortcuts.sideTerminal": "Workbench sisi · Terminal",
   "shortcuts.closeSideTab": "Tutup tab sisi (jendela jika tidak ada yang terbuka)",
   "shortcuts.sidebarSessionNav": "Obrolan berikutnya / sebelumnya di bilah sisi (fokus di daftar)",
   "shortcuts.recentSessionMru": "Obrolan terbaru berikutnya / sebelumnya",
