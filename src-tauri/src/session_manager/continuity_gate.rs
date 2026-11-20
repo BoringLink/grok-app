@@ -257,21 +257,27 @@ pub(super) async fn continuity_after_open(
 async fn persist_pending_send(
     manager: &Arc<SessionManager>,
     context: &mut ContinuityContext,
-    agent_session_id: &str,
     pending_prompt_id: &str,
 ) -> Result<(), String> {
-    let repair_agent_link = context.agent_session_id.as_deref() != Some(agent_session_id);
+    // 以 context 的 Agent id 为准：恢复分支会替换它，调用方的旧局部变量不得写回索引。
+    let agent_session_id = context
+        .agent_session_id
+        .clone()
+        .ok_or_else(continuity_recovery_error)?;
+    let repair_agent_link = manager
+        .with_session_mut(&context.app_session_id, |session| {
+            session.meta.agent_session_id.as_deref() != Some(agent_session_id.as_str())
+        })
+        .unwrap_or(true);
     context.checkpoint.begin_turn(pending_prompt_id);
     if !save_checkpoint(context.app_session_id.clone(), context.checkpoint.clone()).await {
         return Err(continuity_recovery_error());
     }
     if repair_agent_link {
-        persist_agent_session_id(context.app_session_id.clone(), agent_session_id.to_string())
-            .await?;
+        persist_agent_session_id(context.app_session_id.clone(), agent_session_id.clone()).await?;
     }
-    context.agent_session_id = Some(agent_session_id.to_string());
     manager.with_session_mut(&context.app_session_id, |session| {
-        session.meta.agent_session_id = Some(agent_session_id.to_string());
+        session.meta.agent_session_id = Some(agent_session_id.clone());
         session.continuity = context.checkpoint.clone();
     });
     Ok(())
@@ -375,7 +381,7 @@ async fn prepare_remote_continuity_send(
         }
     }
 
-    persist_pending_send(manager, &mut context, &agent_session_id, &pending_prompt_id).await?;
+    persist_pending_send(manager, &mut context, &pending_prompt_id).await?;
     Ok(ContinuitySendPlan {
         pending_prompt_id,
         bootstrap,
@@ -595,6 +601,7 @@ pub(super) async fn prepare_continuity_send(
     let mut coverage = None;
     let mut bootstrap_current_agent = false;
     let decision = if context.checkpoint.needs_recovery() {
+        let checkpoint_reason = context.checkpoint.reason;
         let report = inspect_coverage(
             app_session_id,
             &agent_session_id,
@@ -621,7 +628,7 @@ pub(super) async fn prepare_continuity_send(
             true,
             &report,
         );
-        let decision = continuity::decide_coverage(&report);
+        let decision = continuity::decide_coverage_for_send(checkpoint_reason, &report);
         coverage = Some(report);
         decision
     } else {
@@ -662,7 +669,7 @@ pub(super) async fn prepare_continuity_send(
         }
     }
 
-    persist_pending_send(manager, &mut context, &agent_session_id, &pending_prompt_id).await?;
+    persist_pending_send(manager, &mut context, &pending_prompt_id).await?;
     Ok(ContinuitySendPlan {
         pending_prompt_id,
         bootstrap,

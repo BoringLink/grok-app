@@ -61,6 +61,36 @@ fn assert_coverage_evidence_cleared(checkpoint: &ContinuityCheckpoint) {
 }
 
 #[test]
+fn fresh_agent_with_empty_journal_keeps_the_current_session() {
+    for verdict in [CoverageVerdict::Empty, CoverageVerdict::Missing] {
+        assert_eq!(
+            decide_coverage_for_send(
+                Some(ContinuityReason::NewAgentSession),
+                &CoverageReport::new(verdict, 0, 0),
+            ),
+            CoverageDecision::Fresh
+        );
+    }
+}
+
+#[test]
+fn only_a_fresh_agent_with_no_journal_may_skip_recovery() {
+    // 已重连或来源不明的 Agent 即使 journal 为空也必须恢复。
+    assert_eq!(
+        decide_coverage_for_send(
+            Some(ContinuityReason::ReconnectUnverified),
+            &CoverageReport::new(CoverageVerdict::Empty, 0, 0),
+        ),
+        CoverageDecision::Recover
+    );
+    // 新 Agent 但 journal 有内容时仍需要 bootstrap。
+    assert_eq!(
+        decide_coverage_for_send(Some(ContinuityReason::NewAgentSession), &empty_history(2),),
+        CoverageDecision::Recover
+    );
+}
+
+#[test]
 fn load_success_with_empty_history_never_verifies() {
     // session/new 后进入 bootstrap pending，但 prompt 未 flush；重启后 session/load 成功，Agent 历史仍为空。
     let checkpoint = pending_checkpoint();
