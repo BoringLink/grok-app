@@ -13,6 +13,18 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.58] - 2026-11-20
+
+> **Highlight:** Answers keep their full tail when a turn ends mid-stream.
+>
+> **中文 · 亮点：** 本轮结束时，回答的尾部内容会完整保留。
+
+### Fixed
+- Answers no longer go missing when a turn ends mid-stream. Output already sent is written before the turn closes.
+
+**中文 · 修复**
+- 本轮在流式输出中结束时，回答不再缺失；已发送的输出会先写入再结束。
+
 ## [0.2.57] - 2026-11-20
 
 > **Highlight:** Reopened chats verify and restore agent context before sending.
