@@ -516,8 +516,9 @@ fn corrupt_app_journal_is_reported_without_quarantining_or_rewriting_it() {
 
     let report = inspect(&fixture);
 
-    assert_eq!(report.verdict, CoverageVerdict::Corrupt);
+    assert_eq!(report.verdict, CoverageVerdict::JournalCorrupt);
     assert_eq!(fs::read(&path).unwrap(), b"{broken journal");
+    assert!(!path.with_extension("corrupt.json").exists());
     assert!(!path.with_extension("corrupt.json").exists());
 }
 

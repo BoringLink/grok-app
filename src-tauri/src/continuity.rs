@@ -53,6 +53,7 @@ pub enum ContinuityReason {
     HistoryPartial,
     HistoryMismatch,
     HistoryCorrupt,
+    JournalUnreadable,
     HistoryAmbiguous,
     RemoteUnverified,
     NoPromptYet,
@@ -103,8 +104,10 @@ pub enum CoverageVerdict {
     Missing,
     /// Agent 历史中的 user turn 与 App prompt 均不匹配。
     Mismatch,
-    /// 历史不可读或结构不完整。
+    /// Agent 历史不可读或结构不完整。
     Corrupt,
+    /// App journal 本身不可读；不能据此判断“没有可恢复内容”。
+    JournalCorrupt,
     /// 无法安全判断覆盖关系（例如 rewind fence 或文件过大）。
     Ambiguous,
 }
@@ -513,7 +516,7 @@ pub fn decide_coverage_for_send(
         && coverage.total_prompt_count == 0
         && matches!(
             coverage.verdict,
-            CoverageVerdict::Empty | CoverageVerdict::Missing
+            CoverageVerdict::Empty | CoverageVerdict::Missing | CoverageVerdict::Corrupt
         )
     {
         return CoverageDecision::Fresh;
@@ -637,6 +640,9 @@ pub fn after_open(
         }
         CoverageVerdict::Corrupt => {
             checkpoint.mark_unverified(ContinuityReason::HistoryCorrupt);
+        }
+        CoverageVerdict::JournalCorrupt => {
+            checkpoint.mark_unverified(ContinuityReason::JournalUnreadable);
         }
         CoverageVerdict::Ambiguous => {
             checkpoint.mark_unverified(ContinuityReason::HistoryAmbiguous);

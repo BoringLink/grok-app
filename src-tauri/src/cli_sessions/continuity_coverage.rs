@@ -108,7 +108,7 @@ pub(crate) fn inspect_agent_history_coverage_with_checkpoint(
 ) -> CoverageReport {
     let journal = match store::load_messages_strict(app_session_id) {
         Ok(journal) => journal,
-        Err(_) => return CoverageReport::new(CoverageVerdict::Corrupt, 0, 0),
+        Err(_) => return CoverageReport::new(CoverageVerdict::JournalCorrupt, 0, 0),
     };
     let turns = journal_turns(&journal);
     let total = turns.len();
