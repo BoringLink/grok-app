@@ -144,8 +144,13 @@ impl SessionManager {
                 let finished = {
                     let mut bg = self.background.lock();
                     if let Some(s) = bg.get_mut(app_session_id) {
-                        if let Some(p) = Self::take_pending_stream_emit(s) {
-                            pending_emits.push(p);
+                        // Non-authoritative completion only flushes progress;
+                        // the authoritative result is the terminal and the
+                        // finish path takes the payload with `done: true`.
+                        if !authoritative {
+                            if let Some(p) = Self::take_pending_stream_emit(s) {
+                                pending_emits.push(p);
+                            }
                         }
                         Self::touch_stream_progress_locked(s);
                         if authoritative {

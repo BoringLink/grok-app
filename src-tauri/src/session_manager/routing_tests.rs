@@ -554,6 +554,25 @@ fn route_stamped_mid_turn_background() {
 }
 
 #[test]
+fn route_stamped_event_beats_busy_background_shortcut_on_reused_process() {
+    // A reused prewarm process can host the live chat plus a mid-turn
+    // background chat. Forwarding the event's sessionId (as the prewarm pump
+    // now does) routes the chunk to its exact owner; dropping the stamp fell
+    // back to the "unique busy background" heuristic and misrouted the live
+    // chat's output.
+    let live = hint("chat-live", "proc-p", Some("agent-live"), true);
+    let bg = [hint("chat-bg", "proc-p", Some("agent-bg"), true)];
+    assert_eq!(
+        resolve_turn_event_route("proc-p", Some("agent-live"), Some(&live), &bg, &[]),
+        TurnEventRoute::Live
+    );
+    assert_eq!(
+        resolve_turn_event_route("proc-p", None, Some(&live), &bg, &[]),
+        TurnEventRoute::Background("chat-bg".into())
+    );
+}
+
+#[test]
 fn rescue_parked_never_forces_prompt_in_flight() {
     // Safety net if rescue is ever called again: must not invent a mid-turn.
     let mgr = SessionManager::new();
