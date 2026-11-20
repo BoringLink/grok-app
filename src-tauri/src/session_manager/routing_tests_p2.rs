@@ -106,7 +106,7 @@ fn interjection_starts_host_owned_stream_segment() {
         provider_retry_attempt: 0,
         provider_retry_aborted: false,
         last_provider_retry: None,
-        needs_history_bootstrap: false,
+        continuity: crate::continuity::ContinuityCheckpoint::default(),
         pending_plan_rpc_id: None,
         pending_permission_rpc_id: None,
         pending_permission_options: None,
@@ -235,7 +235,7 @@ fn pick_interjection_target_rejects_non_streaming_session() {
         provider_retry_attempt: 0,
         provider_retry_aborted: false,
         last_provider_retry: None,
-        needs_history_bootstrap: false,
+        continuity: crate::continuity::ContinuityCheckpoint::default(),
         pending_plan_rpc_id: None,
         pending_permission_rpc_id: None,
         pending_permission_options: None,
@@ -271,7 +271,7 @@ fn pick_interjection_target_rejects_non_streaming_session() {
 }
 
 /// Minimal Ready session (no ACP child) for lock-ordering tests.
-fn bare_live_session(id: &str, process_id: &str) -> LiveSession {
+pub(super) fn bare_live_session(id: &str, process_id: &str) -> LiveSession {
     let mut fsm = SessionFsm::new();
     let _ = fsm.start_connect();
     let _ = fsm.handshake_ok();
@@ -331,7 +331,7 @@ fn bare_live_session(id: &str, process_id: &str) -> LiveSession {
         provider_retry_attempt: 0,
         provider_retry_aborted: false,
         last_provider_retry: None,
-        needs_history_bootstrap: false,
+        continuity: crate::continuity::ContinuityCheckpoint::default(),
         pending_plan_rpc_id: None,
         pending_permission_rpc_id: None,
         pending_permission_options: None,
@@ -582,7 +582,7 @@ fn parked_for(live: &LiveSession, sent_prompt_this_visit: bool) -> ParkedAgent {
         project_path: live.project_path.clone(),
         policy: live.policy,
         sandbox_profile: None,
-        needs_history_bootstrap: live.needs_history_bootstrap,
+        continuity: live.continuity.clone(),
         backend: live.backend.clone(),
         sent_prompt_this_visit,
     }

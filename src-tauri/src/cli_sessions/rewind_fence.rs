@@ -53,6 +53,11 @@ impl RewindFence {
                 .contains(&Self::digest("user", &user_body_key(content), None))
     }
 
+    /// fence 无法区分保留行和废弃分支时返回 true；此时不能用磁盘行作为覆盖证据。
+    pub(super) fn is_block_all(&self) -> bool {
+        self.block_all
+    }
+
     /// Capture before asking the CLI to rewind, since that RPC may rewrite its
     /// disk log. Failed RPCs never commit this pending fence.
     pub(crate) fn capture(session_id: &str, kept_prompts: u32) -> Self {

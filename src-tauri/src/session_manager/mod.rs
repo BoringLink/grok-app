@@ -20,6 +20,7 @@
 //!   long silence re-prompts only; only the user may End turn.
 
 mod connect;
+mod continuity_gate;
 mod control;
 mod events;
 mod events_bg;

@@ -79,7 +79,7 @@ fn streaming_session(now: Instant, mut patch: impl FnMut(&mut LiveSession)) -> L
         provider_retry_attempt: 0,
         provider_retry_aborted: false,
         last_provider_retry: None,
-        needs_history_bootstrap: false,
+        continuity: crate::continuity::ContinuityCheckpoint::default(),
         pending_plan_rpc_id: None,
         pending_permission_rpc_id: None,
         pending_permission_options: None,

@@ -25,6 +25,16 @@ export async function sessionGetState(): Promise<SessionSnapshot> {
   return invoke("session_get_state");
 }
 
+/** 读取持久化的会话上下文连续性状态；浏览器 / mirror 客户端返回 null。 */
+export async function sessionContinuityState(
+  id: string,
+): Promise<import("../sessionContinuity").SessionContinuitySnapshot | null> {
+  if (!isTauri() || isMirrorClient()) return null;
+  const trimmed = id.trim();
+  if (!trimmed) return null;
+  return invoke("session_continuity_state", { id: trimmed });
+}
+
 export async function sessionConnect(opts?: {
   projectPath?: string;
   sessionId?: string;

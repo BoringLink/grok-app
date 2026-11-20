@@ -49,6 +49,7 @@ import {
 } from "@/lib/composerSessionDraft";
 import {
   nextComposerSubmitSettlement,
+  failedSendOptimisticDropIds,
   shouldClearMatchingProjectDraft,
   shouldClearProjectDraftAfterNewChatSend,
 } from "@/lib/composerSubmitClear";
@@ -322,6 +323,8 @@ const executeSend = async (opts: {
     [...heldSendKeys].every(
       (key) => sendEpochBySessionRef.current.get(key) === sendEpoch,
     );
+  /** prompt 是否已真正交给 Host；只有确认后才保留乐观用户消息。 */
+  let promptAccepted = false;
   // Prefer viewing id over shell sessionId — openSession points viewing at
   // the new chat before journal load finishes setSession; using only shell
   // mis-routed sends into the previous (often stuck) chat.
@@ -377,11 +380,6 @@ const executeSend = async (opts: {
   const ts = Date.now();
   const userMessageId = `u-${ts}`;
   const pendingAssistantId = `a-pending-${ts}`;
-  const dropIds = fromQueue
-    ? new Set([userMessageId, pendingAssistantId])
-    : new Set([pendingAssistantId]);
-  const stripOptimistic = (m: ChatMessage[]) =>
-    m.filter((x) => !dropIds.has(x.id));
 
   if (editingUserMessageId) {
     setEditingUserMessageId(null);
@@ -453,17 +451,23 @@ const executeSend = async (opts: {
   });
 
   const failStrip = () => {
+    const ids = new Set(
+      failedSendOptimisticDropIds({
+        promptAccepted,
+        fromQueue: !!fromQueue,
+        userMessageId,
+        pendingAssistantId,
+      }),
+    );
+    const strip = (m: ChatMessage[]) => m.filter((x) => !ids.has(x.id));
     if (sendTargetId) {
-      patchSessionMessages(sendTargetId, stripOptimistic);
+      patchSessionMessages(sendTargetId, strip);
     } else {
       const draftMsgs = messagesBySessionRef.current.get("__draft__");
       if (draftMsgs) {
-        messagesBySessionRef.current.set(
-          "__draft__",
-          stripOptimistic(draftMsgs),
-        );
+        messagesBySessionRef.current.set("__draft__", strip(draftMsgs));
       }
-      if (viewingTarget()) setMessages((m) => stripOptimistic(m));
+      if (viewingTarget()) setMessages((m) => strip(m));
     }
     if (viewingTarget()) {
       setSession((prev) =>
@@ -621,6 +625,7 @@ const executeSend = async (opts: {
     // a mid-send "new chat" still lets this turn complete.
     try {
       await api.sessionSend(agentText, journalDisplay, sessionId, att);
+      promptAccepted = true;
     } catch (sendErr) {
       // Stop / stall during Host vision/prepare: prompt never left.
       // Do not retry and do not treat as CONNECT_FAILED (P0-2).
@@ -664,6 +669,7 @@ const executeSend = async (opts: {
       if (reconnected !== sessionId) throw sendErr;
       if (!sendEpochCurrent()) return false;
       await api.sessionSend(agentText, journalDisplay, sessionId, att);
+      promptAccepted = true;
     }
     // Ghost heal / newer send superseded this await — do not re-dirty UI.
     if (!sendEpochCurrent()) return false;

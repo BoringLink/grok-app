@@ -105,6 +105,9 @@ pub struct SessionSnapshot {
     pub model_id: Option<String>,
     pub project_path: Option<String>,
     pub title: String,
+    /// 提供给后续 UI 任务的最小化、已脱敏连续性状态。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub continuity: Option<crate::continuity::ContinuitySnapshot>,
 }
 
 /// Live/background/parked signals the local session API maps to
@@ -255,8 +258,9 @@ pub(crate) struct LiveSession {
     /// silence is the hung-stream shape. Cleared only when the turn resets.
     /// Stall copy only; never feeds [`crate::acp_client::should_abort_provider_retry_ex`].
     pub(super) last_provider_retry: Option<(Instant, String)>,
-    /// After session/new (load failed), first prompt should carry journal history.
-    pub(super) needs_history_bootstrap: bool,
+    /// 会话级持久化连续性检查点，用于记录 Agent 上下文覆盖情况。
+    /// 恢复状态可跨进程退出保留，详见 `crate::continuity`。
+    pub(super) continuity: crate::continuity::ContinuityCheckpoint,
     /// Pending `_x.ai/exit_plan_mode` JSON-RPC id awaiting user Approve / revise.
     pub(super) pending_plan_rpc_id: Option<u64>,
     /// Pending `_x.ai/ask_user_question` JSON-RPC id awaiting user answers.
@@ -381,7 +385,7 @@ pub(crate) struct ParkedAgent {
     /// Process-level `--sandbox` profile at spawn (reuse gate).
     #[allow(dead_code)]
     pub(super) sandbox_profile: Option<String>,
-    pub(super) needs_history_bootstrap: bool,
+    pub(super) continuity: crate::continuity::ContinuityCheckpoint,
     pub(super) backend: String,
     /// Copied from the live session at park time and restored on unpark.
     /// A follow-up opens only when this visit already sent a prompt.
@@ -395,27 +399,55 @@ pub(super) const HISTORY_BOOTSTRAP_PER_MSG_CHARS: usize = 2_000;
 /// Cap total bootstrap text (excluding the new user turn).
 pub(super) const HISTORY_BOOTSTRAP_MAX_CHARS: usize = 14_000;
 
+/// 交给新 Agent session 的 journal 历史及其精确纳入范围。
+pub(super) struct HistoryBootstrapBundle {
+    pub(super) body: String,
+    pub(super) bundle_id: String,
+    pub(super) included: u32,
+    pub(super) omitted: u32,
+    pub(super) included_message_ids: Vec<String>,
+    pub(super) included_message_digests: Vec<String>,
+    pub(super) omitted_from_message_id: Option<String>,
+    pub(super) omitted_through_message_id: Option<String>,
+}
+
 /// Build a continuity preamble from App journal when agent session is new.
 /// Keeps recent turns so the model still "remembers" the chat after respawn.
-pub(super) fn build_history_bootstrap(app_session_id: &str) -> Option<String> {
-    let msgs = store::load_messages(app_session_id);
-    let turns = crate::session_attach::compact_user_assistant_turns_with(
+pub(super) fn build_history_bootstrap_bundle(
+    app_session_id: &str,
+) -> Result<Option<HistoryBootstrapBundle>, String> {
+    let msgs = store::load_messages_strict(app_session_id)?;
+    let attach_journal = crate::session_attach::BootstrapAttachJournal::default();
+    let compacted = crate::session_attach::compact_user_assistant_turns_scoped_with(
         &msgs,
         HISTORY_BOOTSTRAP_MAX_MSGS,
         HISTORY_BOOTSTRAP_PER_MSG_CHARS,
         HISTORY_BOOTSTRAP_MAX_CHARS,
         crate::session_attach::NestedAttach::Expand,
-        &crate::session_attach::StoreAttachJournal,
-    )?;
-    let mut body = String::from(
-        "[Prior conversation context — this chat continues an existing Grok App session. \
-The agent process was restarted; use the following transcript for continuity ONLY. \
-Rules: do NOT re-greet; do NOT restate, quote, or re-answer prior assistant turns; \
-do NOT reprint the transcript in your reply; answer ONLY the new user message below.]\n\n",
+        &attach_journal,
     );
-    body.push_str(&turns);
-    body.push_str("---\n\n[End of prior context. Continue with the user's new message below.]\n");
-    Some(body)
+    if let Some(error) = attach_journal.take_error() {
+        return Err(format!(
+            "attached context could not be read safely: {error}"
+        ));
+    }
+    let Some(turns) = compacted else {
+        return Ok(None);
+    };
+    let mut body = String::from(crate::continuity::BOOTSTRAP_HEADER);
+    body.push_str(&turns.body);
+    body.push_str(crate::continuity::BOOTSTRAP_FOOTER);
+    let bundle_id = crate::continuity::bootstrap_bundle_id(&body);
+    Ok(Some(HistoryBootstrapBundle {
+        body,
+        bundle_id,
+        included: turns.included,
+        omitted: turns.omitted,
+        included_message_ids: turns.included_message_ids,
+        included_message_digests: turns.included_message_digests,
+        omitted_from_message_id: turns.omitted_from_message_id,
+        omitted_through_message_id: turns.omitted_through_message_id,
+    }))
 }
 
 /// Cap content snippets emitted on live tool events (diff panel).

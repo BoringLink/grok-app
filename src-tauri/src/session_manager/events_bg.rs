@@ -192,6 +192,7 @@ impl SessionManager {
                             model_id: None,
                             project_path: None,
                             title: String::new(),
+                            continuity: None,
                         },
                     );
                 } else {
@@ -208,6 +209,7 @@ impl SessionManager {
                             model_id: None,
                             project_path: None,
                             title: String::new(),
+                            continuity: None,
                         },
                     );
                 }
@@ -556,6 +558,7 @@ impl SessionManager {
                             model_id: None,
                             project_path: None,
                             title: String::new(),
+                            continuity: None,
                         },
                     );
                 }
@@ -610,6 +613,7 @@ impl SessionManager {
                             model_id: None,
                             project_path: None,
                             title: String::new(),
+                            continuity: None,
                         },
                     );
                 }

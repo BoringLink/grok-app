@@ -55,8 +55,7 @@ impl SessionManager {
     }
 
     /// Soft-drop live agent so next send re-spawns with new spawn flags / config.
-    /// Keeps `agent_session_id` so reconnect can `session/load`; if load fails,
-    /// journal bootstrap still fills the gap.
+    /// 保留 `agent_session_id` 以便重连时调用 `session/load`；连续性门仍会核验 Agent 历史，并按需从 App journal 恢复。
     ///
     /// **Never** kills a mid-turn live session (open tools / streaming). Callers
     /// that mutate MCP/prefs while busy should wait until Ready.
@@ -148,7 +147,8 @@ impl SessionManager {
                         } else {
                             let process_id = s.process_id.clone();
                             let acp = s.acp.take();
-                            s.needs_history_bootstrap = false;
+                            s.continuity
+                                .mark_unverified(crate::continuity::ContinuityReason::AgentChanged);
                             s.fsm.soft_disconnect();
                             s.process_id = String::new();
                             (acp, Some(sid), process_id, false)
@@ -159,8 +159,9 @@ impl SessionManager {
                 } else {
                     let process_id = s.process_id.clone();
                     let acp = s.acp.take();
-                    // Prefer resume on next connect; bootstrap only if load fails.
-                    s.needs_history_bootstrap = false;
+                    // 下次连接会先核验 Agent 历史，再允许发送 prompt。
+                    s.continuity
+                        .mark_unverified(crate::continuity::ContinuityReason::AgentChanged);
                     s.fsm.soft_disconnect();
                     // New process gets a new id on next connect.
                     s.process_id = String::new();
@@ -623,8 +624,9 @@ impl SessionManager {
                 if s.meta.agent_session_id.take().is_some() {
                     let _ = store::update_session_meta(&s.meta);
                 }
-                // Connect will set bootstrap from journal when session/new runs.
-                s.needs_history_bootstrap = false;
+                // 下次连接先核验历史；必要时从 journal 恢复。
+                s.continuity
+                    .mark_unverified(crate::continuity::ContinuityReason::AgentChanged);
             }
         }
 
@@ -1721,7 +1723,8 @@ impl SessionManager {
                 if s.app_session_id == session_id {
                     let process_id = s.process_id.clone();
                     let acp = s.acp.take();
-                    s.needs_history_bootstrap = false;
+                    s.continuity
+                        .mark_unverified(crate::continuity::ContinuityReason::AgentChanged);
                     s.fsm.soft_disconnect();
                     s.process_id = String::new();
                     s.meta.agent_session_id = None;
@@ -2234,7 +2237,7 @@ mod recycle_tests {
             provider_retry_attempt: 0,
             provider_retry_aborted: false,
             last_provider_retry: None,
-            needs_history_bootstrap: false,
+            continuity: crate::continuity::ContinuityCheckpoint::default(),
             pending_plan_rpc_id: None,
             pending_permission_rpc_id: None,
             pending_permission_options: None,
@@ -2532,7 +2535,7 @@ mod recycle_tests {
             provider_retry_attempt: 0,
             provider_retry_aborted: false,
             last_provider_retry: None,
-            needs_history_bootstrap: false,
+            continuity: crate::continuity::ContinuityCheckpoint::default(),
             pending_plan_rpc_id: None,
             pending_permission_rpc_id: None,
             pending_permission_options: None,

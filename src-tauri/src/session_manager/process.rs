@@ -535,7 +535,7 @@ impl SessionManager {
             project_path: s.project_path.clone(),
             policy: s.policy,
             sandbox_profile,
-            needs_history_bootstrap: s.needs_history_bootstrap,
+            continuity: s.continuity.clone(),
             backend: s.backend.clone(),
             sent_prompt_this_visit: s.sent_prompt_this_visit,
         }
@@ -770,7 +770,7 @@ impl SessionManager {
             provider_retry_attempt: 0,
             provider_retry_aborted: false,
             last_provider_retry: None,
-            needs_history_bootstrap: parked.needs_history_bootstrap,
+            continuity: parked.continuity,
             pending_plan_rpc_id: None,
             pending_permission_rpc_id: None,
             pending_permission_options: None,
@@ -1374,7 +1374,6 @@ impl SessionManager {
                     if idle && ready_idle {
                         if let Some(acp) = s.acp.take() {
                             s.fsm.soft_disconnect();
-                            s.needs_history_bootstrap = false;
                             Some((s.app_session_id.clone(), s.process_id.clone(), acp))
                         } else {
                             None
@@ -1442,6 +1441,7 @@ impl SessionManager {
                 model_id: None,
                 project_path: None,
                 title: String::new(),
+                continuity: None,
             },
             Some(s) => Self::snapshot_from_live(s),
         }
@@ -1496,7 +1496,7 @@ impl SessionManager {
                 "toolsThisTurn": 0,
                 "openToolCount": 0,
                 "promptInFlight": false,
-                "needsHistoryBootstrap": p.needs_history_bootstrap,
+                "needsHistoryBootstrap": p.continuity.needs_recovery(),
                 "lastError": serde_json::Value::Null,
             }));
         }
@@ -1535,7 +1535,7 @@ impl SessionManager {
             "toolsThisTurn": s.tools_this_turn,
             "openToolCount": s.open_tool_ids.len(),
             "promptInFlight": s.prompt_in_flight,
-            "needsHistoryBootstrap": s.needs_history_bootstrap,
+            "needsHistoryBootstrap": s.continuity.needs_recovery(),
             "lastError": s.fsm.last_error().map(|e| {
                 serde_json::json!({
                     "code": e.code.as_str(),
@@ -1592,6 +1592,7 @@ impl SessionManager {
             model_id: s.model_id.clone(),
             project_path: s.project_path.clone(),
             title: s.meta.title.clone(),
+            continuity: Some((&s.continuity).into()),
         }
     }
 
@@ -1607,6 +1608,7 @@ impl SessionManager {
             model_id: p.model_id.clone(),
             project_path: p.project_path.clone(),
             title: p.meta.title.clone(),
+            continuity: Some((&p.continuity).into()),
         }
     }
 

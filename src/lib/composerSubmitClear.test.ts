@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  failedSendOptimisticDropIds,
   nextComposerSubmitSettlement,
   shouldClearComposerAfterSubmit,
   shouldClearMatchingProjectDraft,
@@ -279,5 +280,42 @@ describe("shouldClearMatchingProjectDraft", () => {
         sentQuotes: [q],
       }),
     ).toBe(true);
+  });
+});
+
+describe("failedSendOptimisticDropIds", () => {
+  const base = {
+    userMessageId: "u1",
+    pendingAssistantId: "a1",
+  };
+
+  it("removes the user bubble when the prompt never reached the Host", () => {
+    expect(
+      failedSendOptimisticDropIds({
+        ...base,
+        promptAccepted: false,
+        fromQueue: false,
+      }),
+    ).toEqual(["u1", "a1"]);
+  });
+
+  it("keeps the user bubble only after the Host accepted the prompt", () => {
+    expect(
+      failedSendOptimisticDropIds({
+        ...base,
+        promptAccepted: true,
+        fromQueue: false,
+      }),
+    ).toEqual(["a1"]);
+  });
+
+  it("always removes both optimistic rows for a queued retry", () => {
+    expect(
+      failedSendOptimisticDropIds({
+        ...base,
+        promptAccepted: true,
+        fromQueue: true,
+      }),
+    ).toEqual(["u1", "a1"]);
   });
 });

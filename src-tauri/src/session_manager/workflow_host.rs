@@ -130,6 +130,7 @@ impl SessionManager {
                                 model_id: None,
                                 project_path: None,
                                 title: String::new(),
+                                continuity: None,
                             },
                         );
                     }
