@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.56] - 2026-11-20
+
+> **Highlight:** The terminal now lives in the Side Workbench.
+>
+> **中文 · 亮点：** 终端进入侧边工作台。
+
 ### Changed
 - The terminal is now available in the Side Workbench.
 
