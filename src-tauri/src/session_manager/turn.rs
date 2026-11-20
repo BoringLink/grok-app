@@ -13,6 +13,7 @@ use crate::mock_acp::{self, StreamChunk};
 use crate::session_fsm::SessionState;
 use crate::store::{self, ChatMessageStored, MessageAttachmentStored};
 
+use super::continuity_gate;
 use super::*;
 
 impl SessionManager {
@@ -52,6 +53,8 @@ impl SessionManager {
             grant_journal_attachment_paths(atts);
             journal_content = append_journal_attachment_refs(journal_content, atts);
         }
+        let journal_prompt_digest =
+            crate::continuity::journal_prompt_digest(&journal_content, &journal_attachments);
         // Note: image @path stripping + Host vision runs on the *final*
         // agent_prompt after history bootstrap (see below). Do not rewrite
         // here only — bootstrap can reintroduce @image paths from the journal.
@@ -103,6 +106,13 @@ impl SessionManager {
         let Some(app_sid) = target_sid else {
             return Err("no active session".into());
         };
+
+        // 所有模型请求都先经过同一连续性门核验或恢复 Agent 上下文。
+        // 在 `connect_lock` 下执行，确保核验与 dispatch 之间 warm slot 不会切换。
+        let continuity = continuity_gate::prepare_continuity_send(self, &app_sid).await?;
+        let pending_prompt_id = continuity.pending_prompt_id;
+        let bootstrap_body = continuity.bootstrap.map(|bundle| bundle.body);
+        let has_bootstrap = bootstrap_body.is_some();
 
         // A delayed reconcile from the preceding turn performs a journal
         // read-modify-write. Keep this user append mutually exclusive with
@@ -181,16 +191,13 @@ impl SessionManager {
             Self::clear_provider_retry_memory(s);
             s.tools_this_turn = 0;
 
-            if s.needs_history_bootstrap {
-                if let Some(ctx) = build_history_bootstrap(&s.app_session_id) {
-                    agent_prompt = format!("{ctx}\n{agent_prompt}");
-                    tracing::info!(
-                        "history bootstrap attached ({} chars) for session {}",
-                        ctx.len(),
-                        s.app_session_id
-                    );
-                }
-                s.needs_history_bootstrap = false;
+            if let Some(context) = bootstrap_body.as_deref() {
+                agent_prompt = format!("{context}\n{agent_prompt}");
+                tracing::info!(
+                    "history bootstrap attached ({} chars) for session {}",
+                    context.len(),
+                    s.app_session_id
+                );
             }
             // P2: steer session-by-UUID lookups to App/agent-home roots (avoid home-wide find).
             if let Some(hint) = session_lookup_host_hint(&stripped_text) {
@@ -201,7 +208,7 @@ impl SessionManager {
             // failed journal write must not leave the runtime in Streaming
             // with a prompt that cannot be reconstructed after reload.
             let user_row = ChatMessageStored {
-                id: Uuid::new_v4().to_string(),
+                id: pending_prompt_id.clone(),
                 role: "user".into(),
                 content: journal_content.clone(),
                 thought: None,
@@ -451,6 +458,15 @@ impl SessionManager {
             ));
         }
 
+        continuity_gate::record_prepared_prompt_digests(
+            self,
+            &app_sid,
+            &pending_prompt_id,
+            &journal_prompt_digest,
+            &agent_prompt,
+            has_bootstrap,
+        )
+        .await;
         if backend == "mock_acp" || AcpClient::use_mock() {
             let mgr = Arc::clone(self);
             let app_done = app.clone();
@@ -692,6 +708,15 @@ impl SessionManager {
                             }),
                         );
                     }
+                    // prompt RPC 成功不等于 Agent 历史已持久化；只有有界 reconcile 确认待核验 prompt 后，才推进连续性检查点。
+                    continuity_gate::verify_continuity_after_turn(
+                        &mgr,
+                        &turn_sid,
+                        &pending_prompt_id,
+                    )
+                    .await;
+                    // 核验结果可能改变 UI 的恢复状态；同步一次快照，避免界面停留在“待核验”。
+                    Self::emit_state(&app2, &mgr.snapshot());
                     // Apply deferred process-level settings only after the
                     // final journal reconcile has had a chance to read the
                     // completed turn from the agent's disk log.

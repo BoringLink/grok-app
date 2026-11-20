@@ -2110,6 +2110,24 @@ pub fn load_sessions_index() -> Vec<SessionMeta> {
     list
 }
 
+/// Read an index without initializing App data or quarantining corrupt files.
+fn read_sessions_index_strict(path: &Path) -> Result<Vec<SessionMeta>, String> {
+    let text = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("sessions index read failed: {error}")),
+    };
+    if text.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    serde_json::from_str(&text).map_err(|error| format!("sessions index parse failed: {error}"))
+}
+
+/// 只读 sessions index；不初始化 App data，也不隔离损坏文件。
+pub(crate) fn load_sessions_index_strict_readonly() -> Result<Vec<SessionMeta>, String> {
+    read_sessions_index_strict(&sessions_index_file())
+}
+
 /// Read the sessions index for a one-shot migration, reporting failures.
 ///
 /// [`load_sessions_index`] goes through `read_json_recover`, which quarantines a
@@ -2258,6 +2276,31 @@ pub fn create_session(
 
 pub fn update_session_meta(meta: &SessionMeta) -> Result<(), String> {
     update_session_index_row(meta).map(|_| ())
+}
+
+/// Strictly update an Agent link without replacing unrelated session metadata.
+/// A corrupt index fails closed and is left untouched.
+pub(crate) fn set_session_agent_session_id_strict(
+    session_id: &str,
+    agent_session_id: &str,
+) -> Result<(), String> {
+    ensure_app_dirs().map_err(|error| error.to_string())?;
+    let path = sessions_index_file();
+    let session_id = session_id.to_string();
+    let agent_session_id = agent_session_id.to_string();
+    crate::store_lock::with_exclusive_lock(&path, || {
+        let mut list = load_sessions_index_strict_readonly()?;
+        let session = list
+            .iter_mut()
+            .find(|session| session.id == session_id)
+            .ok_or_else(|| "session not found in sessions index".to_string())?;
+        if session.agent_session_id.as_deref() == Some(agent_session_id.as_str()) {
+            return Ok(());
+        }
+        session.agent_session_id = Some(agent_session_id);
+        let serialized = serde_json::to_string_pretty(&list).map_err(|error| error.to_string())?;
+        crate::store_lock::write_bytes_replace(&path, serialized.as_bytes())
+    })
 }
 
 /// Whole-row replace that keeps `provider_id` and `model_id` from the current
@@ -2708,6 +2751,18 @@ pub fn archive_project_sessions(project_id: &str) -> Result<usize, String> {
 
 pub fn load_messages(session_id: &str) -> Vec<ChatMessageStored> {
     read_json_recover(&session_dir(session_id).join("messages.json"))
+}
+
+/// 只读读取 journal 快照，不隔离或重写损坏数据。
+/// 恢复门必须 fail closed，并保留用户的源 transcript。
+pub(crate) fn load_messages_strict(session_id: &str) -> Result<Vec<ChatMessageStored>, String> {
+    let path = session_dir(session_id).join("messages.json");
+    match fs::read(&path) {
+        Ok(raw) => serde_json::from_slice(&raw)
+            .map_err(|error| format!("invalid session journal JSON: {error}")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(format!("could not read session journal: {error}")),
+    }
 }
 
 fn write_messages_locked(path: &Path, messages: &[ChatMessageStored]) -> Result<(), String> {

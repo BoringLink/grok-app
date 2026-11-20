@@ -154,23 +154,37 @@ pub fn agent_config_toml() -> PathBuf {
 }
 
 /// Resolve GROK_HOME for a spawned agent process.
-pub fn resolve_agent_grok_home(session_data_mode: &str) -> PathBuf {
+fn agent_grok_home_path(session_data_mode: &str) -> PathBuf {
     if session_data_mode.trim().eq_ignore_ascii_case("shared") {
-        return crate::process_util::user_home().join(".grok");
+        crate::process_util::user_home().join(".grok")
+    } else {
+        agent_home_dir()
     }
-    let _ = ensure_app_dirs();
-    agent_home_dir()
+}
+
+pub fn resolve_agent_grok_home(session_data_mode: &str) -> PathBuf {
+    if !session_data_mode.trim().eq_ignore_ascii_case("shared") {
+        let _ = ensure_app_dirs();
+    }
+    agent_grok_home_path(session_data_mode)
 }
 
 /// Custom providers always live in App `agent-home/config.toml` (never written
 /// into shared `~/.grok`). Spawn must point `GROK_HOME` there even when
 /// `session_data_mode=shared` so third-party keys work without official login (#557).
-pub fn resolve_inference_grok_home(session_data_mode: &str, custom_route: bool) -> PathBuf {
+fn inference_grok_home_path(session_data_mode: &str, custom_route: bool) -> PathBuf {
     if custom_route {
-        let _ = ensure_app_dirs();
-        return agent_home_dir();
+        agent_home_dir()
+    } else {
+        agent_grok_home_path(session_data_mode)
     }
-    resolve_agent_grok_home(session_data_mode)
+}
+
+pub fn resolve_inference_grok_home(session_data_mode: &str, custom_route: bool) -> PathBuf {
+    if custom_route || !session_data_mode.trim().eq_ignore_ascii_case("shared") {
+        let _ = ensure_app_dirs();
+    }
+    inference_grok_home_path(session_data_mode, custom_route)
 }
 
 /// Whether spawn prep must touch App agent-home (auth strip/sync, config heal).
@@ -361,10 +375,36 @@ pub fn find_agent_session_dir(
     cwd_hint: Option<&str>,
     session_data_mode: &str,
 ) -> Option<PathBuf> {
+    find_agent_session_dir_under_home(
+        agent_session_id,
+        cwd_hint,
+        agent_grok_home_path(session_data_mode),
+    )
+}
+
+/// 按当前 inference route 的 home 选择规则定位 Agent session；shared 模式的自定义 provider 仍使用 App `agent-home`。
+pub fn find_agent_session_dir_for_inference(
+    agent_session_id: &str,
+    cwd_hint: Option<&str>,
+    session_data_mode: &str,
+    custom_route: bool,
+) -> Option<PathBuf> {
+    find_agent_session_dir_under_home(
+        agent_session_id,
+        cwd_hint,
+        inference_grok_home_path(session_data_mode, custom_route),
+    )
+}
+
+fn find_agent_session_dir_under_home(
+    agent_session_id: &str,
+    cwd_hint: Option<&str>,
+    home: PathBuf,
+) -> Option<PathBuf> {
     if agent_session_id.is_empty() {
         return None;
     }
-    let home = resolve_agent_grok_home(session_data_mode);
+    // 此路径供只读历史检查使用；解析时不能初始化或清理 App data root。
     let sessions = home.join("sessions");
     if !sessions.is_dir() {
         return None;
@@ -378,7 +418,7 @@ pub fn find_agent_session_dir(
         }
     }
 
-    // Fallback: scan cwd folders for this agent session id
+    // 兜底：在各 cwd 目录中查找该 Agent session ID。
     let Ok(entries) = fs::read_dir(&sessions) else {
         return None;
     };
@@ -453,6 +493,35 @@ mod tests {
         let root = PathBuf::from("/tmp/session");
         assert!(resolve_session_relative_media(&root, "../etc/passwd").is_none());
         assert!(resolve_session_relative_media(&root, "/etc/passwd").is_none());
+    }
+
+    #[test]
+    fn locating_agent_history_does_not_create_an_independent_home() {
+        let home = crate::test_support::TestAppHome::new("paths-agent-history-readonly");
+        let agent_home = home.path().join("agent-home");
+        fs::remove_dir_all(&agent_home).unwrap();
+
+        assert!(find_agent_session_dir("missing-agent", None, "independent").is_none());
+        assert!(!agent_home.exists());
+    }
+
+    #[test]
+    fn custom_route_history_uses_agent_home_in_shared_mode() {
+        let home = crate::test_support::TestAppHome::new("paths-custom-history");
+        let cwd = "/tmp/custom-project";
+        let agent_id = "agent-custom-route";
+        let expected = home
+            .path()
+            .join("agent-home/sessions")
+            .join(percent_encode_path_component(cwd))
+            .join(agent_id);
+        std::fs::create_dir_all(&expected).unwrap();
+
+        assert!(find_agent_session_dir(agent_id, Some(cwd), "shared").is_none());
+        assert_eq!(
+            find_agent_session_dir_for_inference(agent_id, Some(cwd), "shared", true),
+            Some(expected)
+        );
     }
 
     #[test]

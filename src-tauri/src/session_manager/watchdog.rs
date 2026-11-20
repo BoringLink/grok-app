@@ -225,6 +225,7 @@ impl SessionManager {
                         model_id: None,
                         project_path: None,
                         title: String::new(),
+                        continuity: None,
                     },
                 );
                 Self::emit_state(app, &self.snapshot());
@@ -269,6 +270,7 @@ impl SessionManager {
                         model_id: None,
                         project_path: None,
                         title: String::new(),
+                        continuity: None,
                     },
                 );
                 let _ = app.emit(

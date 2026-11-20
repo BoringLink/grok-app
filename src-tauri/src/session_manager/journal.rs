@@ -227,6 +227,10 @@ impl SessionManager {
         let cut = store::cut_index_before_last_user_prompt(&msgs);
         let kept: Vec<_> = msgs.into_iter().take(cut).collect();
         rewind_fence.replace_journal(&app_sid, &kept)?;
+        self.with_session_mut(&app_sid, |s| {
+            s.continuity
+                .mark_unverified(crate::continuity::ContinuityReason::RewindUnverified);
+        });
         self.drop_agent_link_when_no_user_prompt(&app_sid, &kept);
 
         {
@@ -447,6 +451,10 @@ impl SessionManager {
         let kept = store::truncate_through_user_prompt(&msgs, target_prompt_index)?;
         let kept_count = kept.len();
         rewind_fence.replace_journal(&app_sid, &kept)?;
+        self.with_session_mut(&app_sid, |s| {
+            s.continuity
+                .mark_unverified(crate::continuity::ContinuityReason::RewindUnverified);
+        });
 
         // Touch meta updated_at for index sort.
         let updated_at = chrono::Utc::now();

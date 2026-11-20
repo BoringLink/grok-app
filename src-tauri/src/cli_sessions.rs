@@ -5,6 +5,7 @@
 //!   - summary.json — title, timestamps, cwd
 //!   - chat_history.jsonl — line-delimited messages
 
+pub(crate) mod continuity_coverage;
 pub(crate) mod rewind_fence;
 #[cfg(test)]
 mod rewind_reconcile_tests;
@@ -1231,6 +1232,25 @@ pub fn parse_acp_updates_text(raw: &str) -> Vec<(String, String)> {
 /// position (and with real names from `events.jsonl`), not just user/assistant.
 fn parse_chat_history_rows(path: &Path) -> Result<Vec<(String, String, Option<String>)>, String> {
     let raw = fs::read_to_string(path).map_err(|e| format!("read chat_history: {e}"))?;
+    parse_chat_history_rows_from_text(&raw)
+}
+
+pub(super) fn parse_chat_history_rows_from_text(
+    raw: &str,
+) -> Result<Vec<(String, String, Option<String>)>, String> {
+    parse_chat_history_rows_from_text_mode(raw, false)
+}
+
+pub(super) fn parse_chat_history_rows_strict(
+    raw: &str,
+) -> Result<Vec<(String, String, Option<String>)>, String> {
+    parse_chat_history_rows_from_text_mode(raw, true)
+}
+
+fn parse_chat_history_rows_from_text_mode(
+    raw: &str,
+    reject_invalid_lines: bool,
+) -> Result<Vec<(String, String, Option<String>)>, String> {
     let mut out = Vec::new();
     for line in raw.lines() {
         let line = line.trim();
@@ -1239,7 +1259,10 @@ fn parse_chat_history_rows(path: &Path) -> Result<Vec<(String, String, Option<St
         }
         let v: Value = match serde_json::from_str(line) {
             Ok(v) => v,
-            Err(_) => continue, // skip broken lines
+            Err(error) if reject_invalid_lines => {
+                return Err(format!("invalid chat_history row: {error}"));
+            }
+            Err(_) => continue,
         };
         let typ = v
             .get("type")

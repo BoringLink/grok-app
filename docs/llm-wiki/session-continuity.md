@@ -42,8 +42,8 @@ On `session_connect` for an existing App session:
 1. Spawn `grok agent stdio` with the same `GROK_HOME` / cwd.
 2. `initialize` + `authenticate`.
 3. If meta has `agentSessionId`, try **`session/load`** with that id + cwd.
-4. On success → full agent context (tools, prior turns) restored.  
-5. On failure → **`session/new`**, then mark **history bootstrap**.
+4. `session/load` success means the Agent accepted the id and replayed available history; it does **not** prove that history covers the App journal.
+5. On failure → **`session/new`**. On either result, persist a continuity checkpoint and verify coverage before the next Host prompt.
 
 **Replay gate (Host):** `session/load` replays history as ACP notifications
 (`agent_message_chunk`, `tool_call`, plan entries, …). While **no**
@@ -89,6 +89,12 @@ prompts conservatively use live output only because legacy logs have no stable
 branch identity. Unreadable/incomplete history or a corrupt fence disables disk
 recovery for that session, while live replies remain intact. Exclusions survive
 restart and are bounded; they never edit CLI history.
+
+**Continuity checkpoint and send gate:** Every successful connect marks the linked Agent history unverified until the next send gate checks it. Only a confirmed `session/new` result may mark an Agent as fresh for in-place bootstrap; a resumed Agent with a missing, corrupt, or mismatched checkpoint stays unverified and must recover through a new Agent session. The per-App-session `continuity_checkpoint.json` stores a schema version, Agent id, provider route, cwd, session-data mode, custom-route home selection, status/reason, bounded covered App message ids and prompt count, journal-to-Agent prompt digest mappings, a pending prompt id with journal/final-Agent prompt digests, bootstrap bundle and prompt ids, included message ids/digests, and omitted count/range. It stores no transcript text. The read-only inspector checks user prompts, assistant rows, and tool results in order against `messages.json` and the linked Agent `chat_history.jsonl`; `session/load` success alone never passes. Prompt coverage matches normalized text plus attachment-path evidence; when the Host transforms prompt text (for example, vision preprocessing), a journal-bound digest of the final Agent prompt is required. Attachment-only prompts require an exact path match; missing or unresolvable path evidence fails closed. For local sessions it reads the existing `GROK_HOME` selected by the active route (shared `~/.grok` for shared official sessions; App `agent-home` for independent or custom-route sessions) without creating or repairing App data directories. SSH sessions never treat remote `session/load` success as proof: an unverified remote session is replaced with a fresh remote Agent and any safely prepared App-journal bundle before dispatch. A successful turn keeps the remote context verified only in memory; the persisted checkpoint stays pending so a Host reconnect recovers from the App journal again. If that journal cannot be prepared safely, the prompt remains undispatched. An unreadable or corrupt App journal, or a journal that cannot be safely bootstrapped, fails closed without quarantine or prompt dispatch. An unverified or mismatched Agent bootstrap bundle is treated as ambiguous history and recovered by preparing a fresh bundle for a new Agent session; if that bundle cannot be prepared safely, the current prompt remains undispatched.
+
+After a fresh `session/new`, the first Host send uses that empty Agent session for bootstrap instead of opening a second one. If history is incomplete, Host creates a fresh Agent session only after it has safely prepared the App journal bundle. A successful prompt RPC does not verify the checkpoint; the bounded post-turn history check must find the pending prompt and expected assistant/tool rows. Interrupted turns continue through the existing `turn_lease` / explicit Continue flow; bootstrap text instructs the Agent not to repeat prior operations unless the new user message explicitly requests continuation.
+
+**User-visible state:** `SessionSnapshot.continuity` carries the status (`verified`, `bootstrap_pending`, `unverified`), a safe reason code, bounded covered counts, and the bootstrap included/omitted counts. It never carries prompt text. The chat stage derives a banner from that snapshot and the transcript length: a pending or unverified banner explains that the next message verifies and, if needed, restores the conversation from this chat; a verified bootstrap shows how many entries were included and how many were omitted by length limits. The banner is suppressed while a turn is already connecting or streaming, and stays hidden for empty chats. The message the user sends is only kept in the transcript after the Host accepts the turn; a failed recovery removes the optimistic row, keeps the composer draft, and surfaces the normal in-app error with a reconnect action.
 
 Live turns (`prompt_in_flight == true`) still apply stream + tools normally.
 See crash investigation notes: ungated tool_call replay on open could thrash
@@ -181,20 +187,19 @@ Real mid-turn silence still uses Host `STREAM_STALL` (soft banner; user End turn
 
 ### 2. Fallback — journal bootstrap (reasonable turns)
 
-When a **new** agent session is created but the App journal already has turns:
+When Agent history cannot be verified (missing, empty, partial, mismatched, oversized, or corrupt) and the App journal is readable, the Host recovers from a bounded bootstrap:
 
-- On the **first** `session_send` only, prefix the agent prompt with a compact transcript of recent journal messages:
-  - Up to **16** user/assistant messages  
-  - **~2k chars** per message (truncated with note)  
-  - **~14k chars** total for the block  
-- Journal storage still writes only the user-facing turn (no bootstrap text in UI).
-- Flag `needs_history_bootstrap` clears after that one send.
+- The fresh or just-created empty Agent session receives the bootstrap on the first Host send only; later sends use its verified history.
+- The bundle contains up to **16** user/assistant messages, at most **2k chars** per message, and about **14k chars** total. Tool steps and turn markers stay out of the text body; the prompt marks omitted transcript entries.
+- The checkpoint records a SHA-256 bundle id, included App message ids/digests, and omitted count/range. It never stores the transcript text.
+- App journal storage writes only the user-facing turn; bootstrap text never becomes a UI bubble.
+- If the App journal or an attached journal cannot be read safely, keep the prompt undispatched and return an actionable recovery error; do not quarantine or rewrite the damaged journal.
 
-This covers load failure, wiped agent dirs, or agent version mismatches.
+This covers load failure, wiped Agent history, route changes, and flushes that did not persist. The checkpoint remains pending until post-turn history proves the pending prompt and expected assistant/tool rows.
 
 ### 3. Soft-respawn
 
-Permission / mode soft-respawn **keeps** `agentSessionId` so the next connect prefers `session/load`. Bootstrap runs only if load fails.
+Permission / mode soft-respawn **keeps** `agentSessionId` so the next connect prefers `session/load`. Every connect starts unverified; the next Host send checks persisted coverage. Bootstrap runs after load failure or whenever history is missing, partial, or mismatched, even if `session/load` succeeded. A fresh empty Agent session is reused for its first bootstrap send.
 
 Changing **one chat's provider** (official ↔ custom, or another custom section) clears that chat's `agentSessionId` before the soft-respawn, so `session/load` cannot restore the previous route. Other chats are not recycled. SSH cold start is always the official route.
 

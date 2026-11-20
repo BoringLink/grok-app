@@ -60,6 +60,7 @@ mod cli_install;
 mod cli_probe;
 
 mod cli_sessions;
+mod continuity;
 
 mod cli_update;
 

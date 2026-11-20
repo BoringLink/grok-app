@@ -171,6 +171,76 @@ impl AttachJournal for StoreAttachJournal {
     }
 }
 
+/// 构建恢复 bootstrap 时使用的只读 journal 访问器。
+/// 附加会话历史缺失或损坏时必须停止恢复，不能调用会隔离并修复数据的常规读取器。
+pub(crate) struct BootstrapAttachJournal {
+    error: std::sync::Mutex<Option<String>>,
+}
+
+impl Default for BootstrapAttachJournal {
+    fn default() -> Self {
+        Self {
+            error: std::sync::Mutex::new(None),
+        }
+    }
+}
+
+impl BootstrapAttachJournal {
+    pub(crate) fn take_error(&self) -> Option<String> {
+        self.error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+    }
+
+    fn record_error(&self, error: String) {
+        let mut slot = self
+            .error
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if slot.is_none() {
+            *slot = Some(error);
+        }
+    }
+}
+
+impl AttachJournal for BootstrapAttachJournal {
+    fn exists(&self, id: &str) -> bool {
+        let exists = crate::paths::session_dir(id)
+            .join("messages.json")
+            .is_file();
+        if !exists {
+            self.record_error("attached conversation journal is missing".into());
+        }
+        exists
+    }
+
+    fn load(&self, id: &str) -> Vec<ChatMessageStored> {
+        match store::load_messages_strict(id) {
+            Ok(messages) => messages,
+            Err(error) => {
+                self.record_error(error);
+                Vec::new()
+            }
+        }
+    }
+
+    fn title(&self, id: &str) -> String {
+        match store::load_sessions_index_strict_readonly() {
+            Ok(sessions) => sessions
+                .into_iter()
+                .find(|session| session.id == id)
+                .map(|session| session.title.trim().to_string())
+                .filter(|title| !title.is_empty())
+                .unwrap_or_else(|| "Untitled".into()),
+            Err(error) => {
+                self.record_error(error);
+                "Untitled".into()
+            }
+        }
+    }
+}
+
 const NESTED_EXPAND_MAX_MSGS: usize = 8;
 const NESTED_EXPAND_PER_MSG: usize = 800;
 const NESTED_EXPAND_MAX_CHARS: usize = 4_000;
@@ -268,6 +338,61 @@ pub fn compact_user_assistant_turns_with(
     nested: NestedAttach,
     journal: &impl AttachJournal,
 ) -> Option<String> {
+    compact_user_assistant_turns_scoped_with(
+        msgs,
+        max_msgs,
+        per_msg_chars,
+        max_chars,
+        nested,
+        journal,
+    )
+    .map(|turns| turns.body)
+}
+
+/// 记录实际交给 Agent 的压缩范围，供 Host 持久化纳入/省略数量而不保存 transcript 正文。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompactTurns {
+    pub body: String,
+    pub included: u32,
+    pub omitted: u32,
+    pub included_message_ids: Vec<String>,
+    pub included_message_digests: Vec<String>,
+    pub omitted_from_message_id: Option<String>,
+    pub omitted_through_message_id: Option<String>,
+}
+
+pub(crate) fn is_bootstrap_context_message(message: &ChatMessageStored) -> bool {
+    let text_message = (message.role == "user" || message.role == "assistant")
+        && (!message.content.trim().is_empty()
+            || (message.role == "user"
+                && message
+                    .attachments
+                    .as_ref()
+                    .is_some_and(|attachments| !attachments.is_empty())));
+    let journal_marker = message.role == "tool"
+        && (message.content.starts_with("tool_step|")
+            || message.content.starts_with("turn_cancelled|")
+            || message.content.starts_with("turn_end|")
+            || matches!(
+                message.marker.as_deref(),
+                Some("context_compact" | "turn_cancelled")
+            ));
+    text_message || journal_marker
+}
+
+pub fn compact_user_assistant_turns_scoped_with(
+    msgs: &[ChatMessageStored],
+    max_msgs: usize,
+    per_msg_chars: usize,
+    max_chars: usize,
+    nested: NestedAttach,
+    journal: &impl AttachJournal,
+) -> Option<CompactTurns> {
+    let eligible_message_ids: Vec<String> = msgs
+        .iter()
+        .filter(|message| is_bootstrap_context_message(message))
+        .map(|message| message.id.clone())
+        .collect();
     let mut picked: Vec<&ChatMessageStored> = Vec::new();
     for m in msgs.iter().rev() {
         if m.role != "user" && m.role != "assistant" {
@@ -286,7 +411,7 @@ pub fn compact_user_assistant_turns_with(
     }
     picked.reverse();
 
-    let mut blocks: Vec<String> = Vec::new();
+    let mut blocks: Vec<(String, String, String)> = Vec::new();
     for m in picked {
         let role = if m.role == "user" {
             "User"
@@ -307,36 +432,53 @@ pub fn compact_user_assistant_turns_with(
                 m.content.len()
             );
         }
-        blocks.push(format!("### {role}\n{content}\n\n"));
+        blocks.push((
+            m.id.clone(),
+            crate::continuity::bootstrap_message_digest(&m.role, m.content.trim()),
+            format!("### {role}\n{content}\n\n"),
+        ));
     }
     if blocks.is_empty() {
         return None;
     }
 
-    let mut total: usize = blocks.iter().map(|b| b.len()).sum();
-    let mut omitted = 0usize;
+    let mut total: usize = blocks.iter().map(|(_, _, body)| body.len()).sum();
     while blocks.len() > 1 && total > max_chars {
-        let dropped = blocks.remove(0);
-        total = total.saturating_sub(dropped.len());
-        omitted += 1;
+        let dropped_block = blocks.remove(0);
+        total = total.saturating_sub(dropped_block.2.len());
     }
+    let included = blocks.len() as u32;
+    let included_message_ids: Vec<String> = blocks.iter().map(|(id, _, _)| id.clone()).collect();
+    let included_message_digests = blocks.iter().map(|(_, digest, _)| digest.clone()).collect();
+    let omitted_message_ids: Vec<String> = eligible_message_ids
+        .iter()
+        .filter(|id| !included_message_ids.contains(*id))
+        .cloned()
+        .collect();
+    let omitted = omitted_message_ids.len() as u32;
+    let omitted_from_message_id = omitted_message_ids.first().cloned();
+    let omitted_through_message_id = omitted_message_ids.last().cloned();
+    let mut body = String::new();
     if omitted > 0 {
-        let marker = "### …\n[earlier turns omitted for length]\n\n";
-        if marker.len() + total > max_chars && !blocks.is_empty() {
-            // Keep the newest block even if it alone is over budget.
-        }
-        let mut body = String::from(marker);
-        body.push_str(&blocks.concat());
-        return Some(body);
+        body.push_str(&format!(
+            "### …\n[{omitted} transcript entries omitted by the context limits]\n\n"
+        ));
     }
-    if total > max_chars {
-        // Single remaining block — keep newest rather than drop it.
+    for (_, _, block) in &blocks {
+        body.push_str(block);
     }
-    let body = blocks.concat();
     if body.trim().is_empty() {
         None
     } else {
-        Some(body)
+        Some(CompactTurns {
+            body,
+            included,
+            omitted,
+            included_message_ids,
+            included_message_digests,
+            omitted_from_message_id,
+            omitted_through_message_id,
+        })
     }
 }
 
@@ -557,6 +699,42 @@ mod tests {
             body.contains("earlier turns omitted") || !body.contains("OLD-0-"),
             "oldest turns should drop first: {body}"
         );
+    }
+
+    #[test]
+    fn scoped_compaction_records_the_included_message_ids() {
+        let omitted = msg("user", "older context");
+        let omitted_id = omitted.id.clone();
+        let included = msg("assistant", "recent answer");
+        let result = compact_user_assistant_turns_scoped_with(
+            &[omitted, included.clone()],
+            1,
+            2000,
+            14000,
+            NestedAttach::Stub,
+            &StoreAttachJournal,
+        )
+        .unwrap();
+
+        assert_eq!(result.included, 1);
+        assert_eq!(result.omitted, 1);
+        assert_eq!(result.included_message_ids, vec![included.id]);
+        assert_eq!(
+            result.included_message_digests,
+            vec![crate::continuity::bootstrap_message_digest(
+                "assistant",
+                "recent answer"
+            )]
+        );
+        assert_eq!(
+            result.omitted_from_message_id.as_deref(),
+            Some(omitted_id.as_str())
+        );
+        assert_eq!(
+            result.omitted_through_message_id.as_deref(),
+            Some(omitted_id.as_str())
+        );
+        assert!(result.body.contains("transcript entries omitted"));
     }
 
     struct MapJournal {

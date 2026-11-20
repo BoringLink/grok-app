@@ -2521,6 +2521,15 @@ impl AcpClient {
         Self::test_stub_with(alive, true)
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_ssh_stub(alive: bool) -> Arc<Self> {
+        let mut client = Self::test_stub(alive);
+        Arc::get_mut(&mut client)
+            .expect("new test client has a single owner")
+            .ssh_alias = Some("test-ssh".into());
+        client
+    }
+
     /// Alive-or-dead client with no child. `use_app_director_rules` is the
     /// same flag warm start and TCP keep on, and official aux turns off.
     #[cfg(test)]
@@ -2559,6 +2568,11 @@ impl AcpClient {
     /// Working directory this process was spawned with.
     pub fn cwd(&self) -> &std::path::Path {
         &self.cwd
+    }
+
+    /// SSH 远端 Agent 历史保存在远端主机，本机无法将其作为本地 `chat_history.jsonl` 投影检查。
+    pub fn is_ssh_remote(&self) -> bool {
+        self.ssh_alias.is_some()
     }
 
     /// `session/new` body. `director_enabled` is the app setting at this

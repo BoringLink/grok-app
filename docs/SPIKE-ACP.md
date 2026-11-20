@@ -15,7 +15,8 @@
   // Empty only when no servers discovered or all disabled in Settings → Extensions
 ← result { sessionId, models }
 → session/prompt { sessionId, prompt: [{type:"text", text}] }
-  // App: if load failed and journal has turns, first prompt may be prefixed with history bootstrap
+  // App: before the next model prompt, Host verifies loaded Agent history against the App journal;
+  // incomplete or unverified history is recovered from a journal bootstrap in a fresh Agent session.
 ← session/update agent_thought_chunk* + agent_message_chunk*
 ← result { stopReason: "end_turn", ... }
 ```
@@ -138,7 +139,7 @@ live capture was available in this audit.
 | Parallel tool calls | Isolated 1.0.3 headless observed two pending client calls before either completed. | ACP carries independent tool call ids and updates; Host does not serialize them. No fresh 1.0.4 parallel live capture in this audit. | Protocol complete; current live evidence gap |
 | Permission request | CLI permission modes are launch flags. | Agent can reverse-call `session/request_permission`; Host returns the selected option id. Fixtures cover request and reply. Agent policy may auto-execute and omit a request. | Full when the agent emits it |
 | Thinking, text, tool streaming | Headless streaming JSON describes native ACP session updates. | Host consumes `agent_thought_chunk`, `agent_message_chunk`, `tool_call`, and `tool_call_update` directly. | Full native semantic surface |
-| Session new/load/resume/fork | CLI exposes resume and fork. | Host implements `session/new`, `session/load`, standard `session/fork`, and Grok extension fallback. Journal bootstrap is only a fallback after load failure. | Full, with honest fallback |
+| Session new/load/resume/fork | CLI exposes resume and fork. | Host verifies loaded Agent history against the App journal before the next prompt; incomplete or unverifiable history is recovered with a journal bootstrap in a fresh Agent session. Exact in-flight tool/permission-boundary resume is still unsupported. See `docs/llm-wiki/session-continuity.md`. | Checkpointed history recovery; in-flight boundary gap |
 | Cancel | CLI can stop an active turn. | Host sends `session/cancel`; deterministic fixture covers the wire and state transition. | Full core surface |
 | Disconnect and process restart | Headless per-turn mode naturally exits. TUI owns one process. | Host can recycle the child and reload a persisted agent session. An interrupted in-flight turn is not claimed to resume at the exact token/tool boundary. | Session recovery complete; in-flight continuity gap |
 | Attachments and vision | CLI accepts file-path prompt references. | App currently serializes attachments into the text prompt as `@absolute/path`; `session/prompt` carries text content blocks only. This preserves CLI file semantics but does not expose a native ACP image content block. | Current App adapter limitation |

@@ -16,6 +16,7 @@ use crate::process_limits::{can_spawn_process, normalize_max_concurrent, process
 use crate::session_fsm::{SessionFsm, SessionState};
 use crate::store::{self};
 
+use super::continuity_gate;
 use super::fork_trim::{
     apply_child_rewind_fail_safe, child_trim_plan, fork_trimmed_outcome, ChildTrimPlan,
 };
@@ -518,7 +519,8 @@ impl SessionManager {
                         }
                         let process_id = s.process_id.clone();
                         let acp = s.acp.take();
-                        s.needs_history_bootstrap = false;
+                        s.continuity
+                            .mark_unverified(crate::continuity::ContinuityReason::AgentChanged);
                         s.fsm.soft_disconnect();
                         s.process_id = String::new();
                         acp.map(|client| (client, process_id))
@@ -839,7 +841,7 @@ impl SessionManager {
                 provider_retry_attempt: 0,
                 provider_retry_aborted: false,
                 last_provider_retry: None,
-                needs_history_bootstrap: false,
+                continuity: crate::continuity::ContinuityCheckpoint::default(),
                 pending_plan_rpc_id: None,
                 pending_permission_rpc_id: None,
                 pending_permission_options: None,
@@ -877,11 +879,6 @@ impl SessionManager {
 
         // Remember prior agent session for resume (before we overwrite meta).
         let resume_agent_sid = meta.agent_session_id.clone();
-        let journal_has_history = store::load_messages(&meta.id).iter().any(|m| {
-            (m.role == "user" || m.role == "assistant")
-                && !m.content.trim().is_empty()
-                && !m.is_error
-        });
 
         // ── Warm-process reuse (per-route pool) ────────────────────────────
         // Only an ownerless prewarm process with identical process-level
@@ -1165,7 +1162,16 @@ impl SessionManager {
                 .await;
                 match open_result {
                     Ok((agent_sid, resumed)) => {
-                        let need_bootstrap = !resumed && journal_has_history;
+                        let continuity = continuity_gate::continuity_after_open(
+                            &meta.id,
+                            &agent_sid,
+                            resumed,
+                            &route,
+                            &cwd_str,
+                            ssh_alias.is_some(),
+                            acp.is_custom_route(),
+                        )
+                        .await;
                         let acp_align = acp.clone();
                         {
                             let mut guard = self.inner.lock();
@@ -1179,7 +1185,7 @@ impl SessionManager {
                                 s.product_mode = Some(prefs.mode.clone());
                                 s.policy = policy;
                                 s.project_path = project_path.clone();
-                                s.needs_history_bootstrap = need_bootstrap;
+                                s.continuity = continuity;
                                 s.prompt_in_flight = false;
                                 Self::touch_activity_locked(s);
                                 meta = s.meta.clone();
@@ -1535,7 +1541,6 @@ impl SessionManager {
             Ok((mut agent_sid, resumed)) => {
                 let plan = child_trim_plan(rewind_index, resumed);
                 let mut rewind_ok: Option<bool> = None;
-                let mut need_bootstrap = !resumed && journal_has_history;
                 let mut skip_set_mode = fork_agent && matches!(plan, ChildTrimPlan::Skip);
 
                 match plan {
@@ -1553,7 +1558,6 @@ impl SessionManager {
                         {
                             Ok(_) => {
                                 rewind_ok = Some(true);
-                                need_bootstrap = false;
                                 skip_set_mode = true;
                                 tracing::info!(
                                     target: "session",
@@ -1601,8 +1605,6 @@ impl SessionManager {
                                 {
                                     Ok((new_sid, _)) => {
                                         agent_sid = new_sid;
-                                        need_bootstrap =
-                                            fail_safe.map(|fs| fs.need_bootstrap).unwrap_or(false);
                                         skip_set_mode = false;
                                     }
                                     Err(new_err) => {
@@ -1634,7 +1636,6 @@ impl SessionManager {
                         }
                     }
                     ChildTrimPlan::Bootstrap => {
-                        need_bootstrap = journal_has_history;
                         skip_set_mode = false;
                     }
                     ChildTrimPlan::Skip => {}
@@ -1650,31 +1651,27 @@ impl SessionManager {
                     );
                 }
 
-                // Native resume / successful fork = full agent context. Fresh
-                // session + existing UI journal → bootstrap history into the next prompt.
-                if resumed && rewind_ok != Some(false) {
-                    tracing::info!(
-                        target: "session",
-                        session = %meta.id,
-                        agent = %agent_sid,
-                        forked = fork_agent,
-                        "connect session_open_ok resumed=true (full context)"
-                    );
-                } else if need_bootstrap {
-                    tracing::info!(
-                        target: "session",
-                        session = %meta.id,
-                        agent = %agent_sid,
-                        "connect session_open_ok resumed=false; will bootstrap journal on first send"
-                    );
-                } else {
-                    tracing::info!(
-                        target: "session",
-                        session = %meta.id,
-                        agent = %agent_sid,
-                        "connect session_open_ok resumed=false"
-                    );
-                }
+                let continuity = continuity_gate::continuity_after_open(
+                    &meta.id,
+                    &agent_sid,
+                    resumed,
+                    &route,
+                    &cwd_str,
+                    ssh_alias.is_some(),
+                    client.is_custom_route(),
+                )
+                .await;
+
+                // `session/load` 成功本身不能证明上下文完整；下一次发送前仍由发送门核验覆盖。
+                tracing::info!(
+                    target: "session",
+                    session = %meta.id,
+                    agent = %agent_sid,
+                    resumed,
+                    forked = fork_agent,
+                    reason = ?continuity.reason,
+                    "connect session_open_ok; history unverified until the send gate proves coverage"
+                );
                 {
                     let mut guard = self.inner.lock();
                     if let Some(s) = guard.as_mut() {
@@ -1692,7 +1689,7 @@ impl SessionManager {
                         s.effort = effective_effort.clone();
                         s.product_mode = Some(prefs.mode.clone());
                         s.backend = "grok_agent_stdio".into();
-                        s.needs_history_bootstrap = need_bootstrap;
+                        s.continuity = continuity;
                         Self::touch_activity_locked(s);
                         meta = s.meta.clone();
                     }
@@ -1857,7 +1854,7 @@ impl SessionManager {
             provider_retry_attempt: 0,
             provider_retry_aborted: false,
             last_provider_retry: None,
-            needs_history_bootstrap: p.needs_history_bootstrap,
+            continuity: p.continuity.clone(),
             pending_plan_rpc_id: None,
             pending_permission_rpc_id: None,
             pending_permission_options: None,
@@ -2427,7 +2424,7 @@ async fn push_connected_effort(client: &AcpClient, agent_sid: &str, effort: Opti
 ///
 /// An allowlist refusal is returned so the caller can stop the turn. A transient
 /// RPC error is still logged and ignored.
-async fn apply_connected_model(
+pub(super) async fn apply_connected_model(
     client: &AcpClient,
     agent_sid: &str,
     route: &str,
@@ -2746,7 +2743,7 @@ mod connect_preserve_tests {
             provider_retry_attempt: 0,
             provider_retry_aborted: false,
             last_provider_retry: None,
-            needs_history_bootstrap: false,
+            continuity: crate::continuity::ContinuityCheckpoint::default(),
             pending_plan_rpc_id: None,
             pending_permission_rpc_id: None,
             pending_permission_options: None,
@@ -2849,7 +2846,7 @@ mod connect_preserve_tests {
             provider_retry_attempt: 0,
             provider_retry_aborted: false,
             last_provider_retry: None,
-            needs_history_bootstrap: false,
+            continuity: crate::continuity::ContinuityCheckpoint::default(),
             pending_plan_rpc_id: None,
             pending_permission_rpc_id: None,
             pending_permission_options: None,
