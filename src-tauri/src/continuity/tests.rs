@@ -62,7 +62,12 @@ fn assert_coverage_evidence_cleared(checkpoint: &ContinuityCheckpoint) {
 
 #[test]
 fn fresh_agent_with_empty_journal_keeps_the_current_session() {
-    for verdict in [CoverageVerdict::Empty, CoverageVerdict::Missing] {
+    for verdict in [
+        CoverageVerdict::Empty,
+        CoverageVerdict::Missing,
+        // A new agent session may not have written chat_history.jsonl yet.
+        CoverageVerdict::Corrupt,
+    ] {
         assert_eq!(
             decide_coverage_for_send(
                 Some(ContinuityReason::NewAgentSession),
@@ -71,6 +76,17 @@ fn fresh_agent_with_empty_journal_keeps_the_current_session() {
             CoverageDecision::Fresh
         );
     }
+}
+
+#[test]
+fn unreadable_app_journal_never_skips_recovery() {
+    assert_eq!(
+        decide_coverage_for_send(
+            Some(ContinuityReason::NewAgentSession),
+            &CoverageReport::new(CoverageVerdict::JournalCorrupt, 0, 0),
+        ),
+        CoverageDecision::Recover
+    );
 }
 
 #[test]

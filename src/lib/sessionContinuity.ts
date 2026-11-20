@@ -46,6 +46,7 @@ const HISTORY_MISMATCH_REASONS = new Set([
   "history_mismatch",
   "history_corrupt",
   "history_ambiguous",
+  "journal_unreadable",
 ]);
 
 /** 上一轮已发出但未确认落盘的回合；下一轮发送前会重新核验。 */

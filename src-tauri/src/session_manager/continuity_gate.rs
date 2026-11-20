@@ -615,6 +615,15 @@ pub(super) async fn prepare_continuity_send(
             &agent_session_id,
             &report,
         );
+        tracing::info!(
+            target: "continuity",
+            session = %app_session_id,
+            reason = ?checkpoint_reason,
+            verdict = ?report.verdict,
+            total = report.total_prompt_count,
+            covered = report.covered_prompt_count,
+            "continuity send gate"
+        );
         let route = ContinuityRoute::new(
             context.checkpoint.route_id.clone().unwrap_or_default(),
             context.project_path.clone().unwrap_or_default(),
@@ -707,8 +716,16 @@ async fn recover_with_new_session(
         .as_deref()
         .unwrap_or(crate::providers::SESSION_PROVIDER_OFFICIAL);
     if let Some(model_id) = context.model_id.clone().filter(|s| !s.trim().is_empty()) {
+        // 与正常 connect 一致：自定义路由必须把 App 模型 id 解析为 CLI 模型键，
+        // 否则 session/set_model 会静默保留进程默认模型。
+        let model_arg = super::connect::connect_set_model_argument(
+            route_id,
+            Some(route_id),
+            &model_id,
+            Some(&model_id),
+        );
         if let Err(error) =
-            super::connect::apply_connected_model(&acp, &agent_session_id, route_id, &model_id)
+            super::connect::apply_connected_model(&acp, &agent_session_id, route_id, &model_arg)
                 .await
         {
             tracing::warn!(
