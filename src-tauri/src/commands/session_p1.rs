@@ -25,6 +25,24 @@ pub async fn session_get_state(
     Ok(mgr.snapshot())
 }
 
+/// 读取某个 App 会话持久化的上下文连续性状态（不连接 Agent）。
+///
+/// 打开历史会话时 Host 尚未 spawn 进程，`session_get_state` 只有 live slot；
+/// 界面需要据此在发送前展示待核验/已恢复横幅。
+#[tauri::command]
+pub async fn session_continuity_state(
+    id: String,
+) -> Result<Option<crate::continuity::ContinuitySnapshot>, String> {
+    let checkpoint = tokio::task::spawn_blocking(move || crate::continuity::read(&id))
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(match checkpoint {
+        crate::continuity::CheckpointRead::Loaded(checkpoint) => Some((&*checkpoint).into()),
+        crate::continuity::CheckpointRead::Missing
+        | crate::continuity::CheckpointRead::Corrupt => None,
+    })
+}
+
 /// Connect the live slot to an agent process (cold spawn or warm reuse).
 #[tauri::command]
 pub async fn session_connect(
