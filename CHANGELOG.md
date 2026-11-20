@@ -13,6 +13,10 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+- Scrolling past the edge of a thought or tool block now moves the chat.
+- 思考块或工具块滚动到边界后，继续滚动会带动会话视口。
+
 ## [0.2.55] - 2026-11-19
 
 > **Highlight:** Model, effort and context window choices now follow each chat.
