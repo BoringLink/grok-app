@@ -1,5 +1,3 @@
-import type { SessionContinuitySnapshot } from "../sessionContinuity";
-
 export type SessionState =
   | "idle"
   | "connecting"
@@ -34,8 +32,6 @@ export interface SessionSnapshot {
   modelId?: string | null;
   projectPath?: string | null;
   title?: string;
-  /** Host 上下文连续性状态（旧 payload 可能没有该字段）。 */
-  continuity?: SessionContinuitySnapshot | null;
 }
 
 export interface MessageAttachment {
