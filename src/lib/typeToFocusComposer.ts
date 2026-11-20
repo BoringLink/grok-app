@@ -14,12 +14,10 @@ export const TYPE_TO_FOCUS_PROTECTED_SEL = [
   ".xterm",
   ".xterm-helper-textarea",
   ".sw-terminal",
-  ".bt",
   ".cm-editor",
   ".cm-content",
   ".ProseMirror",
   "[data-testid='side-terminal-xterm']",
-  "[data-testid='bottom-terminal']",
 ].join(", ");
 
 export type TypeToFocusKey = {

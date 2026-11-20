@@ -123,7 +123,7 @@ export const ruCore = {
   "shortcuts.toggleRightPane": "Показать/скрыть боковую панель",
   "shortcuts.sideFiles": "Боковая рабочая среда · Файлы",
   "shortcuts.sideBrowser": "Боковая рабочая среда · Браузер",
-  "shortcuts.sideTerminal": "Терминал",
+  "shortcuts.sideTerminal": "Боковая рабочая среда · Терминал",
   "shortcuts.closeSideTab": "Закрыть боковую вкладку (окно, если вкладок нет)",
   "shortcuts.sidebarSessionNav": "Следующий / предыдущий чат на боковой панели (фокус в списке)",
   "shortcuts.recentSessionMru": "Следующий / предыдущий недавно использованный чат",

@@ -123,7 +123,7 @@ export const itCore = {
   "shortcuts.toggleRightPane": "Mostra/nascondi barra laterale",
   "shortcuts.sideFiles": "Workbench laterale · File",
   "shortcuts.sideBrowser": "Workbench laterale · Browser",
-  "shortcuts.sideTerminal": "Terminale",
+  "shortcuts.sideTerminal": "Workbench laterale · Terminale",
   "shortcuts.closeSideTab": "Chiudi scheda laterale (finestra se nessuna è aperta)",
   "shortcuts.sidebarSessionNav": "Chat successiva / precedente nella barra laterale (focus nell’elenco)",
   "shortcuts.recentSessionMru": "Chat recente successiva / precedente",

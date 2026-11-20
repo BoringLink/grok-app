@@ -123,7 +123,7 @@ export const filCore = {
   "shortcuts.toggleRightPane": "Ipakita/itago ang sidebar",
   "shortcuts.sideFiles": "Side workbench · Mga file",
   "shortcuts.sideBrowser": "Workbench sa gilid · Browser",
-  "shortcuts.sideTerminal": "Terminal",
+  "shortcuts.sideTerminal": "Side workbench · Terminal",
   "shortcuts.closeSideTab": "Isara ang side tab (window kapag walang bukas)",
   "shortcuts.sidebarSessionNav": "Susunod / nakaraang chat sa sidebar (focus sa listahan)",
   "shortcuts.recentSessionMru": "Susunod / nakaraang kamakailang chat",

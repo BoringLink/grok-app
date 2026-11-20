@@ -123,7 +123,7 @@ export const esCore = {
   "shortcuts.toggleRightPane": "Mostrar/ocultar barra lateral",
   "shortcuts.sideFiles": "Banco de trabajo · Archivos",
   "shortcuts.sideBrowser": "Banco de trabajo · Navegador",
-  "shortcuts.sideTerminal": "Terminal",
+  "shortcuts.sideTerminal": "Banco de trabajo · Terminal",
   "shortcuts.closeSideTab": "Cerrar pestaña lateral (la ventana si no hay ninguna abierta)",
   "shortcuts.sidebarSessionNav": "Chat siguiente / anterior en la barra lateral (foco en la lista)",
   "shortcuts.recentSessionMru": "Chat reciente siguiente / anterior",

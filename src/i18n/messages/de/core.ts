@@ -123,7 +123,7 @@ export const deCore = {
   "shortcuts.toggleRightPane": "Seitenleiste ein-/ausblenden",
   "shortcuts.sideFiles": "Seiten-Workbench · Dateien",
   "shortcuts.sideBrowser": "Seiten-Workbench · Browser",
-  "shortcuts.sideTerminal": "Terminal",
+  "shortcuts.sideTerminal": "Seiten-Workbench · Terminal",
   "shortcuts.closeSideTab": "Seitentab schließen (Fenster, wenn keiner offen)",
   "shortcuts.sidebarSessionNav": "Nächster / vorheriger Chat in der Seitenleiste (Fokus in der Liste)",
   "shortcuts.recentSessionMru": "Nächster / vorheriger kürzlich verwendeter Chat",

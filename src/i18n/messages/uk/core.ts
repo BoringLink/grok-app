@@ -123,7 +123,7 @@ export const ukCore = {
   "shortcuts.toggleRightPane": "Показати/сховати бічну панель",
   "shortcuts.sideFiles": "Бічна робоча область · Файли",
   "shortcuts.sideBrowser": "Бічна робоча область · Браузер",
-  "shortcuts.sideTerminal": "Термінал",
+  "shortcuts.sideTerminal": "Бічна робоча область · Термінал",
   "shortcuts.closeSideTab": "Закрити бічну вкладку (вікно, якщо вкладок немає)",
   "shortcuts.sidebarSessionNav": "Наступний / попередній чат на бічній панелі (фокус у списку)",
   "shortcuts.recentSessionMru": "Наступний / попередній нещодавно використаний чат",

@@ -123,7 +123,7 @@ export const taCore = {
   "shortcuts.toggleRightPane": "பக்கப்பட்டியைக் காட்டு/மறை",
   "shortcuts.sideFiles": "சைட் ஒர்க் பெஞ்ச் · கோப்புகள்",
   "shortcuts.sideBrowser": "சைட் ஒர்க் பெஞ்ச் · உலாவி",
-  "shortcuts.sideTerminal": "முனையம்",
+  "shortcuts.sideTerminal": "சைட் ஒர்க் பெஞ்ச் · முனையம்",
   "shortcuts.closeSideTab": "பக்க தாவலை மூடு (சாளரம் எதுவும் திறக்கப்படாத போது)",
   "shortcuts.sidebarSessionNav": "பக்கப்பட்டியில் அடுத்த / முந்தைய உரையாடல் (பட்டியலில் கவனம்)",
   "shortcuts.recentSessionMru": "சமீபத்தில் பயன்படுத்திய அடுத்த / முந்தைய உரையாடல்",

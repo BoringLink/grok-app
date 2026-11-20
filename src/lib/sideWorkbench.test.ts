@@ -18,6 +18,7 @@ import {
   sideTabCloseNeedsConfirm,
   setActiveSideTab,
   sidePickerOptions,
+  SIDE_PICKER_SHORTCUT_IDS,
   SIDE_PICKER_EXCLUDED,
   SIDE_TAB_DEFAULT_NAME_KEYS,
   toggleSideExpanded,
@@ -34,6 +35,10 @@ import {
 } from "./sideWorkbench";
 
 describe("sidePickerOptions", () => {
+  it("shows the registered terminal shortcut in the picker", () => {
+    expect(SIDE_PICKER_SHORTCUT_IDS.terminal).toBe("sideTerminal");
+  });
+
   it("excludes plan and side-chat always", () => {
     const withGit = sidePickerOptions({ isGitProject: true });
     const kinds = withGit.map((o) => o.kind);

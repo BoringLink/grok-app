@@ -123,7 +123,7 @@ export const trCore = {
   "shortcuts.toggleRightPane": "Yan paneli göster/gizle",
   "shortcuts.sideFiles": "Yan çalışma alanı · Dosyalar",
   "shortcuts.sideBrowser": "Yan çalışma alanı · Tarayıcı",
-  "shortcuts.sideTerminal": "Terminal",
+  "shortcuts.sideTerminal": "Yan çalışma alanı · Terminal",
   "shortcuts.closeSideTab": "Yan sekmeyi kapat (açık sekme yoksa pencereyi)",
   "shortcuts.sidebarSessionNav": "Kenar çubuğunda sonraki / önceki sohbet (liste odaktayken)",
   "shortcuts.recentSessionMru": "Son kullanılan sonraki / önceki sohbet",

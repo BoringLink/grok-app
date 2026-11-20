@@ -594,10 +594,6 @@ const SetupWizard = lazy(async () => {
   const m = await import("@/components/SetupWizard");
   return { default: m.SetupWizard };
 });
-const BottomTerminal = lazy(async () => {
-  const m = await import("@/components/bottom-terminal/BottomTerminal");
-  return { default: m.BottomTerminal };
-});
 // Settings tree (~12k lines) only loads when the settings overlay opens.
 const WorkbenchSettingsStage = lazy(async () => {
   const m = await import("@/app/WorkbenchSettingsStage");
@@ -660,7 +656,6 @@ import {
   createSideWorkbenchChromeHost,
   useSideWorkbenchChrome,
 } from "@/hooks/useSideWorkbenchChrome";
-import { useBottomTerminal } from "@/hooks/useBottomTerminal";
 import { useProjectSpaces } from "@/hooks/useProjectSpaces";
 import {
   findSpace,
@@ -1222,13 +1217,6 @@ export function AppWorkbench() {
     hostRef: mcpDoctorHostRef,
     projectPath: activeProject?.path ?? null,
   });
-  const bottomTerminal = useBottomTerminal(activeProject?.id);
-  const [bottomTerminalMounted, setBottomTerminalMounted] = useState(false);
-  useEffect(() => {
-    if (bottomTerminal.state.open || bottomTerminal.state.tabs.length > 0) {
-      setBottomTerminalMounted(true);
-    }
-  }, [bottomTerminal.state.open, bottomTerminal.state.tabs.length]);
   /**
    * On-disk default cwd for unbound chats (`workspaces/general`).
    * Not a sidebar project — used by connect / resource pane when no folder bound.
@@ -1339,8 +1327,6 @@ export function AppWorkbench() {
     toggleRightPane: () => {},
     /** Open / focus a Side Workbench tab from the empty-state picker chords. */
     openSidePicker: (_kind: SidePickerKind) => {},
-    /** Toggle the chat-column bottom terminal (⌘`). */
-    toggleBottomTerminal: () => {},
     toggleVoice: () => {},
     cancelVoice: () => {},
     startLiveVoice: () => {},
@@ -1555,7 +1541,8 @@ export function AppWorkbench() {
           shortcutHandlersRef.current.openSidePicker("browser");
           return;
         case "sideTerminal":
-          shortcutHandlersRef.current.toggleBottomTerminal();
+          if (e.repeat) return;
+          shortcutHandlersRef.current.openSidePicker("terminal");
           return;
         case "liveVoice":
           // Defense in depth: Settings can disable only this hotkey.
@@ -10286,9 +10273,6 @@ export function AppWorkbench() {
     openSidePicker: (kind: SidePickerKind) => {
       openPicker(kind);
     },
-    toggleBottomTerminal: () => {
-      bottomTerminal.toggle();
-    },
     toggleVoice: () => {
       toggleVoice();
     },
@@ -12197,8 +12181,6 @@ export function AppWorkbench() {
           sidebarToggleUnread={unreadSessionIds.size > 0}
           openSessionMenu={openSessionMenu}
           onOpenPhoneAccount={() => setPhoneAccountOpen(true)}
-          bottomTerminalOpen={bottomTerminal.state.open}
-          onToggleBottomTerminal={bottomTerminal.toggle}
           mirrorLinkOk={mirrorLinkOk}
           mirrorHostLabel={mirrorHostLabel}
           connPill={connPill}
@@ -12652,22 +12634,6 @@ export function AppWorkbench() {
           </WorkbenchChatStage>
           </>
           )}
-          {bottomTerminalMounted ? (
-            <Suspense fallback={null}>
-              <BottomTerminal
-                locale={locale}
-                projectPath={effectiveProjectPath}
-                sshAlias={activeProject?.sshAlias ?? null}
-                state={bottomTerminal.state}
-                onAddTab={bottomTerminal.addTab}
-                onCloseTab={bottomTerminal.closeTab}
-                onCloseAllTabs={bottomTerminal.closeAllTabs}
-                onActivateTab={bottomTerminal.activateTab}
-                onHeightChange={bottomTerminal.setHeight}
-                onClosePanel={bottomTerminal.closePanel}
-              />
-            </Suspense>
-          ) : null}
         </WorkbenchMain>
 
         <WorkbenchResourcesAside

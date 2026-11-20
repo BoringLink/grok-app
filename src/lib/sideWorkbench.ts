@@ -70,7 +70,7 @@ export type OpenSideTabResult = SideWorkbenchState & {
 export const SIDE_PICKER_SHORTCUT_IDS = {
   file: "sideFiles",
   browser: "sideBrowser",
-  // sideTerminal (⌘`) toggles the chat-column bottom panel, not this picker row.
+  terminal: "sideTerminal",
 } as const;
 
 const PICKER_BASE: SidePickerOption[] = [
