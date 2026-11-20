@@ -13,6 +13,16 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Fixed
+- Reopened chats verify saved agent context and restore it from history.
+- The chat shows when context is unverified or restored.
+- Undelivered messages leave the chat, and the draft is kept for retry.
+
+**中文 · 修复**
+- 重开会话时核对 Agent 上下文，缺失时从会话历史恢复。
+- 聊天中会显示上下文待核验或已恢复的状态。
+- 未送达模型的消息会移除，草稿保留以便重试。
+
 ## [0.2.56] - 2026-11-20
 
 > **Highlight:** The terminal now lives in the Side Workbench.
