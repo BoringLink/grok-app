@@ -37,8 +37,6 @@ import { type Project, type SessionRow } from "@/lib/app/sidebarModels";
 import type { ChatMessage, SessionSnapshot } from "@/lib/session";
 import { UiErrorBoundary } from "@/components/UiErrorBoundary";
 import { ConversationThreadLive } from "@/components/lobe-chat";
-import { ContinuityBanner } from "@/components/ContinuityBanner";
-import { useSessionContinuity } from "@/hooks/useSessionContinuity";
 import { GoalOrchSessionChip } from "@/components/GoalOrchSessionChip";
 import { PlanStatusBar } from "@/components/PlanStatusBar";
 import { ChatFindLive } from "@/components/ChatFindLive";
@@ -211,7 +209,6 @@ export function WorkbenchChatStage(p: WorkbenchChatStageProps) {
     tasksPanelOpen, tr, turnStartedAt, viewingSessionIdRef, welcomeSession, worktreeEntryForPath,
     children,
   } = p;
-  const continuityView = useSessionContinuity(session, !!lastUserMessageId);
   return (
     <>
           {/* Secondary multi-window: concurrent live tip + focus main. */}
@@ -526,9 +523,6 @@ export function WorkbenchChatStage(p: WorkbenchChatStageProps) {
           <div className="sr-only" aria-live="polite" aria-atomic="true">
             {streamA11yNote}
           </div>
-          {continuityView ? (
-            <ContinuityBanner view={continuityView} tr={tr} />
-          ) : null}
           <AttachedChatLookupContext.Provider value={attachedChatLookup}>
           <UiErrorBoundary
             resetKey={session.sessionId ?? `draft-${session.title ?? "new"}`}

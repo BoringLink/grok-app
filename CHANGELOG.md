@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Changed
+- Chat no longer shows the context recovery banner. Context verification and recovery still run before each send.
+
+**中文 · 变更**
+- 聊天界面不再显示上下文恢复横幅。发送前的上下文核验与恢复保持不变。
+
 ## [0.2.58] - 2026-11-20
 
 > **Highlight:** Answers keep their full tail when a turn ends mid-stream.
