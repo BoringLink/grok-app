@@ -90,6 +90,25 @@ export function nextComposerSubmitSettlement(
 }
 
 /**
+ * 发送失败后应移除的乐观消息 id。
+ *
+ * 只有 Host 已接受 prompt（可能已写入 journal）时才保留用户气泡；
+ * 连接/恢复失败时 prompt 从未 dispatch，用户气泡必须一起移除，
+ * 不能把消息显示成“已送达模型”。队列发送始终同时移除两者。
+ */
+export function failedSendOptimisticDropIds(opts: {
+  promptAccepted: boolean;
+  fromQueue: boolean;
+  userMessageId: string;
+  pendingAssistantId: string;
+}): string[] {
+  if (opts.fromQueue || !opts.promptAccepted) {
+    return [opts.userMessageId, opts.pendingAssistantId];
+  }
+  return [opts.pendingAssistantId];
+}
+
+/**
  * A new-chat send materializes a session and adopts that view, so `stillHere`
  * is false. The per-project new-session buffer must still be wiped on success,
  * or the next "New session" restores the just-sent prompt (#620).
