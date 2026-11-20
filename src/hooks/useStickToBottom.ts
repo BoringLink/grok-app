@@ -48,7 +48,14 @@ import {
   PINNED_LAYOUT_CLAMP_RECOVER_PX,
 } from "@/lib/stickToBottom";
 import { traceChatScroll } from "@/lib/chatScrollJumpForensics";
-
+import {
+  NESTED_SCROLL_EDGE_EPSILON_PX,
+  NESTED_SCROLL_GESTURE_IDLE_MS,
+  canNestedBoxConsume,
+  nextScrollTop,
+  wheelDeltaToPixels,
+  type ScrollBoxMetrics,
+} from "@/lib/nestedScrollChaining";
 
 export type UseStickToBottomOptions = {
   /** Re-pin when the conversation identity changes (session / first message). */
@@ -79,6 +86,64 @@ function stickNowMs(): number {
     typeof performance.now === "function"
     ? performance.now()
     : Date.now();
+}
+
+const SCROLL_OVERFLOW_Y = new Set(["auto", "scroll", "overlay"]);
+
+function readBoxMetrics(el: HTMLElement): ScrollBoxMetrics {
+  return {
+    scrollTop: el.scrollTop,
+    scrollHeight: el.scrollHeight,
+    clientHeight: el.clientHeight,
+  };
+}
+
+function isNestedVerticalScroller(el: HTMLElement): boolean {
+  if (el.scrollHeight <= el.clientHeight + NESTED_SCROLL_EDGE_EPSILON_PX) {
+    return false;
+  }
+  return SCROLL_OVERFLOW_Y.has(getComputedStyle(el).overflowY);
+}
+
+/**
+ * Scrollable ancestors of a wheel target, nearest first, below the transcript
+ * viewport. Thought bodies can sit inside a capped step list, so more than one
+ * box may own part of the gesture.
+ */
+function collectNestedScrollers(
+  start: Element | null,
+  viewport: HTMLElement,
+): HTMLElement[] {
+  const boxes: HTMLElement[] = [];
+  let node: Element | null = start;
+  while (node && node !== viewport) {
+    if (node instanceof HTMLElement && isNestedVerticalScroller(node)) {
+      boxes.push(node);
+    }
+    node = node.parentElement;
+  }
+  return boxes;
+}
+
+/** Keep a wheel gesture on the box it started over after `data-scrolling`
+ * disables pointer events on the transcript content. */
+function wheelStaysOver(event: WheelEvent, el: HTMLElement): boolean {
+  if (event.clientX === 0 && event.clientY === 0) return false;
+  const rect = el.getBoundingClientRect();
+  return (
+    event.clientX >= rect.left &&
+    event.clientX <= rect.right &&
+    event.clientY >= rect.top &&
+    event.clientY <= rect.bottom
+  );
+}
+
+function writeBoxScrollTop(el: HTMLElement, top: number): void {
+  const prev = el.style.scrollBehavior;
+  el.style.scrollBehavior = "auto";
+  el.scrollTop = top;
+  if (prev) el.style.scrollBehavior = prev;
+  else el.style.removeProperty("scroll-behavior");
 }
 
 export function useStickToBottom(
@@ -267,6 +332,12 @@ export function useStickToBottom(
     // Last wheel/touch/key/scrollbar input. The paint-time clamp guard must
     // never fight a fresh gesture, and browser clamps land long after input.
     let lastUserInputAt = 0;
+    // Nested scrollers own wheel ticks until they hit an edge. `data-scrolling`
+    // can remove them from hit testing mid-gesture, so remember the box the
+    // gesture last hit directly. A new gesture over a different nested box
+    // inside the 220ms hover-restore window starts on the transcript.
+    let nestedGestureEl: HTMLElement | null = null;
+    let nestedGestureAt = 0;
     const clearBottomRebound = () => {
       bottomIntentUntilRef.current = 0;
       if (bottomReboundTimer != null) {
@@ -506,7 +577,68 @@ export function useStickToBottom(
     };
 
     const handleWheel = (e: WheelEvent) => {
-      lastUserInputAt = stickNowMs();
+      const now = stickNowMs();
+      // Horizontal-dominant gestures belong to code blocks / tables; they must
+      // not escape the pin or take the vertical transcript.
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      lastUserInputAt = now;
+      const direct = collectNestedScrollers(
+        e.target instanceof Element ? e.target : null,
+        el,
+      );
+      const nested =
+        direct.length > 0
+          ? direct
+          : nestedGestureEl &&
+              nestedGestureEl.isConnected &&
+              now - nestedGestureAt <= NESTED_SCROLL_GESTURE_IDLE_MS &&
+              wheelStaysOver(e, nestedGestureEl)
+            ? collectNestedScrollers(nestedGestureEl, el)
+            : [];
+
+      if (nested.length > 0) {
+        nestedGestureEl = nested[0];
+        nestedGestureAt = now;
+        const delta = wheelDeltaToPixels(
+          e.deltaY,
+          e.deltaMode,
+          nested[0].clientHeight,
+        );
+        if (delta !== 0) {
+          // Without cancelable we cannot stop a second native scroll, so leave
+          // the gesture to the browser.
+          if (!e.cancelable) return;
+          const consumerIndex = nested.findIndex((box) =>
+            canNestedBoxConsume(readBoxMetrics(box), delta),
+          );
+          if (consumerIndex >= 0) {
+            const consumer = nested[consumerIndex];
+            // The box under the pointer keeps native scrolling when it still
+            // has room. A deeper edge hands the tick to the next box up.
+            if (direct.length > 0 && consumerIndex === 0) return;
+            const next = nextScrollTop(readBoxMetrics(consumer), delta);
+            if (next != null) {
+              e.preventDefault();
+              writeBoxScrollTop(consumer, next);
+              return;
+            }
+          }
+          // No nested box can move; the gesture now belongs to the transcript.
+          const next = nextScrollTop(readBoxMetrics(el), delta);
+          if (next != null) {
+            e.preventDefault();
+            applyScrollTop(next);
+          }
+        } else {
+          return;
+        }
+      } else if (
+        nestedGestureEl &&
+        now - nestedGestureAt > NESTED_SCROLL_GESTURE_IDLE_MS
+      ) {
+        nestedGestureEl = null;
+      }
+
       if (
         shouldPreventPinnedBottomWheel({
           pinned: isPinnedRef.current,

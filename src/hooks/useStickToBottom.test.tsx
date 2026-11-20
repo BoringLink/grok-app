@@ -358,3 +358,265 @@ describe("useStickToBottom sustained streaming follow (#1257)", () => {
     expect(result.current.isPinnedRef.current).toBe(true);
   });
 });
+
+describe("useStickToBottom nested scroll chaining", () => {
+  type BoxState = {
+    scrollTop: number;
+    scrollHeight: number;
+    clientHeight: number;
+  };
+
+  function makeBox(state: BoxState): HTMLDivElement {
+    const el = document.createElement("div");
+    el.style.overflowY = "auto";
+    Object.defineProperties(el, {
+      scrollTop: {
+        configurable: true,
+        get: () => state.scrollTop,
+        set: (value: number) => {
+          state.scrollTop = value;
+        },
+      },
+      scrollHeight: { configurable: true, get: () => state.scrollHeight },
+      clientHeight: { configurable: true, get: () => state.clientHeight },
+      clientWidth: { configurable: true, get: () => 800 },
+    });
+    return el;
+  }
+
+  function mountTranscript() {
+    const viewportState: BoxState = {
+      scrollTop: 1600,
+      scrollHeight: 2000,
+      clientHeight: 400,
+    };
+    const viewport = makeBox(viewportState);
+    const content = document.createElement("div");
+    viewport.appendChild(content);
+    document.body.appendChild(viewport);
+
+    const { result, rerender } = renderHook(
+      ({ keyName }) => useStickToBottom({ conversationKey: keyName }),
+      { initialProps: { keyName: "before-attach" } },
+    );
+    Object.assign(result.current.viewportRef, { current: viewport });
+    Object.assign(result.current.contentRef, { current: content });
+    rerender({ keyName: "attached" });
+    act(() => vi.advanceTimersByTime(40));
+    viewportState.scrollTop = 1600;
+    return { result, content, viewport, viewportState };
+  }
+
+  function wheel(
+    target: Element,
+    deltaY: number,
+    init?: WheelEventInit,
+  ): WheelEvent {
+    const event = new WheelEvent("wheel", {
+      deltaY,
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    act(() => {
+      target.dispatchEvent(event);
+    });
+    return event;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal("ResizeObserver", NoopResizeObserver);
+  });
+
+  afterEach(() => {
+    document.body.replaceChildren();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("lets a nested box with room scroll down while the transcript is pinned", () => {
+    const { result, content, viewportState } = mountTranscript();
+    const nestedState: BoxState = {
+      scrollTop: 100,
+      scrollHeight: 800,
+      clientHeight: 200,
+    };
+    const nested = makeBox(nestedState);
+    content.appendChild(nested);
+
+    const event = wheel(nested, 40);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(viewportState.scrollTop).toBe(1600);
+    expect(nestedState.scrollTop).toBe(100);
+    expect(result.current.isPinnedRef.current).toBe(true);
+  });
+
+  it("carries an upward wheel from the nested top edge into the transcript", () => {
+    const { result, content, viewportState } = mountTranscript();
+    const nested = makeBox({
+      scrollTop: 0,
+      scrollHeight: 800,
+      clientHeight: 200,
+    });
+    content.appendChild(nested);
+
+    const event = wheel(nested, -40);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(viewportState.scrollTop).toBe(1560);
+    expect(result.current.isPinnedRef.current).toBe(false);
+  });
+
+  it("carries a downward wheel from the nested bottom edge into the transcript", () => {
+    const { content, viewportState } = mountTranscript();
+    viewportState.scrollTop = 800;
+    const nested = makeBox({
+      scrollTop: 600,
+      scrollHeight: 800,
+      clientHeight: 200,
+    });
+    content.appendChild(nested);
+
+    const event = wheel(nested, 40);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(viewportState.scrollTop).toBe(840);
+  });
+
+  it("hands the tick to the next nested box before the transcript", () => {
+    const { content, viewportState } = mountTranscript();
+    const outerState: BoxState = {
+      scrollTop: 200,
+      scrollHeight: 1000,
+      clientHeight: 300,
+    };
+    const outer = makeBox(outerState);
+    content.appendChild(outer);
+    const inner = makeBox({
+      scrollTop: 0,
+      scrollHeight: 500,
+      clientHeight: 200,
+    });
+    outer.appendChild(inner);
+
+    const event = wheel(inner, -40);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(outerState.scrollTop).toBe(160);
+    expect(viewportState.scrollTop).toBe(1600);
+  });
+
+  it("keeps scrolling the nested box when data-scrolling changes the target", () => {
+    const { content, viewport, viewportState } = mountTranscript();
+    const nestedState: BoxState = {
+      scrollTop: 100,
+      scrollHeight: 800,
+      clientHeight: 200,
+    };
+    const nested = makeBox(nestedState);
+    Object.defineProperty(nested, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, right: 200, bottom: 200 }),
+    });
+    content.appendChild(nested);
+
+    wheel(nested, -20);
+    const second = wheel(viewport, -20, { clientX: 50, clientY: 50 });
+
+    expect(second.defaultPrevented).toBe(true);
+    expect(nestedState.scrollTop).toBe(80);
+    expect(viewportState.scrollTop).toBe(1600);
+  });
+
+  it("chains from the edge after data-scrolling changes the target", () => {
+    const { content, viewport, viewportState } = mountTranscript();
+    const nested = makeBox({
+      scrollTop: 0,
+      scrollHeight: 800,
+      clientHeight: 200,
+    });
+    Object.defineProperty(nested, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, right: 200, bottom: 200 }),
+    });
+    content.appendChild(nested);
+
+    wheel(nested, -40);
+    const second = wheel(viewport, -40, { clientX: 50, clientY: 50 });
+
+    expect(second.defaultPrevented).toBe(true);
+    expect(viewportState.scrollTop).toBe(1520);
+  });
+
+  it("ignores horizontal-dominant gestures", () => {
+    const { result, viewport } = mountTranscript();
+    const event = wheel(viewport, -5, { deltaX: 40 });
+    expect(event.defaultPrevented).toBe(false);
+    expect(result.current.isPinnedRef.current).toBe(true);
+  });
+
+  it("leaves a non-cancelable wheel to the browser", () => {
+    const { content, viewportState } = mountTranscript();
+    const nested = makeBox({
+      scrollTop: 0,
+      scrollHeight: 800,
+      clientHeight: 200,
+    });
+    content.appendChild(nested);
+    const event = new WheelEvent("wheel", {
+      deltaY: -40,
+      bubbles: true,
+      cancelable: false,
+    });
+    act(() => {
+      nested.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(false);
+    expect(viewportState.scrollTop).toBe(1600);
+  });
+
+  it("drops the gesture memory after the idle window", () => {
+    const { content, viewport, viewportState } = mountTranscript();
+    const nested = makeBox({
+      scrollTop: 0,
+      scrollHeight: 800,
+      clientHeight: 200,
+    });
+    Object.defineProperty(nested, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, right: 200, bottom: 200 }),
+    });
+    content.appendChild(nested);
+
+    wheel(nested, -40);
+    act(() => vi.advanceTimersByTime(300));
+    viewportState.scrollTop = 1500;
+    const afterIdle = wheel(viewport, -40, { clientX: 50, clientY: 50 });
+
+    expect(afterIdle.defaultPrevented).toBe(false);
+    expect(viewportState.scrollTop).toBe(1500);
+  });
+
+  it("forgets the nested box once the pointer leaves it", () => {
+    const { content, viewport, viewportState } = mountTranscript();
+    const nested = makeBox({
+      scrollTop: 0,
+      scrollHeight: 800,
+      clientHeight: 200,
+    });
+    Object.defineProperty(nested, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, right: 200, bottom: 200 }),
+    });
+    content.appendChild(nested);
+
+    wheel(nested, -40);
+    viewportState.scrollTop = 1500;
+    const outside = wheel(viewport, -40, { clientX: 500, clientY: 500 });
+
+    expect(outside.defaultPrevented).toBe(false);
+    expect(viewportState.scrollTop).toBe(1500);
+  });
+});
