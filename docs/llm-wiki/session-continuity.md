@@ -345,15 +345,30 @@ It is set when `session/prompt` is dispatched and cleared **only** by:
 resolves the `session/prompt` waiter directly. The result is queued as
 `AcpEvent::PromptRpcSettled`, and the owning event pump — the same single
 consumer that applies stream/tool events — claims the waiter, applies the
-authoritative `PromptComplete`, and only then sends the result. `mpsc::send`
-does not wait for the receiver, so resolving in the reader let the turn task
-finish and clear `stream_buf` while the pump was still behind chunks that
-arrived earlier; those chunks then arrived with `prompt_in_flight=false` and
-were dropped as session-load replay — the App journal kept an empty assistant
-row while the agent-side history already held the body. `prompt_for` adds no
-events after the RPC: the queued terminal's finish path takes the pending
-stream payload with `done: true`, so the UI stream settles without a separate
-done tick or a duplicate `PromptComplete`.
+authoritative `PromptComplete`, and only then sends the result. This preserves
+the chunks that arrived earlier: resolving in the reader let the turn task finish
+and clear `stream_buf` while the pump was still behind them, so the chunks then
+arrived with `prompt_in_flight=false` and were dropped as session-load replay.
+The App journal kept an empty assistant row while agent-side history already held
+the body.
+
+The Tokio `mpsc` queue is bounded to 64 events. When it fills, the reader waits
+for capacity, applying backpressure to ACP input. Prompt settlement first
+reserves capacity, then records its first enqueue time and publishes the terminal
+while holding the pending-map lock. EOF uses the same lock, so it cannot enqueue
+`ProcessExited` between marking and publishing the settlement. EOF preserves an
+queued settlement while the event-queue receiver remains open; if that receiver is
+closed, the reader fails pending requests. The pump stops at `ProcessExited`,
+after applying all events ordered before it.
+
+A queued settlement must be claimed within `PROMPT_SETTLE_APPLY_TIMEOUT_SECS`
+(45s); this budget starts at its first enqueue and includes time behind earlier
+FIFO events. Checks run every `PROMPT_WAIT_SLICE_SECS` (5s), so expiry may occur
+on the next poll after the budget. After claim, terminal application has a
+separate 45s grace. Either stalled stage fails the turn with a diagnostic error.
+`prompt_for` adds no events after the RPC: the queued terminal's finish path takes
+the pending stream payload with `done: true`, so the UI stream settles without a
+separate done tick or duplicate `PromptComplete`.
 
 The claim is atomic (one pending-map removal). The early `prompt_complete`
 fallback and the real RPC result can both queue a settlement for the same prompt
@@ -370,8 +385,10 @@ Failure outcomes by path:
 | Case | Behavior |
 |------|----------|
 | `session/prompt` RPC error | The result is queued as `PromptRpcSettled`; the pump claims it and delivers `Err` without synthesizing an authoritative `PromptComplete`. The Host fails the turn on the RPC error path. |
-| timeout / stop / abort | The waiter entry is already removed, so a later settlement claims nothing and applies no terminal. The idle watchdog only fails the turn when it removes the entry itself; if the pump already claimed it, the RPC result is still coming and the wait continues. That post-claim wait is bounded by a terminal-application grace (45s, checked every poll slice): a pump that claims the waiter but never applies the terminal fails the turn with a diagnostic error instead of polling forever. |
-| no pump listening (host-less reader, receiver closed) | `event_tx.send` fails; the reader claims and delivers the result inline. There is no queue to order against and no Host turn state to end. |
+| idle timeout | If no settlement is queued, the watchdog may remove the waiter. A queued terminal gets the claim grace described above; a dropped turn oneshot causes the pump to apply no terminal. |
+| stop / abort / write failure | These explicit paths may remove a queued waiter immediately. A later settlement then claims nothing and applies no terminal. |
+| reader EOF | Preserve a queued settlement while the event-queue receiver is open. If that receiver is closed, fail pending requests. |
+| no pump listening (host-less reader, event-queue receiver closed) | Reserving queue capacity fails; the reader claims and delivers the result inline. There is no live pump to order against and no Host turn state to end. |
 
 `_x.ai/session/prompt_complete` arrives as `authoritative: false` and only
 *defers*. `schedule_prompt_complete_fallback` is the escape hatch for an agent
