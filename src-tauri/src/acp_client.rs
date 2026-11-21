@@ -1685,7 +1685,10 @@ impl AcpClient {
         let mut pending = self.pending.lock();
         if let Some(pending) = pending.get_mut(&id) {
             if pending.method == "session/prompt" {
-                pending.settlement_queued_at = Some(Instant::now());
+                pending
+                    .settlement_queued_at
+                    .get_or_insert_with(Instant::now);
+                // EOF 使用同一把锁，确保 terminal 入队先于 ProcessExited。
                 permit.send((
                     session_id,
                     AcpEvent::PromptRpcSettled {
@@ -2823,6 +2826,7 @@ impl AcpClient {
         pending.remove(&id).is_some()
     }
 
+    /// 在 queued terminal 超过 grace 仍未被事件泵认领时结束等待。
     fn expire_stalled_queued_prompt(&self, id: u64, grace: Duration) -> bool {
         let mut pending = self.pending.lock();
         let stalled = pending.get(&id).is_some_and(|pending| {
@@ -8323,7 +8327,7 @@ mod prompt_settle_tests {
             .lock()
             .get_mut(&PROMPT_ID)
             .expect("waiter")
-            .settlement_queued_at = Some(Instant::now() - Duration::from_millis(10));
+            .settlement_queued_at = Some(Instant::now());
 
         let error = client
             .await_prompt_settlement(
@@ -8334,7 +8338,7 @@ mod prompt_settle_tests {
                 PromptWaitBudget {
                     idle: Duration::from_secs(60),
                     slice: Duration::from_millis(1),
-                    apply_grace: Duration::from_millis(1),
+                    apply_grace: Duration::ZERO,
                 },
             )
             .await
