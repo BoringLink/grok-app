@@ -18,6 +18,9 @@ use tracing::{debug, error, info, warn};
 
 use crate::error::{AgentError, AgentErrorCode};
 
+/// 每个 ACP client 的事件上限；队列满时生产方等待 Host 释放容量。
+const ACP_EVENT_QUEUE_CAPACITY: usize = 64;
+
 #[derive(Debug, Clone)]
 pub enum AcpEvent {
     State {
@@ -277,6 +280,8 @@ struct Pending {
     /// fallback free only the right waiter when one process hosts several
     /// concurrent turns (concurrent multi-session).
     session_id: Option<String>,
+    /// EOF 到达时，已排队的 prompt terminal 必须先由事件泵应用。
+    settlement_queued: bool,
 }
 
 /// Claimed `session/prompt` waiter. Exactly one settlement owns it; the claim
@@ -477,7 +482,7 @@ pub struct AcpClient {
     stdin: AsyncMutex<Option<Box<dyn AsyncWrite + Unpin + Send>>>,
     next_id: AtomicU64,
     pending: ParkingMutex<HashMap<u64, Pending>>,
-    event_tx: mpsc::UnboundedSender<(Option<String>, AcpEvent)>,
+    event_tx: mpsc::Sender<(Option<String>, AcpEvent)>,
     agent_session_id: ParkingMutex<Option<String>>,
     #[allow(dead_code)]
     cli_path: PathBuf,
@@ -634,13 +639,7 @@ impl AcpClient {
     pub async fn spawn(
         cli_path: PathBuf,
         cwd: PathBuf,
-    ) -> Result<
-        (
-            Arc<Self>,
-            mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>,
-        ),
-        AgentError,
-    > {
+    ) -> Result<(Arc<Self>, mpsc::Receiver<(Option<String>, AcpEvent)>), AgentError> {
         Self::spawn_with_options(cli_path, cwd, SpawnOptions::default()).await
     }
 
@@ -648,13 +647,7 @@ impl AcpClient {
         cli_path: PathBuf,
         cwd: PathBuf,
         opts: SpawnOptions,
-    ) -> Result<
-        (
-            Arc<Self>,
-            mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>,
-        ),
-        AgentError,
-    > {
+    ) -> Result<(Arc<Self>, mpsc::Receiver<(Option<String>, AcpEvent)>), AgentError> {
         let settings = crate::store::load_settings();
         Self::spawn_with_home(cli_path, cwd, &settings.session_data_mode, opts).await
     }
@@ -665,13 +658,7 @@ impl AcpClient {
         cwd: PathBuf,
         session_data_mode: &str,
         opts: SpawnOptions,
-    ) -> Result<
-        (
-            Arc<Self>,
-            mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>,
-        ),
-        AgentError,
-    > {
+    ) -> Result<(Arc<Self>, mpsc::Receiver<(Option<String>, AcpEvent)>), AgentError> {
         // API mode: if an ACP server address is configured, connect over TCP
         // instead of spawning a local CLI. The server drives an agent running
         // elsewhere (WSL/SSH/container) but speaks the identical ACP protocol.
@@ -744,8 +731,7 @@ impl AcpClient {
             }
         }
 
-        let (event_tx, event_rx) = mpsc::unbounded_channel();
-
+        let (event_tx, event_rx) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         // GUI apps often inherit a sparse PATH; keep absolute cli_path but enrich PATH
         // so nested tools (npx, node, git) resolve when the agent shells out.
         //
@@ -1400,7 +1386,7 @@ impl AcpClient {
                             let t = line.trim_end().to_string();
                             if !t.is_empty() {
                                 c.push_stderr(&t);
-                                let _ = c.event_tx.send((None, AcpEvent::Stderr { line: t }));
+                                let _ = c.event_tx.send((None, AcpEvent::Stderr { line: t })).await;
                             }
                         }
                         Err(_) => break,
@@ -1427,13 +1413,7 @@ impl AcpClient {
         addr: &str,
         cwd: PathBuf,
         use_app_director_rules: bool,
-    ) -> Result<
-        (
-            Arc<Self>,
-            mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>,
-        ),
-        AgentError,
-    > {
+    ) -> Result<(Arc<Self>, mpsc::Receiver<(Option<String>, AcpEvent)>), AgentError> {
         const ACP_CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
         let stream = tokio::time::timeout(ACP_CONNECT_TIMEOUT, TcpStream::connect(addr))
             .await
@@ -1455,7 +1435,7 @@ impl AcpClient {
         let _ = stream.set_nodelay(true);
         let (read_half, write_half) = stream.into_split();
 
-        let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = Arc::new(Self {
             child: AsyncMutex::new(None),
             child_pid: None,
@@ -1558,10 +1538,14 @@ impl AcpClient {
                     .and_then(|status| status.code())
             };
             let detail = c.format_exit_detail("Agent stream closed (EOF)");
-            c.fail_all_pending(&detail);
-            let _ = c
-                .event_tx
-                .send((None, AcpEvent::ProcessExited { code: exit_code }));
+            c.fail_pending_on_reader_exit(&detail);
+            if c.event_tx
+                .send((None, AcpEvent::ProcessExited { code: exit_code }))
+                .await
+                .is_err()
+            {
+                c.fail_all_pending(&detail);
+            }
         });
     }
 
@@ -1643,42 +1627,80 @@ impl AcpClient {
     }
 
     fn fail_all_pending(&self, message: &str) {
-        let pending: Vec<_> = self.pending.lock().drain().map(|(_, p)| p).collect();
-        for p in pending {
-            let _ = p.tx.send(Err(message.to_string()));
-        }
+        self.fail_pending_where(message, |_| true);
     }
 
-    /// Queue a `session/prompt` settlement behind every event already received.
+    fn fail_pending_on_reader_exit(&self, message: &str) {
+        if self.event_tx.is_closed() {
+            self.fail_all_pending(message);
+            return;
+        }
+        self.fail_pending_where(message, |pending| {
+            pending.method != "session/prompt" || !pending.settlement_queued
+        });
+    }
+
+    fn fail_pending_where(&self, message: &str, should_fail: impl Fn(&Pending) -> bool) {
+        let pending = {
+            let mut pending = self.pending.lock();
+            let ids: Vec<_> = pending
+                .iter()
+                .filter_map(|(id, pending)| should_fail(pending).then_some(*id))
+                .collect();
+            ids.into_iter()
+                .filter_map(|id| pending.remove(&id))
+                .collect::<Vec<_>>()
+        };
+        pending.into_iter().for_each(|pending| {
+            let _ = pending.tx.send(Err(message.to_string()));
+        });
+    }
+
+    /// 将 `session/prompt` terminal 排在已收到的所有事件之后。
     ///
-    /// `mpsc::UnboundedSender::send` only enqueues — it does not wait for the
-    /// receiver. Resolving the waiter here would let the turn task finish and
-    /// clear `stream_buf` while the pump is still behind chunks that arrived
-    /// earlier; those chunks then failed the replay gate. The pump applies the
-    /// settlement in FIFO order and only then releases the waiter.
+    /// 有界发送器会等待队列容量。若在事件泵应用之前解析 waiter，turn 任务可能先清空
+    /// `stream_buf`，使排在前面的 chunk 被 replay gate 丢弃。事件泵按 FIFO 应用 terminal，
+    /// 然后才释放 waiter。
     ///
-    /// With no pump listening (host-less reader, tests) there is nothing to
-    /// order against, so resolve inline.
-    fn enqueue_prompt_settlement(
+    /// 没有事件泵的 host-less reader 或测试没有顺序需要维护，因此发送失败时内联解析 waiter。
+    async fn enqueue_prompt_settlement(
         &self,
         id: u64,
         session_id: Option<String>,
         stop_reason: Option<String>,
         result: Result<Value, String>,
     ) {
-        let event = AcpEvent::PromptRpcSettled {
-            id,
-            stop_reason,
-            result,
-        };
-        if let Err(mpsc::error::SendError((_, AcpEvent::PromptRpcSettled { id, result, .. }))) =
-            self.event_tx.send((session_id, event))
-        {
-            if let Some(waiter) = self.claim_prompt_waiter(id) {
-                if !waiter.is_closed() {
-                    waiter.deliver(result);
+        let permit = match self.event_tx.reserve().await {
+            Ok(permit) => permit,
+            Err(_) => {
+                if let Some(waiter) = self.claim_prompt_waiter(id) {
+                    if !waiter.is_closed() {
+                        waiter.deliver(result);
+                    }
                 }
+                return;
             }
+        };
+
+        let should_queue = {
+            let mut pending = self.pending.lock();
+            match pending.get_mut(&id) {
+                Some(pending) if pending.method == "session/prompt" => {
+                    pending.settlement_queued = true;
+                    true
+                }
+                _ => false,
+            }
+        };
+        if should_queue {
+            permit.send((
+                session_id,
+                AcpEvent::PromptRpcSettled {
+                    id,
+                    stop_reason,
+                    result,
+                },
+            ));
         }
     }
 
@@ -1730,7 +1752,7 @@ impl AcpClient {
     /// (often summed across modelCalls). Frontend must NOT use it as
     /// context-window occupancy — that lives on stream params._meta.totalTokens
     /// (source: context_size).
-    fn emit_usage_from_result(&self, msg: &Value) {
+    async fn emit_usage_from_result(&self, msg: &Value) {
         let Some(usage) = msg
             .pointer("/result/usage")
             .or_else(|| msg.pointer("/result/_meta/usage"))
@@ -1744,39 +1766,42 @@ impl AcpClient {
                 .and_then(|v| v.as_u64())
                 .filter(|n| *n > 0)
         };
-        let _ = self.event_tx.send((
-            None,
-            AcpEvent::UsageReported {
-                total_tokens: u64_field("totalTokens", "total_tokens"),
-                input_tokens: u64_field("inputTokens", "input_tokens"),
-                output_tokens: u64_field("outputTokens", "output_tokens"),
-                system_tokens: None,
-                tools_tokens: None,
-                history_tokens: None,
-                cached_read_tokens: u64_field("cachedReadTokens", "cache_read_input_tokens"),
-                cache_creation_tokens: u64_field(
-                    "cacheCreationTokens",
-                    "cache_creation_input_tokens",
-                ),
-                reasoning_tokens: u64_field("reasoningTokens", "reasoning_tokens"),
-                cost_usd_ticks: u64_field("costUsdTicks", "cost_usd_ticks"),
-                model_calls: u64_field("modelCalls", "model_calls"),
-                api_duration_ms: u64_field("apiDurationMs", "api_duration_ms"),
-                cost_is_partial: usage
-                    .get("costIsPartial")
-                    .or_else(|| usage.get("cost_is_partial"))
-                    .and_then(|v| v.as_bool()),
-                usage_is_incomplete: usage
-                    .get("usageIsIncomplete")
-                    .or_else(|| usage.get("usage_is_incomplete"))
-                    .and_then(|v| v.as_bool()),
-                context_window: None,
-                percentage: None,
-                // Distinct from sessionUpdate `turn_completed` so
-                // the UI does not double-count the same turn.
-                source: "prompt_result".to_string(),
-            },
-        ));
+        let _ = self
+            .event_tx
+            .send((
+                None,
+                AcpEvent::UsageReported {
+                    total_tokens: u64_field("totalTokens", "total_tokens"),
+                    input_tokens: u64_field("inputTokens", "input_tokens"),
+                    output_tokens: u64_field("outputTokens", "output_tokens"),
+                    system_tokens: None,
+                    tools_tokens: None,
+                    history_tokens: None,
+                    cached_read_tokens: u64_field("cachedReadTokens", "cache_read_input_tokens"),
+                    cache_creation_tokens: u64_field(
+                        "cacheCreationTokens",
+                        "cache_creation_input_tokens",
+                    ),
+                    reasoning_tokens: u64_field("reasoningTokens", "reasoning_tokens"),
+                    cost_usd_ticks: u64_field("costUsdTicks", "cost_usd_ticks"),
+                    model_calls: u64_field("modelCalls", "model_calls"),
+                    api_duration_ms: u64_field("apiDurationMs", "api_duration_ms"),
+                    cost_is_partial: usage
+                        .get("costIsPartial")
+                        .or_else(|| usage.get("cost_is_partial"))
+                        .and_then(|v| v.as_bool()),
+                    usage_is_incomplete: usage
+                        .get("usageIsIncomplete")
+                        .or_else(|| usage.get("usage_is_incomplete"))
+                        .and_then(|v| v.as_bool()),
+                    context_window: None,
+                    percentage: None,
+                    // Distinct from sessionUpdate `turn_completed` so
+                    // the UI does not double-count the same turn.
+                    source: "prompt_result".to_string(),
+                },
+            ))
+            .await;
     }
 
     async fn handle_line(self: Arc<Self>, line: &str) {
@@ -1803,12 +1828,15 @@ impl AcpClient {
                     if let Some(err) = msg.get("error") {
                         let full = format_jsonrpc_error(err);
                         warn!("acp late error response id={id} (pending already resolved): {full}");
-                        let _ = self.event_tx.send((
-                            None,
-                            AcpEvent::Error {
-                                error: classify_rpc_error(&full),
-                            },
-                        ));
+                        let _ = self
+                            .event_tx
+                            .send((
+                                None,
+                                AcpEvent::Error {
+                                    error: classify_rpc_error(&full),
+                                },
+                            ))
+                            .await;
                     } else {
                         debug!(
                             "acp late ok response id={id} (pending already resolved); keys={:?}",
@@ -1826,7 +1854,7 @@ impl AcpClient {
                     }
                     None => Ok(msg.get("result").cloned().unwrap_or(Value::Null)),
                 };
-                self.emit_usage_from_result(&msg);
+                self.emit_usage_from_result(&msg).await;
 
                 // Authoritative turn end for session/prompt (#522):
                 // Some CLI builds omit `result.stopReason` even after a successful
@@ -1841,7 +1869,8 @@ impl AcpClient {
                             .unwrap_or("end_turn")
                             .to_string()
                     });
-                    self.enqueue_prompt_settlement(id, pending_session, stop_reason, outcome);
+                    self.enqueue_prompt_settlement(id, pending_session, stop_reason, outcome)
+                        .await;
                     return;
                 }
 
@@ -1859,13 +1888,16 @@ impl AcpClient {
                         .or_else(|| msg.pointer("/result/stop_reason"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("end_turn");
-                    let _ = self.event_tx.send((
-                        pending_session,
-                        AcpEvent::PromptComplete {
-                            stop_reason: sr.to_string(),
-                            authoritative: true,
-                        },
-                    ));
+                    let _ = self
+                        .event_tx
+                        .send((
+                            pending_session,
+                            AcpEvent::PromptComplete {
+                                stop_reason: sr.to_string(),
+                                authoritative: true,
+                            },
+                        ))
+                        .await;
                 }
                 return;
             }
@@ -1878,9 +1910,19 @@ impl AcpClient {
             if method == "session/request_permission" {
                 let rpc_id = req_id.unwrap_or(0);
                 let params = msg.get("params").cloned().unwrap_or(Value::Null);
-                let _ = self
+                if self
                     .event_tx
-                    .send((None, decode_permission_request(rpc_id, &params)));
+                    .send((None, decode_permission_request(rpc_id, &params)))
+                    .await
+                    .is_err()
+                {
+                    if let Err(error) = self
+                        .respond_permission(rpc_id, PermissionOutcome::Cancelled)
+                        .await
+                    {
+                        warn!(rpc_id, error = %error, "failed to cancel permission request without an event receiver");
+                    }
+                }
                 return;
             }
 
@@ -1906,15 +1948,26 @@ impl AcpClient {
                             "acp exit_plan_mode id={rpc_id} plan_chars={}",
                             plan_content.as_ref().map(|s| s.len()).unwrap_or(0)
                         );
-                        let _ = self.event_tx.send((
-                            None,
-                            AcpEvent::Plan {
-                                entries: params.get("entries").cloned().unwrap_or(json!([])),
-                                body: plan_content,
-                                rpc_id: Some(rpc_id),
-                                tool_call_id,
-                            },
-                        ));
+                        if self
+                            .event_tx
+                            .send((
+                                None,
+                                AcpEvent::Plan {
+                                    entries: params.get("entries").cloned().unwrap_or(json!([])),
+                                    body: plan_content,
+                                    rpc_id: Some(rpc_id),
+                                    tool_call_id,
+                                },
+                            ))
+                            .await
+                            .is_err()
+                        {
+                            if let Err(error) =
+                                self.respond_exit_plan_mode(rpc_id, "cancelled", None).await
+                            {
+                                warn!(rpc_id, error = %error, "failed to cancel plan request without an event receiver");
+                            }
+                        }
                     } else {
                         // ask_user_question: surface UI; reply via respond_ask_user_question.
                         let parsed = parse_ask_user_question_params(&params);
@@ -1935,15 +1988,27 @@ impl AcpClient {
                                 warn!("failed to auto-cancel empty ask_user_question: {e}");
                             }
                         } else {
-                            let _ = self.event_tx.send((
-                                None,
-                                AcpEvent::AskUserQuestion {
-                                    rpc_id,
-                                    tool_call_id: parsed.tool_call_id,
-                                    questions: parsed.questions,
-                                    raw: params,
-                                },
-                            ));
+                            if self
+                                .event_tx
+                                .send((
+                                    None,
+                                    AcpEvent::AskUserQuestion {
+                                        rpc_id,
+                                        tool_call_id: parsed.tool_call_id,
+                                        questions: parsed.questions,
+                                        raw: params,
+                                    },
+                                ))
+                                .await
+                                .is_err()
+                            {
+                                if let Err(error) = self
+                                    .respond_ask_user_question(rpc_id, AskUserOutcome::Cancelled)
+                                    .await
+                                {
+                                    warn!(rpc_id, error = %error, "failed to cancel ask-user request without an event receiver");
+                                }
+                            }
                         }
                     }
                     return;
@@ -1957,7 +2022,8 @@ impl AcpClient {
                     || method == "_x.ai/session/update"
                     || method == "_x.ai/session_notification"
                 {
-                    self.handle_session_update(msg.get("params").unwrap_or(&Value::Null));
+                    self.handle_session_update(msg.get("params").unwrap_or(&Value::Null))
+                        .await;
                 } else if method == "_x.ai/session/prompt_complete" {
                     // UI signal only — do NOT immediately Ok-complete session/prompt.
                     // Official path may still send a JSON-RPC *error* for the same id
@@ -1976,13 +2042,16 @@ impl AcpClient {
                         .or_else(|| msg.pointer("/params/session_id"))
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    let _ = self.event_tx.send((
-                        sid.clone(),
-                        AcpEvent::PromptComplete {
-                            stop_reason: stop.clone(),
-                            authoritative: false,
-                        },
-                    ));
+                    let _ = self
+                        .event_tx
+                        .send((
+                            sid.clone(),
+                            AcpEvent::PromptComplete {
+                                stop_reason: stop.clone(),
+                                authoritative: false,
+                            },
+                        ))
+                        .await;
                     // Grace period: free waiters only if the RPC result never arrives.
                     self.schedule_prompt_complete_fallback(sid, stop);
                 } else {
@@ -2079,7 +2148,8 @@ impl AcpClient {
                     "acp prompt_complete fallback re-armed: agent still streaming after early complete"
                 );
             }
-            this.complete_pending_prompt_fallback(&prompt_ids, &stop_reason);
+            this.complete_pending_prompt_fallback(&prompt_ids, &stop_reason)
+                .await;
         });
     }
 
@@ -2088,7 +2158,7 @@ impl AcpClient {
     /// The synthetic result is still a turn terminal for the Host, so it rides
     /// the ordered path like a real RPC result instead of resolving the waiter
     /// from this timer task.
-    fn complete_pending_prompt_fallback(&self, prompt_ids: &[u64], stop_reason: &str) {
+    async fn complete_pending_prompt_fallback(&self, prompt_ids: &[u64], stop_reason: &str) {
         let targets: Vec<(u64, Option<String>)> = {
             let pending = self.pending.lock();
             prompt_ids
@@ -2110,11 +2180,12 @@ impl AcpClient {
                 session_id,
                 Some(stop_reason.to_string()),
                 Ok(json!({ "stopReason": stop_reason })),
-            );
+            )
+            .await;
         }
     }
 
-    fn handle_session_update(&self, params: &Value) {
+    async fn handle_session_update(&self, params: &Value) {
         // Proof of life for the turn: re-arms the `prompt_complete` fallback so
         // an early completion notification cannot cut the answer short.
         // Stamp per-session so another chat on this process cannot extend
@@ -2173,11 +2244,23 @@ impl AcpClient {
                     "acp context compact trigger={trigger} before={tokens_before:?} after={tokens_after:?}"
                 );
             }
-            let _ = self.event_tx.send((sid.clone(), ev));
+            let _ = self.event_tx.send((sid.clone(), ev)).await;
         }
     }
 
     async fn write_line(&self, value: &Value) -> Result<(), String> {
+        self.write_line_with_timeout(
+            value,
+            std::time::Duration::from_secs(STDIN_WRITE_TIMEOUT_SECS),
+        )
+        .await
+    }
+
+    async fn write_line_with_timeout(
+        &self,
+        value: &Value,
+        write_timeout: std::time::Duration,
+    ) -> Result<(), String> {
         let mut line = serde_json::to_string(value).map_err(|e| e.to_string())?;
         line.push('\n');
         // Bound stdin lock+write: a dead/wedged agent must not pin the Host
@@ -2192,27 +2275,27 @@ impl AcpClient {
             stdin.flush().await.map_err(|e| e.to_string())?;
             Ok::<(), String>(())
         };
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(STDIN_WRITE_TIMEOUT_SECS),
-            write_fut,
-        )
-        .await
-        {
+        match tokio::time::timeout(write_timeout, write_fut).await {
             Ok(r) => r,
             Err(_) => {
                 // Wedged agent: free waiters, surface ProcessExited so Host ends
                 // the turn, and kill the child so the pool slot is not held as
                 // "still working" overnight.
-                self.reader_alive.store(false, Ordering::SeqCst);
-                let head = format!(
-                    "stdin write timeout after {STDIN_WRITE_TIMEOUT_SECS}s (agent may be wedged)"
-                );
+                let owns_exit_event = self.reader_alive.swap(false, Ordering::SeqCst);
+                let head =
+                    format!("stdin write timeout after {write_timeout:?} (agent may be wedged)");
                 let detail = self.format_exit_detail(&head);
                 error!("{detail}");
                 self.fail_all_pending(&detail);
-                let _ = self
-                    .event_tx
-                    .send((None, AcpEvent::ProcessExited { code: None }));
+                if owns_exit_event {
+                    // 事件泵可能正是 write_line 的调用方；让同队列写入在独立任务中等待容量，避免等待自身消费队列。
+                    let event_tx = self.event_tx.clone();
+                    tokio::spawn(async move {
+                        let _ = event_tx
+                            .send((None, AcpEvent::ProcessExited { code: None }))
+                            .await;
+                    });
+                }
                 if tokio::time::timeout(
                     std::time::Duration::from_secs(STDIN_WRITE_TIMEOUT_SECS),
                     self.kill(),
@@ -2534,6 +2617,7 @@ impl AcpClient {
                 method: method.to_string(),
                 tx,
                 session_id,
+                settlement_queued: false,
             },
         );
         let msg = json!({
@@ -2601,6 +2685,7 @@ impl AcpClient {
                 method: method.to_string(),
                 tx,
                 session_id: prompt_sid.clone(),
+                settlement_queued: false,
             },
         );
         let msg = json!({
@@ -2767,7 +2852,7 @@ impl AcpClient {
     /// same flag warm start and TCP keep on, and official aux turns off.
     #[cfg(test)]
     pub(crate) fn test_stub_with(alive: bool, use_app_director_rules: bool) -> Arc<Self> {
-        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        let (event_tx, _event_rx) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         Arc::new(Self {
             child: AsyncMutex::new(None),
             child_pid: None,
@@ -3069,14 +3154,17 @@ impl AcpClient {
                 if let Some((sid, model_id)) = self.try_fork_session(rid, &cwd, &mcp_servers).await
                 {
                     *self.agent_session_id.lock() = Some(sid.clone());
-                    let _ = self.event_tx.send((
-                        None,
-                        AcpEvent::State {
-                            backend: "grok_agent_stdio".into(),
-                            agent_session_id: Some(sid.clone()),
-                            model_id,
-                        },
-                    ));
+                    let _ = self
+                        .event_tx
+                        .send((
+                            None,
+                            AcpEvent::State {
+                                backend: "grok_agent_stdio".into(),
+                                agent_session_id: Some(sid.clone()),
+                                model_id,
+                            },
+                        ))
+                        .await;
                     // Full parent context was forked — treat like a successful resume
                     // for bootstrap purposes (no journal rewrite needed).
                     return Ok((sid, true));
@@ -3122,14 +3210,17 @@ impl AcpClient {
                             .pointer("/models/currentModelId")
                             .and_then(|v| v.as_str())
                             .map(|s| s.to_string());
-                        let _ = self.event_tx.send((
-                            None,
-                            AcpEvent::State {
-                                backend: "grok_agent_stdio".into(),
-                                agent_session_id: Some(sid.clone()),
-                                model_id,
-                            },
-                        ));
+                        let _ = self
+                            .event_tx
+                            .send((
+                                None,
+                                AcpEvent::State {
+                                    backend: "grok_agent_stdio".into(),
+                                    agent_session_id: Some(sid.clone()),
+                                    model_id,
+                                },
+                            ))
+                            .await;
                         return Ok((sid, true));
                     }
                     Err(e) => {
@@ -3174,14 +3265,17 @@ impl AcpClient {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
-        let _ = self.event_tx.send((
-            None,
-            AcpEvent::State {
-                backend: "grok_agent_stdio".into(),
-                agent_session_id: Some(sid.clone()),
-                model_id,
-            },
-        ));
+        let _ = self
+            .event_tx
+            .send((
+                None,
+                AcpEvent::State {
+                    backend: "grok_agent_stdio".into(),
+                    agent_session_id: Some(sid.clone()),
+                    model_id,
+                },
+            ))
+            .await;
 
         Ok((sid, false))
     }
@@ -3376,23 +3470,29 @@ impl AcpClient {
             .or_else(|| result.get("modelId"))
             .and_then(|v| v.as_str())
         {
-            let _ = self.event_tx.send((
-                None,
-                AcpEvent::State {
-                    backend: "grok_agent_stdio".into(),
-                    agent_session_id: Some(sid),
-                    model_id: Some(mid.to_string()),
-                },
-            ));
+            let _ = self
+                .event_tx
+                .send((
+                    None,
+                    AcpEvent::State {
+                        backend: "grok_agent_stdio".into(),
+                        agent_session_id: Some(sid),
+                        model_id: Some(mid.to_string()),
+                    },
+                ))
+                .await;
         } else {
-            let _ = self.event_tx.send((
-                None,
-                AcpEvent::State {
-                    backend: "grok_agent_stdio".into(),
-                    agent_session_id: Some(sid),
-                    model_id: Some(model_id.to_string()),
-                },
-            ));
+            let _ = self
+                .event_tx
+                .send((
+                    None,
+                    AcpEvent::State {
+                        backend: "grok_agent_stdio".into(),
+                        agent_session_id: Some(sid),
+                        model_id: Some(model_id.to_string()),
+                    },
+                ))
+                .await;
         }
         Ok(())
     }
@@ -6617,6 +6717,7 @@ mod prompt_fallback_tests {
                 method: "session/prompt".into(),
                 tx: first_tx,
                 session_id: Some("sidA".into()),
+                settlement_queued: false,
             },
         );
 
@@ -6633,6 +6734,7 @@ mod prompt_fallback_tests {
                 method: "session/prompt".into(),
                 tx: second_tx,
                 session_id: Some("sidA".into()),
+                settlement_queued: false,
             },
         );
 
@@ -7719,7 +7821,7 @@ mod prompt_settle_tests {
     const AGENT_SID: &str = "agent-settle";
 
     impl AcpClient {
-        fn test_client(event_tx: mpsc::UnboundedSender<(Option<String>, AcpEvent)>) -> Arc<Self> {
+        fn test_client(event_tx: mpsc::Sender<(Option<String>, AcpEvent)>) -> Arc<Self> {
             Arc::new(Self {
                 child: AsyncMutex::new(None),
                 child_pid: None,
@@ -7757,9 +7859,106 @@ mod prompt_settle_tests {
                     method: "session/prompt".into(),
                     tx,
                     session_id: Some(AGENT_SID.into()),
+                    settlement_queued: false,
                 },
             );
         }
+    }
+
+    #[tokio::test]
+    async fn unobserved_server_requests_are_cancelled_when_event_receiver_closed() {
+        let (event_tx, events) = mpsc::channel(1);
+        drop(events);
+        let client = AcpClient::test_client(event_tx);
+        let (response_reader, acp_stdin) = tokio::io::duplex(4096);
+        *client.stdin.lock().await =
+            Some(Box::new(acp_stdin) as Box<dyn AsyncWrite + Unpin + Send>);
+        let mut reader = BufReader::new(response_reader);
+        let mut response_line = String::new();
+
+        client
+            .clone()
+            .handle_line(
+                r#"{"jsonrpc":"2.0","id":1,"method":"session/request_permission","params":{}}"#,
+            )
+            .await;
+        reader
+            .read_line(&mut response_line)
+            .await
+            .expect("permission cancel response");
+        let permission_response: Value =
+            serde_json::from_str(&response_line).expect("valid permission response");
+        assert_eq!(
+            permission_response.pointer("/result/outcome/outcome"),
+            Some(&Value::String("cancelled".into()))
+        );
+
+        response_line.clear();
+        client
+            .clone()
+            .handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"_x.ai/exit_plan_mode","params":{}}"#)
+            .await;
+        reader
+            .read_line(&mut response_line)
+            .await
+            .expect("plan cancel response");
+        let plan_response: Value =
+            serde_json::from_str(&response_line).expect("valid plan response");
+        assert_eq!(
+            plan_response.pointer("/result/outcome"),
+            Some(&Value::String("cancelled".into()))
+        );
+
+        response_line.clear();
+        client
+            .handle_line(
+                r#"{"jsonrpc":"2.0","id":3,"method":"_x.ai/ask_user_question","params":{"questions":[{"question":"Which store?","options":["SQLite","Postgres"]}]}}"#,
+            )
+            .await;
+        reader
+            .read_line(&mut response_line)
+            .await
+            .expect("ask-user cancel response");
+        let ask_user_response: Value =
+            serde_json::from_str(&response_line).expect("valid ask-user response");
+        assert_eq!(
+            ask_user_response.pointer("/result/outcome"),
+            Some(&Value::String("cancelled".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn write_timeout_does_not_wait_for_process_exit_queue_capacity() {
+        let (event_tx, mut events) = mpsc::channel(1);
+        let client = AcpClient::test_client(event_tx);
+        let (_response_reader, acp_stdin) = tokio::io::duplex(1);
+        *client.stdin.lock().await =
+            Some(Box::new(acp_stdin) as Box<dyn AsyncWrite + Unpin + Send>);
+        client
+            .event_tx
+            .send((None, tail_chunk()))
+            .await
+            .expect("fill event queue");
+
+        let write_result = tokio::time::timeout(
+            Duration::from_secs(2),
+            client.write_line_with_timeout(
+                &json!({ "payload": "x".repeat(1024) }),
+                Duration::from_millis(10),
+            ),
+        )
+        .await
+        .expect("write timeout must not await the event pump")
+        .expect_err("duplex writer is deliberately stalled");
+        assert!(write_result.contains("stdin write timeout"));
+
+        let (_, first_event) = events.recv().await.expect("queued stream event");
+        assert!(matches!(first_event, AcpEvent::Stream { .. }));
+        let (_, exit_event) = tokio::time::timeout(Duration::from_secs(1), events.recv())
+            .await
+            .expect("ProcessExited is delivered after capacity returns")
+            .expect("process-exit event");
+        assert!(matches!(exit_event, AcpEvent::ProcessExited { code: None }));
     }
 
     fn tail_chunk() -> AcpEvent {
@@ -7771,24 +7970,159 @@ mod prompt_settle_tests {
         }
     }
 
+    fn stream_update_line(text: &str) -> String {
+        json!({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {
+                "sessionId": AGENT_SID,
+                "update": {
+                    "sessionUpdate": "agent_message_chunk",
+                    "content": { "type": "text", "text": text }
+                }
+            }
+        })
+        .to_string()
+    }
+
+    #[tokio::test]
+    async fn session_updates_backpressure_when_event_queue_is_full() {
+        let (event_tx, mut events) = mpsc::channel(1);
+        let client = AcpClient::test_client(event_tx);
+        let first_line = stream_update_line("first");
+        client.clone().handle_line(&first_line).await;
+        assert_eq!(events.len(), 1);
+
+        let second_line = stream_update_line("second");
+        let mut second_read = Box::pin(Arc::clone(&client).handle_line(&second_line));
+        tokio::select! {
+            biased;
+            result = &mut second_read => panic!("second event bypassed a full ingress queue: {result:?}"),
+            _ = tokio::task::yield_now() => {}
+        }
+
+        let (first_sid, first_event) = events.recv().await.expect("first event received");
+        assert_eq!(first_sid.as_deref(), Some(AGENT_SID));
+        assert!(matches!(first_event, AcpEvent::Stream { text, .. } if text == "first"));
+
+        second_read.await;
+        let (second_sid, second_event) = events.recv().await.expect("second event received");
+        assert_eq!(second_sid.as_deref(), Some(AGENT_SID));
+        assert!(matches!(second_event, AcpEvent::Stream { text, .. } if text == "second"));
+    }
+
+    #[tokio::test]
+    async fn reader_waits_to_deliver_process_exit_after_queued_stream() {
+        let (event_tx, mut events) = mpsc::channel(1);
+        let client = AcpClient::test_client(event_tx);
+        let (mut writer, reader) = tokio::io::duplex(4096);
+        client.start_read_loop(Box::new(reader));
+
+        let mut line = stream_update_line("last chunk");
+        line.push('\n');
+        writer
+            .write_all(line.as_bytes())
+            .await
+            .expect("write update");
+        writer.shutdown().await.expect("close reader input");
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while client.reader_alive.load(Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("reader observes EOF");
+        assert_eq!(events.len(), 1, "queued stream fills the bounded channel");
+
+        let (_, stream_event) = events.recv().await.expect("last stream event");
+        assert!(matches!(stream_event, AcpEvent::Stream { text, .. } if text == "last chunk"));
+        let (_, exit_event) = tokio::time::timeout(Duration::from_secs(1), events.recv())
+            .await
+            .expect("process-exit event is released after capacity returns")
+            .expect("process-exit event received");
+        assert!(matches!(exit_event, AcpEvent::ProcessExited { code: None }));
+    }
+
+    #[tokio::test]
+    async fn eof_does_not_override_a_prompt_result_already_queued() {
+        let (event_tx, mut events) = mpsc::channel(3);
+        let client = AcpClient::test_client(event_tx);
+        let (waiter_tx, mut waiter) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, waiter_tx);
+        let (mut writer, reader) = tokio::io::duplex(4096);
+        client.start_read_loop(Box::new(reader));
+
+        let mut input = stream_update_line("final answer");
+        input.push('\n');
+        input.push_str(r#"{"jsonrpc":"2.0","id":41,"result":{"stopReason":"end_turn"}}"#);
+        input.push('\n');
+        writer
+            .write_all(input.as_bytes())
+            .await
+            .expect("write ACP input");
+        writer.shutdown().await.expect("close ACP input");
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while client.reader_alive.load(Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("reader observes EOF");
+        assert_eq!(events.len(), 3, "stream, settlement and exit are queued");
+        assert!(
+            waiter.try_recv().is_err(),
+            "EOF must not replace an already queued successful prompt result"
+        );
+
+        let (_, stream_event) = events.recv().await.expect("stream event");
+        assert!(matches!(stream_event, AcpEvent::Stream { text, .. } if text == "final answer"));
+        let (_, settlement) = events.recv().await.expect("prompt settlement");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = settlement
+        else {
+            panic!("expected PromptRpcSettled, got {settlement:?}");
+        };
+        client
+            .consume_prompt_settlement(id, stop_reason, result, async |_| {})
+            .await;
+        assert!(waiter.try_recv().expect("waiter resolved").is_ok());
+        let (_, exit_event) = events
+            .recv()
+            .await
+            .expect("process exit follows settlement");
+        assert!(matches!(exit_event, AcpEvent::ProcessExited { code: None }));
+    }
+
     /// A successful `session/prompt` result must not release the waiting turn
     /// task before the pump applied the chunks queued ahead of it: that race
     /// finished the turn, cleared `stream_buf`, and the queued chunk then hit
     /// the load-replay gate.
     #[tokio::test]
     async fn prompt_result_waits_for_chunks_queued_before_it() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(1);
         let client = AcpClient::test_client(event_tx);
         let (tx, mut waiter) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
         client
             .event_tx
             .send((Some(AGENT_SID.into()), tail_chunk()))
+            .await
             .expect("queue chunk");
 
-        Arc::clone(&client)
-            .handle_line(r#"{"jsonrpc":"2.0","id":41,"result":{"stopReason":"end_turn"}}"#)
-            .await;
+        let mut prompt_result = Box::pin(
+            Arc::clone(&client)
+                .handle_line(r#"{"jsonrpc":"2.0","id":41,"result":{"stopReason":"end_turn"}}"#),
+        );
+        tokio::select! {
+            biased;
+            result = &mut prompt_result => panic!("terminal bypassed a full event queue: {result:?}"),
+            _ = tokio::task::yield_now() => {}
+        }
 
         assert!(
             waiter.try_recv().is_err(),
@@ -7800,6 +8134,7 @@ mod prompt_settle_tests {
         assert_eq!(sid.as_deref(), Some(AGENT_SID));
         assert!(matches!(ev, AcpEvent::Stream { .. }));
 
+        prompt_result.await;
         let (sid, ev) = events.recv().await.expect("settlement event");
         assert_eq!(sid.as_deref(), Some(AGENT_SID));
         let AcpEvent::PromptRpcSettled {
@@ -7827,14 +8162,16 @@ mod prompt_settle_tests {
     /// threw away the terminal the pump was applying.
     #[tokio::test]
     async fn idle_watchdog_keeps_a_pump_claimed_prompt_waiting() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, waiter_rx) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
         // Idle already expired, so the first slice runs the watchdog.
         client.touch_last_update(Some(AGENT_SID), Instant::now() - Duration::from_secs(3600));
 
-        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        client
+            .complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn")
+            .await;
         let (_, ev) = events.recv().await.expect("settlement event");
         let AcpEvent::PromptRpcSettled {
             id,
@@ -7902,13 +8239,15 @@ mod prompt_settle_tests {
     /// whose `apply_terminal` blocks until the returned sender fires.
     async fn spawn_gated_pump(
         client: &Arc<AcpClient>,
-        events: &mut mpsc::UnboundedReceiver<(Option<String>, AcpEvent)>,
+        events: &mut mpsc::Receiver<(Option<String>, AcpEvent)>,
     ) -> (
         tokio::task::JoinHandle<()>,
         oneshot::Sender<()>,
         oneshot::Receiver<()>,
     ) {
-        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        client
+            .complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn")
+            .await;
         let (_, ev) = events.recv().await.expect("settlement event");
         let AcpEvent::PromptRpcSettled {
             id,
@@ -7940,7 +8279,7 @@ mod prompt_settle_tests {
     /// already-removed waiter.
     #[tokio::test]
     async fn pump_claimed_terminal_is_bounded_by_the_apply_grace() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, waiter_rx) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
@@ -7985,7 +8324,7 @@ mod prompt_settle_tests {
     /// the claim still owns the outcome until the apply grace runs out.
     #[tokio::test]
     async fn reader_exit_waits_for_a_claimed_terminal_until_the_grace() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, waiter_rx) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
@@ -8026,7 +8365,7 @@ mod prompt_settle_tests {
     /// The idle window still fails a waiter this call owns.
     #[tokio::test]
     async fn idle_timeout_still_fails_an_owned_waiter() {
-        let (event_tx, _events) = mpsc::unbounded_channel();
+        let (event_tx, _events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, waiter_rx) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
@@ -8053,7 +8392,7 @@ mod prompt_settle_tests {
     /// The reader-exit branch still fails a waiter this call owns.
     #[tokio::test]
     async fn reader_exit_still_fails_an_owned_waiter() {
-        let (event_tx, _events) = mpsc::unbounded_channel();
+        let (event_tx, _events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, waiter_rx) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
@@ -8085,12 +8424,14 @@ mod prompt_settle_tests {
     /// and the callback must never see a already-settled prompt.
     #[tokio::test]
     async fn waiter_is_released_only_after_apply_terminal_returns() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, mut waiter) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
 
-        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        client
+            .complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn")
+            .await;
         let (_, ev) = events.recv().await.expect("settlement event");
         let AcpEvent::PromptRpcSettled {
             id,
@@ -8135,16 +8476,19 @@ mod prompt_settle_tests {
     /// had the same out-of-order release: it must ride the ordered path too.
     #[tokio::test]
     async fn prompt_complete_fallback_keeps_the_waiter_queued() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, mut waiter) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
         client
             .event_tx
             .send((Some(AGENT_SID.into()), tail_chunk()))
+            .await
             .expect("queue chunk");
 
-        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        client
+            .complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn")
+            .await;
 
         assert!(
             waiter.try_recv().is_err(),
@@ -8179,7 +8523,7 @@ mod prompt_settle_tests {
     /// pump does not fabricate an authoritative `PromptComplete`.
     #[tokio::test]
     async fn prompt_error_settles_without_a_terminal_stop() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, mut waiter) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
@@ -8212,13 +8556,15 @@ mod prompt_settle_tests {
     /// the settlement then resolves inline instead of waiting forever.
     #[tokio::test]
     async fn settlement_resolves_inline_without_a_pump() {
-        let (event_tx, events) = mpsc::unbounded_channel();
+        let (event_tx, events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         drop(events);
         let client = AcpClient::test_client(event_tx);
         let (tx, mut waiter) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
 
-        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        client
+            .complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn")
+            .await;
 
         let settled = waiter.try_recv().expect("waiter resolved").expect("ok");
         assert_eq!(
@@ -8233,12 +8579,14 @@ mod prompt_settle_tests {
     /// terminal and release the waiter.
     #[tokio::test]
     async fn duplicate_settlements_apply_the_terminal_once() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, mut waiter) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
 
-        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        client
+            .complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn")
+            .await;
         Arc::clone(&client)
             .handle_line(r#"{"jsonrpc":"2.0","id":41,"result":{"stopReason":"end_turn"}}"#)
             .await;
@@ -8277,12 +8625,14 @@ mod prompt_settle_tests {
     /// finally drains it.
     #[tokio::test]
     async fn stale_settlement_cannot_end_the_next_turn() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, _waiter) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
 
-        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        client
+            .complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn")
+            .await;
         Arc::clone(&client)
             .handle_line(r#"{"jsonrpc":"2.0","id":41,"result":{"stopReason":"end_turn"}}"#)
             .await;
@@ -8313,6 +8663,7 @@ mod prompt_settle_tests {
                 method: "session/prompt".into(),
                 tx: next_tx,
                 session_id: Some(AGENT_SID.into()),
+                settlement_queued: false,
             },
         );
 
@@ -8345,13 +8696,15 @@ mod prompt_settle_tests {
     /// terminal applied then would hit whatever turn runs next.
     #[tokio::test]
     async fn closed_waiter_never_receives_a_terminal() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, waiter) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
         drop(waiter);
 
-        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        client
+            .complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn")
+            .await;
         let (_, ev) = events.recv().await.expect("settlement event");
         let AcpEvent::PromptRpcSettled {
             id,
@@ -8382,12 +8735,14 @@ mod prompt_settle_tests {
     /// turn to end and must not apply a terminal.
     #[tokio::test]
     async fn settlement_after_timeout_applies_no_terminal() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         let (tx, _waiter) = oneshot::channel();
         client.insert_prompt_waiter(PROMPT_ID, tx);
 
-        client.complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn");
+        client
+            .complete_pending_prompt_fallback(&[PROMPT_ID], "end_turn")
+            .await;
         let (_, ev) = events.recv().await.expect("settlement event");
         let AcpEvent::PromptRpcSettled {
             id,
@@ -8418,7 +8773,7 @@ mod prompt_settle_tests {
     /// after the next turn started.
     #[tokio::test]
     async fn prompt_for_leaves_no_second_terminal_on_the_pump_path() {
-        let (event_tx, mut events) = mpsc::unbounded_channel();
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
         let client = AcpClient::test_client(event_tx);
         // Fake agent stdin so `session/prompt` can be dispatched for real.
         let (wire, _agent_side) = tokio::io::duplex(4096);

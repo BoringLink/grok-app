@@ -1,6 +1,7 @@
 //! Session connect / mock connect / event-routing helpers.
 
 use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -21,6 +22,84 @@ use super::fork_trim::{
     apply_child_rewind_fail_safe, child_trim_plan, fork_trimmed_outcome, ChildTrimPlan,
 };
 use super::*;
+
+/// 按 FIFO 分发 ACP 事件；ProcessExited 处理完成后释放 receiver。
+async fn pump_acp_events<F, Fut>(
+    mut events: tokio::sync::mpsc::Receiver<(Option<String>, AcpEvent)>,
+    mut handle: F,
+) where
+    F: FnMut(Option<String>, AcpEvent) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    while let Some((session_id, event)) = events.recv().await {
+        let process_exited = matches!(&event, AcpEvent::ProcessExited { .. });
+        handle(session_id, event).await;
+        if process_exited {
+            break;
+        }
+    }
+}
+
+#[cfg(test)]
+mod acp_event_pump_tests {
+    use super::pump_acp_events;
+    use crate::acp_client::AcpEvent;
+    use std::sync::{Arc, Mutex};
+
+    #[tokio::test]
+    async fn process_exit_closes_the_pump_after_prior_events() {
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(3);
+        event_tx
+            .send((
+                None,
+                AcpEvent::State {
+                    backend: "test".into(),
+                    agent_session_id: None,
+                    model_id: None,
+                },
+            ))
+            .await
+            .expect("queue state");
+        event_tx
+            .send((None, AcpEvent::ProcessExited { code: None }))
+            .await
+            .expect("queue process exit");
+        event_tx
+            .send((
+                None,
+                AcpEvent::State {
+                    backend: "late".into(),
+                    agent_session_id: None,
+                    model_id: None,
+                },
+            ))
+            .await
+            .expect("queue trailing event");
+
+        let handled = Arc::new(Mutex::new(Vec::new()));
+        pump_acp_events(event_rx, {
+            let handled = Arc::clone(&handled);
+            move |_, event| {
+                let handled = Arc::clone(&handled);
+                async move {
+                    let name = match event {
+                        AcpEvent::State { backend, .. } => backend,
+                        AcpEvent::ProcessExited { .. } => "process-exited".into(),
+                        _ => "other".into(),
+                    };
+                    handled.lock().expect("lock handled events").push(name);
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(
+            *handled.lock().expect("lock handled events"),
+            ["test", "process-exited"]
+        );
+        assert!(event_tx.is_closed());
+    }
+}
 
 /// Drops `connect_lock` holder diagnostics when the lock guard goes out of
 /// scope — including on task abort, where tokio drops the future's stack.
@@ -1481,7 +1560,7 @@ impl SessionManager {
             AcpClient::spawn_with_options(cli_path, cwd, spawn_opts),
         )
         .await;
-        let (client, mut events) = match spawn_result {
+        let (client, events) = match spawn_result {
             Ok(Ok(v)) => {
                 tracing::info!(
                     target: "session",
@@ -1545,37 +1624,48 @@ impl SessionManager {
         {
             let mgr = Arc::clone(self);
             let app_ev = app.clone();
-            let pid = process_id.clone();
-            let settle_client = Arc::clone(&client);
+            let pid = Arc::<str>::from(process_id.as_str());
+            // 事件泵不能强持有自己的 event sender，否则 receiver 永远无法关闭。
+            let settle_client = Arc::downgrade(&client);
             tokio::spawn(async move {
-                while let Some((sid, ev)) = events.recv().await {
-                    // `session/prompt` results are queued, never resolved in the
-                    // reader: the turn may only finish after every chunk received
-                    // ahead of this result has been applied (FIFO pump).
-                    if let AcpEvent::PromptRpcSettled {
-                        id,
-                        stop_reason,
-                        result,
-                    } = ev
-                    {
-                        consume_prompt_settlement_on_host(
-                            &mgr,
-                            &settle_client,
-                            &app_ev,
-                            &pid,
-                            sid.as_deref(),
-                            PromptSettlement {
-                                id,
-                                stop_reason,
-                                result,
-                            },
-                        )
-                        .await;
-                        continue;
+                pump_acp_events(events, move |sid, ev| {
+                    let mgr = Arc::clone(&mgr);
+                    let app_ev = app_ev.clone();
+                    let pid = Arc::clone(&pid);
+                    let settle_client = settle_client.clone();
+                    async move {
+                        // `session/prompt` results are queued, never resolved in the
+                        // reader: the turn may only finish after every chunk received
+                        // ahead of this result has been applied (FIFO pump).
+                        if let AcpEvent::PromptRpcSettled {
+                            id,
+                            stop_reason,
+                            result,
+                        } = ev
+                        {
+                            let Some(settle_client) = settle_client.upgrade() else {
+                                return;
+                            };
+                            consume_prompt_settlement_on_host(
+                                &mgr,
+                                &settle_client,
+                                &app_ev,
+                                pid.as_ref(),
+                                sid.as_deref(),
+                                PromptSettlement {
+                                    id,
+                                    stop_reason,
+                                    result,
+                                },
+                            )
+                            .await;
+                            return;
+                        }
+                        mgr.handle_acp_event(&app_ev, pid.as_ref(), sid.as_deref(), ev)
+                            .await;
                     }
-                    mgr.handle_acp_event(&app_ev, &pid, sid.as_deref(), ev)
-                        .await;
-                }
+                })
+                .await;
             });
         }
 
@@ -2137,8 +2227,7 @@ impl SessionManager {
             ..Default::default()
         };
         let scanned_at = chrono::Utc::now();
-        let (client, mut events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts)
-            .await
+        let (client, events) = match AcpClient::spawn_with_options(cli_path, cwd, spawn_opts).await
         {
             Ok(v) => v,
             Err(e) => {
@@ -2149,39 +2238,48 @@ impl SessionManager {
         };
         let process_id = Uuid::new_v4().to_string();
         // Drain the event stream (prewarm starts with no session — the reader
-        // must consume stdout). The pump outlives prewarm adoption, so it owns
-        // the ordered prompt settlement and forwards each event's sessionId:
-        // once a chat reuses this process, stamped stream/tool events must route
-        // to their exact owner instead of the unstamped heuristics.
+        // must consume stdout). prewarm 被接管后 pump 仍继续转发，但只持有 client 弱引用，
+        // 避免事件泵延长 channel sender 生命周期；复用该进程的 chat 仍按 event sessionId 路由。
         {
             let mgr = Arc::clone(self);
-            let pid = process_id.clone();
-            let settle_client = Arc::clone(&client);
+            let pid = Arc::<str>::from(process_id.as_str());
+            let settle_client = Arc::downgrade(&client);
             tokio::spawn(async move {
-                while let Some((sid, ev)) = events.recv().await {
-                    if let AcpEvent::PromptRpcSettled {
-                        id,
-                        stop_reason,
-                        result,
-                    } = ev
-                    {
-                        consume_prompt_settlement_on_host(
-                            &mgr,
-                            &settle_client,
-                            &app,
-                            &pid,
-                            sid.as_deref(),
-                            PromptSettlement {
-                                id,
-                                stop_reason,
-                                result,
-                            },
-                        )
-                        .await;
-                        continue;
+                pump_acp_events(events, move |sid, ev| {
+                    let mgr = Arc::clone(&mgr);
+                    let app = app.clone();
+                    let pid = Arc::clone(&pid);
+                    let settle_client = settle_client.clone();
+                    async move {
+                        if let AcpEvent::PromptRpcSettled {
+                            id,
+                            stop_reason,
+                            result,
+                        } = ev
+                        {
+                            let Some(settle_client) = settle_client.upgrade() else {
+                                return;
+                            };
+                            consume_prompt_settlement_on_host(
+                                &mgr,
+                                &settle_client,
+                                &app,
+                                pid.as_ref(),
+                                sid.as_deref(),
+                                PromptSettlement {
+                                    id,
+                                    stop_reason,
+                                    result,
+                                },
+                            )
+                            .await;
+                            return;
+                        }
+                        mgr.handle_acp_event(&app, pid.as_ref(), sid.as_deref(), ev)
+                            .await;
                     }
-                    mgr.handle_acp_event(&app, &pid, sid.as_deref(), ev).await;
-                }
+                })
+                .await;
             });
         }
         if let Err(e) = client.initialize_and_auth().await {
