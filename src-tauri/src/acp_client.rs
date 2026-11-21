@@ -281,7 +281,7 @@ struct Pending {
     /// concurrent turns (concurrent multi-session).
     session_id: Option<String>,
     /// EOF 到达时，已排队的 prompt terminal 必须先由事件泵应用。
-    settlement_queued: bool,
+    settlement_queued_at: Option<Instant>,
 }
 
 /// Claimed `session/prompt` waiter. Exactly one settlement owns it; the claim
@@ -1636,7 +1636,7 @@ impl AcpClient {
             return;
         }
         self.fail_pending_where(message, |pending| {
-            pending.method != "session/prompt" || !pending.settlement_queued
+            pending.method != "session/prompt" || pending.settlement_queued_at.is_none()
         });
     }
 
@@ -1682,25 +1682,19 @@ impl AcpClient {
             }
         };
 
-        let should_queue = {
-            let mut pending = self.pending.lock();
-            match pending.get_mut(&id) {
-                Some(pending) if pending.method == "session/prompt" => {
-                    pending.settlement_queued = true;
-                    true
-                }
-                _ => false,
+        let mut pending = self.pending.lock();
+        if let Some(pending) = pending.get_mut(&id) {
+            if pending.method == "session/prompt" {
+                pending.settlement_queued_at = Some(Instant::now());
+                permit.send((
+                    session_id,
+                    AcpEvent::PromptRpcSettled {
+                        id,
+                        stop_reason,
+                        result,
+                    },
+                ));
             }
-        };
-        if should_queue {
-            permit.send((
-                session_id,
-                AcpEvent::PromptRpcSettled {
-                    id,
-                    stop_reason,
-                    result,
-                },
-            ));
         }
     }
 
@@ -2617,7 +2611,7 @@ impl AcpClient {
                 method: method.to_string(),
                 tx,
                 session_id,
-                settlement_queued: false,
+                settlement_queued_at: None,
             },
         );
         let msg = json!({
@@ -2685,7 +2679,7 @@ impl AcpClient {
                 method: method.to_string(),
                 tx,
                 session_id: prompt_sid.clone(),
-                settlement_queued: false,
+                settlement_queued_at: None,
             },
         );
         let msg = json!({
@@ -2758,6 +2752,14 @@ impl AcpClient {
                     }
                 }
                 _ = tokio::time::sleep(slice) => {
+                    if self.expire_stalled_queued_prompt(id, apply_grace) {
+                        let head = format!(
+                            "event pump did not claim queued {method} settlement (id={id}) within {}s",
+                            apply_grace.as_secs()
+                        );
+                        error!("{}", self.format_exit_detail(&head));
+                        return Err(head);
+                    }
                     // Claim = the pump removed the pending waiter and now owes
                     // this turn's terminal. Checked every slice so the apply
                     // grace starts with the claim, not after the idle window.
@@ -2772,9 +2774,8 @@ impl AcpClient {
                     }
                     if !self.reader_alive.load(Ordering::SeqCst) {
                         if !self.expire_prompt_waiter(id) {
-                            // The pump claimed the settlement between the
-                            // ownership check and here; the next slice bounds
-                            // the wait.
+                            // A queued terminal or a concurrent pump claim owns
+                            // this waiter; the settlement grace bounds the wait.
                             continue;
                         }
                         let head = format!(
@@ -2787,9 +2788,8 @@ impl AcpClient {
                     let now = Instant::now();
                     if prompt_wait_should_timeout(last, wait_started, now, idle) {
                         if !self.expire_prompt_waiter(id) {
-                            // The pump already claimed the settlement: the RPC
-                            // result is still coming, so keep awaiting it
-                            // instead of failing a live prompt as a timeout.
+                            // A queued terminal or pump claim still owns the
+                            // waiter, so keep awaiting instead of timing out.
                             continue;
                         }
                         let idle_secs = last
@@ -2811,11 +2811,26 @@ impl AcpClient {
 
     /// Claim this call's pending waiter so the watchdog may fail the turn.
     ///
-    /// `false` means the entry is gone: the event pump already claimed the
-    /// settlement, so the queued terminal is the authoritative outcome and the
-    /// caller must keep awaiting the original oneshot instead of erroring.
+    /// `false` means a queued settlement is still authoritative or the event
+    /// pump already claimed it, so the caller must keep awaiting the oneshot.
     fn expire_prompt_waiter(&self, id: u64) -> bool {
-        self.pending.lock().remove(&id).is_some()
+        let mut pending = self.pending.lock();
+        if pending.get(&id).is_some_and(|pending| {
+            pending.settlement_queued_at.is_some() && !self.event_tx.is_closed()
+        }) {
+            return false;
+        }
+        pending.remove(&id).is_some()
+    }
+
+    fn expire_stalled_queued_prompt(&self, id: u64, grace: Duration) -> bool {
+        let mut pending = self.pending.lock();
+        let stalled = pending.get(&id).is_some_and(|pending| {
+            pending
+                .settlement_queued_at
+                .is_some_and(|queued_at| queued_at.elapsed() >= grace)
+        });
+        stalled && pending.remove(&id).is_some()
     }
 
     async fn notify(&self, method: &str, params: Value) -> Result<(), String> {
@@ -6717,7 +6732,7 @@ mod prompt_fallback_tests {
                 method: "session/prompt".into(),
                 tx: first_tx,
                 session_id: Some("sidA".into()),
-                settlement_queued: false,
+                settlement_queued_at: None,
             },
         );
 
@@ -6734,7 +6749,7 @@ mod prompt_fallback_tests {
                 method: "session/prompt".into(),
                 tx: second_tx,
                 session_id: Some("sidA".into()),
-                settlement_queued: false,
+                settlement_queued_at: None,
             },
         );
 
@@ -7859,7 +7874,7 @@ mod prompt_settle_tests {
                     method: "session/prompt".into(),
                     tx,
                     session_id: Some(AGENT_SID.into()),
-                    settlement_queued: false,
+                    settlement_queued_at: None,
                 },
             );
         }
@@ -8233,6 +8248,100 @@ mod prompt_settle_tests {
             settled.get("stopReason").and_then(Value::as_str),
             Some("end_turn")
         );
+    }
+
+    #[tokio::test]
+    async fn reader_eof_keeps_a_queued_prompt_settlement_alive_until_pumped() {
+        let (event_tx, mut events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
+        let client = AcpClient::test_client(event_tx);
+        let (waiter_tx, waiter_rx) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, waiter_tx);
+
+        client
+            .enqueue_prompt_settlement(
+                PROMPT_ID,
+                Some(AGENT_SID.into()),
+                Some("end_turn".into()),
+                Ok(json!({"stopReason": "end_turn"})),
+            )
+            .await;
+        client.reader_alive.store(false, Ordering::SeqCst);
+
+        let wait_client = Arc::clone(&client);
+        let wait = tokio::spawn(async move {
+            wait_client
+                .await_prompt_settlement(
+                    PROMPT_ID,
+                    waiter_rx,
+                    Some(AGENT_SID),
+                    Instant::now(),
+                    PromptWaitBudget {
+                        idle: Duration::ZERO,
+                        slice: Duration::from_millis(5),
+                        apply_grace: Duration::from_secs(1),
+                    },
+                )
+                .await
+        });
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(
+            !wait.is_finished(),
+            "reader EOF must not expire a queued terminal before the pump handles it"
+        );
+
+        let (_, event) = events.recv().await.expect("queued settlement");
+        let AcpEvent::PromptRpcSettled {
+            id,
+            stop_reason,
+            result,
+        } = event
+        else {
+            panic!("expected PromptRpcSettled, got {event:?}");
+        };
+        client
+            .consume_prompt_settlement(id, stop_reason, result, async |_| {})
+            .await;
+
+        let settled = wait
+            .await
+            .expect("wait task")
+            .expect("queued settlement remains authoritative after EOF");
+        assert_eq!(
+            settled.get("stopReason").and_then(Value::as_str),
+            Some("end_turn")
+        );
+    }
+
+    #[tokio::test]
+    async fn stalled_queued_prompt_settlement_expires_after_its_grace() {
+        let (event_tx, _events) = mpsc::channel(ACP_EVENT_QUEUE_CAPACITY);
+        let client = AcpClient::test_client(event_tx);
+        let (waiter_tx, waiter_rx) = oneshot::channel();
+        client.insert_prompt_waiter(PROMPT_ID, waiter_tx);
+        client
+            .pending
+            .lock()
+            .get_mut(&PROMPT_ID)
+            .expect("waiter")
+            .settlement_queued_at = Some(Instant::now() - Duration::from_millis(10));
+
+        let error = client
+            .await_prompt_settlement(
+                PROMPT_ID,
+                waiter_rx,
+                Some(AGENT_SID),
+                Instant::now(),
+                PromptWaitBudget {
+                    idle: Duration::from_secs(60),
+                    slice: Duration::from_millis(1),
+                    apply_grace: Duration::from_millis(1),
+                },
+            )
+            .await
+            .expect_err("stalled queued settlement should be bounded");
+
+        assert!(error.contains("did not claim queued session/prompt settlement"));
+        assert!(!client.pending.lock().contains_key(&PROMPT_ID));
     }
 
     /// Queue the fallback terminal for `PROMPT_ID` and claim it in a pump task
@@ -8663,7 +8772,7 @@ mod prompt_settle_tests {
                 method: "session/prompt".into(),
                 tx: next_tx,
                 session_id: Some(AGENT_SID.into()),
-                settlement_queued: false,
+                settlement_queued_at: None,
             },
         );
 

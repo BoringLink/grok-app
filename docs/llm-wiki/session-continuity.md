@@ -345,15 +345,24 @@ It is set when `session/prompt` is dispatched and cleared **only** by:
 resolves the `session/prompt` waiter directly. The result is queued as
 `AcpEvent::PromptRpcSettled`, and the owning event pump — the same single
 consumer that applies stream/tool events — claims the waiter, applies the
-authoritative `PromptComplete`, and only then sends the result. `mpsc::send`
-does not wait for the receiver, so resolving in the reader let the turn task
-finish and clear `stream_buf` while the pump was still behind chunks that
-arrived earlier; those chunks then arrived with `prompt_in_flight=false` and
-were dropped as session-load replay — the App journal kept an empty assistant
-row while the agent-side history already held the body. `prompt_for` adds no
-events after the RPC: the queued terminal's finish path takes the pending
-stream payload with `done: true`, so the UI stream settles without a separate
-done tick or a duplicate `PromptComplete`.
+authoritative `PromptComplete`, and only then sends the result. The Tokio
+`mpsc` queue is bounded to 64 events; when it fills, the reader waits for
+capacity, applying backpressure to ACP input rather than growing memory without
+bound. Prompt settlement reserves capacity before marking the waiter queued, then
+publishes the terminal before releasing the pending-map lock, so reader EOF cannot
+insert `ProcessExited` between that mark and the terminal event. EOF preserves a
+queued settlement, and the prompt watchdog continues waiting while its receiver is
+open. A queued settlement must be claimed by the pump within the same 45s grace;
+after claim, the pump has a separate 45s application grace. Either stalled stage
+fails the turn with a diagnostic error instead of waiting forever. Resolving in
+the reader let the turn task finish and clear `stream_buf` while the pump was still
+behind chunks that arrived earlier; those chunks then arrived with
+`prompt_in_flight=false` and were dropped as session-load replay — the App journal
+kept an empty assistant row while the agent-side history already held the body.
+`prompt_for` adds no events after the RPC: the queued terminal's finish path takes
+the pending stream payload with `done: true`, so the UI stream settles without a
+separate done tick or a duplicate `PromptComplete`. The event pump stops at
+`ProcessExited`, after all events ordered before it have been applied.
 
 The claim is atomic (one pending-map removal). The early `prompt_complete`
 fallback and the real RPC result can both queue a settlement for the same prompt
@@ -370,8 +379,8 @@ Failure outcomes by path:
 | Case | Behavior |
 |------|----------|
 | `session/prompt` RPC error | The result is queued as `PromptRpcSettled`; the pump claims it and delivers `Err` without synthesizing an authoritative `PromptComplete`. The Host fails the turn on the RPC error path. |
-| timeout / stop / abort | The waiter entry is already removed, so a later settlement claims nothing and applies no terminal. The idle watchdog only fails the turn when it removes the entry itself; if the pump already claimed it, the RPC result is still coming and the wait continues. That post-claim wait is bounded by a terminal-application grace (45s, checked every poll slice): a pump that claims the waiter but never applies the terminal fails the turn with a diagnostic error instead of polling forever. |
-| no pump listening (host-less reader, receiver closed) | `event_tx.send` fails; the reader claims and delivers the result inline. There is no queue to order against and no Host turn state to end. |
+| idle timeout / stop / abort | When the watchdog or cancellation removes the waiter, a later settlement claims nothing and applies no terminal. A queued terminal is allowed up to 45s to be claimed; after the pump claims it, a separate 45s application grace bounds terminal handling. Both limits are checked every poll slice. Explicit stop, abort, and write-failure paths may remove a queued waiter immediately. |
+| no pump listening (host-less reader, receiver closed) | Reserving queue capacity fails; the reader claims and delivers the result inline. There is no live pump to order against and no Host turn state to end. |
 
 `_x.ai/session/prompt_complete` arrives as `authoritative: false` and only
 *defers*. `schedule_prompt_complete_fallback` is the escape hatch for an agent
