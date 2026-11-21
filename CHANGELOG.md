@@ -13,11 +13,23 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+## [0.2.59] - 2026-11-22
+
+> **Highlight:** ACP output stays complete when a turn finishes.
+>
+> **中文 · 亮点：** 会话结束时，ACP 输出仍保持完整。
+
 ### Changed
-- Chat no longer shows the context recovery banner. Context verification and recovery still run before each send.
+- Chat no longer shows the context recovery banner; checks still run before sends.
 
 **中文 · 变更**
-- 聊天界面不再显示上下文恢复横幅。发送前的上下文核验与恢复保持不变。
+- 聊天不再显示上下文恢复横幅；发送前仍会核验上下文。
+
+### Fixed
+- ACP output is preserved when a turn ends with events still queued.
+
+**中文 · 修复**
+- 会话结束时仍在队列中的 ACP 输出不再丢失。
 
 ## [0.2.58] - 2026-11-20
 
