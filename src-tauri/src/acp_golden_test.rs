@@ -591,6 +591,8 @@ fn subagent_payload_matches_fixture_expectations() {
     }
     assert_eq!(spawned["subagentType"], expected["spawned"]["subagentType"]);
     assert_eq!(spawned["description"], expected["spawned"]["description"]);
+    assert_eq!(spawned["model"], expected["spawned"]["model"]);
+    assert_eq!(spawned["agentAddress"], expected["spawned"]["agentAddress"]);
     assert!(spawned["output"].is_null(), "spawned has no output yet");
     assert!(
         spawned["status"].is_null(),

@@ -72,6 +72,17 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
 }
+.agent-tasks__subagent-session-id {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+}
+.agent-tasks__subagent-session-id code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
 .agent-tasks__cwd-actions {
   display: flex;
   flex-wrap: wrap;

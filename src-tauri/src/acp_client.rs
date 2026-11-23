@@ -237,10 +237,8 @@ impl SubagentPhase {
 /// is optional: the CLI omits what it does not know, and the UI must show an
 /// honest empty state rather than a fabricated value.
 ///
-/// Only what the Tasks panel renders is carried. The CLI also sends
-/// `parent_session_id`, `model`, `tools_used`, `error_count`, `will_wake` and
-/// friends; the golden fixture keeps pinning that wire shape, but decoding a
-/// field nothing reads just widens the payload and the type for no one.
+/// The payload carries lifecycle identity and run metadata consumed by the
+/// Tasks panel; unrelated lifecycle fields remain outside the app model.
 #[derive(Debug, Clone)]
 pub struct SubagentUpdate {
     pub phase: SubagentPhase,
@@ -248,6 +246,8 @@ pub struct SubagentUpdate {
     pub child_session_id: Option<String>,
     pub subagent_type: Option<String>,
     pub description: Option<String>,
+    pub model: Option<String>,
+    pub agent_address: Option<String>,
     /// Terminal status on `subagent_finished` (`completed` / `failed` / …).
     pub status: Option<String>,
     pub duration_ms: Option<u64>,
@@ -4859,6 +4859,8 @@ pub fn parse_subagent_update(kind: &str, update: &Value) -> Option<AcpEvent> {
             .filter(|id| id.chars().count() <= 512),
         subagent_type: str_field(&["subagent_type", "subagentType"]),
         description: str_field(&["description", "summary"]),
+        model: str_field(&["model"]),
+        agent_address: str_field(&["agentAddress", "agent_address"]),
         status: str_field(&["status"]),
         duration_ms: num_field(&["duration_ms", "durationMs"]),
         // `subagent_finished` reports the counters as `turns` / `tool_calls`;
@@ -4883,6 +4885,8 @@ impl SubagentUpdate {
             "childSessionId": self.child_session_id,
             "subagentType": self.subagent_type,
             "description": self.description,
+            "model": self.model,
+            "agentAddress": self.agent_address,
             "status": self.status,
             "durationMs": self.duration_ms,
             "turnCount": self.turn_count,

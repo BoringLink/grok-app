@@ -19,6 +19,7 @@ import {
   type SubagentRun,
 } from "@/lib/session/subagents";
 import { IconChevronDown, IconChevronRight, IconEye } from "@/components/icons";
+import { MessageCopyButton } from "@/components/lobe-chat/MessageAction";
 import { requestSubagentViewer } from "@/lib/subagentViewerRequest";
 import { subagentLiveStore } from "@/lib/subagentLiveStore";
 
@@ -40,9 +41,8 @@ function subagentStatusLabelKey(status: SubagentDisplayStatus): MessageKey {
 }
 
 /**
- * One subagent telemetry row. Shows description / type / status and the
- * progress counters the CLI reported; a finished run with output expands to
- * reveal it. Never draws a counter the payload did not carry.
+ * One subagent telemetry row. Identity details and counters are shown only
+ * when the CLI reports them; final output remains in the side viewer.
  */
 function SubagentRow({
   run,
@@ -58,7 +58,13 @@ function SubagentRow({
   const [open, setOpen] = useState(false);
   const status = subagentDisplayStatus(run);
   const label = subagentDisplayLabel(run);
-  const hasOutput = run.finished && !!run.output;
+  const hasIdentity = Boolean(
+    run.childSessionId ||
+      run.subagentType ||
+      run.description ||
+      run.model ||
+      run.agentAddress,
+  );
   const hasMeta =
     subagentContextOccupancy(run) !== null ||
     run.tokensUsed !== undefined ||
@@ -81,35 +87,21 @@ function SubagentRow({
     >
       <div className="agent-tasks__row-line">
         <div className="agent-tasks__row-main agent-tasks__row-main--flat">
-          {hasOutput ? (
-            <button
-              type="button"
-              className="agent-tasks__row-toggle"
-              onClick={() => setOpen((v) => !v)}
-              aria-expanded={open}
-              aria-label={open ? t("tasks.collapse") : t("tasks.expand")}
-            >
-              <span
-                className={`agent-tasks__dot agent-tasks__dot--${status}`}
-                aria-hidden
-              />
-              <span className="agent-tasks__name" title={label}>
-                {label}
-              </span>
-            </button>
-          ) : (
-            // No answer to reveal — keep it a static row rather than a toggle
-            // that expands to nothing.
-            <span className="agent-tasks__row-toggle is-static">
-              <span
-                className={`agent-tasks__dot agent-tasks__dot--${status}`}
-                aria-hidden
-              />
-              <span className="agent-tasks__name" title={label}>
-                {label}
-              </span>
+          <button
+            type="button"
+            className="agent-tasks__row-toggle"
+            onClick={() => setOpen((value) => !value)}
+            aria-expanded={open}
+            aria-label={open ? t("tasks.collapse") : t("tasks.expand")}
+          >
+            <span
+              className={`agent-tasks__dot agent-tasks__dot--${status}`}
+              aria-hidden
+            />
+            <span className="agent-tasks__name" title={label}>
+              {label}
             </span>
-          )}
+          </button>
           {run.subagentType ? (
             <span className="agent-tasks__status">{run.subagentType}</span>
           ) : null}
@@ -130,15 +122,9 @@ function SubagentRow({
             <IconEye size={13} />
             <span>{t("tasks.subagentView")}</span>
           </button>
-          {hasOutput ? (
-            <span className="agent-tasks__row-chev" aria-hidden>
-              {open ? (
-                <IconChevronDown size={14} />
-              ) : (
-                <IconChevronRight size={14} />
-              )}
-            </span>
-          ) : null}
+          <span className="agent-tasks__row-chev" aria-hidden>
+            {open ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
+          </span>
         </div>
       </div>
       {hasMeta ? (
@@ -151,14 +137,53 @@ function SubagentRow({
           })}
         </p>
       ) : null}
-      {open && hasOutput ? (
-        <div className="agent-tasks__detail">
-          <div className="agent-tasks__meta">
-            <span className="agent-tasks__meta-k">
-              {t("tasks.subagentOutput")}
-            </span>
-          </div>
-          <pre className="agent-tasks__subagent-output">{run.output}</pre>
+      {open && hasIdentity ? (
+        <div
+          className="agent-tasks__detail"
+          onClick={(event) => event.stopPropagation()}
+        >
+          {run.childSessionId ? (
+            <div className="agent-tasks__meta">
+              <span className="agent-tasks__meta-k">
+                {t("statusModal.sessionId")}
+              </span>
+              <span
+                className="agent-tasks__meta-v agent-tasks__subagent-session-id"
+                title={run.childSessionId}
+              >
+                <code>{run.childSessionId}</code>
+                <MessageCopyButton
+                  text={run.childSessionId}
+                  copyLabel={t("message.copy")}
+                  copiedLabel={t("message.copied")}
+                />
+              </span>
+            </div>
+          ) : null}
+          {run.description ? (
+            <div className="agent-tasks__meta">
+              <span className="agent-tasks__meta-k">{t("tasks.subagentActivityTask")}</span>
+              <span className="agent-tasks__meta-v" title={run.description}>{run.description}</span>
+            </div>
+          ) : null}
+          {run.subagentType ? (
+            <div className="agent-tasks__meta">
+              <span className="agent-tasks__meta-k">{t("attach.detailsType")}</span>
+              <span className="agent-tasks__meta-v" title={run.subagentType}>{run.subagentType}</span>
+            </div>
+          ) : null}
+          {run.model ? (
+            <div className="agent-tasks__meta">
+              <span className="agent-tasks__meta-k">{t("statusModal.model")}</span>
+              <span className="agent-tasks__meta-v" title={run.model}>{run.model}</span>
+            </div>
+          ) : null}
+          {run.agentAddress ? (
+            <div className="agent-tasks__meta">
+              <span className="agent-tasks__meta-k">agentAddress</span>
+              <span className="agent-tasks__meta-v" title={run.agentAddress}>{run.agentAddress}</span>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </li>
