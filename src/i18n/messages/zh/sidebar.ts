@@ -105,4 +105,5 @@ export const zhSidebar = {
   "sidebar.spaces.err.last": "至少保留一个空间。",
   "sidebar.spaces.err.default": "默认空间不能删除。",
   "sidebar.spaces.err.notFound": "这个空间已经不存在。",
+  "side.tab.subagents": "子代理",
 };

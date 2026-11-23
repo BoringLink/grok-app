@@ -1,0 +1,26 @@
+{
+  "frames": [
+    {
+      "sessionId": "fixture-child-session",
+      "update": {
+        "sessionUpdate": "user_message_chunk",
+        "content": { "type": "text", "text": "Inspect the parser and summarize the issue." }
+      }
+    },
+    {
+      "sessionId": "fixture-child-session",
+      "update": {
+        "sessionUpdate": "agent_thought_chunk",
+        "content": { "type": "text", "text": "I will inspect the parsing path." }
+      }
+    },
+    {
+      "sessionId": "fixture-child-session",
+      "update": {
+        "sessionUpdate": "agent_message_chunk",
+        "content": { "type": "text", "text": "The parser accepts the input." },
+        "messageId": "fixture-message"
+      }
+    }
+  ]
+}

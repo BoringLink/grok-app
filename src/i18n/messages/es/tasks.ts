@@ -251,5 +251,10 @@ export const esTasks = {
   "tasks.subagentCancelled": "Cancelado",
   "tasks.subagentFinished": "Finalizado",
   "tasks.subagentMeta": "{turns} turnos · {tools} herramientas · {tokens} tokens · {duration}",
-  "tasks.subagentOutput": "Resultado",
+  "tasks.subagentView": "Ver subagente",
+  "tasks.subagentActivityTask": "Tarea",
+  "tasks.subagentAgentAddress": "Dirección del agente",
+  "tasks.subagentActivityTrimmed": "Actividad anterior recortada",
+  "tasks.subagentEmpty": "No hay subagentes en esta sesión",
+  "tasks.subagentActivityEmpty": "Aún no hay actividad",
 };

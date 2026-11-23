@@ -251,5 +251,10 @@ export const ptBRTasks = {
   "tasks.subagentCancelled": "Cancelado",
   "tasks.subagentFinished": "Finalizado",
   "tasks.subagentMeta": "{turns} turnos · {tools} ferramentas · {tokens} tokens · {duration}",
-  "tasks.subagentOutput": "Saída",
+  "tasks.subagentView": "Ver subagente",
+  "tasks.subagentActivityTask": "Tarefa",
+  "tasks.subagentAgentAddress": "Endereço do agente",
+  "tasks.subagentActivityTrimmed": "Atividade anterior truncada",
+  "tasks.subagentEmpty": "Não há subagentes nesta sessão",
+  "tasks.subagentActivityEmpty": "Ainda não há atividade",
 };

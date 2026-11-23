@@ -26,6 +26,7 @@
    - [desktop-e2e.md](docs/llm-wiki/desktop-e2e.md) — **desktop E2E**: `agent-desktop` drives the real app's accessibility tree (`Grok Dev` under `pnpm dev`); permissions, snapshot/ref loop, verification
    - [testing.md](docs/llm-wiki/testing.md) — **测试结构**: 任务验收 vs 产品回归；unit / guard / integration / e2e 位置与命令；验收用例验收后销毁
    - [pr-monitor.md](docs/llm-wiki/pr-monitor.md) — **PR monitor**: session-owned watches over the repo's open PRs (one row per PR, inline bell, chip count), host poll + fingerprint dedup, the host delivers the localized follow-up into the chat; **the agent gets its own MCP tools** (`pr_watch` / `pr_unwatch` / `pr_watches` over loopback `/v1/pr-monitor/watches`) so it watches the PR it just opened and stops when the PR is done; process-lifetime, watches not persisted (ADR 0005)
+   - [subagent-activity.md](docs/llm-wiki/subagent-activity.md) — **子代理实时活动**：ACP 文本分块聚合、工具活动与兼容降级
 
 1b. **Release (AI handoff)** — **[docs/llm-wiki/release.md](docs/llm-wiki/release.md)** is the single source for ship steps. Platforms / local build: [docs/BUILD.md](docs/BUILD.md). Window chrome: `tauri.macos.conf.json` (Overlay) vs `tauri.windows.conf.json` (frameless).  
    - Never tag without `## [X.Y.Z]` in `CHANGELOG.md`.  

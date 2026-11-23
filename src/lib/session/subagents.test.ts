@@ -19,8 +19,11 @@ describe("applySubagentEvent", () => {
       sessionId: "s1",
       phase: "spawned",
       subagentId: "a1",
+      childSessionId: "agent-child-1",
       subagentType: "general-purpose",
       description: "count files",
+      model: "grok-4",
+      agentAddress: "worker@local",
     };
     const progress = {
       sessionId: "s1",
@@ -51,8 +54,11 @@ describe("applySubagentEvent", () => {
     expect(step3).toHaveLength(1);
     const run = step3[0]!;
     expect(run.subagentId).toBe("a1");
+    expect(run.childSessionId).toBe("agent-child-1");
     expect(run.description).toBe("count files");
     expect(run.subagentType).toBe("general-purpose");
+    expect(run.model).toBe("grok-4");
+    expect(run.agentAddress).toBe("worker@local");
     expect(run.turnCount).toBe(1);
     expect(run.toolCallCount).toBe(1);
     expect(run.durationMs).toBe(9336);
@@ -101,6 +107,8 @@ describe("applySubagentEvent", () => {
       subagentId: "a1",
       description: "seeded",
       subagentType: "general-purpose",
+      model: "grok-4",
+      agentAddress: "worker@local",
     });
     const previous: SubagentRun = {
       ...seeded[0]!,
@@ -121,6 +129,8 @@ describe("applySubagentEvent", () => {
     const run = next[0]!;
     expect(run.turnCount).toBe(2);
     expect(run.tokensUsed).toBe(100);
+    expect(run.model).toBe("grok-4");
+    expect(run.agentAddress).toBe("worker@local");
     expect(run.contextWindowTokens).toBe(200000);
     expect(run.durationMs).toBe(500);
     expect(run.description).toBe("seeded");
@@ -330,6 +340,7 @@ describe("formatSubagentDuration", () => {
 describe("trimSubagentRuns", () => {
   const row = (subagentId: string, finished: boolean): SubagentRun => ({
     subagentId,
+    childSessionId: null,
     finished,
     subagentType: null,
     description: null,

@@ -578,9 +578,11 @@ impl SessionManager {
                     .get(app_session_id)
                     .is_some_and(|s| !Self::is_session_load_replay(s));
                 if owned {
+                    self.record_child_route(process_id, app_session_id, &sub);
                     let _ = app.emit("session://subagent", sub.to_payload(app_session_id));
                 }
             }
+            AcpEvent::SubagentUserMessage => {}
             AcpEvent::ToolOpenReleased { tool_call_id } => {
                 let mut pending_emits = Vec::new();
                 let mut pending_persists = Vec::new();

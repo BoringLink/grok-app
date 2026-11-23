@@ -106,4 +106,5 @@ export const enSidebar = {
   "sidebar.spaces.err.last": "Keep at least one space.",
   "sidebar.spaces.err.default": "The default space cannot be deleted.",
   "sidebar.spaces.err.notFound": "That space is no longer available.",
+  "side.tab.subagents": "Subagents",
 } as const;

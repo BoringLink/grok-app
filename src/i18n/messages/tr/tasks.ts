@@ -251,5 +251,10 @@ export const trTasks = {
   "tasks.subagentCancelled": "İptal edildi",
   "tasks.subagentFinished": "Bitti",
   "tasks.subagentMeta": "{turns} tur · {tools} araç · {tokens} belirteç · {duration}",
-  "tasks.subagentOutput": "Çıktı",
+  "tasks.subagentView": "Alt ajanı görüntüle",
+  "tasks.subagentActivityTask": "Görev",
+  "tasks.subagentAgentAddress": "Aracı adresi",
+  "tasks.subagentActivityTrimmed": "Önceki etkinlik kısaltıldı",
+  "tasks.subagentEmpty": "Bu oturumda alt ajan yok",
+  "tasks.subagentActivityEmpty": "Henüz etkinlik yok",
 };

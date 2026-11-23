@@ -6,6 +6,7 @@ import { lazy, Suspense, useMemo } from "react";
 import { createT, type Locale } from "@/i18n";
 import type { SideTab } from "@/lib/sideWorkbench";
 import { BrowserTab } from "./BrowserTab";
+import { SubagentActivityTab } from "./SubagentActivityTab";
 
 // xterm (~450KB vendor chunk) only loads when a terminal tab is actually
 // shown — not with every side-panel open.
@@ -20,6 +21,7 @@ export type SideTabBodyProps = {
   projectPath?: string | null;
   sshAlias?: string | null;
   active?: boolean;
+  sessionId?: string | null;
 };
 
 export function SideTabBody({
@@ -28,6 +30,7 @@ export function SideTabBody({
   projectPath = null,
   sshAlias = null,
   active = true,
+  sessionId = null,
 }: SideTabBodyProps) {
   const tr = useMemo(() => createT(locale as Locale), [locale]);
 
@@ -56,6 +59,10 @@ export function SideTabBody({
         />
       </Suspense>
     );
+  }
+
+  if (tab.kind === "subagents") {
+    return <SubagentActivityTab locale={locale} sessionId={sessionId} />;
   }
 
   let title = tab.name;

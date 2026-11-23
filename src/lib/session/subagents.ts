@@ -10,10 +10,9 @@
  * Missing fields stay `undefined` — never fabricated (honesty convention, see
  * {@link ./taskTreeHonesty}).
  *
- * Only the fields the Tasks panel actually renders are carried. The CLI sends
- * more (`parent_session_id`, `model`, `tools_used`, …) and the golden fixture
- * keeps pinning that wire shape, but a field nothing reads is dead weight in
- * the payload, the merge and the type.
+ * The Tasks panel renders the model and agent address when supplied. Other CLI
+ * fields such as `parent_session_id` and `tools_used` are intentionally not
+ * forwarded because the panel has no use for them.
  */
 
 import {
@@ -33,8 +32,11 @@ export type SubagentEventPayload = {
   sessionId?: string | null;
   phase?: string | null;
   subagentId?: string | null;
+  childSessionId?: string | null;
   subagentType?: string | null;
   description?: string | null;
+  model?: string | null;
+  agentAddress?: string | null;
   status?: string | null;
   durationMs?: number | null;
   turnCount?: number | null;
@@ -47,10 +49,13 @@ export type SubagentEventPayload = {
 /** Merged view of one subagent across its lifecycle updates. */
 export type SubagentRun = {
   subagentId: string;
+  childSessionId: string | null;
   /** True once a `finished` update landed (terminal; later pushes don't reset). */
   finished: boolean;
   subagentType: string | null;
   description: string | null;
+  model?: string;
+  agentAddress?: string;
   status: string | null;
   durationMs?: number;
   turnCount?: number;
@@ -83,9 +88,12 @@ function asPhase(v: unknown): SubagentPhase | null {
 function newRun(id: string, payload: SubagentEventPayload): SubagentRun {
   return {
     subagentId: id,
+    childSessionId: asText(payload.childSessionId),
     finished: asPhase(payload.phase) === "finished",
     subagentType: asText(payload.subagentType),
     description: asText(payload.description),
+    model: asText(payload.model) ?? undefined,
+    agentAddress: asText(payload.agentAddress) ?? undefined,
     status: asText(payload.status),
     durationMs: asNumber(payload.durationMs),
     turnCount: asNumber(payload.turnCount),
@@ -105,8 +113,11 @@ function mergeRun(
   // `finished` is terminal — a stray progress push must not downgrade it.
   if (asPhase(payload.phase) === "finished") next.finished = true;
 
+  next.childSessionId = asText(payload.childSessionId) ?? prev.childSessionId;
   next.subagentType = asText(payload.subagentType) ?? prev.subagentType;
   next.description = asText(payload.description) ?? prev.description;
+  next.model = asText(payload.model) ?? prev.model;
+  next.agentAddress = asText(payload.agentAddress) ?? prev.agentAddress;
   next.status = asText(payload.status) ?? prev.status;
   next.output = asText(payload.output) ?? prev.output;
 

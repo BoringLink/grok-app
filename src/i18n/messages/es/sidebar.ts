@@ -104,4 +104,5 @@ export const esSidebar = {
   "sidebar.spaces.err.last": "Debe quedar al menos un espacio.",
   "sidebar.spaces.err.default": "El espacio predeterminado no se puede eliminar.",
   "sidebar.spaces.err.notFound": "Ese espacio ya no está disponible.",
+  "side.tab.subagents": "Subagentes",
 };

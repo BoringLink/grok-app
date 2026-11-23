@@ -251,5 +251,10 @@ export const frTasks = {
   "tasks.subagentCancelled": "Annulé",
   "tasks.subagentFinished": "Achevé",
   "tasks.subagentMeta": "{turns} tours · {tools} outils · {tokens} tokens · {duration}",
-  "tasks.subagentOutput": "Résultat",
+  "tasks.subagentView": "Voir le sous-agent",
+  "tasks.subagentActivityTask": "Tâche",
+  "tasks.subagentAgentAddress": "Adresse de l’agent",
+  "tasks.subagentActivityTrimmed": "Activité antérieure tronquée",
+  "tasks.subagentEmpty": "Aucun sous-agent dans cette session",
+  "tasks.subagentActivityEmpty": "Aucune activité pour le moment",
 };
