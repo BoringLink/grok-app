@@ -1,6 +1,6 @@
 export type SubagentLiveEvent = {
   childId: string;
-  kind: "task" | "thought" | "assistant" | "tool" | "lifecycle" | "boundary";
+  kind: "thought" | "assistant" | "tool" | "lifecycle" | "boundary";
   text: string;
   messageId?: string;
   toolCallId?: string;
@@ -29,6 +29,11 @@ export const SUBAGENT_LIVE_MAX_SESSION_CHARS = 512_000;
 export const SUBAGENT_LIVE_MAX_SESSION_BYTES = 1_048_576;
 export const SUBAGENT_LIVE_MAX_SESSIONS = 32;
 export const SUBAGENT_LIVE_MAX_CHILDREN_PER_SESSION = 100;
+export const SUBAGENT_LIVE_MAX_ID_CHARS = 512;
+
+function isBoundedId(value: string): boolean {
+  return value.length > 0 && Array.from(value).length <= SUBAGENT_LIVE_MAX_ID_CHARS && textBytes(value) <= SUBAGENT_LIVE_MAX_ID_CHARS * 4;
+}
 
 function textBytes(text: string): number {
   return new TextEncoder().encode(text).byteLength;
@@ -92,7 +97,7 @@ function boundToolEvent(event: SubagentLiveEvent): { event: SubagentLiveEvent; t
 
 function eventTotals(events: readonly SubagentLiveActivity[]): { chars: number; bytes: number } {
   return events.reduce((totals, event) => {
-    const content = [event.text, event.title, event.status, event.input, event.output].filter(Boolean).join("");
+    const content = [event.childId, event.messageId, event.toolCallId, event.text, event.title, event.status, event.input, event.output].filter(Boolean).join("");
     return {
       chars: totals.chars + Array.from(content).length,
       bytes: totals.bytes + textBytes(content),
@@ -120,11 +125,15 @@ function trimEvents(events: SubagentLiveActivity[]): { events: SubagentLiveActiv
   return { events, trimmed };
 }
 
-function sessionTotals(children: Map<string, SubagentLiveChild>): { chars: number; bytes: number } {
+function sessionTotals(sessionId: string, children: Map<string, SubagentLiveChild>): { chars: number; bytes: number } {
   return [...children.values()].reduce((session, child) => {
     const totals = eventTotals(child.events);
-    return { chars: session.chars + totals.chars, bytes: session.bytes + totals.bytes };
-  }, { chars: 0, bytes: 0 });
+    const childIdChars = Array.from(child.childId).length;
+    return {
+      chars: session.chars + childIdChars + totals.chars,
+      bytes: session.bytes + textBytes(child.childId) + totals.bytes,
+    };
+  }, { chars: Array.from(sessionId).length, bytes: textBytes(sessionId) });
 }
 
 class SubagentLiveStore {
@@ -157,8 +166,8 @@ class SubagentLiveStore {
     }
   }
 
-  private trimSession(children: Map<string, SubagentLiveChild>): void {
-    let totals = sessionTotals(children);
+  private trimSession(sessionId: string, children: Map<string, SubagentLiveChild>): void {
+    let totals = sessionTotals(sessionId, children);
     while (totals.chars > SUBAGENT_LIVE_MAX_SESSION_CHARS || totals.bytes > SUBAGENT_LIVE_MAX_SESSION_BYTES) {
       const oldest = [...children.values()]
         .filter((child) => child.events.length > 0)
@@ -169,7 +178,7 @@ class SubagentLiveStore {
         }, undefined);
       if (!oldest) return;
       children.set(oldest.childId, { ...oldest, events: oldest.events.slice(1), truncated: true });
-      totals = sessionTotals(children);
+      totals = sessionTotals(sessionId, children);
     }
   }
 
@@ -193,7 +202,7 @@ class SubagentLiveStore {
   registerChild(sessionId: string, childId: string): boolean {
     const parentId = sessionId.trim();
     const normalizedChildId = childId.trim();
-    if (!parentId || !normalizedChildId) return false;
+    if (!isBoundedId(parentId) || !isBoundedId(normalizedChildId)) return false;
     const children = this.childrenFor(parentId);
     this.makeRoomForChild(parentId, children, normalizedChildId);
     if (children.has(normalizedChildId)) return true;
@@ -213,7 +222,10 @@ class SubagentLiveStore {
     const parentId = sessionId.trim();
     const childId = event.childId.trim();
     const text = event.text;
-    if (!parentId || !childId || (!text && event.kind !== "boundary" && event.kind !== "tool")) return false;
+    if (!isBoundedId(parentId) || !isBoundedId(childId) ||
+      (event.messageId !== undefined && !isBoundedId(event.messageId)) ||
+      (event.toolCallId !== undefined && !isBoundedId(event.toolCallId)) ||
+      (!text && event.kind !== "boundary" && event.kind !== "tool")) return false;
     const boundField = (value: string | undefined): string | undefined => value === undefined
       ? undefined
       : tailWithinLimits(value, SUBAGENT_LIVE_MAX_TEXT_CHARS, SUBAGENT_LIVE_MAX_TEXT_BYTES);
@@ -251,7 +263,7 @@ class SubagentLiveStore {
       const combinedText = event.kind === "tool" ? finalBoundedEvent.text : current.text + finalBoundedEvent.text;
       const mergedText = tailWithinLimits(combinedText, SUBAGENT_LIVE_MAX_TEXT_CHARS, SUBAGENT_LIVE_MAX_TEXT_BYTES);
       mergedTextWasTrimmed = mergedText.length !== combinedText.length;
-      nextEvents[matchingIndex] = {
+      const mergedEvent = {
         ...current,
         ...finalBoundedEvent,
         childId,
@@ -262,8 +274,14 @@ class SubagentLiveStore {
         output: finalBoundedEvent.output || current.output,
         sequence: incoming.sequence,
       };
+      const boundedMergedEvent = boundToolEvent(mergedEvent);
+      mergedTextWasTrimmed ||= boundedMergedEvent.trimmed;
+      nextEvents[matchingIndex] = { ...boundedMergedEvent.event, sequence: incoming.sequence };
     } else {
       nextEvents.push(incoming);
+    }
+    if (event.kind === "tool" && nextEvents.at(-1)?.kind !== "boundary") {
+      nextEvents.push({ childId, kind: "boundary", text: "", sequence: ++this.sequence });
     }
     const result = trimEvents(nextEvents);
     children.delete(childId);
@@ -272,7 +290,7 @@ class SubagentLiveStore {
       events: result.events,
       truncated: previous.truncated || event.truncated === true || textWasTrimmed || mergedTextWasTrimmed || result.trimmed,
     });
-    this.trimSession(children);
+    this.trimSession(parentId, children);
     this.changed();
     return true;
   }
@@ -305,7 +323,7 @@ export function applySubagentLivePayload(
     typeof childId !== "string" ||
     typeof childSessionId !== "string" ||
     childSessionId !== associatedChildSessionId ||
-    (kind !== "task" && kind !== "thought" && kind !== "assistant" && kind !== "tool" && kind !== "lifecycle" && kind !== "boundary") ||
+    (kind !== "thought" && kind !== "assistant" && kind !== "tool" && kind !== "lifecycle" && kind !== "boundary") ||
     typeof text !== "string" ||
     (truncated !== undefined && typeof truncated !== "boolean")
   ) return false;

@@ -9,6 +9,7 @@ import {
   SUBAGENT_LIVE_MAX_SESSION_BYTES,
   SUBAGENT_LIVE_MAX_SESSIONS,
   SUBAGENT_LIVE_MAX_CHILDREN_PER_SESSION,
+  SUBAGENT_LIVE_MAX_ID_CHARS,
   type SubagentLiveChild,
 } from "./subagentLiveStore";
 
@@ -16,17 +17,17 @@ afterEach(() => subagentLiveStore.resetForTests());
 
 describe("subagent live activity store", () => {
   it("keeps ordered activity isolated by parent session and child", () => {
-    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "task", text: "task" });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "assistant", text: "first" });
     subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "thought", text: "thinking" });
     subagentLiveStore.apply("parent-b", { childId: "child-1", kind: "assistant", text: "other chat" });
 
-    expect(subagentLiveStore.list("parent-a")[0]?.events.map(({ text }) => text)).toEqual(["task", "thinking"]);
+    expect(subagentLiveStore.list("parent-a")[0]?.events.map(({ text }) => text)).toEqual(["first", "thinking"]);
     expect(subagentLiveStore.list("parent-b")[0]?.events[0]?.text).toBe("other chat");
   });
 
   it("rejects malformed events and unknown child selections", () => {
-    expect(subagentLiveStore.apply("parent-a", { childId: " ", kind: "task", text: "ignored" })).toBe(false);
-    expect(subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "task", text: "" })).toBe(false);
+    expect(subagentLiveStore.apply("parent-a", { childId: " ", kind: "thought", text: "ignored" })).toBe(false);
+    expect(subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "thought", text: "" })).toBe(false);
     expect(subagentLiveStore.select("parent-a", "unknown")).toBe(false);
     expect(subagentLiveStore.list("parent-a")).toEqual([]);
   });
@@ -132,6 +133,14 @@ describe("subagent live activity store", () => {
     expect(subagentLiveStore.list("parent-a")[0]?.events.filter(({ kind }) => kind === "thought").map(({ text }) => text)).toEqual(["first", "second"]);
   });
 
+  it("starts a new id-less text block after a sparse tool update", () => {
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "thought", text: "before" });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "tool", text: "Run", toolCallId: "call" });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "thought", text: "after" });
+
+    expect(subagentLiveStore.list("parent-a")[0]?.events.filter(({ kind }) => kind === "thought").map(({ text }) => text)).toEqual(["before", "after"]);
+  });
+
   it("keeps tools as boundaries and updates tool details by tool call id", () => {
     subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "assistant", text: "before" });
     subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "tool", text: "Run", toolCallId: "tool-1", status: "in_progress", input: JSON.stringify({ cmd: "ls" }) });
@@ -139,7 +148,7 @@ describe("subagent live activity store", () => {
     subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "assistant", text: "after" });
 
     const events = subagentLiveStore.list("parent-a")[0]?.events;
-    expect(events?.map(({ kind, text }) => [kind, text])).toEqual([
+    expect(events?.filter(({ kind }) => kind !== "boundary").map(({ kind, text }) => [kind, text])).toEqual([
       ["assistant", "before"], ["tool", "Run"], ["assistant", "after"],
     ]);
     expect(events?.[1]).toMatchObject({ status: "failed", input: JSON.stringify({ cmd: "ls" }), output: "failure" });
@@ -175,6 +184,26 @@ describe("subagent live activity store", () => {
     expect(child?.truncated).toBe(true);
   });
 
+  it("enforces the single-event budget after merging sparse tool updates", () => {
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "tool", text: "tool", toolCallId: "call", title: "界".repeat(16_000) });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "tool", text: "tool", toolCallId: "call", output: "界".repeat(16_000) });
+
+    const child = subagentLiveStore.list("parent-a")[0];
+    const event = child?.events.find(({ kind }) => kind === "tool");
+    const bytes = [event?.text, event?.title, event?.status, event?.input, event?.output]
+      .reduce((total, value) => total + new TextEncoder().encode(value ?? "").byteLength, 0);
+    expect(bytes).toBeLessThanOrEqual(SUBAGENT_LIVE_MAX_TEXT_BYTES);
+    expect(child?.truncated).toBe(true);
+  });
+
+  it("rejects identifiers that exceed the bounded key size", () => {
+    const oversizedId = "x".repeat(SUBAGENT_LIVE_MAX_ID_CHARS + 1);
+    expect(subagentLiveStore.registerChild(oversizedId, "child-1")).toBe(false);
+    expect(subagentLiveStore.registerChild("parent-a", oversizedId)).toBe(false);
+    expect(subagentLiveStore.apply("parent-a", { childId: oversizedId, kind: "thought", text: "text" })).toBe(false);
+    expect(subagentLiveStore.apply(oversizedId, { childId: "child-1", kind: "thought", text: "text" })).toBe(false);
+  });
+
   it("bounds tool payload fields under the same per-event text limit", () => {
     const toolOutput = "x".repeat(SUBAGENT_LIVE_MAX_TEXT_BYTES + 1);
     subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "tool", text: "tool", toolCallId: "call", output: toolOutput });
@@ -195,6 +224,7 @@ describe("subagent live activity store", () => {
     expect(applySubagentLivePayload(validPayload, "agent-other")).toBe(false);
     expect(applySubagentLivePayload(validPayload, undefined)).toBe(false);
     expect(applySubagentLivePayload({ ...validPayload, kind: "tool_call" }, "agent-child-1")).toBe(false);
+    expect(applySubagentLivePayload({ ...validPayload, kind: "task" }, "agent-child-1")).toBe(false);
     expect(applySubagentLivePayload(validPayload, "agent-child-1")).toBe(true);
     expect(subagentLiveStore.list("parent-a").map((child) => child.childId)).toEqual(["child-1"]);
     expect(subagentLiveStore.list("parent-b")).toEqual([]);
@@ -203,8 +233,8 @@ describe("subagent live activity store", () => {
   });
 
   it("remembers selections independently by parent session", () => {
-    subagentLiveStore.apply("parent-a", { childId: "child-a", kind: "task", text: "task" });
-    subagentLiveStore.apply("parent-b", { childId: "child-b", kind: "task", text: "task" });
+    subagentLiveStore.apply("parent-a", { childId: "child-a", kind: "assistant", text: "reply-a" });
+    subagentLiveStore.apply("parent-b", { childId: "child-b", kind: "assistant", text: "reply-b" });
     subagentLiveStore.select("parent-a", "child-a");
     subagentLiveStore.select("parent-b", "child-b");
 

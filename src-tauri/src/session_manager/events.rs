@@ -29,15 +29,40 @@ const CHILD_TOOL_FIELD_MAX_BYTES: usize = 256;
 const CHILD_TOOL_KEY_MAX_BYTES: usize = 24;
 
 fn bounded_tool_field(text: &str) -> String {
-    let mut end = text.len().min(CHILD_TOOL_FIELD_MAX_BYTES);
+    let marker = "… [truncated]";
+    if text.len() <= CHILD_TOOL_FIELD_MAX_BYTES {
+        return text.to_string();
+    }
+    let mut end = text.len().min(CHILD_TOOL_FIELD_MAX_BYTES - marker.len());
     while !text.is_char_boundary(end) {
         end -= 1;
     }
-    if end < text.len() {
-        format!("{}… [truncated]", &text[..end])
-    } else {
-        text.to_string()
+    format!("{}{}", &text[..end], marker)
+}
+
+fn bounded_tool_key(key: &str) -> String {
+    let marker = "…";
+    if key.len() <= CHILD_TOOL_KEY_MAX_BYTES {
+        return key.to_string();
     }
+    let mut end = key.len().min(CHILD_TOOL_KEY_MAX_BYTES - marker.len());
+    while !key.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{}", &key[..end], marker)
+}
+
+fn unique_truncation_key(values: &serde_json::Map<String, serde_json::Value>) -> String {
+    (0..=CHILD_TOOL_MAX_ITEMS)
+        .map(|index| {
+            if index == 0 {
+                "… [truncated]".to_string()
+            } else {
+                format!("… [truncated {index}]")
+            }
+        })
+        .find(|key| !values.contains_key(key))
+        .expect("bounded tool object has room for a unique truncation key")
 }
 
 fn bounded_tool_value(
@@ -74,9 +99,14 @@ fn bounded_tool_value(
                 .take(limit)
                 .map(|item| bounded_tool_value(item, depth + 1, items, text_budget))
                 .collect::<Vec<_>>();
-            if values.len() > limit && *items < CHILD_TOOL_MAX_ITEMS {
-                bounded.push(Value::String("… [truncated]".into()));
-                *items += 1;
+            if values.len() > limit {
+                if *items < CHILD_TOOL_MAX_ITEMS {
+                    bounded.push(Value::String("… [truncated]".into()));
+                    *items += 1;
+                } else if !bounded.is_empty() {
+                    bounded.pop();
+                    bounded.push(Value::String("… [truncated]".into()));
+                }
             }
             Value::Array(bounded)
         }
@@ -85,27 +115,38 @@ fn bounded_tool_value(
             let limit = CHILD_TOOL_MAX_ITEMS
                 .saturating_sub(*items)
                 .saturating_sub(1);
+            let mut key_collision = false;
             for (key, item) in values.iter().take(limit) {
                 if *items >= CHILD_TOOL_MAX_ITEMS {
                     break;
                 }
-                let mut key_end = key.len().min(CHILD_TOOL_KEY_MAX_BYTES);
-                while !key.is_char_boundary(key_end) {
-                    key_end -= 1;
+                let key = bounded_tool_key(key);
+                if bounded.contains_key(&key) {
+                    key_collision = true;
+                    continue;
                 }
-                let key = if key_end < key.len() {
-                    format!("{}…", &key[..key_end])
-                } else {
-                    key.clone()
-                };
                 bounded.insert(key, bounded_tool_value(item, depth + 1, items, text_budget));
             }
-            if values.len() > limit && *items < CHILD_TOOL_MAX_ITEMS {
-                bounded.insert(
-                    "… [truncated]".into(),
-                    Value::String("items omitted".into()),
-                );
+            if (values.len() > limit || key_collision) && *items < CHILD_TOOL_MAX_ITEMS {
+                let message = if key_collision {
+                    "keys omitted because truncated keys collided"
+                } else {
+                    "items omitted"
+                };
+                let marker_key = unique_truncation_key(&bounded);
+                bounded.insert(marker_key, Value::String(message.into()));
                 *items += 1;
+            } else if key_collision || values.len() > limit {
+                if let Some(last_key) = bounded.keys().next_back().cloned() {
+                    bounded.remove(&last_key);
+                    let marker_key = unique_truncation_key(&bounded);
+                    let message = if key_collision {
+                        "keys omitted because truncated keys collided"
+                    } else {
+                        "items omitted"
+                    };
+                    bounded.insert(marker_key, Value::String(message.into()));
+                }
             }
             Value::Object(bounded)
         }
@@ -118,23 +159,32 @@ fn child_tool_value_text(
     items: &mut usize,
     budget: &mut usize,
 ) -> String {
-    match value {
-        serde_json::Value::String(text) => {
-            let mut end = text.len().min(*budget);
-            while !text.is_char_boundary(end) {
-                end -= 1;
-            }
-            *budget -= end;
-            if end < text.len() {
-                format!("{}… [truncated]", &text[..end])
-            } else {
-                text.to_string()
-            }
+    fn fit_budget(text: &str, budget: &mut usize) -> String {
+        if text.len() <= *budget {
+            *budget -= text.len();
+            return text.to_string();
         }
+        let marker = "... [truncated]";
+        let prefix_budget = (*budget).saturating_sub(marker.len());
+        let mut end = prefix_budget.min(text.len());
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let marker_end = (*budget).min(marker.len());
+        let result = format!("{}{}", &text[..end], &marker[..marker_end]);
+        *budget = 0;
+        result
+    }
+
+    match value {
+        serde_json::Value::String(text) => fit_budget(text, budget),
         serde_json::Value::Null => String::new(),
         other => {
-            let normalized = bounded_tool_value(other, 0, items, budget);
-            serde_json::to_string_pretty(&normalized).unwrap_or_else(|_| "… [truncated]".into())
+            let mut source_budget = *budget;
+            let normalized = bounded_tool_value(other, 0, items, &mut source_budget);
+            let serialized = serde_json::to_string_pretty(&normalized)
+                .unwrap_or_else(|_| "… [truncated]".into());
+            fit_budget(&serialized, budget)
         }
     }
 }
@@ -202,7 +252,7 @@ impl SessionManager {
             let _ = app.emit("session://subagent-activity", payload);
             return true;
         }
-        matches!(ev, AcpEvent::SubagentUserMessage { .. })
+        matches!(ev, AcpEvent::SubagentUserMessage)
     }
 
     fn child_activity_payload(
@@ -227,7 +277,6 @@ impl SessionManager {
                 message_id,
                 ..
             } => Some(("thought", text.as_str(), message_id.as_deref(), None)),
-            AcpEvent::SubagentUserMessage { text } => Some(("task", text.as_str(), None, None)),
             AcpEvent::ToolCall {
                 tool_call_id,
                 title,
@@ -1483,7 +1532,7 @@ impl SessionManager {
                     let _ = app.emit("session://subagent", sub.to_payload(&app_sid));
                 }
             }
-            AcpEvent::SubagentUserMessage { .. } => {}
+            AcpEvent::SubagentUserMessage => {}
             AcpEvent::WorkflowScoped { prompt_id, event } => {
                 let app_sid = {
                     let guard = self.inner.lock();
@@ -1830,6 +1879,22 @@ mod child_session_route_tests {
         assert_eq!(tool_payload["toolCallId"], "tool-1");
         assert_eq!(tool_payload["input"], "{\n  \"command\": \"echo\"\n}");
         assert_eq!(tool_payload["output"], "failed");
+        let budgeted_tool = AcpEvent::ToolCall {
+            tool_call_id: "tool-budget".into(),
+            title: "Run command".into(),
+            kind: "execute".into(),
+            status: "completed".into(),
+            raw: serde_json::json!({
+                "rawInput": { "nested": ["界".repeat(200), { "command": "echo hello" }] },
+                "rawOutput": { "stdout": "x".repeat(2_000) },
+            }),
+        };
+        let budgeted_payload = manager
+            .child_activity_payload("process-a", "agent-child-session", &budgeted_tool)
+            .expect("bounded serialized tool activity");
+        let rendered_tool_bytes = budgeted_payload["input"].as_str().unwrap().len()
+            + budgeted_payload["output"].as_str().unwrap().len();
+        assert!(rendered_tool_bytes <= CHILD_TOOL_JSON_TEXT_BUDGET);
         let mut nested_input = serde_json::json!("leaf");
         (0..20).for_each(|_| nested_input = serde_json::json!({ "nested": nested_input }));
         let huge_tool = AcpEvent::ToolCall {
@@ -1846,27 +1911,53 @@ mod child_session_route_tests {
             .child_activity_payload("process-a", "agent-child-session", &huge_tool)
             .expect("bounded child tool activity");
         assert!(serde_json::to_vec(&bounded_tool).unwrap().len() < SUBAGENT_TEXT_MAX_BYTES);
-        assert!(bounded_tool["input"]
-            .as_str()
-            .unwrap()
-            .contains("truncated"));
-        assert!(bounded_tool["output"]
-            .as_str()
-            .unwrap()
-            .contains("truncated"));
+        assert!(
+            format!("{}{}", bounded_tool["input"], bounded_tool["output"]).contains("truncated")
+        );
         assert!(bounded_tool["title"]
             .as_str()
             .unwrap()
             .contains("truncated"));
-        let task = AcpEvent::SubagentUserMessage {
-            text: "child prompt".into(),
-        };
-        assert_eq!(
-            manager
-                .child_activity_payload("process-a", "agent-child-session", &task)
-                .expect("associated child task")["kind"],
-            "task"
+        for field in ["title", "status", "toolCallId"] {
+            assert!(bounded_tool[field].as_str().unwrap().len() <= CHILD_TOOL_FIELD_MAX_BYTES);
+        }
+        let mut colliding_keys = serde_json::Map::new();
+        colliding_keys.insert(
+            format!("{}first", "x".repeat(24)),
+            serde_json::json!("first"),
         );
+        colliding_keys.insert(
+            format!("{}second", "x".repeat(24)),
+            serde_json::json!("second"),
+        );
+        let mut items = 0;
+        let mut text_budget = CHILD_TOOL_JSON_TEXT_BUDGET;
+        let bounded_keys = bounded_tool_value(
+            &serde_json::Value::Object(colliding_keys),
+            0,
+            &mut items,
+            &mut text_budget,
+        );
+        assert!(bounded_keys
+            .as_object()
+            .unwrap()
+            .values()
+            .any(|value| value == "keys omitted because truncated keys collided"));
+        let nested_array = serde_json::json!((0..20)
+            .map(|index| serde_json::json!({ "outer": { "inner": [index, index + 1, index + 2] } }))
+            .collect::<Vec<_>>());
+        let mut items = 0;
+        let mut text_budget = CHILD_TOOL_JSON_TEXT_BUDGET;
+        let bounded_array = bounded_tool_value(&nested_array, 0, &mut items, &mut text_budget);
+        assert!(bounded_array
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "… [truncated]"));
+        let task = AcpEvent::SubagentUserMessage;
+        assert!(manager
+            .child_activity_payload("process-a", "agent-child-session", &task)
+            .is_none());
         let oversized = AcpEvent::Stream {
             kind: StreamKind::Assistant,
             text: "界".repeat(20_000),

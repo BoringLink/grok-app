@@ -19,7 +19,6 @@ import {
   type SubagentRun,
 } from "@/lib/session/subagents";
 import { IconChevronDown, IconChevronRight, IconEye } from "@/components/icons";
-import { MessageCopyButton } from "@/components/lobe-chat/MessageAction";
 import { requestSubagentViewer } from "@/lib/subagentViewerRequest";
 import { subagentLiveStore } from "@/lib/subagentLiveStore";
 
@@ -40,6 +39,12 @@ function subagentStatusLabelKey(status: SubagentDisplayStatus): MessageKey {
   }
 }
 
+function subagentModelLabel(model: string): string {
+  const separatorIndex = model.indexOf("__");
+  if (separatorIndex < 0) return model;
+  return model.slice(separatorIndex + 2).trim() || model;
+}
+
 /**
  * One subagent telemetry row. Identity details and counters are shown only
  * when the CLI reports them; final output remains in the side viewer.
@@ -58,12 +63,11 @@ function SubagentRow({
   const [open, setOpen] = useState(false);
   const status = subagentDisplayStatus(run);
   const label = subagentDisplayLabel(run);
+  const modelLabel = run.model ? subagentModelLabel(run.model) : null;
   const hasIdentity = Boolean(
     run.childSessionId ||
-      run.subagentType ||
       run.description ||
-      run.model ||
-      run.agentAddress,
+      modelLabel,
   );
   const hasMeta =
     subagentContextOccupancy(run) !== null ||
@@ -89,10 +93,11 @@ function SubagentRow({
         <div className="agent-tasks__row-main agent-tasks__row-main--flat">
           <button
             type="button"
-            className="agent-tasks__row-toggle"
-            onClick={() => setOpen((value) => !value)}
-            aria-expanded={open}
-            aria-label={open ? t("tasks.collapse") : t("tasks.expand")}
+            className={"agent-tasks__row-toggle" + (!hasIdentity ? " is-static" : "")}
+            onClick={() => hasIdentity && setOpen((value) => !value)}
+            aria-disabled={hasIdentity ? undefined : true}
+            aria-expanded={hasIdentity ? open : undefined}
+            aria-label={hasIdentity ? (open ? t("tasks.collapse") : t("tasks.expand")) : undefined}
           >
             <span
               className={`agent-tasks__dot agent-tasks__dot--${status}`}
@@ -122,9 +127,11 @@ function SubagentRow({
             <IconEye size={13} />
             <span>{t("tasks.subagentView")}</span>
           </button>
-          <span className="agent-tasks__row-chev" aria-hidden>
-            {open ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
-          </span>
+          {hasIdentity ? (
+            <span className="agent-tasks__row-chev" aria-hidden>
+              {open ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
+            </span>
+          ) : null}
         </div>
       </div>
       {hasMeta ? (
@@ -139,7 +146,7 @@ function SubagentRow({
       ) : null}
       {open && hasIdentity ? (
         <div
-          className="agent-tasks__detail"
+          className="agent-tasks__detail agent-tasks__detail--grid"
           onClick={(event) => event.stopPropagation()}
         >
           {run.childSessionId ? (
@@ -147,16 +154,8 @@ function SubagentRow({
               <span className="agent-tasks__meta-k">
                 {t("statusModal.sessionId")}
               </span>
-              <span
-                className="agent-tasks__meta-v agent-tasks__subagent-session-id"
-                title={run.childSessionId}
-              >
-                <code>{run.childSessionId}</code>
-                <MessageCopyButton
-                  text={run.childSessionId}
-                  copyLabel={t("message.copy")}
-                  copiedLabel={t("message.copied")}
-                />
+              <span className="agent-tasks__meta-v" title={run.childSessionId}>
+                {run.childSessionId}
               </span>
             </div>
           ) : null}
@@ -166,22 +165,10 @@ function SubagentRow({
               <span className="agent-tasks__meta-v" title={run.description}>{run.description}</span>
             </div>
           ) : null}
-          {run.subagentType ? (
-            <div className="agent-tasks__meta">
-              <span className="agent-tasks__meta-k">{t("attach.detailsType")}</span>
-              <span className="agent-tasks__meta-v" title={run.subagentType}>{run.subagentType}</span>
-            </div>
-          ) : null}
-          {run.model ? (
+          {modelLabel ? (
             <div className="agent-tasks__meta">
               <span className="agent-tasks__meta-k">{t("statusModal.model")}</span>
-              <span className="agent-tasks__meta-v" title={run.model}>{run.model}</span>
-            </div>
-          ) : null}
-          {run.agentAddress ? (
-            <div className="agent-tasks__meta">
-              <span className="agent-tasks__meta-k">{t("tasks.subagentAgentAddress")}</span>
-              <span className="agent-tasks__meta-v" title={run.agentAddress}>{run.agentAddress}</span>
+              <span className="agent-tasks__meta-v" title={modelLabel}>{modelLabel}</span>
             </div>
           ) : null}
         </div>

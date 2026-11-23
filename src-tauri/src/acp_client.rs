@@ -208,10 +208,8 @@ pub enum AcpEvent {
     /// this the client dropped them and the Tasks panel could only *guess*
     /// parent-child links from spawn-tool stream order.
     Subagent(SubagentUpdate),
-    /// Child task prompt; routed only after the parent lifecycle associates its session.
-    SubagentUserMessage {
-        text: String,
-    },
+    /// 子代理 user-message 标记，仅用于消费事件，不保留提示词正文。
+    SubagentUserMessage,
 }
 
 /// Lifecycle phase of a CLI subagent run (`spawn_subagent` / Task tool).
@@ -4546,7 +4544,7 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                 .unwrap_or("")
                 .to_string();
             if !text.is_empty() {
-                out.push(AcpEvent::SubagentUserMessage { text });
+                out.push(AcpEvent::SubagentUserMessage);
             }
         }
         // Grok/Gemini emit agent_thought_chunk; some paths also use "thought".
@@ -5147,9 +5145,7 @@ mod child_session_update_tests {
                 "content": { "type": "text", "text": "delegate this task" }
             }
         }));
-        assert!(
-            matches!(prompt.as_slice(), [AcpEvent::SubagentUserMessage { text }] if text == "delegate this task")
-        );
+        assert!(matches!(prompt.as_slice(), [AcpEvent::SubagentUserMessage]));
     }
 }
 

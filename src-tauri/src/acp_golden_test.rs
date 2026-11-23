@@ -554,9 +554,7 @@ fn child_text_fixture_decodes_prompt_thought_and_assistant_in_wire_order() {
         .flat_map(decode_session_update)
         .collect();
 
-    assert!(
-        matches!(&events[0], AcpEvent::SubagentUserMessage { text } if text == "Inspect the parser and summarize the issue.")
-    );
+    assert!(matches!(&events[0], AcpEvent::SubagentUserMessage));
     assert!(
         matches!(&events[1], AcpEvent::Stream { kind: StreamKind::Thought, text, .. } if text == "I will inspect the parsing path.")
     );
