@@ -23,7 +23,7 @@ Agent 与贡献者的**可执行知识库**。改产品行为或 UI 文案前，
 | [maintain.md](./maintain.md) | **开源维护**：Issue 分拣、PR 审核、社区反馈入库、修复闭环；**已合并分支 / worktree 及时安全清理** |
 | [chatcut.md](./chatcut.md) | **ChatCut Codex 插件**：适配器、MCP surface、Resources 内嵌浏览器 handoff、re-pull 迁移 |
 | [agent-gui-reference.md](./agent-gui-reference.md) | **Agent GUI 参考**：桌面客户端与 CLI 的交互界面规范 |
-| [subagent-activity.md](./subagent-activity.md) | **子代理实时文本活动**：parent-child ACP 路由、右侧查看器、内存界限与安全渲染 |
+| [subagent-activity.md](./subagent-activity.md) | **子代理实时活动**：parent-child ACP 路由、文本聚合、工具活动、兼容降级与安全渲染 |
 | [git-worktrees.md](./git-worktrees.md) | **Git worktree**：分支菜单、创建/移除/GC、会话绑定与徽章 |
 | [icons.md](./icons.md) | **图标**：应用 Dock 图标 vs 托盘/状态栏图标，不得混用 |
 | [media-delivery.md](./media-delivery.md) | **本地媒体投递**：loopback HTTP + path resolve（产品路径不直接用 `media://`） |

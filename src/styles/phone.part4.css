@@ -236,6 +236,13 @@
   margin: 0 0 8px;
 }
 
+.subagent-activity__tool-data {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font: inherit;
+}
+
 .subagent-activity__entry {
   padding: 9px 0;
   border-bottom: 1px solid var(--border-subtle);

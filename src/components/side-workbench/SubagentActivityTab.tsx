@@ -59,6 +59,13 @@ export function SubagentActivityTab({ locale, sessionId }: Props) {
         ) : (
           <>
             <h3 className="subagent-activity__title">{subagentDisplayLabel(selectedRun)}</h3>
+            <p className="subagent-activity__child-status">
+              {t((`tasks.subagent${subagentDisplayStatus(selectedRun)[0]?.toUpperCase()}${subagentDisplayStatus(selectedRun).slice(1)}`) as MessageKey)}
+            </p>
+            {selectedRun.childSessionId ? <p>{selectedRun.childSessionId}</p> : null}
+            {[selectedRun.subagentType, selectedRun.model, selectedRun.agentAddress].filter(Boolean).length > 0 ? (
+              <p>{[selectedRun.subagentType, selectedRun.model, selectedRun.agentAddress].filter(Boolean).join(" · ")}</p>
+            ) : null}
             {selectedActivity?.truncated ? (
               <p className="subagent-activity__trimmed" role="status">{t("tasks.subagentActivityTrimmed")}</p>
             ) : null}
@@ -68,13 +75,24 @@ export function SubagentActivityTab({ locale, sessionId }: Props) {
                 <MarkdownBody locale={locale as Locale}>{selectedRun.description}</MarkdownBody>
               </article>
             ) : null}
-            {selectedActivity?.events.map((event) => (
+            {selectedActivity?.events.filter((event) => event.kind !== "boundary").map((event) => (
               <article className="subagent-activity__entry" key={event.sequence}>
-                <h4>{t(activityLabel[event.kind])}</h4>
-                <MarkdownBody locale={locale as Locale}>{event.text}</MarkdownBody>
+                <h4>{event.kind === "tool" ? event.title || event.text : t(activityLabel[event.kind as keyof typeof activityLabel] ?? "tasks.subagentActivityAssistant")}{event.status ? ` · ${event.status}` : ""}</h4>
+                {event.kind === "tool" ? (
+                  <>
+                    {event.input ? <pre className="subagent-activity__tool-data">{event.input}</pre> : null}
+                    {event.output ? <><h4>{t("tasks.subagentOutput")}</h4><pre className="subagent-activity__tool-data">{event.output}</pre></> : null}
+                  </>
+                ) : <MarkdownBody locale={locale as Locale}>{event.text}</MarkdownBody>}
               </article>
             ))}
-            {!selectedActivity?.events.length && !selectedRun.description ? (
+            {selectedRun.output && !selectedActivity?.events.some((event) => event.kind === "assistant" && event.text === selectedRun.output) ? (
+              <article className="subagent-activity__entry">
+                <h4>{t("tasks.subagentOutput")}</h4>
+                <MarkdownBody locale={locale as Locale}>{selectedRun.output}</MarkdownBody>
+              </article>
+            ) : null}
+            {!selectedActivity?.events.some((event) => event.kind !== "boundary") && !selectedRun.description && !selectedRun.output ? (
               <div className="subagent-activity__empty">{t("tasks.subagentActivityEmpty")}</div>
             ) : null}
           </>

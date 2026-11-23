@@ -4768,6 +4768,15 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
         }
     }
 
+    if matches!(kind, "response_completed" | "turn_completed") {
+        out.push(AcpEvent::Stream {
+            kind: StreamKind::Assistant,
+            text: String::new(),
+            message_id: None,
+            done: true,
+        });
+    }
+
     // Grok Build streams **context occupancy** on params._meta.totalTokens
     // (every thought/tool/message chunk). This is the real window fill — not
     // turn_completed.usage.totalTokens (which sums all modelCalls in the turn).
@@ -5739,6 +5748,9 @@ mod context_tokens_tests {
             _ => None,
         });
         assert_eq!(billing, Some(1_701_340));
+        assert!(evs.iter().any(
+            |event| matches!(event, AcpEvent::Stream { done: true, text, .. } if text.is_empty())
+        ));
         // No params._meta.totalTokens → no context_size event.
         assert!(evs.iter().all(|e| !matches!(
             e,

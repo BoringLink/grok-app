@@ -1,7 +1,13 @@
 export type SubagentLiveEvent = {
   childId: string;
-  kind: "task" | "thought" | "assistant";
+  kind: "task" | "thought" | "assistant" | "tool" | "lifecycle" | "boundary";
   text: string;
+  messageId?: string;
+  toolCallId?: string;
+  title?: string;
+  status?: string;
+  input?: string;
+  output?: string;
   truncated?: boolean;
 };
 
@@ -58,13 +64,13 @@ function tailWithinLimits(text: string, maxChars: number, maxBytes: number): str
 }
 
 function eventTotals(events: readonly SubagentLiveActivity[]): { chars: number; bytes: number } {
-  return events.reduce(
-    (totals, event) => ({
-      chars: totals.chars + Array.from(event.text).length,
-      bytes: totals.bytes + textBytes(event.text),
-    }),
-    { chars: 0, bytes: 0 },
-  );
+  return events.reduce((totals, event) => {
+    const content = [event.text, event.title, event.status, event.input, event.output].filter(Boolean).join("");
+    return {
+      chars: totals.chars + Array.from(content).length,
+      bytes: totals.bytes + textBytes(content),
+    };
+  }, { chars: 0, bytes: 0 });
 }
 
 function trimEvents(events: SubagentLiveActivity[]): { events: SubagentLiveActivity[]; trimmed: boolean } {
@@ -181,19 +187,60 @@ class SubagentLiveStore {
     const parentId = sessionId.trim();
     const childId = event.childId.trim();
     const text = event.text;
-    if (!parentId || !childId || !text) return false;
+    if (!parentId || !childId || (!text && event.kind !== "boundary" && event.kind !== "tool")) return false;
+    const boundField = (value: string | undefined): string | undefined => value === undefined
+      ? undefined
+      : tailWithinLimits(value, SUBAGENT_LIVE_MAX_TEXT_CHARS, SUBAGENT_LIVE_MAX_TEXT_BYTES);
     const boundedText = tailWithinLimits(text, SUBAGENT_LIVE_MAX_TEXT_CHARS, SUBAGENT_LIVE_MAX_TEXT_BYTES);
-    const textWasTrimmed = boundedText.length !== text.length;
+    const boundedEvent = {
+      ...event,
+      text: boundedText,
+      title: boundField(event.title),
+      status: boundField(event.status),
+      input: boundField(event.input),
+      output: boundField(event.output),
+    };
+    const textWasTrimmed = boundedText.length !== text.length ||
+      [event.title, event.status, event.input, event.output].some((value) => value !== undefined && boundField(value)?.length !== value.length);
     const children = this.childrenFor(parentId);
     this.makeRoomForChild(parentId, children, childId);
     const previous = children.get(childId) ?? { childId, events: [], truncated: false };
-    const incoming: SubagentLiveActivity = { ...event, childId, text: boundedText, sequence: ++this.sequence };
-    const result = trimEvents([...previous.events, incoming]);
+    const incoming: SubagentLiveActivity = { ...boundedEvent, childId, sequence: ++this.sequence };
+    const textKind = event.kind === "thought" || event.kind === "assistant";
+    const matchingIndex = textKind
+      ? event.messageId
+        ? previous.events.findIndex((item) => item.kind === event.kind && item.messageId === event.messageId)
+        : previous.events.at(-1)?.kind === event.kind && !previous.events.at(-1)?.messageId
+          ? previous.events.length - 1
+          : -1
+      : event.kind === "tool" && event.toolCallId
+        ? previous.events.findIndex((item) => item.kind === "tool" && item.toolCallId === event.toolCallId)
+        : -1;
+    const nextEvents = [...previous.events];
+    let mergedTextWasTrimmed = false;
+    if (matchingIndex >= 0) {
+      const current = nextEvents[matchingIndex];
+      const combinedText = event.kind === "tool" ? boundedText : current.text + boundedText;
+      const mergedText = tailWithinLimits(combinedText, SUBAGENT_LIVE_MAX_TEXT_CHARS, SUBAGENT_LIVE_MAX_TEXT_BYTES);
+      mergedTextWasTrimmed = mergedText.length !== combinedText.length;
+      nextEvents[matchingIndex] = {
+        ...current,
+        ...boundedEvent,
+        childId,
+        text: mergedText,
+        input: boundedEvent.input ?? current.input,
+        output: boundedEvent.output ?? current.output,
+        sequence: incoming.sequence,
+      };
+    } else {
+      nextEvents.push(incoming);
+    }
+    const result = trimEvents(nextEvents);
     children.delete(childId);
     children.set(childId, {
       childId,
       events: result.events,
-      truncated: previous.truncated || event.truncated === true || textWasTrimmed || result.trimmed,
+      truncated: previous.truncated || event.truncated === true || textWasTrimmed || mergedTextWasTrimmed || result.trimmed,
     });
     this.trimSession(children);
     this.changed();
@@ -228,9 +275,21 @@ export function applySubagentLivePayload(
     typeof childId !== "string" ||
     typeof childSessionId !== "string" ||
     childSessionId !== associatedChildSessionId ||
-    (kind !== "task" && kind !== "thought" && kind !== "assistant") ||
+    (kind !== "task" && kind !== "thought" && kind !== "assistant" && kind !== "tool" && kind !== "lifecycle" && kind !== "boundary") ||
     typeof text !== "string" ||
     (truncated !== undefined && typeof truncated !== "boolean")
   ) return false;
-  return subagentLiveStore.apply(sessionId, { childId, kind, text, truncated });
+  const optionalText = (key: string): string | undefined =>
+    value[key] === undefined || value[key] === null ? undefined : typeof value[key] === "string" ? value[key] : undefined;
+  const messageId = optionalText("messageId");
+  const toolCallId = optionalText("toolCallId");
+  const title = optionalText("title");
+  const status = optionalText("status");
+  const input = optionalText("input");
+  const output = optionalText("output");
+  if (["messageId", "toolCallId", "title", "status", "input", "output"].some((key) =>
+    value[key] !== undefined && value[key] !== null && typeof value[key] !== "string",
+  )) return false;
+  if ((messageId?.length ?? 0) > 512 || (toolCallId?.length ?? 0) > 512) return false;
+  return subagentLiveStore.apply(sessionId, { childId, kind, text, messageId, toolCallId, title, status, input, output, truncated });
 }

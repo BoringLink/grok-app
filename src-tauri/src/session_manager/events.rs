@@ -99,29 +99,65 @@ impl SessionManager {
     ) -> Option<serde_json::Value> {
         let payload = match ev {
             AcpEvent::Stream {
+                done: true, text, ..
+            } if text.is_empty() => Some(("boundary", "", None, None)),
+            AcpEvent::Stream {
                 kind: StreamKind::Assistant,
                 text,
+                message_id,
                 ..
-            } => Some(("assistant", text.as_str())),
+            } => Some(("assistant", text.as_str(), message_id.as_deref(), None)),
             AcpEvent::Stream {
                 kind: StreamKind::Thought,
                 text,
+                message_id,
                 ..
-            } => Some(("thought", text.as_str())),
-            AcpEvent::SubagentUserMessage { text } => Some(("task", text.as_str())),
+            } => Some(("thought", text.as_str(), message_id.as_deref(), None)),
+            AcpEvent::SubagentUserMessage { text } => Some(("task", text.as_str(), None, None)),
+            AcpEvent::ToolCall {
+                tool_call_id,
+                title,
+                status,
+                raw,
+                ..
+            } => {
+                let input = raw.get("rawInput").or_else(|| raw.get("input"));
+                let output = raw.get("rawOutput").or_else(|| raw.get("output"));
+                let stringify = |value: &serde_json::Value| match value {
+                    serde_json::Value::String(text) => Some(text.clone()),
+                    serde_json::Value::Null => None,
+                    other => serde_json::to_string_pretty(other).ok(),
+                };
+                let text = title.as_str();
+                let data = serde_json::json!({
+                    "toolCallId": tool_call_id,
+                    "title": title,
+                    "status": status,
+                    "input": input.and_then(stringify),
+                    "output": output.and_then(stringify),
+                });
+                Some(("tool", text, None, Some(data)))
+            }
             _ => return None,
         };
         let route = self.child_route(process_id, agent_session_id)?;
-        let (kind, text) = payload?;
+        let (kind, text, message_id, details) = payload?;
         let (text, truncated) = bounded_subagent_text(text);
-        Some(serde_json::json!({
+        let mut event = serde_json::json!({
             "sessionId": route.app_session_id,
             "childId": route.subagent_id,
             "childSessionId": agent_session_id,
             "kind": kind,
             "text": text,
             "truncated": truncated,
-        }))
+        });
+        if let Some(message_id) = message_id {
+            event["messageId"] = serde_json::json!(message_id);
+        }
+        if let Some(details) = details {
+            event.as_object_mut()?.extend(details.as_object()?.clone());
+        }
+        Some(event)
     }
 
     /// App session of a parked chat that should wake for this follow-up.
@@ -1652,6 +1688,32 @@ mod child_session_route_tests {
         assert!(manager
             .child_activity_payload("process-a", "unknown-child", &thought)
             .is_none());
+        let identified = AcpEvent::Stream {
+            kind: StreamKind::Assistant,
+            text: "chunk".into(),
+            message_id: Some("message-1".into()),
+            done: false,
+        };
+        assert_eq!(
+            manager
+                .child_activity_payload("process-a", "agent-child-session", &identified)
+                .expect("identified message")["messageId"],
+            "message-1"
+        );
+        let tool = AcpEvent::ToolCall {
+            tool_call_id: "tool-1".into(),
+            title: "Run command".into(),
+            kind: "execute".into(),
+            status: "failed".into(),
+            raw: serde_json::json!({ "rawInput": { "command": "echo" }, "rawOutput": "failed" }),
+        };
+        let tool_payload = manager
+            .child_activity_payload("process-a", "agent-child-session", &tool)
+            .expect("associated child tool activity");
+        assert_eq!(tool_payload["kind"], "tool");
+        assert_eq!(tool_payload["toolCallId"], "tool-1");
+        assert_eq!(tool_payload["input"], "{\n  \"command\": \"echo\"\n}");
+        assert_eq!(tool_payload["output"], "failed");
         let task = AcpEvent::SubagentUserMessage {
             text: "child prompt".into(),
         };

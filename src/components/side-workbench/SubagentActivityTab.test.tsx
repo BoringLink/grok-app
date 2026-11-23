@@ -34,11 +34,25 @@ describe("SubagentActivityTab", () => {
     expect(screen.getByRole("button", { name: /older task/ }).getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("renders tool updates as one ordered entry and shows final output fallback", () => {
+    subagentStore.apply({ sessionId: "parent-1", phase: "spawned", subagentId: "child", childSessionId: "agent-child" });
+    subagentStore.apply({ sessionId: "parent-1", phase: "finished", subagentId: "child", output: "final answer" });
+    subagentLiveStore.apply("parent-1", { childId: "child", kind: "tool", text: "Run command", toolCallId: "tool-1", status: "in_progress", input: "untrusted input" });
+    subagentLiveStore.apply("parent-1", { childId: "child", kind: "tool", text: "Run command", toolCallId: "tool-1", status: "failed", output: "untrusted output" });
+
+    render(<SubagentActivityTab locale="en" sessionId="parent-1" />);
+
+    expect(screen.getByText("Run command · failed")).toBeTruthy();
+    expect(screen.getByText("untrusted input")).toBeTruthy();
+    expect(screen.getByText("untrusted output")).toBeTruthy();
+    expect(screen.getByText("final answer")).toBeTruthy();
+  });
+
   it("shows a localized trim marker when earlier activity was evicted", () => {
     subagentStore.apply({ sessionId: "parent-1", phase: "spawned", subagentId: "child", childSessionId: "agent-child" });
     subagentLiveStore.apply("parent-1", { childId: "child", kind: "assistant", text: "recent output" });
     for (let index = 0; index < 201; index += 1) {
-      subagentLiveStore.apply("parent-1", { childId: "child", kind: "assistant", text: String(index) });
+      subagentLiveStore.apply("parent-1", { childId: "child", kind: "assistant", text: String(index), messageId: `message-${index}` });
     }
 
     render(<SubagentActivityTab locale="en" sessionId="parent-1" />);

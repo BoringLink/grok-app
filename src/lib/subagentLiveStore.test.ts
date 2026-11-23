@@ -33,7 +33,7 @@ describe("subagent live activity store", () => {
 
   it("retains only the newest bounded activity and marks truncation", () => {
     Array.from({ length: SUBAGENT_LIVE_MAX_EVENTS + 2 }, (_, index) =>
-      subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "assistant", text: `${index}` }),
+      subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "assistant", text: `${index}`, messageId: `message-${index}` }),
     );
 
     const child = subagentLiveStore.list("parent-a")[0];
@@ -108,6 +108,50 @@ describe("subagent live activity store", () => {
     expect(children).toHaveLength(SUBAGENT_LIVE_MAX_CHILDREN_PER_SESSION);
     expect(children.some((child) => child.childId === "child-0")).toBe(false);
     expect(children.at(-1)?.childId).toBe(`child-${SUBAGENT_LIVE_MAX_CHILDREN_PER_SESSION}`);
+  });
+
+  it("aggregates id-less chunks across ignored metadata and groups chunks by messageId", () => {
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "thought", text: "one " });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "thought", text: "two" });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "assistant", text: "reply", messageId: "message-1" });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "assistant", text: " first", messageId: "message-2" });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "assistant", text: " second", messageId: "message-1" });
+
+    expect(subagentLiveStore.list("parent-a")[0]?.events.map(({ kind, text, messageId }) => ({ kind, text, messageId }))).toEqual([
+      { kind: "thought", text: "one two", messageId: undefined },
+      { kind: "assistant", text: "reply second", messageId: "message-1" },
+      { kind: "assistant", text: " first", messageId: "message-2" },
+    ]);
+  });
+
+  it("starts a new id-less message after a response boundary", () => {
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "thought", text: "first" });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "boundary", text: "" });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "thought", text: "second" });
+
+    expect(subagentLiveStore.list("parent-a")[0]?.events.filter(({ kind }) => kind === "thought").map(({ text }) => text)).toEqual(["first", "second"]);
+  });
+
+  it("keeps tools as boundaries and updates tool details by tool call id", () => {
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "assistant", text: "before" });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "tool", text: "Run", toolCallId: "tool-1", status: "in_progress", input: JSON.stringify({ cmd: "ls" }) });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "tool", text: "Run", toolCallId: "tool-1", status: "failed", output: "failure" });
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "assistant", text: "after" });
+
+    const events = subagentLiveStore.list("parent-a")[0]?.events;
+    expect(events?.map(({ kind, text }) => [kind, text])).toEqual([
+      ["assistant", "before"], ["tool", "Run"], ["assistant", "after"],
+    ]);
+    expect(events?.[1]).toMatchObject({ status: "failed", input: JSON.stringify({ cmd: "ls" }), output: "failure" });
+  });
+
+  it("bounds tool payload fields under the same per-event text limit", () => {
+    const toolOutput = "x".repeat(SUBAGENT_LIVE_MAX_TEXT_BYTES + 1);
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "tool", text: "tool", toolCallId: "call", output: toolOutput });
+
+    const event = subagentLiveStore.list("parent-a")[0]?.events[0];
+    expect(new TextEncoder().encode(event?.output ?? "").byteLength).toBeLessThanOrEqual(SUBAGENT_LIVE_MAX_TEXT_BYTES);
+    expect(subagentLiveStore.list("parent-a")[0]?.truncated).toBe(true);
   });
 
   it("accepts only activity matching the parent lifecycle child-session association", () => {
