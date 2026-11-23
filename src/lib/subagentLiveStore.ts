@@ -63,6 +63,33 @@ function tailWithinLimits(text: string, maxChars: number, maxBytes: number): str
   return kept;
 }
 
+function boundToolEvent(event: SubagentLiveEvent): { event: SubagentLiveEvent; trimmed: boolean } {
+  const fields = ["text", "title", "status", "input", "output"] as const;
+  const values = fields.map((key) => event[key]);
+  let remainingChars = SUBAGENT_LIVE_MAX_TEXT_CHARS;
+  let remainingBytes = SUBAGENT_LIVE_MAX_TEXT_BYTES;
+  let trimmed = false;
+  const boundedValues = values.map((value) => {
+    if (value === undefined) return undefined;
+    const bounded = tailWithinLimits(value, remainingChars, remainingBytes);
+    trimmed ||= bounded.length !== value.length;
+    remainingChars -= Array.from(bounded).length;
+    remainingBytes -= textBytes(bounded);
+    return bounded;
+  });
+  return {
+    event: {
+      ...event,
+      text: boundedValues[0] ?? "",
+      title: boundedValues[1],
+      status: boundedValues[2],
+      input: boundedValues[3],
+      output: boundedValues[4],
+    },
+    trimmed,
+  };
+}
+
 function eventTotals(events: readonly SubagentLiveActivity[]): { chars: number; bytes: number } {
   return events.reduce((totals, event) => {
     const content = [event.text, event.title, event.status, event.input, event.output].filter(Boolean).join("");
@@ -87,8 +114,7 @@ function trimEvents(events: SubagentLiveActivity[]): { events: SubagentLiveActiv
   }
   const last = events.at(-1);
   if (last && (totals.chars > SUBAGENT_LIVE_MAX_TOTAL_CHARS || totals.bytes > SUBAGENT_LIVE_MAX_TOTAL_BYTES)) {
-    const bounded = tailWithinLimits(last.text, SUBAGENT_LIVE_MAX_TOTAL_CHARS, SUBAGENT_LIVE_MAX_TOTAL_BYTES);
-    events[events.length - 1] = { ...last, text: bounded };
+    events[events.length - 1] = { ...boundToolEvent(last).event, sequence: last.sequence };
     trimmed = true;
   }
   return { events, trimmed };
@@ -200,12 +226,14 @@ class SubagentLiveStore {
       input: boundField(event.input),
       output: boundField(event.output),
     };
-    const textWasTrimmed = boundedText.length !== text.length ||
+    const boundedResult = boundToolEvent(boundedEvent);
+    const finalBoundedEvent = boundedResult.event;
+    const textWasTrimmed = boundedResult.trimmed || boundedText.length !== text.length ||
       [event.title, event.status, event.input, event.output].some((value) => value !== undefined && boundField(value)?.length !== value.length);
     const children = this.childrenFor(parentId);
     this.makeRoomForChild(parentId, children, childId);
     const previous = children.get(childId) ?? { childId, events: [], truncated: false };
-    const incoming: SubagentLiveActivity = { ...boundedEvent, childId, sequence: ++this.sequence };
+    const incoming: SubagentLiveActivity = { ...finalBoundedEvent, childId, sequence: ++this.sequence };
     const textKind = event.kind === "thought" || event.kind === "assistant";
     const matchingIndex = textKind
       ? event.messageId
@@ -220,16 +248,18 @@ class SubagentLiveStore {
     let mergedTextWasTrimmed = false;
     if (matchingIndex >= 0) {
       const current = nextEvents[matchingIndex];
-      const combinedText = event.kind === "tool" ? boundedText : current.text + boundedText;
+      const combinedText = event.kind === "tool" ? finalBoundedEvent.text : current.text + finalBoundedEvent.text;
       const mergedText = tailWithinLimits(combinedText, SUBAGENT_LIVE_MAX_TEXT_CHARS, SUBAGENT_LIVE_MAX_TEXT_BYTES);
       mergedTextWasTrimmed = mergedText.length !== combinedText.length;
       nextEvents[matchingIndex] = {
         ...current,
-        ...boundedEvent,
+        ...finalBoundedEvent,
         childId,
         text: mergedText,
-        input: boundedEvent.input ?? current.input,
-        output: boundedEvent.output ?? current.output,
+        title: finalBoundedEvent.title || current.title,
+        status: finalBoundedEvent.status || current.status,
+        input: finalBoundedEvent.input || current.input,
+        output: finalBoundedEvent.output || current.output,
         sequence: incoming.sequence,
       };
     } else {
@@ -280,7 +310,7 @@ export function applySubagentLivePayload(
     (truncated !== undefined && typeof truncated !== "boolean")
   ) return false;
   const optionalText = (key: string): string | undefined =>
-    value[key] === undefined || value[key] === null ? undefined : typeof value[key] === "string" ? value[key] : undefined;
+    value[key] === undefined || value[key] === null || value[key] === "" ? undefined : typeof value[key] === "string" ? value[key] : undefined;
   const messageId = optionalText("messageId");
   const toolCallId = optionalText("toolCallId");
   const title = optionalText("title");

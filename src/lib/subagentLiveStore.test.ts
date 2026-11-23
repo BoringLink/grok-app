@@ -145,6 +145,36 @@ describe("subagent live activity store", () => {
     expect(events?.[1]).toMatchObject({ status: "failed", input: JSON.stringify({ cmd: "ls" }), output: "failure" });
   });
 
+  it("preserves existing tool fields for sparse updates and treats null as absent", () => {
+    subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "tool", text: "Run", toolCallId: "call", title: "Run", status: "running", input: "{\"cmd\":\"ls\"}", output: "first" });
+    expect(applySubagentLivePayload({ sessionId: "parent-a", childId: "child-1", childSessionId: "agent-1", kind: "tool", text: "", toolCallId: "call", title: null, status: "", input: null, output: "" }, "agent-1")).toBe(true);
+
+    expect(subagentLiveStore.list("parent-a")[0]?.events[0]).toMatchObject({
+      title: "Run",
+      status: "running",
+      input: "{\"cmd\":\"ls\"}",
+      output: "first",
+    });
+  });
+
+  it("bounds the combined tool event budget across title, status, input, and output", () => {
+    subagentLiveStore.apply("parent-a", {
+      childId: "child-1", kind: "tool", text: "tool", toolCallId: "call",
+      title: "t".repeat(SUBAGENT_LIVE_MAX_TEXT_BYTES),
+      status: "s".repeat(SUBAGENT_LIVE_MAX_TEXT_BYTES),
+      input: "i".repeat(SUBAGENT_LIVE_MAX_TEXT_BYTES),
+      output: "o".repeat(SUBAGENT_LIVE_MAX_TEXT_BYTES),
+    });
+    const child = subagentLiveStore.list("parent-a")[0];
+    const event = child?.events[0];
+    const totalBytes = [event?.text, event?.title, event?.status, event?.input, event?.output]
+      .reduce((total, value) => total + new TextEncoder().encode(value ?? "").byteLength, 0);
+
+    expect(totalBytes).toBeLessThanOrEqual(SUBAGENT_LIVE_MAX_TEXT_BYTES);
+    expect(Array.from([event?.text, event?.title, event?.status, event?.input, event?.output].join("")).length).toBeLessThanOrEqual(16_000);
+    expect(child?.truncated).toBe(true);
+  });
+
   it("bounds tool payload fields under the same per-event text limit", () => {
     const toolOutput = "x".repeat(SUBAGENT_LIVE_MAX_TEXT_BYTES + 1);
     subagentLiveStore.apply("parent-a", { childId: "child-1", kind: "tool", text: "tool", toolCallId: "call", output: toolOutput });
