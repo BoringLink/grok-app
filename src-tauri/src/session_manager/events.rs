@@ -22,19 +22,133 @@ use super::*;
 const CHILD_SESSION_ID_MAX_CHARS: usize = 512;
 const SUBAGENT_TEXT_MAX_CHARS: usize = 16_000;
 const SUBAGENT_TEXT_MAX_BYTES: usize = 32_768;
+const CHILD_TOOL_MAX_DEPTH: usize = 6;
+const CHILD_TOOL_MAX_ITEMS: usize = 16;
+const CHILD_TOOL_JSON_TEXT_BUDGET: usize = 512;
+const CHILD_TOOL_FIELD_MAX_BYTES: usize = 256;
+const CHILD_TOOL_KEY_MAX_BYTES: usize = 24;
+
+fn bounded_tool_field(text: &str) -> String {
+    let mut end = text.len().min(CHILD_TOOL_FIELD_MAX_BYTES);
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    if end < text.len() {
+        format!("{}… [truncated]", &text[..end])
+    } else {
+        text.to_string()
+    }
+}
+
+fn bounded_tool_value(
+    value: &serde_json::Value,
+    depth: usize,
+    items: &mut usize,
+    text_budget: &mut usize,
+) -> serde_json::Value {
+    use serde_json::Value;
+
+    if depth >= CHILD_TOOL_MAX_DEPTH || *items >= CHILD_TOOL_MAX_ITEMS {
+        return Value::String("… [truncated]".into());
+    }
+    *items += 1;
+    match value {
+        Value::String(text) => {
+            let mut end = text.len().min(*text_budget);
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            *text_budget -= end;
+            if end < text.len() {
+                Value::String(format!("{}… [truncated]", &text[..end]))
+            } else {
+                value.clone()
+            }
+        }
+        Value::Array(values) => {
+            let limit = CHILD_TOOL_MAX_ITEMS
+                .saturating_sub(*items)
+                .saturating_sub(1);
+            let mut bounded = values
+                .iter()
+                .take(limit)
+                .map(|item| bounded_tool_value(item, depth + 1, items, text_budget))
+                .collect::<Vec<_>>();
+            if values.len() > limit && *items < CHILD_TOOL_MAX_ITEMS {
+                bounded.push(Value::String("… [truncated]".into()));
+                *items += 1;
+            }
+            Value::Array(bounded)
+        }
+        Value::Object(values) => {
+            let mut bounded = serde_json::Map::new();
+            let limit = CHILD_TOOL_MAX_ITEMS
+                .saturating_sub(*items)
+                .saturating_sub(1);
+            for (key, item) in values.iter().take(limit) {
+                if *items >= CHILD_TOOL_MAX_ITEMS {
+                    break;
+                }
+                let mut key_end = key.len().min(CHILD_TOOL_KEY_MAX_BYTES);
+                while !key.is_char_boundary(key_end) {
+                    key_end -= 1;
+                }
+                let key = if key_end < key.len() {
+                    format!("{}…", &key[..key_end])
+                } else {
+                    key.clone()
+                };
+                bounded.insert(key, bounded_tool_value(item, depth + 1, items, text_budget));
+            }
+            if values.len() > limit && *items < CHILD_TOOL_MAX_ITEMS {
+                bounded.insert(
+                    "… [truncated]".into(),
+                    Value::String("items omitted".into()),
+                );
+                *items += 1;
+            }
+            Value::Object(bounded)
+        }
+        _ => value.clone(),
+    }
+}
+
+fn child_tool_value_text(
+    value: &serde_json::Value,
+    items: &mut usize,
+    budget: &mut usize,
+) -> String {
+    match value {
+        serde_json::Value::String(text) => {
+            let mut end = text.len().min(*budget);
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            *budget -= end;
+            if end < text.len() {
+                format!("{}… [truncated]", &text[..end])
+            } else {
+                text.to_string()
+            }
+        }
+        serde_json::Value::Null => String::new(),
+        other => {
+            let normalized = bounded_tool_value(other, 0, items, budget);
+            serde_json::to_string_pretty(&normalized).unwrap_or_else(|_| "… [truncated]".into())
+        }
+    }
+}
 
 fn bounded_subagent_text(text: &str) -> (String, bool) {
     let mut start = text.len();
-    let mut chars = 0;
     let mut bytes = 0;
-    for (index, character) in text.char_indices().rev() {
+    for (chars, (index, character)) in text.char_indices().rev().enumerate() {
         if chars == SUBAGENT_TEXT_MAX_CHARS
             || bytes + character.len_utf8() > SUBAGENT_TEXT_MAX_BYTES
         {
             break;
         }
         start = index;
-        chars += 1;
         bytes += character.len_utf8();
     }
     (text[start..].to_string(), start > 0)
@@ -123,20 +237,22 @@ impl SessionManager {
             } => {
                 let input = raw.get("rawInput").or_else(|| raw.get("input"));
                 let output = raw.get("rawOutput").or_else(|| raw.get("output"));
-                let stringify = |value: &serde_json::Value| match value {
-                    serde_json::Value::String(text) => Some(text.clone()),
-                    serde_json::Value::Null => None,
-                    other => serde_json::to_string_pretty(other).ok(),
-                };
-                let text = title.as_str();
+                let mut items = 0;
+                let mut budget = CHILD_TOOL_JSON_TEXT_BUDGET;
+                let input =
+                    input.map(|value| child_tool_value_text(value, &mut items, &mut budget));
+                let output =
+                    output.map(|value| child_tool_value_text(value, &mut items, &mut budget));
+                let bounded_title = bounded_tool_field(title);
+                let status = bounded_tool_field(status);
                 let data = serde_json::json!({
-                    "toolCallId": tool_call_id,
-                    "title": title,
+                    "toolCallId": bounded_tool_field(tool_call_id),
+                    "title": bounded_title,
                     "status": status,
-                    "input": input.and_then(stringify),
-                    "output": output.and_then(stringify),
+                    "input": input,
+                    "output": output,
                 });
-                Some(("tool", text, None, Some(data)))
+                Some(("tool", "", None, Some(data)))
             }
             _ => return None,
         };
@@ -1714,6 +1830,34 @@ mod child_session_route_tests {
         assert_eq!(tool_payload["toolCallId"], "tool-1");
         assert_eq!(tool_payload["input"], "{\n  \"command\": \"echo\"\n}");
         assert_eq!(tool_payload["output"], "failed");
+        let mut nested_input = serde_json::json!("leaf");
+        (0..20).for_each(|_| nested_input = serde_json::json!({ "nested": nested_input }));
+        let huge_tool = AcpEvent::ToolCall {
+            tool_call_id: "tool-large".into(),
+            title: "t".repeat(10_000),
+            kind: "execute".into(),
+            status: "failed".into(),
+            raw: serde_json::json!({
+                "rawInput": { "outer": (0..500).map(|index| (index.to_string(), serde_json::json!("x".repeat(10_000)))).collect::<serde_json::Map<_, _>>(), "deep": nested_input },
+                "rawOutput": "y".repeat(100_000),
+            }),
+        };
+        let bounded_tool = manager
+            .child_activity_payload("process-a", "agent-child-session", &huge_tool)
+            .expect("bounded child tool activity");
+        assert!(serde_json::to_vec(&bounded_tool).unwrap().len() < SUBAGENT_TEXT_MAX_BYTES);
+        assert!(bounded_tool["input"]
+            .as_str()
+            .unwrap()
+            .contains("truncated"));
+        assert!(bounded_tool["output"]
+            .as_str()
+            .unwrap()
+            .contains("truncated"));
+        assert!(bounded_tool["title"]
+            .as_str()
+            .unwrap()
+            .contains("truncated"));
         let task = AcpEvent::SubagentUserMessage {
             text: "child prompt".into(),
         };

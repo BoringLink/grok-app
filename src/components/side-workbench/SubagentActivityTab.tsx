@@ -86,7 +86,7 @@ export function SubagentActivityTab({ locale, sessionId }: Props) {
                 ) : <MarkdownBody locale={locale as Locale}>{event.text}</MarkdownBody>}
               </article>
             ))}
-            {selectedRun.output && !selectedActivity?.events.some((event) => event.kind === "assistant" && event.text === selectedRun.output) ? (
+            {selectedRun.output && !selectedActivity?.events.some((event) => event.kind === "assistant") ? (
               <article className="subagent-activity__entry">
                 <h4>{t("tasks.subagentOutput")}</h4>
                 <MarkdownBody locale={locale as Locale}>{selectedRun.output}</MarkdownBody>

@@ -48,6 +48,17 @@ describe("SubagentActivityTab", () => {
     expect(screen.getByText("final answer")).toBeTruthy();
   });
 
+  it("does not repeat final output when partial assistant chunks are present", () => {
+    subagentStore.apply({ sessionId: "parent-1", phase: "spawned", subagentId: "child", childSessionId: "agent-child" });
+    subagentStore.apply({ sessionId: "parent-1", phase: "finished", subagentId: "child", output: "partial live answer with final completion" });
+    subagentLiveStore.apply("parent-1", { childId: "child", kind: "assistant", text: "partial live answer" });
+
+    render(<SubagentActivityTab locale="en" sessionId="parent-1" />);
+
+    expect(screen.getAllByText("partial live answer")).toHaveLength(1);
+    expect(screen.queryByText("partial live answer with final completion")).toBeNull();
+  });
+
   it("shows a localized trim marker when earlier activity was evicted", () => {
     subagentStore.apply({ sessionId: "parent-1", phase: "spawned", subagentId: "child", childSessionId: "agent-child" });
     subagentLiveStore.apply("parent-1", { childId: "child", kind: "assistant", text: "recent output" });
