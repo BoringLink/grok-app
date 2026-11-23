@@ -180,7 +180,7 @@ function SubagentRow({
           ) : null}
           {run.agentAddress ? (
             <div className="agent-tasks__meta">
-              <span className="agent-tasks__meta-k">agentAddress</span>
+              <span className="agent-tasks__meta-k">{t("tasks.subagentAgentAddress")}</span>
               <span className="agent-tasks__meta-v" title={run.agentAddress}>{run.agentAddress}</span>
             </div>
           ) : null}

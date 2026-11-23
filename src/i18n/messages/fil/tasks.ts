@@ -254,6 +254,7 @@ export const filTasks = {
   "tasks.subagentOutput": "Output",
   "tasks.subagentView": "Tingnan ang subagent",
   "tasks.subagentActivityTask": "Gawain",
+  "tasks.subagentAgentAddress": "Address ng agent",
   "tasks.subagentActivityThought": "Pag-iisip",
   "tasks.subagentActivityAssistant": "Assistant",
   "tasks.subagentActivityTrimmed": "Pinutol ang naunang aktibidad",

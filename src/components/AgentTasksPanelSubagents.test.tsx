@@ -57,6 +57,7 @@ describe("SubagentSection viewer entry", () => {
     expect(screen.getByText("agent-child-1")).toBeTruthy();
     expect(screen.getByText("grok-4")).toBeTruthy();
     expect(screen.getByText("worker@local")).toBeTruthy();
+    expect(screen.getByText("tasks.subagentAgentAddress")).toBeTruthy();
     expect(screen.queryByText("answer")).toBeNull();
     expect(screen.queryByText("tasks.subagentOutput")).toBeNull();
     fireEvent.doubleClick(container.querySelector("li")!);

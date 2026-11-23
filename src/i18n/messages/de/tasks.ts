@@ -254,6 +254,7 @@ export const deTasks = {
   "tasks.subagentOutput": "Ausgabe",
   "tasks.subagentView": "Subagent ansehen",
   "tasks.subagentActivityTask": "Aufgabe",
+  "tasks.subagentAgentAddress": "Agent-Adresse",
   "tasks.subagentActivityThought": "Gedanke",
   "tasks.subagentActivityAssistant": "Assistent",
   "tasks.subagentActivityTrimmed": "Ältere Aktivität gekürzt",

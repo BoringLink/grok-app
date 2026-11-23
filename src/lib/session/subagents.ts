@@ -10,10 +10,9 @@
  * Missing fields stay `undefined` — never fabricated (honesty convention, see
  * {@link ./taskTreeHonesty}).
  *
- * Only the fields the Tasks panel actually renders are carried. The CLI sends
- * more (`parent_session_id`, `model`, `tools_used`, …) and the golden fixture
- * keeps pinning that wire shape, but a field nothing reads is dead weight in
- * the payload, the merge and the type.
+ * The Tasks panel renders the model and agent address when supplied. Other CLI
+ * fields such as `parent_session_id` and `tools_used` are intentionally not
+ * forwarded because the panel has no use for them.
  */
 
 import {

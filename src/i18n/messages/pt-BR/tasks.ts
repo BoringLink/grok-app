@@ -254,6 +254,7 @@ export const ptBRTasks = {
   "tasks.subagentOutput": "Saída",
   "tasks.subagentView": "Ver subagente",
   "tasks.subagentActivityTask": "Tarefa",
+  "tasks.subagentAgentAddress": "Endereço do agente",
   "tasks.subagentActivityThought": "Pensamento",
   "tasks.subagentActivityAssistant": "Assistente",
   "tasks.subagentActivityTrimmed": "Atividade anterior truncada",
