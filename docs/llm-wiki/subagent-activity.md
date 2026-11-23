@@ -2,14 +2,14 @@
 
 ## 行为
 
-- Agent 任务面板的子代理行通过“查看子代理”按钮或双击进入右侧“子代理”栏目；两种入口选择同一子代理。既有行内单击展开完成结果的行为保持不变。
+- Agent 任务面板的子代理行单击展开 CLI 实际提供的身份详情；child session ID 可复制，缺失字段省略，最终输出只在右侧查看器展示。行内“查看子代理”按钮与双击进入右侧“子代理”栏目并选中同一子代理，按钮不触发行内展开。
 - 右侧栏目只列出当前 App 会话的子代理。首次选择优先运行中的任务，否则选择最新任务；用户选择按 App 会话保留在当前进程内，切换会话后切回会恢复。
 - 活动流展示 child ACP session 收到的任务文本、思考文本和助手文本，使用 `MarkdownBody` 安全渲染。没有活动时显示本地化空态。
 - 子代理工具调用的详情不在此文本活动视图展示；没有对应文本事件时不合成活动或兼容性提示。
 
 ## 路由与生命周期
 
-父 ACP lifecycle 通知提供 `subagent_id` 与 `child_session_id`。Host 只在收到父会话的 lifecycle 通知后，登记以 ACP process 和 child session 为键的路由。child session 的 `user_message_chunk`、`agent_thought_chunk` 和 `agent_message_chunk` 经该路由映射到拥有它的 App 会话及子代理行。未知 child session 不会创建活动记录。该映射不依赖父 `session/prompt` 是否仍在等待，因此父 turn 完成后，child 更新仍可继续显示。
+父 ACP lifecycle 通知提供 `subagent_id` 与 `child_session_id`，以及可能存在的 `subagent_type`、`description`、`model`、`agentAddress` 和状态/统计字段；缺失值保持缺失，不推断 `agent.name`。Host 只在收到父会话的 lifecycle 通知后，登记以 ACP process 和 child session 为键的路由。child session 的 `user_message_chunk`、`agent_thought_chunk` 和 `agent_message_chunk` 经该路由映射到拥有它的 App 会话及子代理行。未知 child session 不会创建活动记录。该映射不依赖父 `session/prompt` 是否仍在等待，因此父 turn 完成后，child 更新仍可继续显示。
 
 Host lifecycle 事件进入 app-level store；事件与选中状态按 App session / `subagent_id` 隔离，只存在当前进程的内存，不写入会话 transcript 或磁盘。
 

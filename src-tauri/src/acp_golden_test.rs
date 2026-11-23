@@ -11,8 +11,8 @@ use serde_json::{json, Value};
 
 use crate::acp_client::{
     decode_permission_request, decode_session_update, initialize_advertises_rewind,
-    parse_ask_user_question_params, rewind_execute_method_candidates, wire_ask_user_result,
-    wire_exit_plan_mode_result, wire_initialize_params, wire_jsonrpc_result,
+    parse_ask_user_question_params, parse_subagent_update, rewind_execute_method_candidates,
+    wire_ask_user_result, wire_exit_plan_mode_result, wire_initialize_params, wire_jsonrpc_result,
     wire_permission_result, wire_session_cancel_params, wire_session_interject_params,
     wire_session_new_params, wire_session_prompt_params, AcpEvent, AskUserOutcome,
     PermissionOutcome, StreamKind,
@@ -591,6 +591,8 @@ fn subagent_payload_matches_fixture_expectations() {
     }
     assert_eq!(spawned["subagentType"], expected["spawned"]["subagentType"]);
     assert_eq!(spawned["description"], expected["spawned"]["description"]);
+    assert_eq!(spawned["model"], expected["spawned"]["model"]);
+    assert_eq!(spawned["agentAddress"], expected["spawned"]["agentAddress"]);
     assert!(spawned["output"].is_null(), "spawned has no output yet");
     assert!(
         spawned["status"].is_null(),
@@ -626,6 +628,23 @@ fn subagent_payload_matches_fixture_expectations() {
         assert_eq!(finished[key], expected["finished"][key], "finished.{key}");
     }
     assert_eq!(finished["sessionId"].as_str(), Some("app-session-1"));
+}
+
+/// Missing optional identity fields stay null in the lifecycle payload.
+#[test]
+fn subagent_lifecycle_without_optional_identity_fields_keeps_them_null() {
+    let event = parse_subagent_update(
+        "subagent_spawned",
+        &json!({"subagent_id": "child-1", "child_session_id": "child-session-1"}),
+    )
+    .expect("identified subagent update");
+    let AcpEvent::Subagent(subagent) = event else {
+        panic!("expected Subagent event");
+    };
+    let payload = subagent.to_payload("app-session-1");
+
+    assert!(payload["model"].is_null());
+    assert!(payload["agentAddress"].is_null());
 }
 
 /// An id-less subagent notification cannot be tracked or de-duplicated, so the

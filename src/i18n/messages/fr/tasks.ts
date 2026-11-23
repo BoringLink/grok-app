@@ -254,6 +254,7 @@ export const frTasks = {
   "tasks.subagentOutput": "Résultat",
   "tasks.subagentView": "Voir le sous-agent",
   "tasks.subagentActivityTask": "Tâche",
+  "tasks.subagentAgentAddress": "Adresse de l’agent",
   "tasks.subagentActivityThought": "Réflexion",
   "tasks.subagentActivityAssistant": "Assistant",
   "tasks.subagentActivityTrimmed": "Activité antérieure tronquée",

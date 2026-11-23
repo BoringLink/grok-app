@@ -1609,6 +1609,8 @@ mod child_session_route_tests {
             child_session_id: Some("agent-child-session".into()),
             subagent_type: None,
             description: None,
+            model: None,
+            agent_address: None,
             status: None,
             duration_ms: None,
             turn_count: None,

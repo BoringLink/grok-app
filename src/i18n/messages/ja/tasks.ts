@@ -254,6 +254,7 @@ export const jaTasks = {
   "tasks.subagentOutput": "出力",
   "tasks.subagentView": "サブエージェントを表示",
   "tasks.subagentActivityTask": "タスク",
+  "tasks.subagentAgentAddress": "エージェントアドレス",
   "tasks.subagentActivityThought": "思考",
   "tasks.subagentActivityAssistant": "アシスタント",
   "tasks.subagentActivityTrimmed": "以前のアクティビティは省略されました",

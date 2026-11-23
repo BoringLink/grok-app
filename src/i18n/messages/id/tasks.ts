@@ -254,6 +254,7 @@ export const idTasks = {
   "tasks.subagentOutput": "Keluaran",
   "tasks.subagentView": "Lihat subagen",
   "tasks.subagentActivityTask": "Tugas",
+  "tasks.subagentAgentAddress": "Alamat agen",
   "tasks.subagentActivityThought": "Pemikiran",
   "tasks.subagentActivityAssistant": "Asisten",
   "tasks.subagentActivityTrimmed": "Aktivitas sebelumnya dipangkas",

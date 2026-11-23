@@ -254,6 +254,7 @@ export const taTasks = {
   "tasks.subagentOutput": "வெளியீடு",
   "tasks.subagentView": "துணை முகவரைப் பார்க்க",
   "tasks.subagentActivityTask": "பணி",
+  "tasks.subagentAgentAddress": "முகவர் முகவரி",
   "tasks.subagentActivityThought": "சிந்தனை",
   "tasks.subagentActivityAssistant": "உதவியாளர்",
   "tasks.subagentActivityTrimmed": "முந்தைய செயல்பாடு சுருக்கப்பட்டது",

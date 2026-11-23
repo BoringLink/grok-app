@@ -39,19 +39,61 @@ describe("SubagentSection viewer entry", () => {
     unsubscribe();
   });
 
-  it("opens the same child on row double-click and preserves output single-click", () => {
+  it("expands identity details on row click without showing final output; double-click opens the same child", () => {
     const requests: Array<{ sessionId: string; childId: string }> = [];
     const unsubscribe = subscribeSubagentViewerRequests("parent-1", (request) => requests.push(request));
-    render(<SubagentSection runs={[{ ...run, finished: true, output: "answer" }]} t={translate} locale="en" sessionId="parent-1" />);
-    const row = screen.getByText("delegated work").closest("li");
-    expect(row).not.toBeNull();
+    const { container } = render(
+      <SubagentSection
+        runs={[{ ...run, finished: true, output: "answer", model: "grok-4", agentAddress: "worker@local" }]}
+        t={translate}
+        locale="en"
+        sessionId="parent-1"
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: "tasks.expand" });
+    fireEvent.click(toggle);
 
-    fireEvent.click(screen.getByRole("button", { name: "tasks.expand" }));
-    expect(screen.getByText("tasks.subagentOutput")).toBeTruthy();
-    fireEvent.doubleClick(row!);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("agent-child-1")).toBeTruthy();
+    expect(screen.getByText("grok-4")).toBeTruthy();
+    expect(screen.getByText("worker@local")).toBeTruthy();
+    expect(screen.getByText("tasks.subagentAgentAddress")).toBeTruthy();
+    expect(screen.queryByText("answer")).toBeNull();
+    expect(screen.queryByText("tasks.subagentOutput")).toBeNull();
+    fireEvent.doubleClick(container.querySelector("li")!);
 
     expect(requests).toEqual([{ sessionId: "parent-1", childId: "child-1" }]);
     unsubscribe();
+  });
+
+  it("keeps double-click as a viewer action without expanding inline details", () => {
+    const requests: Array<{ sessionId: string; childId: string }> = [];
+    const unsubscribe = subscribeSubagentViewerRequests("parent-1", (request) => requests.push(request));
+    const { container } = render(<SubagentSection runs={[run]} t={translate} locale="en" sessionId="parent-1" />);
+
+    fireEvent.doubleClick(container.querySelector("li")!);
+
+    expect(requests).toEqual([{ sessionId: "parent-1", childId: "child-1" }]);
+    expect(container.querySelector(".agent-tasks__row-toggle")?.getAttribute("aria-expanded")).toBe("false");
+    unsubscribe();
+  });
+
+  it("omits absent identity fields while keeping the child id available", () => {
+    render(<SubagentSection runs={[{ ...run, description: null, childSessionId: null }]} t={translate} locale="en" sessionId="parent-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "tasks.expand" }));
+    expect(screen.queryByText("grok-4")).toBeNull();
+    expect(screen.queryByText("worker@local")).toBeNull();
+    expect(screen.queryByText("agent-child-1")).toBeNull();
+    expect(screen.getByText("child-1")).toBeTruthy();
+  });
+
+  it("copies the child session id", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    render(<SubagentSection runs={[run]} t={translate} locale="en" sessionId="parent-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "tasks.expand" }));
+    fireEvent.click(screen.getByRole("button", { name: "message.copy" }));
+    expect(writeText).toHaveBeenCalledWith("agent-child-1");
   });
 
   it("does not open when there is no parent App session", () => {

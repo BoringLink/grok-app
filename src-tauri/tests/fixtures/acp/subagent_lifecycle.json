@@ -69,6 +69,8 @@
       "subagentId": "01a0SA-aaaa",
       "subagentType": "general-purpose",
       "description": "报告当前日期时间",
+      "model": "claude-sonnet-5",
+      "agentAddress": "aa1.aaaa",
       "output": null,
       "childSessionId": "01a0SA-aaaa"
     },
