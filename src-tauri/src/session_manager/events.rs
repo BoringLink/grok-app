@@ -141,16 +141,14 @@ fn child_tool_value_text(
 
 fn bounded_subagent_text(text: &str) -> (String, bool) {
     let mut start = text.len();
-    let mut chars = 0;
     let mut bytes = 0;
-    for (index, character) in text.char_indices().rev() {
+    for (chars, (index, character)) in text.char_indices().rev().enumerate() {
         if chars == SUBAGENT_TEXT_MAX_CHARS
             || bytes + character.len_utf8() > SUBAGENT_TEXT_MAX_BYTES
         {
             break;
         }
         start = index;
-        chars += 1;
         bytes += character.len_utf8();
     }
     (text[start..].to_string(), start > 0)
