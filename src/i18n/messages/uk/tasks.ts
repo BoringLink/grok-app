@@ -254,6 +254,7 @@ export const ukTasks = {
   "tasks.subagentOutput": "Результат",
   "tasks.subagentView": "Переглянути субагента",
   "tasks.subagentActivityTask": "Завдання",
+  "tasks.subagentAgentAddress": "Адреса агента",
   "tasks.subagentActivityThought": "Думка",
   "tasks.subagentActivityAssistant": "Асистент",
   "tasks.subagentActivityTrimmed": "Попередню активність скорочено",

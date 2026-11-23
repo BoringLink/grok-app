@@ -254,6 +254,7 @@ export const ruTasks = {
   "tasks.subagentOutput": "Результат",
   "tasks.subagentView": "Показать субагента",
   "tasks.subagentActivityTask": "Задача",
+  "tasks.subagentAgentAddress": "Адрес агента",
   "tasks.subagentActivityThought": "Мысль",
   "tasks.subagentActivityAssistant": "Ассистент",
   "tasks.subagentActivityTrimmed": "Ранняя активность обрезана",

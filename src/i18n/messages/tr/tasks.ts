@@ -254,6 +254,7 @@ export const trTasks = {
   "tasks.subagentOutput": "Çıktı",
   "tasks.subagentView": "Alt ajanı görüntüle",
   "tasks.subagentActivityTask": "Görev",
+  "tasks.subagentAgentAddress": "Aracı adresi",
   "tasks.subagentActivityThought": "Düşünce",
   "tasks.subagentActivityAssistant": "Asistan",
   "tasks.subagentActivityTrimmed": "Önceki etkinlik kısaltıldı",

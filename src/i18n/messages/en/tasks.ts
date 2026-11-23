@@ -254,6 +254,7 @@ export const enTasks = {
   "tasks.subagentOutput": "Output",
   "tasks.subagentView": "View subagent",
   "tasks.subagentActivityTask": "Task",
+  "tasks.subagentAgentAddress": "Agent address",
   "tasks.subagentActivityThought": "Thought",
   "tasks.subagentActivityAssistant": "Assistant",
   "tasks.subagentActivityTrimmed": "Earlier activity trimmed",

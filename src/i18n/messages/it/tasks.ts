@@ -254,6 +254,7 @@ export const itTasks = {
   "tasks.subagentOutput": "Output",
   "tasks.subagentView": "Visualizza subagente",
   "tasks.subagentActivityTask": "Attività",
+  "tasks.subagentAgentAddress": "Indirizzo dell’agente",
   "tasks.subagentActivityThought": "Pensiero",
   "tasks.subagentActivityAssistant": "Assistente",
   "tasks.subagentActivityTrimmed": "Attività precedente troncata",

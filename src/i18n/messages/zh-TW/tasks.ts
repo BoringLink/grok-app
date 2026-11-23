@@ -254,6 +254,7 @@ export const zhTWTasks = {
   "tasks.subagentOutput": "輸出",
   "tasks.subagentView": "查看子代理",
   "tasks.subagentActivityTask": "任務",
+  "tasks.subagentAgentAddress": "代理位址",
   "tasks.subagentActivityThought": "思考",
   "tasks.subagentActivityAssistant": "助理",
   "tasks.subagentActivityTrimmed": "較早的活動已截斷",

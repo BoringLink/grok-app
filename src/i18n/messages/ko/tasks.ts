@@ -254,6 +254,7 @@ export const koTasks = {
   "tasks.subagentOutput": "출력",
   "tasks.subagentView": "하위 에이전트 보기",
   "tasks.subagentActivityTask": "작업",
+  "tasks.subagentAgentAddress": "에이전트 주소",
   "tasks.subagentActivityThought": "생각",
   "tasks.subagentActivityAssistant": "어시스턴트",
   "tasks.subagentActivityTrimmed": "이전 활동이 잘렸습니다",
