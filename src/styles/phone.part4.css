@@ -161,6 +161,83 @@
   overflow: auto;
 }
 
+.agent-tasks__subagent-view {
+  flex: 0 0 auto;
+  gap: 5px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.subagent-activity {
+  display: grid;
+  grid-template-columns: minmax(140px, 34%) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.subagent-activity__children {
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  list-style: none;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.subagent-activity__child {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px;
+  color: var(--text-primary);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.subagent-activity__child:hover,
+.subagent-activity__child.is-active {
+  background: var(--bg-hover);
+}
+
+.subagent-activity__child-status {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.subagent-activity__stream {
+  min-width: 0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.subagent-activity__empty {
+  padding: 20px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.subagent-activity__title,
+.subagent-activity__entry h4 {
+  margin: 0 0 8px;
+}
+
+.subagent-activity__entry {
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-wrap: anywhere;
+}
+
+.subagent-activity__trimmed {
+  padding: 7px 9px;
+  color: var(--text-secondary);
+  background: var(--bg-hover);
+  border-radius: var(--radius-sm);
+}
+
 /* —— Agent dashboard (cross-session status modal) —— */
 .agent-dash-modal {
   width: min(640px, 100%);
@@ -834,4 +911,3 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-

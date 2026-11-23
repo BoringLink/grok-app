@@ -252,4 +252,11 @@ export const ptBRTasks = {
   "tasks.subagentFinished": "Finalizado",
   "tasks.subagentMeta": "{turns} turnos · {tools} ferramentas · {tokens} tokens · {duration}",
   "tasks.subagentOutput": "Saída",
+  "tasks.subagentView": "Ver subagente",
+  "tasks.subagentActivityTask": "Tarefa",
+  "tasks.subagentActivityThought": "Pensamento",
+  "tasks.subagentActivityAssistant": "Assistente",
+  "tasks.subagentActivityTrimmed": "Atividade anterior truncada",
+  "tasks.subagentEmpty": "Não há subagentes nesta sessão",
+  "tasks.subagentActivityEmpty": "Ainda não há atividade",
 };

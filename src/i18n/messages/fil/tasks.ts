@@ -252,4 +252,11 @@ export const filTasks = {
   "tasks.subagentFinished": "Natapos",
   "tasks.subagentMeta": "{turns} turn · {tools} tool · {tokens} token · {duration}",
   "tasks.subagentOutput": "Output",
+  "tasks.subagentView": "Tingnan ang subagent",
+  "tasks.subagentActivityTask": "Gawain",
+  "tasks.subagentActivityThought": "Pag-iisip",
+  "tasks.subagentActivityAssistant": "Assistant",
+  "tasks.subagentActivityTrimmed": "Pinutol ang naunang aktibidad",
+  "tasks.subagentEmpty": "Walang subagent sa session na ito",
+  "tasks.subagentActivityEmpty": "Wala pang aktibidad",
 };

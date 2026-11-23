@@ -19,6 +19,7 @@ describe("applySubagentEvent", () => {
       sessionId: "s1",
       phase: "spawned",
       subagentId: "a1",
+      childSessionId: "agent-child-1",
       subagentType: "general-purpose",
       description: "count files",
     };
@@ -51,6 +52,7 @@ describe("applySubagentEvent", () => {
     expect(step3).toHaveLength(1);
     const run = step3[0]!;
     expect(run.subagentId).toBe("a1");
+    expect(run.childSessionId).toBe("agent-child-1");
     expect(run.description).toBe("count files");
     expect(run.subagentType).toBe("general-purpose");
     expect(run.turnCount).toBe(1);
@@ -330,6 +332,7 @@ describe("formatSubagentDuration", () => {
 describe("trimSubagentRuns", () => {
   const row = (subagentId: string, finished: boolean): SubagentRun => ({
     subagentId,
+    childSessionId: null,
     finished,
     subagentType: null,
     description: null,

@@ -33,6 +33,7 @@ export type SubagentEventPayload = {
   sessionId?: string | null;
   phase?: string | null;
   subagentId?: string | null;
+  childSessionId?: string | null;
   subagentType?: string | null;
   description?: string | null;
   status?: string | null;
@@ -47,6 +48,7 @@ export type SubagentEventPayload = {
 /** Merged view of one subagent across its lifecycle updates. */
 export type SubagentRun = {
   subagentId: string;
+  childSessionId: string | null;
   /** True once a `finished` update landed (terminal; later pushes don't reset). */
   finished: boolean;
   subagentType: string | null;
@@ -83,6 +85,7 @@ function asPhase(v: unknown): SubagentPhase | null {
 function newRun(id: string, payload: SubagentEventPayload): SubagentRun {
   return {
     subagentId: id,
+    childSessionId: asText(payload.childSessionId),
     finished: asPhase(payload.phase) === "finished",
     subagentType: asText(payload.subagentType),
     description: asText(payload.description),
@@ -105,6 +108,7 @@ function mergeRun(
   // `finished` is terminal — a stray progress push must not downgrade it.
   if (asPhase(payload.phase) === "finished") next.finished = true;
 
+  next.childSessionId = asText(payload.childSessionId) ?? prev.childSessionId;
   next.subagentType = asText(payload.subagentType) ?? prev.subagentType;
   next.description = asText(payload.description) ?? prev.description;
   next.status = asText(payload.status) ?? prev.status;

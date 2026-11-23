@@ -19,7 +19,111 @@ use crate::store::{self, ChatMessageStored};
 
 use super::*;
 
+const CHILD_SESSION_ID_MAX_CHARS: usize = 512;
+const SUBAGENT_TEXT_MAX_CHARS: usize = 16_000;
+const SUBAGENT_TEXT_MAX_BYTES: usize = 32_768;
+
+fn bounded_subagent_text(text: &str) -> (String, bool) {
+    let mut start = text.len();
+    let mut chars = 0;
+    let mut bytes = 0;
+    for (index, character) in text.char_indices().rev() {
+        if chars == SUBAGENT_TEXT_MAX_CHARS
+            || bytes + character.len_utf8() > SUBAGENT_TEXT_MAX_BYTES
+        {
+            break;
+        }
+        start = index;
+        chars += 1;
+        bytes += character.len_utf8();
+    }
+    (text[start..].to_string(), start > 0)
+}
+
 impl SessionManager {
+    pub(super) fn record_child_route(
+        &self,
+        process_id: &str,
+        app_session_id: &str,
+        sub: &crate::acp_client::SubagentUpdate,
+    ) {
+        let Some(child_session_id) = sub
+            .child_session_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && id.chars().count() <= CHILD_SESSION_ID_MAX_CHARS)
+        else {
+            return;
+        };
+        let key = (process_id.to_string(), child_session_id.to_string());
+        let mut routes = self.child_sessions.lock();
+        if routes.len() < 1024 || routes.contains_key(&key) {
+            routes.insert(
+                key,
+                ChildSessionRoute {
+                    app_session_id: app_session_id.to_string(),
+                    subagent_id: sub.subagent_id.clone(),
+                },
+            );
+        }
+    }
+
+    fn child_route(&self, process_id: &str, agent_session_id: &str) -> Option<ChildSessionRoute> {
+        self.child_sessions
+            .lock()
+            .get(&(process_id.to_string(), agent_session_id.to_string()))
+            .cloned()
+    }
+
+    fn route_child_text(
+        &self,
+        app: &AppHandle,
+        process_id: &str,
+        session_id: Option<&str>,
+        ev: &AcpEvent,
+    ) -> bool {
+        if let Some(payload) = session_id.and_then(|agent_session_id| {
+            self.child_activity_payload(process_id, agent_session_id, ev)
+        }) {
+            let _ = app.emit("session://subagent-activity", payload);
+            return true;
+        }
+        matches!(ev, AcpEvent::SubagentUserMessage { .. })
+    }
+
+    fn child_activity_payload(
+        &self,
+        process_id: &str,
+        agent_session_id: &str,
+        ev: &AcpEvent,
+    ) -> Option<serde_json::Value> {
+        let payload = match ev {
+            AcpEvent::Stream {
+                kind: StreamKind::Assistant,
+                text,
+                ..
+            } => Some(("assistant", text.as_str())),
+            AcpEvent::Stream {
+                kind: StreamKind::Thought,
+                text,
+                ..
+            } => Some(("thought", text.as_str())),
+            AcpEvent::SubagentUserMessage { text } => Some(("task", text.as_str())),
+            _ => return None,
+        };
+        let route = self.child_route(process_id, agent_session_id)?;
+        let (kind, text) = payload?;
+        let (text, truncated) = bounded_subagent_text(text);
+        Some(serde_json::json!({
+            "sessionId": route.app_session_id,
+            "childId": route.subagent_id,
+            "childSessionId": agent_session_id,
+            "kind": kind,
+            "text": text,
+            "truncated": truncated,
+        }))
+    }
+
     /// App session of a parked chat that should wake for this follow-up.
     ///
     /// A cue does not wake it. An end wakes it only when that prompt is already
@@ -80,6 +184,9 @@ impl SessionManager {
         // deliver to live if this process is the focused shell.
         if let AcpEvent::ProcessExited { code } = &ev {
             let exit_code = *code;
+            self.child_sessions
+                .lock()
+                .retain(|(pid, _), _| pid != process_id);
             {
                 let doomed: Vec<String> = {
                     let mut parked = self.parked.lock();
@@ -124,6 +231,9 @@ impl SessionManager {
             }
             // Fall through to live ProcessExited handling below.
         } else {
+            if self.route_child_text(app, process_id, session_id, &ev) {
+                return;
+            }
             // Multi-session safety (P0): route by agent sessionId when present;
             // never rescue a parked co-tenant into a fake mid-turn (that wrote
             // foreign session/load replay into the wrong App journal).
@@ -1217,9 +1327,11 @@ impl SessionManager {
                         .unwrap_or_default()
                 };
                 if !app_sid.is_empty() {
+                    self.record_child_route(process_id, &app_sid, &sub);
                     let _ = app.emit("session://subagent", sub.to_payload(&app_sid));
                 }
             }
+            AcpEvent::SubagentUserMessage { .. } => {}
             AcpEvent::WorkflowScoped { prompt_id, event } => {
                 let app_sid = {
                     let guard = self.inner.lock();
@@ -1481,5 +1593,84 @@ impl SessionManager {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod child_session_route_tests {
+    use super::*;
+
+    #[test]
+    fn child_route_requires_the_exact_process_and_lifecycle_session() {
+        let manager = SessionManager::new();
+        let update = crate::acp_client::SubagentUpdate {
+            phase: crate::acp_client::SubagentPhase::Spawned,
+            subagent_id: "child-row".into(),
+            child_session_id: Some("agent-child-session".into()),
+            subagent_type: None,
+            description: None,
+            status: None,
+            duration_ms: None,
+            turn_count: None,
+            tool_call_count: None,
+            tokens_used: None,
+            context_window_tokens: None,
+            output: None,
+        };
+
+        manager.record_child_route("process-a", "app-parent", &update);
+
+        let route = manager
+            .child_route("process-a", "agent-child-session")
+            .expect("associated child");
+        assert_eq!(route.app_session_id, "app-parent");
+        assert_eq!(route.subagent_id, "child-row");
+        assert!(manager
+            .child_route("process-b", "agent-child-session")
+            .is_none());
+        assert!(manager.child_route("process-a", "unknown-child").is_none());
+
+        let thought = AcpEvent::Stream {
+            kind: StreamKind::Thought,
+            text: "child thought".into(),
+            message_id: None,
+            done: false,
+        };
+        assert_eq!(
+            manager.child_activity_payload("process-a", "agent-child-session", &thought),
+            Some(serde_json::json!({
+                "sessionId": "app-parent",
+                "childId": "child-row",
+                "childSessionId": "agent-child-session",
+                "kind": "thought",
+                "text": "child thought",
+                "truncated": false
+            }))
+        );
+        assert!(manager
+            .child_activity_payload("process-a", "unknown-child", &thought)
+            .is_none());
+        let task = AcpEvent::SubagentUserMessage {
+            text: "child prompt".into(),
+        };
+        assert_eq!(
+            manager
+                .child_activity_payload("process-a", "agent-child-session", &task)
+                .expect("associated child task")["kind"],
+            "task"
+        );
+        let oversized = AcpEvent::Stream {
+            kind: StreamKind::Assistant,
+            text: "界".repeat(20_000),
+            message_id: None,
+            done: false,
+        };
+        let bounded = manager
+            .child_activity_payload("process-a", "agent-child-session", &oversized)
+            .expect("associated child output");
+        let text = bounded["text"].as_str().expect("text payload");
+        assert!(text.chars().count() <= SUBAGENT_TEXT_MAX_CHARS);
+        assert!(text.len() <= SUBAGENT_TEXT_MAX_BYTES);
+        assert_eq!(bounded["truncated"], true);
     }
 }

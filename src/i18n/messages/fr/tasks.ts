@@ -252,4 +252,11 @@ export const frTasks = {
   "tasks.subagentFinished": "Achevé",
   "tasks.subagentMeta": "{turns} tours · {tools} outils · {tokens} tokens · {duration}",
   "tasks.subagentOutput": "Résultat",
+  "tasks.subagentView": "Voir le sous-agent",
+  "tasks.subagentActivityTask": "Tâche",
+  "tasks.subagentActivityThought": "Réflexion",
+  "tasks.subagentActivityAssistant": "Assistant",
+  "tasks.subagentActivityTrimmed": "Activité antérieure tronquée",
+  "tasks.subagentEmpty": "Aucun sous-agent dans cette session",
+  "tasks.subagentActivityEmpty": "Aucune activité pour le moment",
 };

@@ -252,4 +252,11 @@ export const enTasks = {
   "tasks.subagentFinished": "Finished",
   "tasks.subagentMeta": "{turns} turns · {tools} tools · {tokens} tokens · {duration}",
   "tasks.subagentOutput": "Output",
+  "tasks.subagentView": "View subagent",
+  "tasks.subagentActivityTask": "Task",
+  "tasks.subagentActivityThought": "Thought",
+  "tasks.subagentActivityAssistant": "Assistant",
+  "tasks.subagentActivityTrimmed": "Earlier activity trimmed",
+  "tasks.subagentEmpty": "No subagents in this session",
+  "tasks.subagentActivityEmpty": "No activity yet",
 } as const;

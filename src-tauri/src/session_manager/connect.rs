@@ -2450,6 +2450,7 @@ impl SessionManager {
             AcpEvent::HookActivity { .. } => "hook_activity",
             AcpEvent::GoalUpdated { .. } => "goal_updated",
             AcpEvent::Subagent(_) => "subagent",
+            AcpEvent::SubagentUserMessage { .. } => "subagent_user_message",
             AcpEvent::WorkflowFollowup(_) => "workflow_followup",
             AcpEvent::WorkflowScoped { .. } => "workflow_scoped",
         }
@@ -2460,6 +2461,7 @@ impl SessionManager {
         matches!(
             ev,
             AcpEvent::Stream { .. }
+                | AcpEvent::SubagentUserMessage { .. }
                 | AcpEvent::ToolCall { .. }
                 | AcpEvent::ToolOpenReleased { .. }
                 | AcpEvent::PromptComplete { .. }
