@@ -540,7 +540,29 @@ fn subagent_lifecycle_decodes_from_notification_frames() {
             payload["subagentId"], exp["subagentId"],
             "frames[{i}].subagentId"
         );
+        assert_eq!(payload["childSessionId"], "01a0SA-aaaa");
     }
+}
+
+#[test]
+fn child_text_fixture_decodes_prompt_thought_and_assistant_in_wire_order() {
+    let fx = load_fixture("subagent_text_stream.json");
+    let events: Vec<_> = fx["frames"]
+        .as_array()
+        .expect("frames")
+        .iter()
+        .flat_map(decode_session_update)
+        .collect();
+
+    assert!(
+        matches!(&events[0], AcpEvent::SubagentUserMessage { text } if text == "Inspect the parser and summarize the issue.")
+    );
+    assert!(
+        matches!(&events[1], AcpEvent::Stream { kind: StreamKind::Thought, text, .. } if text == "I will inspect the parsing path.")
+    );
+    assert!(
+        matches!(&events[2], AcpEvent::Stream { kind: StreamKind::Assistant, text, .. } if text == "The parser accepts the input.")
+    );
 }
 
 /// Field-by-field projection of the three phases onto the `session://subagent`

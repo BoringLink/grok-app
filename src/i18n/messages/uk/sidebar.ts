@@ -104,4 +104,5 @@ export const ukSidebar = {
   "sidebar.spaces.err.last": "Має залишитися щонайменше один простір.",
   "sidebar.spaces.err.default": "Простір за замовчуванням видалити не можна.",
   "sidebar.spaces.err.notFound": "Цей простір більше недоступний.",
+  "side.tab.subagents": "Субагенти",
 };

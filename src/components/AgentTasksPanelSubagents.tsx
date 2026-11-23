@@ -18,7 +18,9 @@ import {
   type SubagentDisplayStatus,
   type SubagentRun,
 } from "@/lib/session/subagents";
-import { IconChevronDown, IconChevronRight } from "@/components/icons";
+import { IconChevronDown, IconChevronRight, IconEye } from "@/components/icons";
+import { requestSubagentViewer } from "@/lib/subagentViewerRequest";
+import { subagentLiveStore } from "@/lib/subagentLiveStore";
 
 type TFn = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
@@ -46,10 +48,12 @@ function SubagentRow({
   run,
   t,
   locale,
+  sessionId,
 }: {
   run: SubagentRun;
   t: TFn;
   locale: Locale;
+  sessionId: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const status = subagentDisplayStatus(run);
@@ -61,12 +65,19 @@ function SubagentRow({
     run.turnCount !== undefined ||
     run.toolCallCount !== undefined ||
     run.durationMs !== undefined;
+  const openViewer = () => {
+    if (!sessionId) return;
+    subagentLiveStore.registerChild(sessionId, run.subagentId);
+    subagentLiveStore.select(sessionId, run.subagentId);
+    requestSubagentViewer({ sessionId, childId: run.subagentId });
+  };
 
   return (
     <li
       className={
         "agent-tasks__row" + (status === "running" ? " is-running" : "")
       }
+      onDoubleClick={openViewer}
     >
       <div className="agent-tasks__row-line">
         <div className="agent-tasks__row-main agent-tasks__row-main--flat">
@@ -105,6 +116,20 @@ function SubagentRow({
           <span className="agent-tasks__status">
             {t(subagentStatusLabelKey(status))}
           </span>
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm agent-tasks__subagent-view"
+            disabled={!sessionId}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              openViewer();
+            }}
+            onDoubleClick={(event) => event.stopPropagation()}
+          >
+            <IconEye size={13} />
+            <span>{t("tasks.subagentView")}</span>
+          </button>
           {hasOutput ? (
             <span className="agent-tasks__row-chev" aria-hidden>
               {open ? (
@@ -145,10 +170,12 @@ export function SubagentSection({
   runs,
   t,
   locale,
+  sessionId,
 }: {
   runs: readonly SubagentRun[];
   t: TFn;
   locale: Locale;
+  sessionId: string | null;
 }) {
   if (runs.length === 0) return null;
   return (
@@ -158,7 +185,7 @@ export function SubagentSection({
       </h3>
       <ul className="agent-tasks__list">
         {runs.map((run) => (
-          <SubagentRow key={run.subagentId} run={run} t={t} locale={locale} />
+          <SubagentRow key={run.subagentId} run={run} t={t} locale={locale} sessionId={sessionId} />
         ))}
       </ul>
     </div>

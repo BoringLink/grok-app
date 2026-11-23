@@ -104,4 +104,5 @@ export const koSidebar = {
   "sidebar.spaces.err.last": "스페이스는 최소 하나가 필요합니다.",
   "sidebar.spaces.err.default": "기본 스페이스는 삭제할 수 없습니다.",
   "sidebar.spaces.err.notFound": "해당 스페이스를 더 이상 사용할 수 없습니다.",
+  "side.tab.subagents": "하위 에이전트",
 };

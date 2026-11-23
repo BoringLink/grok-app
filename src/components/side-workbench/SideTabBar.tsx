@@ -24,6 +24,7 @@ import {
   IconPanelRight,
   IconPlan,
   IconPlus,
+  IconRobot,
   IconSideExpand,
   IconSkills,
   IconTerminal,
@@ -105,6 +106,8 @@ function tabIcon(tab: SideTab): ReactNode {
       return <IconFileDiff size={14} />;
     case "plan":
       return <IconPlan size={14} />;
+    case "subagents":
+      return <IconRobot size={14} />;
     default:
       return <IconFolder size={14} />;
   }

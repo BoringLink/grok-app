@@ -104,4 +104,5 @@ export const trSidebar = {
   "sidebar.spaces.err.last": "En az bir alan kalmalı.",
   "sidebar.spaces.err.default": "Varsayılan alan silinemez.",
   "sidebar.spaces.err.notFound": "Bu alan artık mevcut değil.",
+  "side.tab.subagents": "Alt ajanlar",
 };

@@ -252,4 +252,11 @@ export const taTasks = {
   "tasks.subagentFinished": "நிறைவடைந்தது",
   "tasks.subagentMeta": "{turns} சுற்றுகள் · {tools} கருவிகள் · {tokens} டோக்கன்கள் · {duration}",
   "tasks.subagentOutput": "வெளியீடு",
+  "tasks.subagentView": "துணை முகவரைப் பார்க்க",
+  "tasks.subagentActivityTask": "பணி",
+  "tasks.subagentActivityThought": "சிந்தனை",
+  "tasks.subagentActivityAssistant": "உதவியாளர்",
+  "tasks.subagentActivityTrimmed": "முந்தைய செயல்பாடு சுருக்கப்பட்டது",
+  "tasks.subagentEmpty": "இந்த அமர்வில் துணை முகவர்கள் இல்லை",
+  "tasks.subagentActivityEmpty": "இன்னும் செயல்பாடு இல்லை",
 };

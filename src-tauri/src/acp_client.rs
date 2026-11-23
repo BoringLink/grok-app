@@ -208,6 +208,10 @@ pub enum AcpEvent {
     /// this the client dropped them and the Tasks panel could only *guess*
     /// parent-child links from spawn-tool stream order.
     Subagent(SubagentUpdate),
+    /// Child task prompt; routed only after the parent lifecycle associates its session.
+    SubagentUserMessage {
+        text: String,
+    },
 }
 
 /// Lifecycle phase of a CLI subagent run (`spawn_subagent` / Task tool).
@@ -241,6 +245,7 @@ impl SubagentPhase {
 pub struct SubagentUpdate {
     pub phase: SubagentPhase,
     pub subagent_id: String,
+    pub child_session_id: Option<String>,
     pub subagent_type: Option<String>,
     pub description: Option<String>,
     /// Terminal status on `subagent_finished` (`completed` / `failed` / …).
@@ -4534,6 +4539,16 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                 done: false,
             });
         }
+        "user_message_chunk" => {
+            let text = update
+                .pointer("/content/text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if !text.is_empty() {
+                out.push(AcpEvent::SubagentUserMessage { text });
+            }
+        }
         // Grok/Gemini emit agent_thought_chunk; some paths also use "thought".
         "agent_thought_chunk" | "thought" => {
             let text = update
@@ -4815,7 +4830,7 @@ pub fn parse_subagent_update(kind: &str, update: &Value) -> Option<AcpEvent> {
         .unwrap_or("")
         .trim()
         .to_string();
-    if subagent_id.is_empty() {
+    if subagent_id.is_empty() || subagent_id.chars().count() > 512 {
         return None;
     }
     let phase = match kind {
@@ -4840,6 +4855,8 @@ pub fn parse_subagent_update(kind: &str, update: &Value) -> Option<AcpEvent> {
     Some(AcpEvent::Subagent(SubagentUpdate {
         phase,
         subagent_id,
+        child_session_id: str_field(&["child_session_id", "childSessionId"])
+            .filter(|id| id.chars().count() <= 512),
         subagent_type: str_field(&["subagent_type", "subagentType"]),
         description: str_field(&["description", "summary"]),
         status: str_field(&["status"]),
@@ -4863,6 +4880,7 @@ impl SubagentUpdate {
             "sessionId": app_session_id,
             "phase": self.phase.as_str(),
             "subagentId": self.subagent_id,
+            "childSessionId": self.child_session_id,
             "subagentType": self.subagent_type,
             "description": self.description,
             "status": self.status,
@@ -5090,6 +5108,36 @@ fn parse_ask_user_options(v: &Value) -> Vec<AskUserOption> {
         });
     }
     out
+}
+
+#[cfg(test)]
+mod child_session_update_tests {
+    use super::*;
+
+    #[test]
+    fn lifecycle_keeps_child_session_id_and_user_message_decodes_as_child_prompt() {
+        let lifecycle = parse_subagent_update(
+            "subagent_spawned",
+            &json!({
+                "subagent_id": "row-1",
+                "child_session_id": "agent-child-1"
+            }),
+        );
+        let Some(AcpEvent::Subagent(update)) = lifecycle else {
+            panic!("expected lifecycle event");
+        };
+        assert_eq!(update.child_session_id.as_deref(), Some("agent-child-1"));
+
+        let prompt = decode_session_update(&json!({
+            "update": {
+                "sessionUpdate": "user_message_chunk",
+                "content": { "type": "text", "text": "delegate this task" }
+            }
+        }));
+        assert!(
+            matches!(prompt.as_slice(), [AcpEvent::SubagentUserMessage { text }] if text == "delegate this task")
+        );
+    }
 }
 
 #[cfg(test)]

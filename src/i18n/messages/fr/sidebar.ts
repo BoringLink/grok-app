@@ -104,4 +104,5 @@ export const frSidebar = {
   "sidebar.spaces.err.last": "Conservez au moins un espace.",
   "sidebar.spaces.err.default": "L’espace par défaut ne peut pas être supprimé.",
   "sidebar.spaces.err.notFound": "Cet espace n’est plus disponible.",
+  "side.tab.subagents": "Sous-agents",
 };

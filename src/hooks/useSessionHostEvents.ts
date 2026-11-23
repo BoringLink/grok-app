@@ -25,6 +25,7 @@ import {
   subagentStore,
   type SubagentEventPayload,
 } from "@/lib/subagentStore";
+import { applySubagentLivePayload, subagentLiveStore } from "@/lib/subagentLiveStore";
 import * as api from "@/lib/api";
 import { registerGateAndMetaSubscriptions } from "./sessionHostGateSubscriptions";
 import { isMirrorClient } from "@/lib/mirrorTransport";
@@ -1435,6 +1436,18 @@ export function useSessionHostEvents(ctx: SessionHostEventsCtx) {
             // mounted on demand, and telemetry arriving before the user opened
             // it would otherwise be dropped with no way to backfill.
             subagentStore.apply(p);
+            if (p.sessionId && p.subagentId) {
+              subagentLiveStore.registerChild(p.sessionId, p.subagentId);
+            }
+          }),
+        );
+       track(
+          listenWithRetry<unknown>("session://subagent-activity", (p) => {
+            if (cancelled || !p || typeof p !== "object") return;
+            const payload = p as Record<string, unknown>;
+            if (typeof payload.sessionId !== "string" || typeof payload.childId !== "string") return;
+            const run = subagentStore.list(payload.sessionId).find((item) => item.subagentId === payload.childId);
+            applySubagentLivePayload(p, run?.childSessionId);
           }),
         );
        track(

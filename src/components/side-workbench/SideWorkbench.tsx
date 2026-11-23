@@ -38,9 +38,13 @@ import { SkillsTab } from "./SkillsTab";
 import { SidePicker } from "./SidePicker";
 import { SideTabBar } from "./SideTabBar";
 import { SideTabBody } from "./SideTabBody";
+import { subscribeSubagentViewerRequests } from "@/lib/subagentViewerRequest";
+import { subagentLiveStore } from "@/lib/subagentLiveStore";
+import { useSubagents } from "@/hooks/useSubagents";
 
 export type SideWorkbenchProps = {
   locale: Locale | string;
+  sessionId?: string | null;
   projectPath?: string | null;
   sshAlias?: string | null;
   projectName?: string | null;
@@ -82,6 +86,7 @@ export type SideWorkbenchProps = {
 
 export function SideWorkbench({
   locale,
+  sessionId = null,
   projectPath = null,
   sshAlias = null,
   projectName = null,
@@ -132,11 +137,13 @@ export function SideWorkbench({
     next: SideWorkbenchState;
     dirtyCount: number;
     totalCount: number;
+    openSidePane?: boolean;
   } | null>(null);
   const tr = useMemo(
     () => createT((locale as Locale) || "en"),
     [locale],
   );
+  const runs = useSubagents(sessionId);
 
   const setState = useCallback(
     (next: SideWorkbenchState) => {
@@ -199,6 +206,27 @@ export function SideWorkbench({
         .map((t) => t.id),
     [state.tabs, isFilePathDirty],
   );
+
+  useEffect(() => subscribeSubagentViewerRequests(sessionId, (request) => {
+    if (!sessionId || request.sessionId !== sessionId) return;
+    const run = runs.find((item) => item.subagentId === request.childId);
+    if (!run) return;
+    subagentLiveStore.registerChild(sessionId, run.subagentId);
+    subagentLiveStore.select(sessionId, run.subagentId);
+    const next = openSideTab(state, "subagents", { id: "side_subagents" });
+    const dirtyCount = next.droppedIds.filter((id) => dirtyTabIds.includes(id)).length;
+    if (dirtyCount > 0) {
+      setBulkCloseConfirm({
+        next,
+        dirtyCount,
+        totalCount: next.droppedIds.length,
+        openSidePane: !paneActive,
+      });
+      return;
+    }
+    setState(next);
+    if (!paneActive) onCloseSide();
+  }), [dirtyTabIds, onCloseSide, paneActive, runs, sessionId, setState, state]);
 
   const requestBulkClose = useCallback(
     (action: BulkCloseAction, targetId: string) => {
@@ -465,10 +493,14 @@ export function SideWorkbench({
               />
             ) : null}
 
-            {/* Keep browser/terminal instances mounted so PTY/xterm sessions
-                survive tab switches (VS Code-style). */}
+            {/* Keep long-lived browser, terminal, and subagent views mounted across tab switches. */}
             {state.tabs
-              .filter((t) => t.kind === "browser" || t.kind === "terminal")
+              .filter(
+                (t) =>
+                  t.kind === "browser" ||
+                  t.kind === "terminal" ||
+                  t.kind === "subagents",
+              )
               .map((tab) => {
                 const isActive = active.id === tab.id;
                 return (
@@ -483,6 +515,7 @@ export function SideWorkbench({
                     <SideTabBody
                       locale={locale}
                       tab={tab}
+                      sessionId={sessionId}
                       projectPath={projectPath}
                       sshAlias={sshAlias}
                       active={paneActive && isActive}
@@ -514,9 +547,12 @@ export function SideWorkbench({
               className="btn btn--solid btn--danger"
               data-testid="side-bulk-close-confirm"
               onClick={() => {
-                const next = bulkCloseConfirm?.next;
+                const confirm = bulkCloseConfirm;
                 setBulkCloseConfirm(null);
-                if (next) applyCloseState(next);
+                if (confirm) {
+                  applyCloseState(confirm.next);
+                  if (confirm.openSidePane && !paneActive) onCloseSide();
+                }
               }}
             >
               {tr("side.tabs.bulkCloseConfirmAction")}

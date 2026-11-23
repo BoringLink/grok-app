@@ -819,7 +819,7 @@ export function AgentTasksPanel({
         </div>
       </div>
 
-      {showFullEmpty && emptyState ? (
+      {showFullEmpty && emptyState && subagentRuns.length === 0 ? (
         <div
           className={
             "agent-tasks__empty" +
@@ -848,7 +848,12 @@ export function AgentTasksPanel({
         </div>
       ) : (
         <div className="agent-tasks__body">
-          <SubagentSection runs={subagentRuns} t={t} locale={locale} />
+          <SubagentSection
+            runs={subagentRuns}
+            t={t}
+            locale={locale}
+            sessionId={currentSessionId ?? null}
+          />
           {otherSessions.length > 0 ? (
             <div className="agent-tasks__section">
               <h3 className="agent-tasks__section-title">

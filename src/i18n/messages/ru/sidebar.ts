@@ -104,4 +104,5 @@ export const ruSidebar = {
   "sidebar.spaces.err.last": "Оставьте хотя бы одно пространство.",
   "sidebar.spaces.err.default": "Пространство по умолчанию удалить нельзя.",
   "sidebar.spaces.err.notFound": "Это пространство больше недоступно.",
+  "side.tab.subagents": "Субагенты",
 };

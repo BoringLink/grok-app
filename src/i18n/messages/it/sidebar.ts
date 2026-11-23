@@ -104,4 +104,5 @@ export const itSidebar = {
   "sidebar.spaces.err.last": "Deve restare almeno uno spazio.",
   "sidebar.spaces.err.default": "Lo spazio predefinito non può essere eliminato.",
   "sidebar.spaces.err.notFound": "Questo spazio non è più disponibile.",
+  "side.tab.subagents": "Subagenti",
 };

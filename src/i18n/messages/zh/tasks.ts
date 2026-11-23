@@ -252,4 +252,11 @@ export const zhTasks = {
   "tasks.subagentFinished": "已结束",
   "tasks.subagentMeta": "{turns} 轮 · {tools} 次工具 · {tokens} tokens · {duration}",
   "tasks.subagentOutput": "输出",
+  "tasks.subagentView": "查看子代理",
+  "tasks.subagentActivityTask": "任务",
+  "tasks.subagentActivityThought": "思考",
+  "tasks.subagentActivityAssistant": "助手",
+  "tasks.subagentActivityTrimmed": "较早的活动已截断",
+  "tasks.subagentEmpty": "此会话暂无子代理",
+  "tasks.subagentActivityEmpty": "暂无活动",
 };

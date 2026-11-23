@@ -227,6 +227,7 @@ export function WorkbenchResourcesAside(props: WorkbenchResourcesAsideProps) {
           >
           <SideWorkbench
             locale={locale}
+            sessionId={sessionId}
             projectPath={effectiveProjectPath}
             sshAlias={sshAlias}
             projectName={projectName}
