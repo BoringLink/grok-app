@@ -13,6 +13,12 @@ See `docs/llm-wiki/release.md`.
 
 ## [Unreleased]
 
+### Added
+- Subagent thoughts, replies, and tool activity now appear live in the side panel.
+
+**中文 · 新增**
+- 侧栏现可实时查看子代理思考、回复和工具活动。
+
 ## [0.2.59] - 2026-11-22
 
 > **Highlight:** ACP output stays complete when a turn finishes.
