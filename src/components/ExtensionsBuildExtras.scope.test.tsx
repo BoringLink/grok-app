@@ -66,13 +66,13 @@ describe("Agents workspace scope picker", () => {
       />,
     );
 
-    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).toBeNull();
     await user.click(screen.getByRole("tab", { name: "Roles" }));
-    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).toBeNull();
     await user.click(screen.getByRole("tab", { name: "Personas" }));
-    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Scope" }));
-    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).toBeNull();
   });
 
   it("places scope beside Open directory and opens the selected workspace directory", async () => {
