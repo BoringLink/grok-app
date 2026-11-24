@@ -1958,6 +1958,8 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tokio-tungstenite 0.26.2",
+ "toml 0.9.12+spec-1.1.0",
+ "toml_edit 0.25.13+spec-1.1.0",
  "tower",
  "tower-http",
  "tracing",
@@ -1972,6 +1974,7 @@ dependencies = [
  "windows",
  "windows-core 0.61.2",
  "winreg 0.55.0",
+ "yaml_serde",
  "zip 2.4.2",
 ]
 
@@ -2716,6 +2719,12 @@ dependencies = [
  "pkg-config",
  "vcpkg",
 ]
+
+[[package]]
+name = "libyaml-rs"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e126dda6f34391ab7b444f9922055facc83c07a910da3eb16f1e4d9c45dc777"
 
 [[package]]
 name = "linux-raw-sys"
@@ -5722,6 +5731,7 @@ dependencies = [
  "indexmap 2.14.0",
  "toml_datetime 1.1.1+spec-1.1.0",
  "toml_parser",
+ "toml_writer",
  "winnow 1.0.4",
 ]
 
@@ -7086,6 +7096,19 @@ name = "xkeysym"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
+
+[[package]]
+name = "yaml_serde"
+version = "0.10.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33b729a08a9a6be689bbad3e2bf8015926db54b6622cc89c3a5f7dc174b9e918"
+dependencies = [
+ "indexmap 2.14.0",
+ "itoa",
+ "libyaml-rs",
+ "ryu",
+ "serde",
+]
 
 [[package]]
 name = "yoke"

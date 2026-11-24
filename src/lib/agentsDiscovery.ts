@@ -8,7 +8,7 @@
  * files (no fake "set active agent" without ACP session switch support).
  */
 
-export type AgentScope = "project" | "user" | "bundled";
+export type AgentScope = "project" | "user" | "bundled" | "config";
 
 export type PersonaScope = "project" | "user" | "bundled";
 
@@ -17,6 +17,7 @@ export type AgentDefLike = {
   path: string;
   scope: AgentScope;
   description?: string | null;
+  isDefault?: boolean;
 };
 
 export type PersonaDefLike = {
@@ -194,6 +195,8 @@ export function personaEntriesFromFileNames(
 /** Scope sort key: project (overrides) → user → bundled. */
 export function agentScopeRank(scope: string | null | undefined): number {
   switch ((scope ?? "").trim().toLowerCase()) {
+    case "config":
+      return -1;
     case "project":
       return 0;
     case "user":

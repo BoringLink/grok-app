@@ -172,6 +172,7 @@ export interface ExtensionsPanelProps {
   locale: Locale;
   /** Active workbench project path (inspect cwd — not shown in toolbar). */
   projectPath?: string | null;
+  sessionDataMode?: string;
   /** Whether CLI probe found a binary (for empty-state copy). */
   cliFound?: boolean;
   /** Page tab from settings hash (`#/settings/extensions/{tab}`). */
@@ -186,6 +187,7 @@ export interface ExtensionsPanelProps {
 export function ExtensionsPanel({
   locale,
   projectPath = null,
+  sessionDataMode = "shared",
   cliFound = true,
   activeTab = "plugins",
   onTabChange,
@@ -1840,19 +1842,6 @@ export function ExtensionsPanel({
                   <IconRefresh size={14} />
                   <span>{tr("ext.refresh")}</span>
                 </button>
-                <button
-                  type="button"
-                  className="btn btn--solid btn--sm"
-                  disabled={!agentsTabActions || agentsTabActions.busy}
-                  onClick={() => agentsTabActions?.openNew()}
-                >
-                  <IconPlus size={14} />
-                  <span>
-                    {agentsTabActions?.busy
-                      ? tr("ext.agents.creating")
-                      : tr("ext.agents.new")}
-                  </span>
-                </button>
               </div>
             ) : tab === "hooks" ? (
               <div className="ext-ref-tabs__actions">
@@ -2885,6 +2874,7 @@ export function ExtensionsPanel({
         <ExtensionsBuildExtras
           locale={locale}
           projectPath={projectPath}
+          sessionDataMode={sessionDataMode}
           cliFound={cliFound && !cliMissing}
           mode="agents"
           hidePageToolbar

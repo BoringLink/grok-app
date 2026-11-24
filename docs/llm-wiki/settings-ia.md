@@ -66,10 +66,18 @@ Agent / 贡献者维护设置 UI 时**必读**。目标：层次清晰、可搜�
 
 | 面 | 放哪 | 说明 |
 |----|------|------|
-| 管理 Skills/MCP/Plugins/Hooks/Agents + 插件页内目录 | **扩展** | 可写开关、安装、移除；无独立市场 Tab |
+| 管理 Skills/MCP/Plugins/Hooks/Agents + 插件页内目录 | **扩展** | 可写开关、安装、移除；Agents 工作区统一浏览 Agent types、Role types、Persona 行为配置与发现警告。Shared mode 只读；Independent mode 支持全局和当前保存工作区的 Project scope。scope 选择器位于 Agents 标签页右上角、紧邻“打开用户目录”按钮右侧；全局视图只显示全局定义，Project 视图显示全局与当前工作区定义。“打开用户目录”按当前标签和 scope 打开对应的 Agent/Role/Persona 配置目录。Agent Markdown 可作为主 Agent 或 SubAgent type；Role TOML 仅作为 SubAgent type；二者均可应用一个 Persona。Persona 按 `agent_type` 写入 scope 对应的 config.toml，并用 `instructions_file` 指向独立指令文件。新建 Agent 留在工作区，不自动打开 Markdown；用户可通过条目的“打开”操作主动打开。无独立市场 Tab |
 | 只读 project inspect 摘要 | **运行时 · 诊断** | 保留；文案链到扩展 |
 | CLI 路径 / ACP / 进程池 / Doctor / Managed setup / Privacy center | **运行时** | 不进扩展 |
 | 本机会话列表 + 按 id 续跑（#626 第一刀） | **运行时 · 连接** | `runtime.sessionApi`；见 [session-api.md](./session-api.md) |
+
+### Agents、Roles 与 Personas scope
+
+- Shared mode 只读扫描 `~/.grok/agents` 与项目 `.grok/agents`、`.grok/roles`、`.grok/personas`，并展示有效 config 来源；Independent mode 将 `agent_home_dir()` 解析的活动目录作为全局 `GROK_HOME`。Project scope 使用当前已保存工作区的 `.grok` 目录。全局列表只展示全局定义；项目列表展示全局与所选工作区定义。
+- Agent Markdown 遵循 Grok Build Agent frontmatter schema；instructions 保存在 Markdown 正文，主 session model 由用户选择。Agent 可用于主 session 或 SubAgent。Role TOML 保存 `description`、可选 `default_capability_mode` 和可选 `model`，Role 只能用于 SubAgent。提示词正文写入 scope 对应的 `prompts` 目录；scope 配置的 `[subagents.roles.<agent_type>]` 仅保存 `prompt_file` 路径指针。
+- Agent 与 Role 都定义 `agent_type`，表单可应用一个 Persona。Persona 必须选择一个已存在的 Agent/Role type；Persona fields 写入全局 `agent-home/config.toml` 或当前项目 `.grok/config.toml` 的 `[subagents.personas.<agent_type>]`，指令内容写入 scope 对应的 `personas` 目录并由 `instructions_file` 指向。Independent mode 的 App-managed Persona blocks 不写入或消费 inline `instructions`；Shared mode 仍只读展示 Grok Build 生效配置。一个 type 最多应用一个 Persona；同一指令文件可复用于多个 type。Project config 复用 Global Persona 时保留该 Global `instructions_file` 路径；在 Project scope 新建 Persona 时创建项目本地指令文件。`model` 在 Role/Persona 中可选，未填写时不写字段；Agent 无 `model` 字段。
+- 删除作为当前默认值的 Agent 时，同时清除活动 `agent-home/config.toml` 中失效的 `[agent].definition` 指针。Shared mode 只读，不提供 App 写操作。
+- `[agent].definition` 是指向单个 Markdown 文件的路径。匹配的 Agent definition 标记为当前配置默认；若不在扫描列表中则以 config 来源展示。General → Agent 的独立 `preferredAgent` 仍作为启动时 `--agent` override，非空时优先于 config definition；选择 Default 后使用 `[agent].definition`。
 
 ## 新增设置 — 强制清单
 

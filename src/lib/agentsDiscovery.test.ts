@@ -109,6 +109,7 @@ describe("entries from listings", () => {
 
 describe("sort / scope", () => {
   it("ranks project before user before bundled", () => {
+    expect(agentScopeRank("config")).toBeLessThan(agentScopeRank("project"));
     expect(agentScopeRank("project")).toBeLessThan(agentScopeRank("user"));
     expect(agentScopeRank("user")).toBeLessThan(agentScopeRank("bundled"));
   });
@@ -118,9 +119,11 @@ describe("sort / scope", () => {
       { name: "zeta", scope: "user" },
       { name: "alpha", scope: "bundled" },
       { name: "beta", scope: "project" },
+      { name: "default", scope: "config" },
       { name: "alpha", scope: "user" },
     ]);
     expect(sorted.map((a) => `${a.scope}:${a.name}`)).toEqual([
+      "config:default",
       "project:beta",
       "user:alpha",
       "user:zeta",

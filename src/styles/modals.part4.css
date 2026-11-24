@@ -427,6 +427,10 @@
   color: var(--text-tertiary);
 }
 
+.ext-field-hint--error {
+  color: var(--danger);
+}
+
 .ext-env-textarea {
   resize: vertical;
   min-height: 72px;

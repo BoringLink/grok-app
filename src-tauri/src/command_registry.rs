@@ -206,10 +206,17 @@ pub fn app_invoke_handler(
         commands::customize_command_create,
         // ── Agents & workflows ──
         commands::agents_list,
+        commands::agents_open_user_directory,
         commands::workflows_list,
         commands::workflows_run,
         commands::workflows_create,
-        commands::agents_scaffold,
+        commands::agents_create_definition,
+        commands::agents_apply_persona,
+        commands::agents_read_markdown_definition,
+        commands::agents_delete_markdown_definition,
+        commands::agents_set_default_definition,
+        commands::agents_upsert_file_definition,
+        commands::agents_delete_file_definition,
         // ── Inspect (MCP & project) ──
         commands::inspect_mcp,
         commands::project_inspect,

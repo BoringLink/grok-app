@@ -33,6 +33,9 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+yaml_serde = "0.10"
+toml = "0.9.12"
+toml_edit = "0.25.13"
 # Trimmed from "full": no `tokio::fs` / `tokio::signal` usage in this crate
 # (file IO goes through `spawn_blocking` + `std::fs`). Add a feature here
 # only when a new `tokio::<feature>::…` call site actually appears.

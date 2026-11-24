@@ -21,35 +21,69 @@ export async function agentsCatalog(projectPath?: string | null) {
   });
 }
 
-/** Agent definition row from host `agents_list` (filesystem discovery). */
+/** Agent definition row from host `agents_list` (filesystem or inline config). */
 export type AgentDefDto = {
   name: string;
   path: string;
-  /** "project" | "user" | "bundled" */
+  /** "project" | "user" | "bundled" | "config" */
   scope: string;
   description?: string | null;
+  isDefault: boolean;
 };
 
-export type PersonaDefDto = {
+export type AgentDefinitionDto = {
   name: string;
   path: string;
   scope: string;
+  description?: string | null;
+  defaultCapabilityMode?: string | null;
+  model?: string | null;
+  promptFile?: string | null;
+  prompt?: string | null;
+  instructions?: string | null;
+  instructionsFile?: string | null;
+  inputs?: unknown;
+  outputs?: unknown;
+  reasoningEffort?: string | null;
+  defaultIsolation?: string | null;
+};
+
+export type AgentDiscoveryWarningDto = {
+  source: string;
+  path: string;
+  code:
+    | "directoryRead"
+    | "directoryTruncated"
+    | "definitionRead"
+    | "configRead"
+    | "agentDefinitionInvalid";
 };
 
 export type AgentsListResult = {
   agents: AgentDefDto[];
-  personas: PersonaDefDto[];
-  userAgentsDir?: string;
+  roles: AgentDefinitionDto[];
+  personas: AgentDefinitionDto[];
+  warnings: AgentDiscoveryWarningDto[];
+  userAgentsDir: string;
   projectAgentsDir?: string | null;
   bundledAgentsDir?: string;
-  userPersonasDir?: string;
-  projectPersonasDir?: string | null;
-  bundledPersonasDir?: string;
 };
 
 /** List agent + persona definition files (no CLI required). */
 export async function agentsList(projectPath?: string | null) {
   return invoke<AgentsListResult>("agents_list", {
+    projectPath: projectPath ?? null,
+  });
+}
+
+export async function agentsOpenUserDirectory(
+  kind: "agents" | "roles" | "personas",
+  scope: "user" | "project" = "user",
+  projectPath?: string | null,
+) {
+  return invoke<boolean>("agents_open_user_directory", {
+    kind,
+    scope,
     projectPath: projectPath ?? null,
   });
 }
@@ -142,7 +176,7 @@ export async function workflowsCreate(opts: {
   });
 }
 
-export type AgentsScaffoldResult = {
+export type AgentDefinitionCreateResult = {
   name: string;
   path: string;
   scope: string;
@@ -150,23 +184,123 @@ export type AgentsScaffoldResult = {
   overwritten: boolean;
 };
 
-/**
- * Create `{name}.md` under user GROK_HOME agents or project `.grok/agents`.
- * Rejects overwrite unless `force` is true.
- */
-export async function agentsScaffold(opts: {
+export type AgentMarkdownDefinitionDto = {
+  path: string;
+  scope: string;
+  frontmatter: Record<string, unknown>;
+  instructions: string;
+};
+
+export type AgentDefinitionFileInput = {
+  kind: "role" | "persona";
   name: string;
-  scope?: "user" | "project" | string;
+  scope: "user" | "project";
+  projectPath?: string | null;
+  description?: string | null;
+  instructions?: string | null;
+  instructionsFile?: string | null;
+  inputs?: unknown;
+  outputs?: unknown;
+  defaultCapabilityMode?: string | null;
+  model?: string | null;
+  promptFile?: string | null;
+  prompt?: string | null;
+  reasoningEffort?: string | null;
+  defaultIsolation?: string | null;
+};
+
+export async function agentsCreateDefinition(opts: {
+  name: string;
+  description: string;
+  instructions: string;
+  scope: "user" | "project";
   projectPath?: string | null;
   force?: boolean;
-  description?: string | null;
+  frontmatter?: Record<string, unknown>;
+  path?: string | null;
 }) {
-  return invoke<AgentsScaffoldResult>("agents_scaffold", {
-    name: opts.name,
-    scope: opts.scope ?? "user",
-    projectPath: opts.projectPath ?? null,
-    force: opts.force ?? false,
-    description: opts.description ?? null,
+  return invoke<AgentDefinitionCreateResult>("agents_create_definition", {
+    input: {
+      name: opts.name,
+      description: opts.description,
+      instructions: opts.instructions,
+      scope: opts.scope,
+      projectPath: opts.projectPath ?? null,
+      force: opts.force ?? false,
+      frontmatter: opts.frontmatter ?? null,
+      path: opts.path ?? null,
+    },
   });
 }
 
+export async function agentsReadMarkdownDefinition(
+  path: string,
+  scope: "user" | "project",
+  projectPath?: string | null,
+) {
+  return invoke<AgentMarkdownDefinitionDto>("agents_read_markdown_definition", {
+    path,
+    scope,
+    projectPath: projectPath ?? null,
+  });
+}
+
+export async function agentsDeleteMarkdownDefinition(
+  path: string,
+  scope: "user" | "project",
+  projectPath?: string | null,
+) {
+  return invoke<void>("agents_delete_markdown_definition", {
+    path,
+    scope,
+    projectPath: projectPath ?? null,
+  });
+}
+
+export async function agentsSetDefaultDefinition(
+  path: string,
+  projectPath?: string | null,
+) {
+  return invoke<void>("agents_set_default_definition", {
+    path,
+    projectPath: projectPath ?? null,
+  });
+}
+
+export async function agentsUpsertFileDefinition(
+  input: AgentDefinitionFileInput,
+) {
+  return invoke<void>("agents_upsert_file_definition", { input });
+}
+
+export async function agentsApplyPersona(input: {
+  targetAgentType: string;
+  targetScope: "user" | "project";
+  targetProjectPath?: string | null;
+  personaAgentType?: string | null;
+  personaScope?: "user" | "project" | null;
+  personaProjectPath?: string | null;
+}) {
+  return invoke<void>("agents_apply_persona", {
+    targetAgentType: input.targetAgentType,
+    targetScope: input.targetScope,
+    targetProjectPath: input.targetProjectPath ?? null,
+    personaAgentType: input.personaAgentType ?? null,
+    personaScope: input.personaScope ?? null,
+    personaProjectPath: input.personaProjectPath ?? null,
+  });
+}
+
+export async function agentsDeleteFileDefinition(
+  kind: "role" | "persona",
+  name: string,
+  scope: "user" | "project",
+  projectPath?: string | null,
+) {
+  return invoke<void>("agents_delete_file_definition", {
+    kind,
+    name,
+    scope,
+    projectPath: projectPath ?? null,
+  });
+}
