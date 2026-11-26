@@ -494,7 +494,7 @@ fn user_definition_file_path(
     };
     if directory.is_dir() {
         let mut warnings = Vec::new();
-        let entries = read_worktree_agent_catalog_dir_entries(&directory, "user", &mut warnings);
+        let entries = read_agent_catalog_dir_entries(&directory, "user", &mut warnings);
         if warnings
             .iter()
             .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated))
@@ -1537,7 +1537,7 @@ fn ensure_agent_type_exists(
         [(root.join("agents"), "md"), (root.join("roles"), "toml")]
             .into_iter()
             .any(|(directory, extension)| {
-                read_worktree_agent_catalog_dir_entries(&directory, scope.label, &mut warnings)
+                read_agent_catalog_dir_entries(&directory, scope.label, &mut warnings)
                     .iter()
                     .any(|entry| {
                         let path = entry.path();

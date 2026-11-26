@@ -187,14 +187,6 @@ pub struct GitWorktreeCompareResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PersonaDefDto {
-    pub name: String,
-    pub path: String,
-    pub scope: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PersonaWorkspaceDto {
     pub name: String,
     pub path: String,
@@ -610,47 +602,6 @@ pub async fn agents_open_user_directory(
     .map_err(|error| error.to_string())?
 }
 
-const MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR: usize = 128;
-const MAX_WORKTREE_AGENT_DESCRIPTION_BYTES: u64 = 4096;
-
-fn read_worktree_agent_catalog_dir_entries(
-    dir: &std::path::Path,
-    scope: &str,
-    warnings: &mut Vec<CatalogWarningDto>,
-) -> Vec<std::fs::DirEntry> {
-    let read_dir = match std::fs::read_dir(dir) {
-        Ok(read_dir) => read_dir,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
-        Err(_) => {
-            warnings.push(CatalogWarningDto {
-                source: scope.to_string(),
-                path: dir.to_string_lossy().to_string(),
-                code: CatalogWarningCode::DirectoryRead,
-            });
-            return Vec::new();
-        }
-    };
-    let mut entries = read_dir
-        .take(MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR + 1)
-        .collect::<Vec<_>>();
-    let truncated = entries.len() > MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR;
-    entries.sort_by_key(|entry| {
-        entry
-            .as_ref()
-            .map(|entry| entry.file_name())
-            .unwrap_or_default()
-    });
-    if truncated {
-        entries.truncate(MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR);
-        warnings.push(CatalogWarningDto {
-            source: scope.to_string(),
-            path: dir.to_string_lossy().to_string(),
-            code: CatalogWarningCode::DirectoryTruncated,
-        });
-    }
-    entries.into_iter().filter_map(Result::ok).collect()
-}
-
 fn scan_worktree_agent_dir(
     dir: &std::path::Path,
     scope: &str,
@@ -664,70 +615,7 @@ fn scan_worktree_agent_dir(
         });
         return Vec::new();
     }
-    let warning_start = warnings.len();
-    let entries = read_worktree_agent_catalog_dir_entries(dir, scope, warnings);
-    let directory_warnings = &warnings[warning_start..];
-    let truncated = directory_warnings
-        .iter()
-        .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated));
-    let directory_read_failed = directory_warnings
-        .iter()
-        .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryRead));
-    if scope == "bundled" && !truncated && !directory_read_failed {
-        // bundled 是 Grok Build 安装的只读参考目录；用户和项目目录只扫描限量快照。
-        let available_paths = entries
-            .into_iter()
-            .map(|entry| entry.path())
-            .collect::<Vec<_>>();
-        return scan_agent_dir(dir, scope)
-            .into_iter()
-            .filter(|agent| {
-                let path = std::path::Path::new(&agent.path);
-                available_paths.iter().any(|allowed| allowed == path)
-                    && std::fs::symlink_metadata(path).is_ok_and(|metadata| {
-                        metadata.is_file() && !metadata.file_type().is_symlink()
-                    })
-            })
-            .collect();
-    }
-
-    entries
-        .into_iter()
-        .filter_map(|entry| {
-            let path = entry.path();
-            let metadata = std::fs::symlink_metadata(&path).ok()?;
-            if metadata.file_type().is_symlink() || !metadata.is_file() {
-                return None;
-            }
-            let file_name = path.file_name()?.to_str()?;
-            if !is_agent_def_file(file_name) {
-                return None;
-            }
-            let name = stem_name(file_name);
-            (!name.is_empty()).then(|| AgentDefDto {
-                name,
-                path: path.to_string_lossy().to_string(),
-                scope: scope.to_string(),
-                description: read_worktree_agent_description(&path),
-            })
-        })
-        .collect()
-}
-
-fn read_worktree_agent_description(path: &std::path::Path) -> Option<String> {
-    use std::io::Read as _;
-
-    let metadata = std::fs::symlink_metadata(path).ok()?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return None;
-    }
-    let mut bytes = Vec::with_capacity(MAX_WORKTREE_AGENT_DESCRIPTION_BYTES as usize);
-    std::fs::File::open(path)
-        .ok()?
-        .take(MAX_WORKTREE_AGENT_DESCRIPTION_BYTES)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    extract_agent_description_from_content(&String::from_utf8_lossy(&bytes))
+    scan_agent_dir(dir, scope, warnings)
 }
 
 fn scan_user_agent_defs(
@@ -755,7 +643,7 @@ fn scan_catalog_dir<T>(
 where
     T: From<(String, String, String, Option<String>)> + CatalogEntry,
 {
-    let entries = read_worktree_agent_catalog_dir_entries(dir, scope, warnings);
+    let entries = read_agent_catalog_dir_entries(dir, scope, warnings);
     scan_catalog_entries(entries, scope, warnings, include_definition_fields)
 }
 
@@ -829,57 +717,8 @@ fn scan_persona_catalog_dir(
         });
         return Vec::new();
     }
-    let warning_start = warnings.len();
-    let entries = read_worktree_agent_catalog_dir_entries(directory, scope, warnings);
-    let directory_read_failed = warnings[warning_start..]
-        .iter()
-        .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryRead));
-    if directory_read_failed {
-        return Vec::new();
-    }
-    let truncated = warnings[warning_start..]
-        .iter()
-        .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated));
-    if truncated || scope != "bundled" {
-        return scan_catalog_entries(entries, scope, warnings, false);
-    }
-
-    // bundled 是 Grok Build 安装的只读参考目录；用户和项目目录只扫描限量快照。
-    let allowed_paths = entries
-        .into_iter()
-        .map(|entry| entry.path())
-        .collect::<Vec<_>>();
-    sort_persona_defs(scan_persona_dir(directory, scope))
-        .into_iter()
-        .filter_map(|persona| {
-            let path = std::path::PathBuf::from(&persona.path);
-            if !allowed_paths.iter().any(|candidate| candidate == &path) {
-                return None;
-            }
-            let metadata = std::fs::symlink_metadata(&path).ok()?;
-            if metadata.file_type().is_symlink() || !metadata.is_file() {
-                return None;
-            }
-            if !path
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
-            {
-                return None;
-            }
-            let definition = parse_catalog_toml(&path, scope, warnings)?;
-            let description = definition
-                .get("description")
-                .and_then(toml::Value::as_str)
-                .map(str::to_string);
-            Some(PersonaWorkspaceDto::from((
-                persona.name,
-                persona.path,
-                persona.scope,
-                description,
-            )))
-        })
-        .collect()
+    let entries = read_agent_catalog_dir_entries(directory, scope, warnings);
+    scan_catalog_entries(entries, scope, warnings, false)
 }
 
 fn parse_catalog_toml(
@@ -1434,7 +1273,7 @@ fn add_configured_definition(agents: &mut Vec<AgentDefDto>, configured_path: &st
         name: name.to_string(),
         path: configured_path.to_string(),
         scope: "config".into(),
-        description: read_worktree_agent_description(configured),
+        description: read_agent_description(configured),
     });
 }
 

@@ -235,7 +235,7 @@ description = "Writing"
     #[test]
     fn catalog_directory_cap_returns_a_truncation_warning() {
         let root = TempCatalogDir::new();
-        (0..=MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR).for_each(|index| {
+        (0..=MAX_AGENT_CATALOG_ENTRIES_PER_DIR).for_each(|index| {
             std::fs::write(
                 root.join(format!("role-{index:03}.toml")),
                 "description = 'Test role'\n",
@@ -246,7 +246,7 @@ description = "Writing"
 
         let roles = scan_catalog_dir::<RoleDefDto>(&root, "user", &mut warnings, false);
 
-        assert_eq!(roles.len(), MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR);
+        assert_eq!(roles.len(), MAX_AGENT_CATALOG_ENTRIES_PER_DIR);
         assert!(warnings
             .iter()
             .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated)));
@@ -257,14 +257,14 @@ description = "Writing"
         let root = TempCatalogDir::new();
         let agents = root.join(".grok/agents");
         std::fs::create_dir_all(&agents).unwrap();
-        (0..=MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR).for_each(|index| {
+        (0..=MAX_AGENT_CATALOG_ENTRIES_PER_DIR).for_each(|index| {
             std::fs::write(agents.join(format!("agent-{index:03}.md")), "definition").unwrap();
         });
         let mut warnings = Vec::new();
 
         let discovered = scan_worktree_agent_dir(&agents, "project", &mut warnings);
 
-        assert_eq!(discovered.len(), MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR);
+        assert_eq!(discovered.len(), MAX_AGENT_CATALOG_ENTRIES_PER_DIR);
         assert!(warnings
             .iter()
             .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated)));
@@ -274,14 +274,14 @@ description = "Writing"
     fn worktree_agent_description_reads_only_the_bounded_prefix() {
         let root = TempCatalogDir::new();
         let definition = root.join("large.md");
-        let padding = "x".repeat(MAX_WORKTREE_AGENT_DESCRIPTION_BYTES as usize);
+        let padding = "x".repeat(MAX_AGENT_DESCRIPTION_BYTES as usize);
         std::fs::write(
             &definition,
             format!("---\npadding: {padding}\ndescription: beyond limit\n---\n"),
         )
         .unwrap();
 
-        assert!(read_worktree_agent_description(&definition).is_none());
+        assert!(read_agent_description(&definition).is_none());
     }
 
     #[test]
@@ -290,7 +290,7 @@ description = "Writing"
         let scope_root = root.join(".grok");
         let personas = scope_root.join("personas");
         std::fs::create_dir_all(&personas).unwrap();
-        (0..=MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR).for_each(|index| {
+        (0..=MAX_AGENT_CATALOG_ENTRIES_PER_DIR).for_each(|index| {
             std::fs::write(
                 personas.join(format!("persona-{index:03}.toml")),
                 "description = 'Test persona'\n",
@@ -301,7 +301,7 @@ description = "Writing"
 
         let discovered = scan_persona_catalog_dir(&personas, &scope_root, "project", &mut warnings);
 
-        assert_eq!(discovered.len(), MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR);
+        assert_eq!(discovered.len(), MAX_AGENT_CATALOG_ENTRIES_PER_DIR);
         assert!(warnings
             .iter()
             .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated)));
