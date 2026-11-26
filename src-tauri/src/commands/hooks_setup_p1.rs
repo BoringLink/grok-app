@@ -420,6 +420,10 @@ const MAX_AGENT_DESCRIPTION_BYTES: u64 = 4096;
 fn read_agent_description(path: &std::path::Path) -> Option<String> {
     use std::io::Read as _;
 
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return None;
+    }
     let file = std::fs::File::open(path).ok()?;
     let mut bytes = Vec::with_capacity(MAX_AGENT_DESCRIPTION_BYTES as usize);
     file.take(MAX_AGENT_DESCRIPTION_BYTES)
@@ -770,7 +774,11 @@ fn scan_agent_dir(
     let mut out = Vec::new();
     for entry in read_agent_catalog_dir_entries(dir, scope, warnings) {
         let path = entry.path();
-        if !path.is_file() {
+        let metadata = match std::fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
             continue;
         }
         let file_name = match path.file_name().and_then(|s| s.to_str()) {

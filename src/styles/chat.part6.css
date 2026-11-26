@@ -348,7 +348,7 @@
   border-color: color-mix(in srgb, var(--text-primary) 28%, var(--border-subtle));
 }
 
-textarea.app-dialog__input {
+textarea.app-dialog__input.ext-agents__instructions {
   min-height: 7rem;
   resize: vertical;
   font: inherit;

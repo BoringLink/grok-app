@@ -270,6 +270,38 @@ description = "Writing"
             .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated)));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn agent_scan_skips_symlinked_markdown_definitions() {
+        let root = TempCatalogDir::new();
+        let agents = root.join("agents");
+        std::fs::create_dir_all(&agents).unwrap();
+        let linked = agents.join("linked.md");
+        let external = root.join("outside.md");
+        std::fs::write(
+            &external,
+            "---\ndescription: Must stay private\n---\nprivate instructions",
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&external, &linked).unwrap();
+        std::fs::write(
+            agents.join("regular.md"),
+            "---\ndescription: Visible\n---\npublic instructions",
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+
+        let discovered = scan_agent_dir(&agents, "project", &mut warnings);
+
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].name, "regular");
+        assert_eq!(discovered[0].description.as_deref(), Some("Visible"));
+        assert!(read_agent_description(&linked).is_none());
+        assert!(!serde_json::to_string(&discovered)
+            .unwrap()
+            .contains("Must stay private"));
+    }
+
     #[test]
     fn worktree_agent_description_reads_only_the_bounded_prefix() {
         let root = TempCatalogDir::new();
