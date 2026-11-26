@@ -655,7 +655,32 @@ fn scan_worktree_agent_dir(
     scope: &str,
     warnings: &mut Vec<CatalogWarningDto>,
 ) -> Vec<AgentDefDto> {
-    read_worktree_agent_catalog_dir_entries(dir, scope, warnings)
+    let warning_start = warnings.len();
+    let entries = read_worktree_agent_catalog_dir_entries(dir, scope, warnings);
+    let directory_warnings = &warnings[warning_start..];
+    let truncated = directory_warnings
+        .iter()
+        .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated));
+    if !truncated
+        && !directory_warnings
+            .iter()
+            .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryRead))
+    {
+        let available_paths = entries
+            .into_iter()
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        return scan_agent_dir(dir, scope)
+            .into_iter()
+            .filter(|agent| {
+                available_paths
+                    .iter()
+                    .any(|path| path == std::path::Path::new(&agent.path))
+            })
+            .collect();
+    }
+
+    entries
         .into_iter()
         .filter_map(|entry| {
             let path = entry.path();
@@ -702,17 +727,37 @@ fn scan_catalog_dir<T>(
 where
     T: From<(String, String, String, Option<String>)> + CatalogEntry,
 {
-    read_worktree_agent_catalog_dir_entries(dir, scope, warnings)
+    let entries = read_worktree_agent_catalog_dir_entries(dir, scope, warnings);
+    scan_catalog_entries(entries, scope, warnings, include_definition_fields)
+}
+
+fn scan_catalog_entries<T>(
+    entries: Vec<std::fs::DirEntry>,
+    scope: &str,
+    warnings: &mut Vec<CatalogWarningDto>,
+    include_definition_fields: bool,
+) -> Vec<T>
+where
+    T: From<(String, String, String, Option<String>)> + CatalogEntry,
+{
+    entries
         .into_iter()
         .filter_map(|entry| {
             let path = entry.path();
-            if !path.is_file()
+            let metadata = std::fs::symlink_metadata(&path).ok()?;
+            if metadata.file_type().is_symlink()
+                || !metadata.is_file()
                 || path
                     .file_name()
                     .and_then(|name| name.to_str())
                     .map(|name| name.starts_with('.'))
                     .unwrap_or(true)
             {
+                warnings.push(CatalogWarningDto {
+                    source: scope.to_string(),
+                    path: path.to_string_lossy().to_string(),
+                    code: CatalogWarningCode::DefinitionRead,
+                });
                 return None;
             }
             let extension = path.extension()?.to_str()?.to_ascii_lowercase();
@@ -758,7 +803,61 @@ fn scan_persona_catalog_dir(
         });
         return Vec::new();
     }
-    scan_catalog_dir::<PersonaWorkspaceDto>(directory, scope, warnings, false)
+    let warning_start = warnings.len();
+    let entries = read_worktree_agent_catalog_dir_entries(directory, scope, warnings);
+    let directory_read_failed = warnings[warning_start..]
+        .iter()
+        .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryRead));
+    if directory_read_failed {
+        return Vec::new();
+    }
+    let truncated = warnings[warning_start..]
+        .iter()
+        .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated));
+    if truncated {
+        return scan_catalog_entries(entries, scope, warnings, false);
+    }
+
+    let allowed_paths = entries
+        .into_iter()
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    sort_persona_defs(scan_persona_dir(directory, scope))
+        .into_iter()
+        .filter_map(|persona| {
+            let path = std::path::PathBuf::from(&persona.path);
+            if !allowed_paths.iter().any(|candidate| candidate == &path) {
+                return None;
+            }
+            let metadata = std::fs::symlink_metadata(&path).ok()?;
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                warnings.push(CatalogWarningDto {
+                    source: scope.to_string(),
+                    path: persona.path,
+                    code: CatalogWarningCode::DefinitionRead,
+                });
+                return None;
+            }
+            if !path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
+            {
+                return None;
+            }
+            let definition = parse_catalog_toml(&path, scope, warnings)?;
+            let description = definition
+                .get("description")
+                .and_then(toml::Value::as_str)
+                .map(str::to_string);
+            Some(PersonaWorkspaceDto::from((
+                persona.name,
+                persona.path,
+                persona.scope,
+                description,
+            )))
+        })
+        .collect()
 }
 
 fn parse_catalog_toml(
