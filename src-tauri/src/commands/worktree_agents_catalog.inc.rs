@@ -611,6 +611,7 @@ pub async fn agents_open_user_directory(
 }
 
 const MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR: usize = 128;
+const MAX_WORKTREE_AGENT_DESCRIPTION_BYTES: u64 = 4096;
 
 fn read_worktree_agent_catalog_dir_entries(
     dir: &std::path::Path,
@@ -707,10 +708,26 @@ fn scan_worktree_agent_dir(
                 name,
                 path: path.to_string_lossy().to_string(),
                 scope: scope.to_string(),
-                description: read_agent_description(&path),
+                description: read_worktree_agent_description(&path),
             })
         })
         .collect()
+}
+
+fn read_worktree_agent_description(path: &std::path::Path) -> Option<String> {
+    use std::io::Read as _;
+
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(MAX_WORKTREE_AGENT_DESCRIPTION_BYTES as usize);
+    std::fs::File::open(path)
+        .ok()?
+        .take(MAX_WORKTREE_AGENT_DESCRIPTION_BYTES)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    extract_agent_description_from_content(&String::from_utf8_lossy(&bytes))
 }
 
 fn scan_user_agent_defs(
@@ -768,11 +785,6 @@ where
             }
             let metadata = std::fs::symlink_metadata(&path).ok()?;
             if metadata.file_type().is_symlink() {
-                warnings.push(CatalogWarningDto {
-                    source: scope.to_string(),
-                    path: path.to_string_lossy().to_string(),
-                    code: CatalogWarningCode::DefinitionRead,
-                });
                 return None;
             }
             if !metadata.is_file() {
@@ -846,11 +858,6 @@ fn scan_persona_catalog_dir(
             }
             let metadata = std::fs::symlink_metadata(&path).ok()?;
             if metadata.file_type().is_symlink() || !metadata.is_file() {
-                warnings.push(CatalogWarningDto {
-                    source: scope.to_string(),
-                    path: persona.path,
-                    code: CatalogWarningCode::DefinitionRead,
-                });
                 return None;
             }
             if !path
@@ -1427,7 +1434,7 @@ fn add_configured_definition(agents: &mut Vec<AgentDefDto>, configured_path: &st
         name: name.to_string(),
         path: configured_path.to_string(),
         scope: "config".into(),
-        description: read_agent_description(configured),
+        description: read_worktree_agent_description(configured),
     });
 }
 

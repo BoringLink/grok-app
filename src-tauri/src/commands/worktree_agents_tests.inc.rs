@@ -271,6 +271,20 @@ description = "Writing"
     }
 
     #[test]
+    fn worktree_agent_description_reads_only_the_bounded_prefix() {
+        let root = TempCatalogDir::new();
+        let definition = root.join("large.md");
+        let padding = "x".repeat(MAX_WORKTREE_AGENT_DESCRIPTION_BYTES as usize);
+        std::fs::write(
+            &definition,
+            format!("---\npadding: {padding}\ndescription: beyond limit\n---\n"),
+        )
+        .unwrap();
+
+        assert!(read_worktree_agent_description(&definition).is_none());
+    }
+
+    #[test]
     fn project_persona_scan_respects_catalog_entry_cap() {
         let root = TempCatalogDir::new();
         let scope_root = root.join(".grok");
