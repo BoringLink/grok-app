@@ -655,17 +655,25 @@ fn scan_worktree_agent_dir(
     scope: &str,
     warnings: &mut Vec<CatalogWarningDto>,
 ) -> Vec<AgentDefDto> {
+    if std::fs::symlink_metadata(dir).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
+        warnings.push(CatalogWarningDto {
+            source: scope.to_string(),
+            path: dir.to_string_lossy().to_string(),
+            code: CatalogWarningCode::DirectoryRead,
+        });
+        return Vec::new();
+    }
     let warning_start = warnings.len();
     let entries = read_worktree_agent_catalog_dir_entries(dir, scope, warnings);
     let directory_warnings = &warnings[warning_start..];
     let truncated = directory_warnings
         .iter()
         .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated));
-    if !truncated
-        && !directory_warnings
-            .iter()
-            .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryRead))
-    {
+    let directory_read_failed = directory_warnings
+        .iter()
+        .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryRead));
+    if scope == "bundled" && !truncated && !directory_read_failed {
+        // bundled 是 Grok Build 安装的只读参考目录；用户和项目目录只扫描限量快照。
         let available_paths = entries
             .into_iter()
             .map(|entry| entry.path())
@@ -673,9 +681,11 @@ fn scan_worktree_agent_dir(
         return scan_agent_dir(dir, scope)
             .into_iter()
             .filter(|agent| {
-                available_paths
-                    .iter()
-                    .any(|path| path == std::path::Path::new(&agent.path))
+                let path = std::path::Path::new(&agent.path);
+                available_paths.iter().any(|allowed| allowed == path)
+                    && std::fs::symlink_metadata(path).is_ok_and(|metadata| {
+                        metadata.is_file() && !metadata.file_type().is_symlink()
+                    })
             })
             .collect();
     }
@@ -684,7 +694,8 @@ fn scan_worktree_agent_dir(
         .into_iter()
         .filter_map(|entry| {
             let path = entry.path();
-            if !path.is_file() {
+            let metadata = std::fs::symlink_metadata(&path).ok()?;
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
                 return None;
             }
             let file_name = path.file_name()?.to_str()?;
@@ -744,15 +755,19 @@ where
         .into_iter()
         .filter_map(|entry| {
             let path = entry.path();
-            let metadata = std::fs::symlink_metadata(&path).ok()?;
-            if metadata.file_type().is_symlink()
-                || !metadata.is_file()
-                || path
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|name| name.starts_with('.'))
-                    .unwrap_or(true)
+            if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_none_or(|name| name.starts_with('.'))
             {
+                return None;
+            }
+            let extension = path.extension()?.to_str()?.to_ascii_lowercase();
+            if extension != "toml" {
+                return None;
+            }
+            let metadata = std::fs::symlink_metadata(&path).ok()?;
+            if metadata.file_type().is_symlink() {
                 warnings.push(CatalogWarningDto {
                     source: scope.to_string(),
                     path: path.to_string_lossy().to_string(),
@@ -760,8 +775,7 @@ where
                 });
                 return None;
             }
-            let extension = path.extension()?.to_str()?.to_ascii_lowercase();
-            if extension != "toml" {
+            if !metadata.is_file() {
                 return None;
             }
             let name = path.file_stem()?.to_str()?.to_string();
@@ -814,10 +828,11 @@ fn scan_persona_catalog_dir(
     let truncated = warnings[warning_start..]
         .iter()
         .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated));
-    if truncated {
+    if truncated || scope != "bundled" {
         return scan_catalog_entries(entries, scope, warnings, false);
     }
 
+    // bundled 是 Grok Build 安装的只读参考目录；用户和项目目录只扫描限量快照。
     let allowed_paths = entries
         .into_iter()
         .map(|entry| entry.path())

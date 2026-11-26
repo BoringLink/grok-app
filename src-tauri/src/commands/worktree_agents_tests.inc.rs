@@ -253,6 +253,62 @@ description = "Writing"
     }
 
     #[test]
+    fn project_agent_scan_respects_catalog_entry_cap() {
+        let root = TempCatalogDir::new();
+        let agents = root.join(".grok/agents");
+        std::fs::create_dir_all(&agents).unwrap();
+        (0..=MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR).for_each(|index| {
+            std::fs::write(agents.join(format!("agent-{index:03}.md")), "definition").unwrap();
+        });
+        let mut warnings = Vec::new();
+
+        let discovered = scan_worktree_agent_dir(&agents, "project", &mut warnings);
+
+        assert_eq!(discovered.len(), MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR);
+        assert!(warnings
+            .iter()
+            .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated)));
+    }
+
+    #[test]
+    fn project_persona_scan_respects_catalog_entry_cap() {
+        let root = TempCatalogDir::new();
+        let scope_root = root.join(".grok");
+        let personas = scope_root.join("personas");
+        std::fs::create_dir_all(&personas).unwrap();
+        (0..=MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR).for_each(|index| {
+            std::fs::write(
+                personas.join(format!("persona-{index:03}.toml")),
+                "description = 'Test persona'\n",
+            )
+            .unwrap();
+        });
+        let mut warnings = Vec::new();
+
+        let discovered = scan_persona_catalog_dir(&personas, &scope_root, "project", &mut warnings);
+
+        assert_eq!(discovered.len(), MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR);
+        assert!(warnings
+            .iter()
+            .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated)));
+    }
+
+    #[test]
+    fn persona_scan_ignores_hidden_files_and_subdirectories_without_warnings() {
+        let root = TempCatalogDir::new();
+        let scope_root = root.join(".grok");
+        let personas = scope_root.join("personas");
+        std::fs::create_dir_all(personas.join("nested")).unwrap();
+        std::fs::write(personas.join(".DS_Store"), "metadata").unwrap();
+        let mut warnings = Vec::new();
+
+        let discovered = scan_persona_catalog_dir(&personas, &scope_root, "project", &mut warnings);
+
+        assert!(discovered.is_empty());
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
     fn config_warnings_are_safe_and_missing_config_is_silent() {
         let root = TempCatalogDir::new();
         let missing = root.join("absent.toml");
