@@ -539,6 +539,37 @@ description = "Writing"
         .is_none());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn shared_persona_catalog_does_not_scan_symlinked_directory() {
+        let root = TempCatalogDir::new();
+        let scope_root = root.join("project/.grok");
+        let external_personas = root.join("external-personas");
+        std::fs::create_dir_all(&scope_root).unwrap();
+        std::fs::create_dir_all(&external_personas).unwrap();
+        std::fs::write(
+            external_personas.join("secret.toml"),
+            "description = 'external private definition'\n",
+        )
+        .unwrap();
+        let persona_directory = scope_root.join("personas");
+        std::os::unix::fs::symlink(&external_personas, &persona_directory).unwrap();
+
+        let mut warnings = Vec::new();
+        let personas =
+            scan_persona_catalog_dir(&persona_directory, &scope_root, "project", &mut warnings);
+
+        assert!(personas.is_empty());
+        assert_eq!(warnings.len(), 1);
+        assert!(matches!(
+            warnings[0].code,
+            CatalogWarningCode::DirectoryRead
+        ));
+        assert!(!serde_json::to_string(&personas)
+            .unwrap()
+            .contains("external private definition"));
+    }
+
     #[test]
     fn shared_inline_persona_only_reads_approved_persona_directories() {
         let root = TempCatalogDir::new();
@@ -1049,38 +1080,66 @@ description = "Writing"
 
     #[cfg(unix)]
     #[test]
-    fn deleting_persona_does_not_follow_instruction_file_symlink() {
+    fn deleting_persona_rejects_instruction_file_symlink_paths() {
         let root = TempCatalogDir::new();
-        let personas = root.join("personas");
+        let canonical_root = std::fs::canonicalize(&root.0).unwrap();
+        let personas = canonical_root.join("personas");
         std::fs::create_dir_all(&personas).unwrap();
         let target = personas.join("target.md");
-        let instruction_link = root.join("linked.md");
+        let instruction_link = canonical_root.join("linked.md");
+        let directory_link = canonical_root.join("persona-alias");
+        let external_directory = canonical_root.join("outside");
+        let external_directory_link = canonical_root.join("outside-alias");
+        std::fs::create_dir_all(&external_directory).unwrap();
+        let external_instruction = external_directory.join("instruction.md");
         std::fs::write(&target, "keep this file").unwrap();
+        std::fs::write(&external_instruction, "leave external file").unwrap();
         std::os::unix::fs::symlink(&target, &instruction_link).unwrap();
-        let config = root.join("config.toml");
+        std::os::unix::fs::symlink(&personas, &directory_link).unwrap();
+        std::os::unix::fs::symlink(&external_directory, &external_directory_link).unwrap();
+        let config = canonical_root.join("config.toml");
         std::fs::write(
             &config,
             format!(
-                "[subagents.personas.writer]\ninstructions_file = {:?}\n",
-                instruction_link.to_string_lossy()
+                "[subagents.personas.file_link]\ninstructions_file = {:?}\n[subagents.personas.parent_link]\ninstructions_file = {:?}\n[subagents.personas.external_parent]\ninstructions_file = {:?}\n",
+                instruction_link.to_string_lossy(),
+                directory_link.join("target.md").to_string_lossy(),
+                external_directory_link.join("instruction.md").to_string_lossy(),
             ),
         )
         .unwrap();
         let scope = AgentDefinitionScopePaths {
-            root: std::fs::canonicalize(&root.0).unwrap(),
+            root: canonical_root,
             config: config.clone(),
             label: "user",
         };
 
-        assert!(delete_user_definition_file_in_scope(&scope, "persona", "writer").is_err());
+        assert!(delete_user_definition_file_in_scope(&scope, "persona", "file_link").is_err());
+        assert!(delete_user_definition_file_in_scope(&scope, "persona", "parent_link").is_err());
+        assert!(
+            delete_user_definition_file_in_scope(&scope, "persona", "external_parent").is_err()
+        );
         assert!(std::fs::symlink_metadata(&instruction_link)
             .unwrap()
             .file_type()
             .is_symlink());
-        assert_eq!(std::fs::read_to_string(target).unwrap(), "keep this file");
-        assert!(std::fs::read_to_string(config)
+        assert!(std::fs::symlink_metadata(&directory_link)
             .unwrap()
-            .contains("[subagents.personas.writer]"));
+            .file_type()
+            .is_symlink());
+        assert!(std::fs::symlink_metadata(&external_directory_link)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read_to_string(target).unwrap(), "keep this file");
+        assert_eq!(
+            std::fs::read_to_string(external_instruction).unwrap(),
+            "leave external file"
+        );
+        let config_source = std::fs::read_to_string(config).unwrap();
+        assert!(config_source.contains("[subagents.personas.file_link]"));
+        assert!(config_source.contains("[subagents.personas.parent_link]"));
+        assert!(config_source.contains("[subagents.personas.external_parent]"));
     }
 
     #[test]

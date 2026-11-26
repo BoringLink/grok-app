@@ -615,11 +615,7 @@ fn save_user_definition_file_in_scope(
     let reusable_instruction_file = input
         .instructions_file
         .as_deref()
-        .and_then(|path| resolve_config_path(&scope.root, path))
-        .filter(|path| {
-            path_is_within_directory(&scope.root.join("personas"), path)
-                || path_is_within_directory(&agent_home.join("personas"), path)
-        })
+        .and_then(|path| resolve_persona_instruction_file(&scope.root, agent_home, path))
         .filter(|path| {
             read_scoped_text_file(path, MAX_AGENT_FIELD_BYTES).as_deref() == Some(instructions)
         });
@@ -708,10 +704,7 @@ fn delete_user_definition_file_in_scope_with_config_sources(
         if instruction_file
             .as_deref()
             .and_then(|path| config_path_candidate(&scope.root, path))
-            .is_some_and(|path| {
-                std::fs::symlink_metadata(&path)
-                    .is_ok_and(|metadata| metadata.file_type().is_symlink())
-            })
+            .is_some_and(|path| persona_instruction_path_uses_symlink(&path))
         {
             return Err("Persona instruction file must not be a symbolic link".into());
         }
@@ -793,6 +786,14 @@ fn config_path_candidate(
 
 fn resolve_config_path(scope_root: &std::path::Path, raw_path: &str) -> Option<std::path::PathBuf> {
     std::fs::canonicalize(config_path_candidate(scope_root, raw_path)?).ok()
+}
+
+fn persona_instruction_path_uses_symlink(path: &std::path::Path) -> bool {
+    let mut current = std::path::PathBuf::new();
+    path.components().any(|component| {
+        current.push(component);
+        std::fs::symlink_metadata(&current).is_ok_and(|metadata| metadata.file_type().is_symlink())
+    })
 }
 
 fn path_is_within_directory(directory: &std::path::Path, path: &std::path::Path) -> bool {

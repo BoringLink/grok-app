@@ -449,25 +449,29 @@ pub async fn agents_list(project_path: Option<String>) -> Result<AgentsListResul
             let persona_directories = project
                 .as_ref()
                 .map(|path| {
-                    std::path::PathBuf::from(path)
-                        .join(".grok")
-                        .join("personas")
+                    let scope_root = std::path::PathBuf::from(path).join(".grok");
+                    (scope_root.join("personas"), scope_root, "project")
                 })
                 .into_iter()
-                .map(|path| (path, "project"))
                 .chain([
-                    (grok.join("personas"), "user"),
-                    (grok.join("bundled").join("personas"), "bundled"),
+                    (grok.join("personas"), grok.clone(), "user"),
+                    (
+                        grok.join("bundled").join("personas"),
+                        grok.join("bundled"),
+                        "bundled",
+                    ),
                 ])
                 .collect::<Vec<_>>();
-            persona_directories.into_iter().for_each(|(dir, scope)| {
-                personas.extend(scan_catalog_dir::<PersonaDefDto>(
-                    &dir,
-                    scope,
-                    &mut warnings,
-                    false,
-                ));
-            });
+            persona_directories
+                .into_iter()
+                .for_each(|(directory, scope_root, scope)| {
+                    personas.extend(scan_persona_catalog_dir(
+                        &directory,
+                        &scope_root,
+                        scope,
+                        &mut warnings,
+                    ));
+                });
         }
         if independent {
             roles = sort_catalog_by_scope(roles);
@@ -635,6 +639,25 @@ where
             Some(entry)
         })
         .collect()
+}
+
+fn scan_persona_catalog_dir(
+    directory: &std::path::Path,
+    scope_root: &std::path::Path,
+    scope: &str,
+    warnings: &mut Vec<CatalogWarningDto>,
+) -> Vec<PersonaDefDto> {
+    if [directory, scope_root].into_iter().any(|path| {
+        std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
+    }) {
+        warnings.push(CatalogWarningDto {
+            source: scope.to_string(),
+            path: directory.to_string_lossy().to_string(),
+            code: CatalogWarningCode::DirectoryRead,
+        });
+        return Vec::new();
+    }
+    scan_catalog_dir(directory, scope, warnings, false)
 }
 
 fn parse_catalog_toml(
@@ -1011,6 +1034,10 @@ fn resolve_scoped_persona_instruction_file(
     } else {
         scope_root.join(path)
     };
+    let scope_root_metadata = std::fs::symlink_metadata(scope_root).ok()?;
+    if scope_root_metadata.file_type().is_symlink() || !scope_root_metadata.is_dir() {
+        return None;
+    }
     let canonical_root = std::fs::canonicalize(scope_root).ok()?;
     let persona_directory_path = canonical_root.join("personas");
     let persona_directory_metadata = std::fs::symlink_metadata(&persona_directory_path).ok()?;
