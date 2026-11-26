@@ -222,7 +222,7 @@ description = "Writing"
         assert_eq!(roles[0].description.as_deref(), Some("Role = description"));
         assert_eq!(roles[0].model.as_deref(), Some("ignored"));
         let shared_personas =
-            scan_catalog_dir::<PersonaDefDto>(&personas_dir, "bundled", &mut warnings, false);
+            scan_persona_catalog_dir(&personas_dir, &root.0, "bundled", &mut warnings);
         assert_eq!(shared_personas.len(), 1);
         assert_eq!(
             shared_personas[0].description.as_deref(),
@@ -235,7 +235,7 @@ description = "Writing"
     #[test]
     fn catalog_directory_cap_returns_a_truncation_warning() {
         let root = TempCatalogDir::new();
-        (0..=MAX_AGENT_CATALOG_ENTRIES_PER_DIR).for_each(|index| {
+        (0..=MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR).for_each(|index| {
             std::fs::write(
                 root.join(format!("role-{index:03}.toml")),
                 "description = 'Test role'\n",
@@ -246,7 +246,7 @@ description = "Writing"
 
         let roles = scan_catalog_dir::<RoleDefDto>(&root, "user", &mut warnings, false);
 
-        assert_eq!(roles.len(), MAX_AGENT_CATALOG_ENTRIES_PER_DIR);
+        assert_eq!(roles.len(), MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR);
         assert!(warnings
             .iter()
             .any(|warning| matches!(warning.code, CatalogWarningCode::DirectoryTruncated)));
@@ -272,7 +272,6 @@ description = "Writing"
             path: root.join("agent.md").to_string_lossy().to_string(),
             scope: "user".into(),
             description: Some("Existing Markdown result".into()),
-            is_default: false,
         }];
         let _ = discover_inline_definitions_in_home(
             &missing,
@@ -1316,7 +1315,6 @@ description = "Writing"
         let discovered = scan_user_agent_defs(&shared_agents, &active_agents, true, &mut warnings);
         assert_eq!(discovered.len(), 1);
         assert_eq!(discovered[0].path, definition.to_string_lossy());
-        assert!(!discovered[0].is_default);
         assert!(warnings.is_empty());
         assert!(!active_agents.join("roles").exists());
         assert!(!active_agents.join("personas").exists());
@@ -1375,6 +1373,7 @@ description = "Writing"
         .unwrap();
         let mut agents = vec![];
         add_configured_definition(&mut agents, &configured);
+        let agents = map_agent_workspace_definitions(agents, Some(&configured));
         assert_eq!(agents.len(), 1);
         assert_eq!(agents[0].scope, "config");
         assert!(agents[0].is_default);
@@ -1383,17 +1382,16 @@ description = "Writing"
             .unwrap()
             .contains("private instructions"));
 
-        let mut scanned = AgentDefDto {
+        let scanned = AgentDefDto {
             name: "chosen".into(),
             path: outside.to_string_lossy().to_string(),
             scope: "user".into(),
             description: None,
-            is_default: false,
         };
         let mut agents = vec![scanned.clone()];
         add_configured_definition(&mut agents, &configured);
+        let agents = map_agent_workspace_definitions(agents, Some(&configured));
         assert_eq!(agents.len(), 1);
-        scanned.is_default = true;
         assert!(agents[0].is_default);
         assert_eq!(agents[0].path, scanned.path);
         assert!(warnings.is_empty());

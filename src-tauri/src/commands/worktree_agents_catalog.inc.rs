@@ -20,7 +20,29 @@ pub struct AgentDefDto {
     pub scope: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentWorkspaceDto {
+    pub name: String,
+    pub path: String,
+    pub scope: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub is_default: bool,
+}
+
+impl From<AgentDefDto> for AgentWorkspaceDto {
+    fn from(agent: AgentDefDto) -> Self {
+        Self {
+            name: agent.name,
+            path: agent.path,
+            scope: agent.scope,
+            description: agent.description,
+            is_default: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,9 +93,9 @@ pub struct CatalogWarningDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentsListResult {
-    pub agents: Vec<AgentDefDto>,
+    pub agents: Vec<AgentWorkspaceDto>,
     pub roles: Vec<RoleDefDto>,
-    pub personas: Vec<PersonaDefDto>,
+    pub personas: Vec<PersonaWorkspaceDto>,
     pub warnings: Vec<CatalogWarningDto>,
     pub user_agents_dir: String,
     pub project_agents_dir: Option<String>,
@@ -166,6 +188,14 @@ pub struct GitWorktreeCompareResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PersonaDefDto {
+    pub name: String,
+    pub path: String,
+    pub scope: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PersonaWorkspaceDto {
     pub name: String,
     pub path: String,
     pub scope: String,
@@ -308,7 +338,7 @@ pub async fn agents_list(project_path: Option<String>) -> Result<AgentsListResul
         let mut warnings = Vec::new();
         let mut agents = Vec::new();
         if let Some(ref dir) = project_agents {
-            agents.extend(scan_agent_dir(dir, "project", &mut warnings));
+            agents.extend(scan_worktree_agent_dir(dir, "project", &mut warnings));
         }
         agents.extend(scan_user_agent_defs(
             &user_agents,
@@ -316,7 +346,11 @@ pub async fn agents_list(project_path: Option<String>) -> Result<AgentsListResul
             independent,
             &mut warnings,
         ));
-        agents.extend(scan_agent_dir(&bundled_agents, "bundled", &mut warnings));
+        agents.extend(scan_worktree_agent_dir(
+            &bundled_agents,
+            "bundled",
+            &mut warnings,
+        ));
 
         let mut personas = Vec::new();
         let mut roles = Vec::new();
@@ -376,7 +410,7 @@ pub async fn agents_list(project_path: Option<String>) -> Result<AgentsListResul
         if let Some(path) = configured_definition.as_deref() {
             add_configured_definition(&mut agents, path);
         }
-        let agents = sort_agent_defs(agents);
+        let agents = map_agent_workspace_definitions(agents, configured_definition.as_deref());
         let role_directories: Vec<(std::path::PathBuf, &str)> = if independent {
             project
                 .as_ref()
@@ -576,6 +610,73 @@ pub async fn agents_open_user_directory(
     .map_err(|error| error.to_string())?
 }
 
+const MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR: usize = 128;
+
+fn read_worktree_agent_catalog_dir_entries(
+    dir: &std::path::Path,
+    scope: &str,
+    warnings: &mut Vec<CatalogWarningDto>,
+) -> Vec<std::fs::DirEntry> {
+    let read_dir = match std::fs::read_dir(dir) {
+        Ok(read_dir) => read_dir,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(_) => {
+            warnings.push(CatalogWarningDto {
+                source: scope.to_string(),
+                path: dir.to_string_lossy().to_string(),
+                code: CatalogWarningCode::DirectoryRead,
+            });
+            return Vec::new();
+        }
+    };
+    let mut entries = read_dir
+        .take(MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR + 1)
+        .collect::<Vec<_>>();
+    let truncated = entries.len() > MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR;
+    entries.sort_by_key(|entry| {
+        entry
+            .as_ref()
+            .map(|entry| entry.file_name())
+            .unwrap_or_default()
+    });
+    if truncated {
+        entries.truncate(MAX_WORKTREE_AGENT_CATALOG_ENTRIES_PER_DIR);
+        warnings.push(CatalogWarningDto {
+            source: scope.to_string(),
+            path: dir.to_string_lossy().to_string(),
+            code: CatalogWarningCode::DirectoryTruncated,
+        });
+    }
+    entries.into_iter().filter_map(Result::ok).collect()
+}
+
+fn scan_worktree_agent_dir(
+    dir: &std::path::Path,
+    scope: &str,
+    warnings: &mut Vec<CatalogWarningDto>,
+) -> Vec<AgentDefDto> {
+    read_worktree_agent_catalog_dir_entries(dir, scope, warnings)
+        .into_iter()
+        .filter_map(|entry| {
+            let path = entry.path();
+            if !path.is_file() {
+                return None;
+            }
+            let file_name = path.file_name()?.to_str()?;
+            if !is_agent_def_file(file_name) {
+                return None;
+            }
+            let name = stem_name(file_name);
+            (!name.is_empty()).then(|| AgentDefDto {
+                name,
+                path: path.to_string_lossy().to_string(),
+                scope: scope.to_string(),
+                description: read_agent_description(&path),
+            })
+        })
+        .collect()
+}
+
 fn scan_user_agent_defs(
     shared_user_dir: &std::path::Path,
     active_user_dir: &std::path::Path,
@@ -587,7 +688,7 @@ fn scan_user_agent_defs(
     } else {
         shared_user_dir
     };
-    scan_agent_dir(user_dir, "user", warnings)
+    scan_worktree_agent_dir(user_dir, "user", warnings)
 }
 
 const MAX_AGENT_CATALOG_TOML_BYTES: usize = 256 * 1024;
@@ -601,7 +702,7 @@ fn scan_catalog_dir<T>(
 where
     T: From<(String, String, String, Option<String>)> + CatalogEntry,
 {
-    read_agent_catalog_dir_entries(dir, scope, warnings)
+    read_worktree_agent_catalog_dir_entries(dir, scope, warnings)
         .into_iter()
         .filter_map(|entry| {
             let path = entry.path();
@@ -646,7 +747,7 @@ fn scan_persona_catalog_dir(
     scope_root: &std::path::Path,
     scope: &str,
     warnings: &mut Vec<CatalogWarningDto>,
-) -> Vec<PersonaDefDto> {
+) -> Vec<PersonaWorkspaceDto> {
     if [directory, scope_root].into_iter().any(|path| {
         std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_symlink())
     }) {
@@ -657,7 +758,7 @@ fn scan_persona_catalog_dir(
         });
         return Vec::new();
     }
-    scan_catalog_dir(directory, scope, warnings, false)
+    scan_catalog_dir::<PersonaWorkspaceDto>(directory, scope, warnings, false)
 }
 
 fn parse_catalog_toml(
@@ -749,7 +850,7 @@ impl From<(String, String, String, Option<String>)> for RoleDefDto {
         }
     }
 }
-impl From<(String, String, String, Option<String>)> for PersonaDefDto {
+impl From<(String, String, String, Option<String>)> for PersonaWorkspaceDto {
     fn from((name, path, scope, description): (String, String, String, Option<String>)) -> Self {
         Self {
             name,
@@ -802,7 +903,7 @@ fn discover_inline_definitions_in_home(
     scope_root: &std::path::Path,
     global_home: &std::path::Path,
     roles: &mut Vec<RoleDefDto>,
-    personas: &mut Vec<PersonaDefDto>,
+    personas: &mut Vec<PersonaWorkspaceDto>,
     warnings: &mut Vec<CatalogWarningDto>,
 ) -> Option<String> {
     let parsed = parse_catalog_toml(path, "config", warnings)?;
@@ -842,7 +943,7 @@ fn discover_inline_definitions_in_home(
                     .map(str::to_string);
                 roles.push(role);
             } else {
-                let mut persona: PersonaDefDto = row.into();
+                let mut persona: PersonaWorkspaceDto = row.into();
                 persona.instructions_file = definition
                     .get("instructions_file")
                     .and_then(toml::Value::as_str)
@@ -936,7 +1037,7 @@ fn append_independent_personas_from_config(
     scope_root: &std::path::Path,
     global_home: &std::path::Path,
     scope: &str,
-    personas: &mut Vec<PersonaDefDto>,
+    personas: &mut Vec<PersonaWorkspaceDto>,
     warnings: &mut Vec<CatalogWarningDto>,
 ) {
     let Some(config) = parse_catalog_toml(config_path, scope, warnings) else {
@@ -971,7 +1072,7 @@ fn append_independent_personas_from_config(
             .get("description")
             .and_then(toml::Value::as_str)
             .map(str::to_string);
-        let mut persona = PersonaDefDto::from((
+        let mut persona = PersonaWorkspaceDto::from((
             agent_type.clone(),
             resolved_instruction
                 .as_deref()
@@ -1199,11 +1300,10 @@ fn validate_configured_definition(
 
 fn add_configured_definition(agents: &mut Vec<AgentDefDto>, configured_path: &str) {
     let configured = std::path::Path::new(configured_path);
-    if let Some(existing) = agents.iter_mut().find(|agent| {
+    if agents.iter().any(|agent| {
         std::fs::canonicalize(&agent.path).unwrap_or_else(|_| std::path::PathBuf::from(&agent.path))
             == configured
     }) {
-        existing.is_default = true;
         return;
     }
     let Some(name) = configured.file_stem().and_then(|stem| stem.to_str()) else {
@@ -1214,8 +1314,26 @@ fn add_configured_definition(agents: &mut Vec<AgentDefDto>, configured_path: &st
         path: configured_path.to_string(),
         scope: "config".into(),
         description: read_agent_description(configured),
-        is_default: true,
     });
+}
+
+fn map_agent_workspace_definitions(
+    agents: Vec<AgentDefDto>,
+    configured_path: Option<&str>,
+) -> Vec<AgentWorkspaceDto> {
+    sort_agent_defs(agents)
+        .into_iter()
+        .map(|agent| {
+            let is_default = configured_path.is_some_and(|path| {
+                std::fs::canonicalize(&agent.path)
+                    .unwrap_or_else(|_| std::path::PathBuf::from(&agent.path))
+                    == std::path::Path::new(path)
+            });
+            let mut workspace_agent = AgentWorkspaceDto::from(agent);
+            workspace_agent.is_default = is_default;
+            workspace_agent
+        })
+        .collect()
 }
 
 fn configured_agent_is_visible_in_scope(
@@ -1278,7 +1396,7 @@ impl CatalogEntry for RoleDefDto {
     }
 }
 
-impl CatalogEntry for PersonaDefDto {
+impl CatalogEntry for PersonaWorkspaceDto {
     fn name(&self) -> &str {
         &self.name
     }
