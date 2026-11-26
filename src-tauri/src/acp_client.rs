@@ -208,6 +208,8 @@ pub enum AcpEvent {
     /// this the client dropped them and the Tasks panel could only *guess*
     /// parent-child links from spawn-tool stream order.
     Subagent(SubagentUpdate),
+    /// 子代理 user-message 标记，仅用于消费事件，不保留提示词正文。
+    SubagentUserMessage,
 }
 
 /// Lifecycle phase of a CLI subagent run (`spawn_subagent` / Task tool).
@@ -233,16 +235,17 @@ impl SubagentPhase {
 /// is optional: the CLI omits what it does not know, and the UI must show an
 /// honest empty state rather than a fabricated value.
 ///
-/// Only what the Tasks panel renders is carried. The CLI also sends
-/// `parent_session_id`, `model`, `tools_used`, `error_count`, `will_wake` and
-/// friends; the golden fixture keeps pinning that wire shape, but decoding a
-/// field nothing reads just widens the payload and the type for no one.
+/// The payload carries lifecycle identity and run metadata consumed by the
+/// Tasks panel; unrelated lifecycle fields remain outside the app model.
 #[derive(Debug, Clone)]
 pub struct SubagentUpdate {
     pub phase: SubagentPhase,
     pub subagent_id: String,
+    pub child_session_id: Option<String>,
     pub subagent_type: Option<String>,
     pub description: Option<String>,
+    pub model: Option<String>,
+    pub agent_address: Option<String>,
     /// Terminal status on `subagent_finished` (`completed` / `failed` / …).
     pub status: Option<String>,
     pub duration_ms: Option<u64>,
@@ -4534,6 +4537,16 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
                 done: false,
             });
         }
+        "user_message_chunk" => {
+            let text = update
+                .pointer("/content/text")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if !text.is_empty() {
+                out.push(AcpEvent::SubagentUserMessage);
+            }
+        }
         // Grok/Gemini emit agent_thought_chunk; some paths also use "thought".
         "agent_thought_chunk" | "thought" => {
             let text = update
@@ -4753,6 +4766,15 @@ pub fn decode_session_update(params: &Value) -> Vec<AcpEvent> {
         }
     }
 
+    if matches!(kind, "response_completed" | "turn_completed") {
+        out.push(AcpEvent::Stream {
+            kind: StreamKind::Assistant,
+            text: String::new(),
+            message_id: None,
+            done: true,
+        });
+    }
+
     // Grok Build streams **context occupancy** on params._meta.totalTokens
     // (every thought/tool/message chunk). This is the real window fill — not
     // turn_completed.usage.totalTokens (which sums all modelCalls in the turn).
@@ -4815,7 +4837,7 @@ pub fn parse_subagent_update(kind: &str, update: &Value) -> Option<AcpEvent> {
         .unwrap_or("")
         .trim()
         .to_string();
-    if subagent_id.is_empty() {
+    if subagent_id.is_empty() || subagent_id.chars().count() > 512 {
         return None;
     }
     let phase = match kind {
@@ -4840,8 +4862,12 @@ pub fn parse_subagent_update(kind: &str, update: &Value) -> Option<AcpEvent> {
     Some(AcpEvent::Subagent(SubagentUpdate {
         phase,
         subagent_id,
+        child_session_id: str_field(&["child_session_id", "childSessionId"])
+            .filter(|id| id.chars().count() <= 512),
         subagent_type: str_field(&["subagent_type", "subagentType"]),
         description: str_field(&["description", "summary"]),
+        model: str_field(&["model"]),
+        agent_address: str_field(&["agentAddress", "agent_address"]),
         status: str_field(&["status"]),
         duration_ms: num_field(&["duration_ms", "durationMs"]),
         // `subagent_finished` reports the counters as `turns` / `tool_calls`;
@@ -4863,8 +4889,11 @@ impl SubagentUpdate {
             "sessionId": app_session_id,
             "phase": self.phase.as_str(),
             "subagentId": self.subagent_id,
+            "childSessionId": self.child_session_id,
             "subagentType": self.subagent_type,
             "description": self.description,
+            "model": self.model,
+            "agentAddress": self.agent_address,
             "status": self.status,
             "durationMs": self.duration_ms,
             "turnCount": self.turn_count,
@@ -5090,6 +5119,34 @@ fn parse_ask_user_options(v: &Value) -> Vec<AskUserOption> {
         });
     }
     out
+}
+
+#[cfg(test)]
+mod child_session_update_tests {
+    use super::*;
+
+    #[test]
+    fn lifecycle_keeps_child_session_id_and_user_message_decodes_as_child_prompt() {
+        let lifecycle = parse_subagent_update(
+            "subagent_spawned",
+            &json!({
+                "subagent_id": "row-1",
+                "child_session_id": "agent-child-1"
+            }),
+        );
+        let Some(AcpEvent::Subagent(update)) = lifecycle else {
+            panic!("expected lifecycle event");
+        };
+        assert_eq!(update.child_session_id.as_deref(), Some("agent-child-1"));
+
+        let prompt = decode_session_update(&json!({
+            "update": {
+                "sessionUpdate": "user_message_chunk",
+                "content": { "type": "text", "text": "delegate this task" }
+            }
+        }));
+        assert!(matches!(prompt.as_slice(), [AcpEvent::SubagentUserMessage]));
+    }
 }
 
 #[cfg(test)]
@@ -5687,6 +5744,9 @@ mod context_tokens_tests {
             _ => None,
         });
         assert_eq!(billing, Some(1_701_340));
+        assert!(evs.iter().any(
+            |event| matches!(event, AcpEvent::Stream { done: true, text, .. } if text.is_empty())
+        ));
         // No params._meta.totalTokens → no context_size event.
         assert!(evs.iter().all(|e| !matches!(
             e,

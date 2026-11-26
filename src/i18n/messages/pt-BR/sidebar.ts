@@ -104,4 +104,5 @@ export const ptBRSidebar = {
   "sidebar.spaces.err.last": "Mantenha pelo menos um espaço.",
   "sidebar.spaces.err.default": "O espaço padrão não pode ser excluído.",
   "sidebar.spaces.err.notFound": "Esse espaço não está mais disponível.",
+  "side.tab.subagents": "Subagentes",
 };

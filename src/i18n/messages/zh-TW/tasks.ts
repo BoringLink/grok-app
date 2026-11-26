@@ -251,5 +251,10 @@ export const zhTWTasks = {
   "tasks.subagentCancelled": "已取消",
   "tasks.subagentFinished": "已結束",
   "tasks.subagentMeta": "{turns} 輪 · {tools} 次工具 · {tokens} tokens · {duration}",
-  "tasks.subagentOutput": "輸出",
+  "tasks.subagentView": "查看子代理",
+  "tasks.subagentActivityTask": "任務",
+  "tasks.subagentAgentAddress": "代理位址",
+  "tasks.subagentActivityTrimmed": "較早的活動已截斷",
+  "tasks.subagentEmpty": "此工作階段沒有子代理",
+  "tasks.subagentActivityEmpty": "目前沒有活動",
 };

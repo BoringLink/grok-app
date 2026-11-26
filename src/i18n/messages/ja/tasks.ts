@@ -251,5 +251,10 @@ export const jaTasks = {
   "tasks.subagentCancelled": "キャンセル",
   "tasks.subagentFinished": "終了",
   "tasks.subagentMeta": "{turns} ターン · {tools} ツール · {tokens} トークン · {duration}",
-  "tasks.subagentOutput": "出力",
+  "tasks.subagentView": "サブエージェントを表示",
+  "tasks.subagentActivityTask": "タスク",
+  "tasks.subagentAgentAddress": "エージェントアドレス",
+  "tasks.subagentActivityTrimmed": "以前のアクティビティは省略されました",
+  "tasks.subagentEmpty": "このセッションにサブエージェントはありません",
+  "tasks.subagentActivityEmpty": "まだアクティビティはありません",
 };

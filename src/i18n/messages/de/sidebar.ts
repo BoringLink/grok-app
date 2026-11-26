@@ -104,4 +104,5 @@ export const deSidebar = {
   "sidebar.spaces.err.last": "Mindestens ein Space muss bestehen bleiben.",
   "sidebar.spaces.err.default": "Der Standard-Space kann nicht gelöscht werden.",
   "sidebar.spaces.err.notFound": "Dieser Space ist nicht mehr verfügbar.",
+  "side.tab.subagents": "Subagenten",
 };

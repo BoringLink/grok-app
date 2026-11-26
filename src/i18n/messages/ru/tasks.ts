@@ -251,5 +251,10 @@ export const ruTasks = {
   "tasks.subagentCancelled": "Отменено",
   "tasks.subagentFinished": "Окончено",
   "tasks.subagentMeta": "{turns} ходов · {tools} инструментов · {tokens} токенов · {duration}",
-  "tasks.subagentOutput": "Результат",
+  "tasks.subagentView": "Показать субагента",
+  "tasks.subagentActivityTask": "Задача",
+  "tasks.subagentAgentAddress": "Адрес агента",
+  "tasks.subagentActivityTrimmed": "Ранняя активность обрезана",
+  "tasks.subagentEmpty": "В этой сессии нет субагентов",
+  "tasks.subagentActivityEmpty": "Пока нет активности",
 };

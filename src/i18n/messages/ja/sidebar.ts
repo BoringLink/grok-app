@@ -104,4 +104,5 @@ export const jaSidebar = {
   "sidebar.spaces.err.last": "スペースは 1 つ以上必要です。",
   "sidebar.spaces.err.default": "デフォルトのスペースは削除できません。",
   "sidebar.spaces.err.notFound": "そのスペースは既に存在しません。",
+  "side.tab.subagents": "サブエージェント",
 };

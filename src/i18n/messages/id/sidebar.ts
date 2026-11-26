@@ -104,4 +104,5 @@ export const idSidebar = {
   "sidebar.spaces.err.last": "Sisakan setidaknya satu space.",
   "sidebar.spaces.err.default": "Space bawaan tidak dapat dihapus.",
   "sidebar.spaces.err.notFound": "Space itu sudah tidak tersedia.",
+  "side.tab.subagents": "Subagen",
 };

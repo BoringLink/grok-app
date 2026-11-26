@@ -104,4 +104,5 @@ export const filSidebar = {
   "sidebar.spaces.err.last": "Mag-iwan ng kahit isang space.",
   "sidebar.spaces.err.default": "Hindi mabubura ang default na space.",
   "sidebar.spaces.err.notFound": "Hindi na available ang space na iyon.",
+  "side.tab.subagents": "Mga subagent",
 };

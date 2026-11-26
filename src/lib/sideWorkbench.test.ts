@@ -258,6 +258,19 @@ describe("openSideTab / close / activate", () => {
     expect(plan.tabs[0]!.kind).toBe("plan");
   });
 
+  it("opens one process-created subagent viewer tab without offering it in the picker", () => {
+    const initial = emptySideWorkbenchState();
+    expect(sidePickerOptions({ isGitProject: true }).map((item) => item.kind)).not.toContain("subagents");
+    expect(SIDE_PICKER_EXCLUDED).toContain("subagents");
+
+    const opened = openSideTab(initial, "subagents", { id: "side_subagents" });
+    const reopened = openSideTab(opened, "subagents", { id: "side_subagents" });
+    expect(opened.tabs).toHaveLength(1);
+    expect(opened.tabs[0]?.kind).toBe("subagents");
+    expect(reopened.created).toBe(false);
+    expect(reopened.tabs).toHaveLength(1);
+  });
+
   it("closes and activates", () => {
     let s = emptySideWorkbenchState();
     s = openSideTab(s, "file", { path: "/a" });

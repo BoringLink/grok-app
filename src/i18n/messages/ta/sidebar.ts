@@ -104,4 +104,5 @@ export const taSidebar = {
   "sidebar.spaces.err.last": "குறைந்தது ஓர் இடத்தையாவது வைத்திருங்கள்.",
   "sidebar.spaces.err.default": "இயல்புநிலை இடத்தை நீக்க முடியாது.",
   "sidebar.spaces.err.notFound": "அந்த இடம் இனி கிடைக்கவில்லை.",
+  "side.tab.subagents": "துணை முகவர்கள்",
 };

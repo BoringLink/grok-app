@@ -73,6 +73,8 @@ pub(crate) use types::{
 };
 
 pub struct SessionManager {
+    /// Child ACP session → owning App session and lifecycle subagent ID.
+    pub(super) child_sessions: Mutex<HashMap<(String, String), ChildSessionRoute>>,
     /// Currently focused live session (UI-bound for send).
     pub(super) inner: Mutex<Option<LiveSession>>,
     /// Busy sessions still receiving ACP events (streaming / permission).
@@ -118,6 +120,12 @@ pub struct SessionManager {
     pub(super) hot_effort_result: Mutex<Option<Result<(), String>>>,
 }
 
+#[derive(Clone)]
+pub(super) struct ChildSessionRoute {
+    pub app_session_id: String,
+    pub subagent_id: String,
+}
+
 impl Default for SessionManager {
     fn default() -> Self {
         Self::new()
@@ -127,6 +135,7 @@ impl Default for SessionManager {
 impl SessionManager {
     pub fn new() -> Self {
         Self {
+            child_sessions: Mutex::new(HashMap::new()),
             inner: Mutex::new(None),
             background: Mutex::new(HashMap::new()),
             parked: Mutex::new(HashMap::new()),
@@ -148,6 +157,9 @@ impl SessionManager {
     /// Drop bookkeeping for a chat that no longer exists in the store.
     pub fn forget_deleted_session(&self, session_id: &str) {
         self.pending_soft_respawn.lock().remove(session_id);
+        self.child_sessions
+            .lock()
+            .retain(|_, route| route.app_session_id != session_id);
         let kids: Vec<PendingAcpChild> = {
             let mut list = self.pending_children.lock();
             let mut taken = Vec::new();

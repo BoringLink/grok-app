@@ -251,5 +251,10 @@ export const ukTasks = {
   "tasks.subagentCancelled": "Скасовано",
   "tasks.subagentFinished": "Закінчено",
   "tasks.subagentMeta": "{turns} кроків · {tools} інструментів · {tokens} токенів · {duration}",
-  "tasks.subagentOutput": "Результат",
+  "tasks.subagentView": "Переглянути субагента",
+  "tasks.subagentActivityTask": "Завдання",
+  "tasks.subagentAgentAddress": "Адреса агента",
+  "tasks.subagentActivityTrimmed": "Попередню активність скорочено",
+  "tasks.subagentEmpty": "У цій сесії немає субагентів",
+  "tasks.subagentActivityEmpty": "Активності поки немає",
 };

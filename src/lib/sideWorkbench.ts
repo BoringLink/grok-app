@@ -1,6 +1,6 @@
 /**
  * Side Workbench pure model — multi-kind tabs, picker catalog, open/close/activate.
- * No DOM / Tauri / i18n side effects. Plan is process-created only (not in picker).
+ * No DOM / Tauri / i18n side effects. Plan and subagents are process-created only.
  */
 
 export const SIDE_TABS_MAX = 24;
@@ -9,7 +9,7 @@ export const SIDE_TABS_MAX = 24;
 export type SidePickerKind = "file" | "browser" | "terminal" | "review" | "skills";
 
 /** All tab kinds including process-only plan. */
-export type SideTabKind = SidePickerKind | "plan";
+export type SideTabKind = SidePickerKind | "plan" | "subagents";
 
 export type SideTab =
   | {
@@ -25,7 +25,8 @@ export type SideTab =
   | { id: string; kind: "terminal"; sessionKey: string; name: string }
   | { id: string; kind: "review"; name: string }
   | { id: string; kind: "skills"; name: string }
-  | { id: string; kind: "plan"; planRef?: string; name: string };
+  | { id: string; kind: "plan"; planRef?: string; name: string }
+  | { id: string; kind: "subagents"; name: string };
 
 export type SideWorkbenchState = {
   tabs: SideTab[];
@@ -99,7 +100,7 @@ const PICKER_BASE: SidePickerOption[] = [
 ];
 
 /** Kinds never offered in empty state / `+` menus. */
-export const SIDE_PICKER_EXCLUDED: readonly SideTabKind[] = ["plan"];
+export const SIDE_PICKER_EXCLUDED: readonly SideTabKind[] = ["plan", "subagents"];
 
 export function emptySideWorkbenchState(): SideWorkbenchState {
   return {
@@ -129,7 +130,7 @@ export function isPickerCreatableKind(
   kind: SideTabKind,
   opts: { isGitProject: boolean },
 ): boolean {
-  if (kind === "plan") return false;
+  if (kind === "plan" || kind === "subagents") return false;
   if (kind === "review") return !!opts.isGitProject;
   return (
     kind === "file" ||
@@ -164,6 +165,7 @@ export const SIDE_TAB_DEFAULT_NAME_KEYS: Record<SideTabKind, string> = {
   review: "side.tab.review",
   skills: "side.tab.skills",
   plan: "side.tab.plan",
+  subagents: "side.tab.subagents",
 };
 
 /** True when `name` is a Side Workbench i18n label key (not a path/title). */
@@ -231,6 +233,8 @@ function buildTab(kind: SideTabKind, meta?: CreateSideTabMeta): SideTab {
       return { id, kind, name };
     case "plan":
       return { id, kind, planRef: meta?.planRef, name };
+    case "subagents":
+      return { id, kind, name };
   }
 }
 
@@ -276,7 +280,7 @@ export function openSideTab(
         (t.url || "").trim().replace(/\/+$/, "") === u,
     );
   }
-  if (existingIdx < 0 && (kind === "review" || kind === "plan" || kind === "skills")) {
+  if (existingIdx < 0 && (kind === "review" || kind === "plan" || kind === "skills" || kind === "subagents")) {
     existingIdx = tabs.findIndex((t) => t.kind === kind);
   }
   // Picker「文件」: reuse a placeholder, or focus an already-open file tab.

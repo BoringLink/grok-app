@@ -251,5 +251,10 @@ export const idTasks = {
   "tasks.subagentCancelled": "Dibatalkan",
   "tasks.subagentFinished": "Berakhir",
   "tasks.subagentMeta": "{turns} giliran · {tools} alat · {tokens} token · {duration}",
-  "tasks.subagentOutput": "Keluaran",
+  "tasks.subagentView": "Lihat subagen",
+  "tasks.subagentActivityTask": "Tugas",
+  "tasks.subagentAgentAddress": "Alamat agen",
+  "tasks.subagentActivityTrimmed": "Aktivitas sebelumnya dipangkas",
+  "tasks.subagentEmpty": "Tidak ada subagen di sesi ini",
+  "tasks.subagentActivityEmpty": "Belum ada aktivitas",
 };

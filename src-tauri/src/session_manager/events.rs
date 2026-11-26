@@ -19,7 +19,312 @@ use crate::store::{self, ChatMessageStored};
 
 use super::*;
 
+const CHILD_SESSION_ID_MAX_CHARS: usize = 512;
+const SUBAGENT_TEXT_MAX_CHARS: usize = 16_000;
+const SUBAGENT_TEXT_MAX_BYTES: usize = 32_768;
+const CHILD_TOOL_MAX_DEPTH: usize = 6;
+const CHILD_TOOL_MAX_ITEMS: usize = 16;
+const CHILD_TOOL_JSON_TEXT_BUDGET: usize = 512;
+const CHILD_TOOL_FIELD_MAX_BYTES: usize = 256;
+const CHILD_TOOL_KEY_MAX_BYTES: usize = 24;
+
+fn bounded_tool_field(text: &str) -> String {
+    let marker = "… [truncated]";
+    if text.len() <= CHILD_TOOL_FIELD_MAX_BYTES {
+        return text.to_string();
+    }
+    let mut end = text.len().min(CHILD_TOOL_FIELD_MAX_BYTES - marker.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{}", &text[..end], marker)
+}
+
+fn bounded_tool_key(key: &str) -> String {
+    let marker = "…";
+    if key.len() <= CHILD_TOOL_KEY_MAX_BYTES {
+        return key.to_string();
+    }
+    let mut end = key.len().min(CHILD_TOOL_KEY_MAX_BYTES - marker.len());
+    while !key.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{}", &key[..end], marker)
+}
+
+fn unique_truncation_key(values: &serde_json::Map<String, serde_json::Value>) -> String {
+    (0..=CHILD_TOOL_MAX_ITEMS)
+        .map(|index| {
+            if index == 0 {
+                "… [truncated]".to_string()
+            } else {
+                format!("… [truncated {index}]")
+            }
+        })
+        .find(|key| !values.contains_key(key))
+        .expect("bounded tool object has room for a unique truncation key")
+}
+
+fn bounded_tool_value(
+    value: &serde_json::Value,
+    depth: usize,
+    items: &mut usize,
+    text_budget: &mut usize,
+) -> serde_json::Value {
+    use serde_json::Value;
+
+    if depth >= CHILD_TOOL_MAX_DEPTH || *items >= CHILD_TOOL_MAX_ITEMS {
+        return Value::String("… [truncated]".into());
+    }
+    *items += 1;
+    match value {
+        Value::String(text) => {
+            let mut end = text.len().min(*text_budget);
+            while !text.is_char_boundary(end) {
+                end -= 1;
+            }
+            *text_budget -= end;
+            if end < text.len() {
+                Value::String(format!("{}… [truncated]", &text[..end]))
+            } else {
+                value.clone()
+            }
+        }
+        Value::Array(values) => {
+            let limit = CHILD_TOOL_MAX_ITEMS
+                .saturating_sub(*items)
+                .saturating_sub(1);
+            let mut bounded = values
+                .iter()
+                .take(limit)
+                .map(|item| bounded_tool_value(item, depth + 1, items, text_budget))
+                .collect::<Vec<_>>();
+            if values.len() > limit {
+                if *items < CHILD_TOOL_MAX_ITEMS {
+                    bounded.push(Value::String("… [truncated]".into()));
+                    *items += 1;
+                } else if !bounded.is_empty() {
+                    bounded.pop();
+                    bounded.push(Value::String("… [truncated]".into()));
+                }
+            }
+            Value::Array(bounded)
+        }
+        Value::Object(values) => {
+            let mut bounded = serde_json::Map::new();
+            let limit = CHILD_TOOL_MAX_ITEMS
+                .saturating_sub(*items)
+                .saturating_sub(1);
+            let mut key_collision = false;
+            for (key, item) in values.iter().take(limit) {
+                if *items >= CHILD_TOOL_MAX_ITEMS {
+                    break;
+                }
+                let key = bounded_tool_key(key);
+                if bounded.contains_key(&key) {
+                    key_collision = true;
+                    continue;
+                }
+                bounded.insert(key, bounded_tool_value(item, depth + 1, items, text_budget));
+            }
+            if (values.len() > limit || key_collision) && *items < CHILD_TOOL_MAX_ITEMS {
+                let message = if key_collision {
+                    "keys omitted because truncated keys collided"
+                } else {
+                    "items omitted"
+                };
+                let marker_key = unique_truncation_key(&bounded);
+                bounded.insert(marker_key, Value::String(message.into()));
+                *items += 1;
+            } else if key_collision || values.len() > limit {
+                if let Some(last_key) = bounded.keys().next_back().cloned() {
+                    bounded.remove(&last_key);
+                    let marker_key = unique_truncation_key(&bounded);
+                    let message = if key_collision {
+                        "keys omitted because truncated keys collided"
+                    } else {
+                        "items omitted"
+                    };
+                    bounded.insert(marker_key, Value::String(message.into()));
+                }
+            }
+            Value::Object(bounded)
+        }
+        _ => value.clone(),
+    }
+}
+
+fn child_tool_value_text(
+    value: &serde_json::Value,
+    items: &mut usize,
+    budget: &mut usize,
+) -> String {
+    fn fit_budget(text: &str, budget: &mut usize) -> String {
+        if text.len() <= *budget {
+            *budget -= text.len();
+            return text.to_string();
+        }
+        let marker = "... [truncated]";
+        let prefix_budget = (*budget).saturating_sub(marker.len());
+        let mut end = prefix_budget.min(text.len());
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        let marker_end = (*budget).min(marker.len());
+        let result = format!("{}{}", &text[..end], &marker[..marker_end]);
+        *budget = 0;
+        result
+    }
+
+    match value {
+        serde_json::Value::String(text) => fit_budget(text, budget),
+        serde_json::Value::Null => String::new(),
+        other => {
+            let mut source_budget = *budget;
+            let normalized = bounded_tool_value(other, 0, items, &mut source_budget);
+            let serialized = serde_json::to_string_pretty(&normalized)
+                .unwrap_or_else(|_| "… [truncated]".into());
+            fit_budget(&serialized, budget)
+        }
+    }
+}
+
+fn bounded_subagent_text(text: &str) -> (String, bool) {
+    let mut start = text.len();
+    let mut bytes = 0;
+    for (chars, (index, character)) in text.char_indices().rev().enumerate() {
+        if chars == SUBAGENT_TEXT_MAX_CHARS
+            || bytes + character.len_utf8() > SUBAGENT_TEXT_MAX_BYTES
+        {
+            break;
+        }
+        start = index;
+        bytes += character.len_utf8();
+    }
+    (text[start..].to_string(), start > 0)
+}
+
 impl SessionManager {
+    pub(super) fn record_child_route(
+        &self,
+        process_id: &str,
+        app_session_id: &str,
+        sub: &crate::acp_client::SubagentUpdate,
+    ) {
+        let Some(child_session_id) = sub
+            .child_session_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|id| !id.is_empty() && id.chars().count() <= CHILD_SESSION_ID_MAX_CHARS)
+        else {
+            return;
+        };
+        let key = (process_id.to_string(), child_session_id.to_string());
+        let mut routes = self.child_sessions.lock();
+        if routes.len() < 1024 || routes.contains_key(&key) {
+            routes.insert(
+                key,
+                ChildSessionRoute {
+                    app_session_id: app_session_id.to_string(),
+                    subagent_id: sub.subagent_id.clone(),
+                },
+            );
+        }
+    }
+
+    fn child_route(&self, process_id: &str, agent_session_id: &str) -> Option<ChildSessionRoute> {
+        self.child_sessions
+            .lock()
+            .get(&(process_id.to_string(), agent_session_id.to_string()))
+            .cloned()
+    }
+
+    fn route_child_text(
+        &self,
+        app: &AppHandle,
+        process_id: &str,
+        session_id: Option<&str>,
+        ev: &AcpEvent,
+    ) -> bool {
+        if let Some(payload) = session_id.and_then(|agent_session_id| {
+            self.child_activity_payload(process_id, agent_session_id, ev)
+        }) {
+            let _ = app.emit("session://subagent-activity", payload);
+            return true;
+        }
+        matches!(ev, AcpEvent::SubagentUserMessage)
+    }
+
+    fn child_activity_payload(
+        &self,
+        process_id: &str,
+        agent_session_id: &str,
+        ev: &AcpEvent,
+    ) -> Option<serde_json::Value> {
+        let payload = match ev {
+            AcpEvent::Stream {
+                done: true, text, ..
+            } if text.is_empty() => Some(("boundary", "", None, None)),
+            AcpEvent::Stream {
+                kind: StreamKind::Assistant,
+                text,
+                message_id,
+                ..
+            } => Some(("assistant", text.as_str(), message_id.as_deref(), None)),
+            AcpEvent::Stream {
+                kind: StreamKind::Thought,
+                text,
+                message_id,
+                ..
+            } => Some(("thought", text.as_str(), message_id.as_deref(), None)),
+            AcpEvent::ToolCall {
+                tool_call_id,
+                title,
+                status,
+                raw,
+                ..
+            } => {
+                let input = raw.get("rawInput").or_else(|| raw.get("input"));
+                let output = raw.get("rawOutput").or_else(|| raw.get("output"));
+                let mut items = 0;
+                let mut budget = CHILD_TOOL_JSON_TEXT_BUDGET;
+                let input =
+                    input.map(|value| child_tool_value_text(value, &mut items, &mut budget));
+                let output =
+                    output.map(|value| child_tool_value_text(value, &mut items, &mut budget));
+                let bounded_title = bounded_tool_field(title);
+                let status = bounded_tool_field(status);
+                let data = serde_json::json!({
+                    "toolCallId": bounded_tool_field(tool_call_id),
+                    "title": bounded_title,
+                    "status": status,
+                    "input": input,
+                    "output": output,
+                });
+                Some(("tool", "", None, Some(data)))
+            }
+            _ => return None,
+        };
+        let route = self.child_route(process_id, agent_session_id)?;
+        let (kind, text, message_id, details) = payload?;
+        let (text, truncated) = bounded_subagent_text(text);
+        let mut event = serde_json::json!({
+            "sessionId": route.app_session_id,
+            "childId": route.subagent_id,
+            "childSessionId": agent_session_id,
+            "kind": kind,
+            "text": text,
+            "truncated": truncated,
+        });
+        if let Some(message_id) = message_id {
+            event["messageId"] = serde_json::json!(message_id);
+        }
+        if let Some(details) = details {
+            event.as_object_mut()?.extend(details.as_object()?.clone());
+        }
+        Some(event)
+    }
+
     /// App session of a parked chat that should wake for this follow-up.
     ///
     /// A cue does not wake it. An end wakes it only when that prompt is already
@@ -80,6 +385,9 @@ impl SessionManager {
         // deliver to live if this process is the focused shell.
         if let AcpEvent::ProcessExited { code } = &ev {
             let exit_code = *code;
+            self.child_sessions
+                .lock()
+                .retain(|(pid, _), _| pid != process_id);
             {
                 let doomed: Vec<String> = {
                     let mut parked = self.parked.lock();
@@ -124,6 +432,9 @@ impl SessionManager {
             }
             // Fall through to live ProcessExited handling below.
         } else {
+            if self.route_child_text(app, process_id, session_id, &ev) {
+                return;
+            }
             // Multi-session safety (P0): route by agent sessionId when present;
             // never rescue a parked co-tenant into a fake mid-turn (that wrote
             // foreign session/load replay into the wrong App journal).
@@ -1217,9 +1528,11 @@ impl SessionManager {
                         .unwrap_or_default()
                 };
                 if !app_sid.is_empty() {
+                    self.record_child_route(process_id, &app_sid, &sub);
                     let _ = app.emit("session://subagent", sub.to_payload(&app_sid));
                 }
             }
+            AcpEvent::SubagentUserMessage => {}
             AcpEvent::WorkflowScoped { prompt_id, event } => {
                 let app_sid = {
                     let guard = self.inner.lock();
@@ -1481,5 +1794,182 @@ impl SessionManager {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod child_session_route_tests {
+    use super::*;
+
+    #[test]
+    fn child_route_requires_the_exact_process_and_lifecycle_session() {
+        let manager = SessionManager::new();
+        let update = crate::acp_client::SubagentUpdate {
+            phase: crate::acp_client::SubagentPhase::Spawned,
+            subagent_id: "child-row".into(),
+            child_session_id: Some("agent-child-session".into()),
+            subagent_type: None,
+            description: None,
+            model: None,
+            agent_address: None,
+            status: None,
+            duration_ms: None,
+            turn_count: None,
+            tool_call_count: None,
+            tokens_used: None,
+            context_window_tokens: None,
+            output: None,
+        };
+
+        manager.record_child_route("process-a", "app-parent", &update);
+
+        let route = manager
+            .child_route("process-a", "agent-child-session")
+            .expect("associated child");
+        assert_eq!(route.app_session_id, "app-parent");
+        assert_eq!(route.subagent_id, "child-row");
+        assert!(manager
+            .child_route("process-b", "agent-child-session")
+            .is_none());
+        assert!(manager.child_route("process-a", "unknown-child").is_none());
+
+        let thought = AcpEvent::Stream {
+            kind: StreamKind::Thought,
+            text: "child thought".into(),
+            message_id: None,
+            done: false,
+        };
+        assert_eq!(
+            manager.child_activity_payload("process-a", "agent-child-session", &thought),
+            Some(serde_json::json!({
+                "sessionId": "app-parent",
+                "childId": "child-row",
+                "childSessionId": "agent-child-session",
+                "kind": "thought",
+                "text": "child thought",
+                "truncated": false
+            }))
+        );
+        assert!(manager
+            .child_activity_payload("process-a", "unknown-child", &thought)
+            .is_none());
+        let identified = AcpEvent::Stream {
+            kind: StreamKind::Assistant,
+            text: "chunk".into(),
+            message_id: Some("message-1".into()),
+            done: false,
+        };
+        assert_eq!(
+            manager
+                .child_activity_payload("process-a", "agent-child-session", &identified)
+                .expect("identified message")["messageId"],
+            "message-1"
+        );
+        let tool = AcpEvent::ToolCall {
+            tool_call_id: "tool-1".into(),
+            title: "Run command".into(),
+            kind: "execute".into(),
+            status: "failed".into(),
+            raw: serde_json::json!({ "rawInput": { "command": "echo" }, "rawOutput": "failed" }),
+        };
+        let tool_payload = manager
+            .child_activity_payload("process-a", "agent-child-session", &tool)
+            .expect("associated child tool activity");
+        assert_eq!(tool_payload["kind"], "tool");
+        assert_eq!(tool_payload["toolCallId"], "tool-1");
+        assert_eq!(tool_payload["input"], "{\n  \"command\": \"echo\"\n}");
+        assert_eq!(tool_payload["output"], "failed");
+        let budgeted_tool = AcpEvent::ToolCall {
+            tool_call_id: "tool-budget".into(),
+            title: "Run command".into(),
+            kind: "execute".into(),
+            status: "completed".into(),
+            raw: serde_json::json!({
+                "rawInput": { "nested": ["界".repeat(200), { "command": "echo hello" }] },
+                "rawOutput": { "stdout": "x".repeat(2_000) },
+            }),
+        };
+        let budgeted_payload = manager
+            .child_activity_payload("process-a", "agent-child-session", &budgeted_tool)
+            .expect("bounded serialized tool activity");
+        let rendered_tool_bytes = budgeted_payload["input"].as_str().unwrap().len()
+            + budgeted_payload["output"].as_str().unwrap().len();
+        assert!(rendered_tool_bytes <= CHILD_TOOL_JSON_TEXT_BUDGET);
+        let mut nested_input = serde_json::json!("leaf");
+        (0..20).for_each(|_| nested_input = serde_json::json!({ "nested": nested_input }));
+        let huge_tool = AcpEvent::ToolCall {
+            tool_call_id: "tool-large".into(),
+            title: "t".repeat(10_000),
+            kind: "execute".into(),
+            status: "failed".into(),
+            raw: serde_json::json!({
+                "rawInput": { "outer": (0..500).map(|index| (index.to_string(), serde_json::json!("x".repeat(10_000)))).collect::<serde_json::Map<_, _>>(), "deep": nested_input },
+                "rawOutput": "y".repeat(100_000),
+            }),
+        };
+        let bounded_tool = manager
+            .child_activity_payload("process-a", "agent-child-session", &huge_tool)
+            .expect("bounded child tool activity");
+        assert!(serde_json::to_vec(&bounded_tool).unwrap().len() < SUBAGENT_TEXT_MAX_BYTES);
+        assert!(
+            format!("{}{}", bounded_tool["input"], bounded_tool["output"]).contains("truncated")
+        );
+        assert!(bounded_tool["title"]
+            .as_str()
+            .unwrap()
+            .contains("truncated"));
+        for field in ["title", "status", "toolCallId"] {
+            assert!(bounded_tool[field].as_str().unwrap().len() <= CHILD_TOOL_FIELD_MAX_BYTES);
+        }
+        let mut colliding_keys = serde_json::Map::new();
+        colliding_keys.insert(
+            format!("{}first", "x".repeat(24)),
+            serde_json::json!("first"),
+        );
+        colliding_keys.insert(
+            format!("{}second", "x".repeat(24)),
+            serde_json::json!("second"),
+        );
+        let mut items = 0;
+        let mut text_budget = CHILD_TOOL_JSON_TEXT_BUDGET;
+        let bounded_keys = bounded_tool_value(
+            &serde_json::Value::Object(colliding_keys),
+            0,
+            &mut items,
+            &mut text_budget,
+        );
+        assert!(bounded_keys
+            .as_object()
+            .unwrap()
+            .values()
+            .any(|value| value == "keys omitted because truncated keys collided"));
+        let nested_array = serde_json::json!((0..20)
+            .map(|index| serde_json::json!({ "outer": { "inner": [index, index + 1, index + 2] } }))
+            .collect::<Vec<_>>());
+        let mut items = 0;
+        let mut text_budget = CHILD_TOOL_JSON_TEXT_BUDGET;
+        let bounded_array = bounded_tool_value(&nested_array, 0, &mut items, &mut text_budget);
+        assert!(bounded_array
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "… [truncated]"));
+        let task = AcpEvent::SubagentUserMessage;
+        assert!(manager
+            .child_activity_payload("process-a", "agent-child-session", &task)
+            .is_none());
+        let oversized = AcpEvent::Stream {
+            kind: StreamKind::Assistant,
+            text: "界".repeat(20_000),
+            message_id: None,
+            done: false,
+        };
+        let bounded = manager
+            .child_activity_payload("process-a", "agent-child-session", &oversized)
+            .expect("associated child output");
+        let text = bounded["text"].as_str().expect("text payload");
+        assert!(text.chars().count() <= SUBAGENT_TEXT_MAX_CHARS);
+        assert!(text.len() <= SUBAGENT_TEXT_MAX_BYTES);
+        assert_eq!(bounded["truncated"], true);
     }
 }

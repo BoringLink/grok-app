@@ -251,5 +251,10 @@ export const deTasks = {
   "tasks.subagentCancelled": "Abgebrochen",
   "tasks.subagentFinished": "Beendet",
   "tasks.subagentMeta": "{turns} Runden · {tools} Tools · {tokens} Tokens · {duration}",
-  "tasks.subagentOutput": "Ausgabe",
+  "tasks.subagentView": "Subagent ansehen",
+  "tasks.subagentActivityTask": "Aufgabe",
+  "tasks.subagentAgentAddress": "Agent-Adresse",
+  "tasks.subagentActivityTrimmed": "Ältere Aktivität gekürzt",
+  "tasks.subagentEmpty": "Keine Subagenten in dieser Sitzung",
+  "tasks.subagentActivityEmpty": "Noch keine Aktivität",
 };
