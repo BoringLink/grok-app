@@ -132,16 +132,16 @@ mod agents_catalog_tests {
         let target = std::fs::canonicalize(target).unwrap();
         let configured = std::fs::canonicalize(configured).unwrap();
         let config_path = root.join("config.toml");
-        let mut document = parse_editable_toml(&format!(
-            "[agent]\ndefinition = {:?}\n",
-            configured.to_string_lossy()
-        ))
-        .unwrap();
+        let configured_path = configured.to_string_lossy().to_string();
+        let mut document =
+            parse_editable_toml(&format!("[agent]\ndefinition = {:?}\n", configured_path)).unwrap();
 
         assert!(!clear_agent_definition_in_document(&mut document, &config_path, &target).unwrap());
-        assert!(document
-            .to_string()
-            .contains(&configured.to_string_lossy().to_string()));
+        let updated: toml::Value = toml::from_str(&document.to_string()).unwrap();
+        assert_eq!(
+            updated["agent"]["definition"].as_str(),
+            Some(configured_path.as_str())
+        );
     }
 
     #[test]
