@@ -2,44 +2,51 @@ import { describe, expect, it } from "vitest";
 import {
   canManageAgentWorkspace,
   agentProjectPathForScope,
-  agentWorkspaceIdForScope,
-  agentWorkspaceScopeOptions,
+  agentProjectIdForScope,
+  agentProjectScopeOptions,
+  reusablePersonaDefinitions,
   isCurrentAgentCatalogRequest,
   mapAgentDefinitions,
 } from "./agentsWorkspace";
 
-const workspaces = [
+const projects = [
   {
-    id: "workspace-a",
+    id: "project-a",
     name: "Project A",
-    primaryProjectId: "project-a",
-    roots: [{ path: "/work/project-a", role: "primary" as const, access: "write" as const, pathOk: true }],
-    capability: "contextOnly" as const,
-    updatedAt: "2026-11-24T00:00:00.000Z",
+    path: "/work/project-a",
+    trusted: true,
+    pathOk: true,
   },
   {
-    id: "workspace-missing",
+    id: "project-missing",
     name: "Missing root",
-    primaryProjectId: "project-missing",
-    roots: [{ path: "/work/missing", role: "primary" as const, access: "write" as const, pathOk: false }],
-    capability: "contextOnly" as const,
-    updatedAt: "2026-11-24T00:00:00.000Z",
+    path: "/work/missing",
+    trusted: true,
+    pathOk: false,
+  },
+  {
+    id: "project-ssh",
+    name: "Remote project",
+    path: "/remote/project",
+    trusted: true,
+    pathOk: true,
+    sshAlias: "remote-host",
   },
 ];
 
 describe("Agent scope selection", () => {
-  it("lists Global and only saved workspaces with a usable primary root", () => {
-    expect(agentWorkspaceScopeOptions(workspaces, "Global")).toEqual([
+  it("lists Global and only accessible local Projects", () => {
+    expect(agentProjectScopeOptions(projects, "Global")).toEqual([
       { value: "global", label: "Global" },
-      { value: "workspace:workspace-a", label: "Project A" },
+      { value: "project:project-a", label: "Project A" },
     ]);
   });
 
-  it("resolves Global and selected workspace paths", () => {
-    expect(agentProjectPathForScope(workspaces, "global")).toBeNull();
-    expect(agentProjectPathForScope(workspaces, "workspace:workspace-a")).toBe("/work/project-a");
-    expect(agentProjectPathForScope(workspaces, "workspace:workspace-missing")).toBeNull();
-    expect(agentWorkspaceIdForScope("workspace:workspace-a")).toBe("workspace-a");
+  it("resolves Global and selected Project paths", () => {
+    expect(agentProjectPathForScope(projects, "global")).toBeNull();
+    expect(agentProjectPathForScope(projects, "project:project-a")).toBe("/work/project-a");
+    expect(agentProjectPathForScope(projects, "project:project-missing")).toBeNull();
+    expect(agentProjectIdForScope("project:project-a")).toBe("project-a");
   });
 });
 
@@ -50,6 +57,20 @@ describe("canManageAgentWorkspace", () => {
     expect(canManageAgentWorkspace("independent")).toBe(true);
     expect(canManageAgentWorkspace(" Independent ")).toBe(true);
     expect(canManageAgentWorkspace("unknown")).toBe(false);
+  });
+});
+
+describe("reusablePersonaDefinitions", () => {
+  it("offers only Personas with a readable instruction file", () => {
+    const personas = [
+      { name: "readable", path: "/.grok/personas/readable.md", scope: "user", instructionsFile: "/.grok/personas/readable.md", instructions: "Be concise." },
+      { name: "inline-only", path: "/.grok/config.toml", scope: "user", instructions: "Legacy inline." },
+      { name: "missing-file", path: "/.grok/personas/missing.md", scope: "user", instructionsFile: "/.grok/personas/missing.md" },
+    ];
+
+    expect(reusablePersonaDefinitions(personas).map((persona) => persona.name)).toEqual([
+      "readable",
+    ]);
   });
 });
 

@@ -7,7 +7,7 @@ import * as api from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
 import { Select } from "@/components/Select";
-import type { WorkspaceRecord } from "@/lib/multiRootWorkspace";
+import type { ProjectRecord } from "@/lib/api/project";
 import {
   IconExternalLink,
   IconFolder,
@@ -21,11 +21,12 @@ import {
 import { isCliMissingError, shortPathLabel } from "@/lib/extensionsUi";
 import {
   canManageAgentWorkspace,
+  agentProjectIdForScope,
   agentProjectPathForScope,
-  agentWorkspaceIdForScope,
-  agentWorkspaceScopeOptions,
+  agentProjectScopeOptions,
   isCurrentAgentCatalogRequest,
   mapAgentDefinitions,
+  reusablePersonaDefinitions,
   type AgentWorkspaceView,
 } from "@/lib/agentsWorkspace";
 import {
@@ -322,7 +323,7 @@ export function ExtensionsBuildExtras({
   const [userAgentsDir, setUserAgentsDir] = useState("");
   const [roles, setRoles] = useState<api.AgentDefinitionDto[]>([]);
   const [personas, setPersonas] = useState<api.AgentDefinitionDto[]>([]);
-  const [savedWorkspaces, setSavedWorkspaces] = useState<WorkspaceRecord[]>([]);
+  const [savedProjects, setSavedProjects] = useState<ProjectRecord[]>([]);
   const [agentsScopeSelection, setAgentsScopeSelection] = useState("global");
   const [discoveryWarnings, setDiscoveryWarnings] = useState<
     api.AgentDiscoveryWarningDto[]
@@ -331,7 +332,6 @@ export function ExtensionsBuildExtras({
   const [agentsError, setAgentsError] = useState<string | null>(null);
   const [agentsLoading, setAgentsLoading] = useState(true);
   const [agentsBusy, setAgentsBusy] = useState<string | null>(null);
-  const [agentsHint, setAgentsHint] = useState<string | null>(null);
   const [newAgentOpen, setNewAgentOpen] = useState(false);
   const [newAgentName, setNewAgentName] = useState("");
   const [newAgentDescription, setNewAgentDescription] = useState("");
@@ -376,8 +376,9 @@ export function ExtensionsBuildExtras({
   } | null>(null);
   const agentsProjectPath = useRef(projectPath);
   const agentsLoadSequence = useRef(0);
-  const selectedScopeWorkspaceId = agentWorkspaceIdForScope(agentsScopeSelection);
-  const selectedScopeProjectPath = agentProjectPathForScope(savedWorkspaces, agentsScopeSelection);
+  const projectsLoadSequence = useRef(0);
+  const selectedScopeProjectId = agentProjectIdForScope(agentsScopeSelection);
+  const selectedScopeProjectPath = agentProjectPathForScope(savedProjects, agentsScopeSelection);
   const selectedScope = selectedScopeProjectPath ? "project" : "user";
   agentsProjectPath.current = selectedScopeProjectPath;
 
@@ -516,33 +517,42 @@ export function ExtensionsBuildExtras({
     }
   }, []);
 
-  useEffect(() => {
-    if (!showAgents || !api.isTauri()) {
-      setSavedWorkspaces([]);
+  const loadSavedProjects = useCallback(async () => {
+    if (!api.isTauri()) {
+      setSavedProjects([]);
       return;
     }
-    let isCurrent = true;
-    void api.workspacesList().then(
-      (workspaces) => {
-        if (isCurrent) setSavedWorkspaces(workspaces);
-      },
-    ).catch(() => {
-      if (isCurrent) setAgentsError(tr("ext.agents.error"));
-    });
+    const request = ++projectsLoadSequence.current;
+    try {
+      const projects = await api.projectsList();
+      if (request === projectsLoadSequence.current) setSavedProjects(projects);
+    } catch {
+      if (request === projectsLoadSequence.current) {
+        setAgentsError(tr("ext.agents.error"));
+      }
+    }
+  }, [tr]);
+
+  useEffect(() => {
+    if (!showAgents) {
+      setSavedProjects([]);
+      return;
+    }
+    void loadSavedProjects();
     return () => {
-      isCurrent = false;
+      projectsLoadSequence.current += 1;
     };
-  }, [showAgents, tr]);
+  }, [loadSavedProjects, projectPath, showAgents]);
 
   useEffect(() => {
     if (
-      selectedScopeWorkspaceId &&
-      (!savedWorkspaces.some((workspace) => workspace.id === selectedScopeWorkspaceId) ||
-        !agentProjectPathForScope(savedWorkspaces, agentsScopeSelection))
+      selectedScopeProjectId &&
+      (!savedProjects.some((project) => project.id === selectedScopeProjectId) ||
+        !agentProjectPathForScope(savedProjects, agentsScopeSelection))
     ) {
       setAgentsScopeSelection("global");
     }
-  }, [agentsScopeSelection, savedWorkspaces, selectedScopeWorkspaceId]);
+  }, [agentsScopeSelection, savedProjects, selectedScopeProjectId]);
 
   useEffect(() => {
     if (!showAgents || !api.isTauri()) {
@@ -584,20 +594,20 @@ export function ExtensionsBuildExtras({
   const openUserAgentsDirectory = useCallback(async () => {
     if (!api.isTauri()) return;
     setAgentsError(null);
-    setAgentsHint(null);
     try {
-      const usedHomeFallback = await api.agentsOpenUserDirectory(
+      await api.agentsOpenUserDirectory(
         agentsView,
         selectedScope,
         selectedScopeProjectPath,
       );
-      if (usedHomeFallback) {
-        setAgentsHint(tr("ext.agents.userDirectoryFallback"));
-      }
     } catch {
-      setAgentsHint(tr("ext.agents.openUserError"));
+      setAgentsError(tr("ext.agents.openUserError"));
     }
   }, [agentsView, selectedScope, selectedScopeProjectPath, tr]);
+
+  const refreshAgentWorkspace = useCallback(() => {
+    void Promise.all([loadAgents(), loadSavedProjects()]);
+  }, [loadAgents, loadSavedProjects]);
 
   const openAgentFile = useCallback(async (path: string | null | undefined) => {
     const p = (path ?? "").trim();
@@ -733,7 +743,6 @@ export function ExtensionsBuildExtras({
       }
       setAgentsBusy("scaffold");
       setNewAgentError(null);
-      setAgentsHint(null);
       let definitionSaved = false;
       try {
         const res = await api.agentsCreateDefinition({
@@ -783,13 +792,6 @@ export function ExtensionsBuildExtras({
         ));
         setAgentJsonFieldErrors({});
         await loadAgents();
-        setAgentsHint(
-          opts.path
-            ? tr("ext.agents.saved", { name: res.name })
-            : res.overwritten
-            ? tr("ext.agents.overwritten", { name: res.name })
-            : tr("ext.agents.created", { name: res.name }),
-        );
       } catch (e) {
         const msg = String(e || "");
         if (definitionSaved) {
@@ -835,7 +837,6 @@ export function ExtensionsBuildExtras({
   const openInlineEditor = useCallback(
     (kind: "role" | "persona", entry?: api.AgentDefinitionDto) => {
       setAgentsError(null);
-      setAgentsHint(null);
       setInlineError(null);
       setRolePromptError(false);
       setPersonaInstructionsError(false);
@@ -899,13 +900,12 @@ export function ExtensionsBuildExtras({
     setAgentsBusy("inline");
     setAgentsError(null);
     setInlineError(null);
-    setAgentsHint(null);
     let definitionSaved = false;
     try {
       const { isEditing, personaSource, ...input } = inlineDraft;
       await api.agentsUpsertFileDefinition(input);
       definitionSaved = true;
-      if (inlineDraft.kind === "role") {
+      if (inlineDraft.kind === "role" && (isEditing || parsePersonaSource(personaSource))) {
         const source = parsePersonaSource(personaSource);
         // 工具栏 scope 决定 Persona 关联写入目标；定义文件仍按草稿原 scope 保存。
         await api.agentsApplyPersona({
@@ -922,11 +922,6 @@ export function ExtensionsBuildExtras({
       setPersonaInstructionsError(false);
       setInlineContractError(false);
       await loadAgents();
-      setAgentsHint(
-        tr(isEditing ? "ext.agents.saved" : "ext.agents.created", {
-          name: inlineDraft.name.trim(),
-        }),
-      );
     } catch (error) {
       setInlineError(tr(definitionSaved ? "ext.agents.personaLinkError" : "ext.agents.saveError"));
     } finally {
@@ -939,7 +934,6 @@ export function ExtensionsBuildExtras({
     setAgentsBusy("inline");
     setAgentsError(null);
     setInlineError(null);
-    setAgentsHint(null);
     try {
       await api.agentsDeleteFileDefinition(
         inlineDeleteTarget.kind,
@@ -949,9 +943,6 @@ export function ExtensionsBuildExtras({
       );
       setInlineDeleteTarget(null);
       await loadAgents();
-      setAgentsHint(
-        tr("ext.agents.deleted", { name: inlineDeleteTarget.name }),
-      );
     } catch (error) {
       setInlineError(tr("ext.agents.saveError"));
     } finally {
@@ -969,7 +960,6 @@ export function ExtensionsBuildExtras({
       await api.agentsDeleteMarkdownDefinition(deleteAgentTarget.path, scope, projectRoot);
       setDeleteAgentTarget(null);
       await loadAgents();
-      setAgentsHint(tr("ext.agents.deleted", { name: deleteAgentTarget.name }));
     } catch {
       setDeleteAgentError(tr("ext.agents.saveError"));
     } finally {
@@ -982,11 +972,9 @@ export function ExtensionsBuildExtras({
       if (!agent.path || !api.isTauri()) return;
       setAgentsBusy("default");
       setAgentsError(null);
-      setAgentsHint(null);
       try {
         await api.agentsSetDefaultDefinition(agent.path, selectedScopeProjectPath);
         await loadAgents();
-        setAgentsHint(tr("ext.agents.defaultSet", { name: agent.name }));
       } catch (error) {
         setAgentsError(tr("ext.agents.saveError"));
       } finally {
@@ -1463,8 +1451,8 @@ export function ExtensionsBuildExtras({
     !inlineContractError &&
     !agentsBusy;
   const agentScopeOptions = useMemo(
-    () => agentWorkspaceScopeOptions(savedWorkspaces, tr("ext.agents.scope.user")),
-    [savedWorkspaces, tr],
+    () => agentProjectScopeOptions(savedProjects, tr("ext.agents.scope.user")),
+    [savedProjects, tr],
   );
   const agentTypeOptions = useMemo(() => {
     const definitions = [...agents, ...roles].filter(
@@ -1478,7 +1466,7 @@ export function ExtensionsBuildExtras({
   const personaOptions = useMemo(
     () => [
       { value: "", label: tr("ext.agents.unset") },
-      ...personas.map((persona) => {
+      ...reusablePersonaDefinitions(personas).map((persona) => {
         const scope = persona.scope === "project" ? "project" : "user";
         const scopeLabel = scope === "project"
           ? tr("ext.agents.scope.project")
@@ -1494,7 +1482,6 @@ export function ExtensionsBuildExtras({
 
   const openNewAgentDialog = useCallback(() => {
     setNewAgentError(null);
-    setAgentsHint(null);
     setNewAgentName("");
     setNewAgentDescription("");
     setNewAgentInstructions("");
@@ -1518,7 +1505,7 @@ export function ExtensionsBuildExtras({
     if (!showAgents || !onTabActionsChange) return;
     onTabActionsChange({
       refresh: () => {
-        void loadAgents();
+        refreshAgentWorkspace();
       },
       busy: !!agentsBusy,
       loading: agentsLoading,
@@ -1527,7 +1514,7 @@ export function ExtensionsBuildExtras({
   }, [
     showAgents,
     onTabActionsChange,
-    loadAgents,
+    refreshAgentWorkspace,
     agentsBusy,
     agentsLoading,
   ]);
@@ -1566,7 +1553,7 @@ export function ExtensionsBuildExtras({
     return groups.filter((g) => g.items.length > 0);
   }, [agents, tr]);
 
-  const currentViewWarnings = agentsView === "agents" ? discoveryWarnings : [];
+  const currentViewWarnings = discoveryWarnings;
 
   const renderAgentRow = (a: AgentDefLike) => {
     const tone = agentScopeTone(a.scope);
@@ -1689,7 +1676,7 @@ export function ExtensionsBuildExtras({
                     type="button"
                     className="btn btn--ghost btn--sm"
                     disabled={!!agentsBusy}
-                    onClick={() => void loadAgents()}
+                    onClick={refreshAgentWorkspace}
                   >
                     <IconRefresh size={14} />
                     <span>
@@ -1779,12 +1766,6 @@ export function ExtensionsBuildExtras({
                 <p className="ext-alert__body">{agentsError}</p>
               </div>
             ) : null}
-            {agentsHint ? (
-              <p className="ext-ref-block__lead" role="status">
-                {agentsHint}
-              </p>
-            ) : null}
-
             {agentsLoading ? (
               <p className="ext-ref-empty">{tr("ext.agents.loading")}</p>
             ) : agentsView === "agents" && agents.length === 0 ? (

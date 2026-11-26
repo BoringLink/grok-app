@@ -1,46 +1,62 @@
 import type { AgentDefLike } from "@/lib/agentsDiscovery";
-import type { AgentDefDto } from "@/lib/api/agents";
-import { primaryRoot, type WorkspaceRecord } from "@/lib/multiRootWorkspace";
+import type { AgentDefDto, AgentDefinitionDto } from "@/lib/api/agents";
+import type { ProjectRecord } from "@/lib/api/project";
 
 export type AgentWorkspaceView = "agents" | "roles" | "personas";
 
 export type AgentScopeOption = { value: string; label: string };
 
-const WORKSPACE_SCOPE_PREFIX = "workspace:";
+const PROJECT_SCOPE_PREFIX = "project:";
 
-/** Build a scope menu from only saved workspaces with an available primary root. */
-export function agentWorkspaceScopeOptions(
-  workspaces: WorkspaceRecord[],
+/** Build a scope menu from saved Projects whose paths are available. */
+export function agentProjectScopeOptions(
+  projects: ProjectRecord[],
   globalLabel: string,
 ): AgentScopeOption[] {
   return [
     { value: "global", label: globalLabel },
-    ...workspaces.flatMap((workspace) => {
-      const root = primaryRoot(workspace);
-      return root && root.pathOk !== false
-        ? [{ value: `${WORKSPACE_SCOPE_PREFIX}${workspace.id}`, label: workspace.name }]
-        : [];
-    }),
+    ...projects
+      .filter(
+        (project) =>
+          !project.system &&
+          !project.sshAlias &&
+          project.pathOk &&
+          !!project.path.trim(),
+      )
+      .map((project) => ({
+        value: `${PROJECT_SCOPE_PREFIX}${project.id}`,
+        label: project.name,
+      })),
   ];
 }
 
-/** Resolve a scope selection to its saved workspace id, or null for Global. */
-export function agentWorkspaceIdForScope(selection: string): string | null {
-  return selection.startsWith(WORKSPACE_SCOPE_PREFIX)
-    ? selection.slice(WORKSPACE_SCOPE_PREFIX.length)
+/** Resolve a scope selection to its saved Project id, or null for Global. */
+export function agentProjectIdForScope(selection: string): string | null {
+  return selection.startsWith(PROJECT_SCOPE_PREFIX)
+    ? selection.slice(PROJECT_SCOPE_PREFIX.length)
     : null;
 }
 
-/** Resolve a selected saved workspace to its primary project path. */
+/** Resolve a selected saved Project to its primary path. */
 export function agentProjectPathForScope(
-  workspaces: WorkspaceRecord[],
+  projects: ProjectRecord[],
   selection: string,
 ): string | null {
-  const workspaceId = agentWorkspaceIdForScope(selection);
-  if (!workspaceId) return null;
-  const workspace = workspaces.find((item) => item.id === workspaceId);
-  const root = workspace ? primaryRoot(workspace) : null;
-  return root && root.pathOk !== false ? root.path : null;
+  const projectId = agentProjectIdForScope(selection);
+  if (!projectId) return null;
+  const project = projects.find(
+    (item) => item.id === projectId && !item.system && !item.sshAlias && item.pathOk,
+  );
+  return project?.path.trim() ? project.path : null;
+}
+
+/** Only offer Personas backed by a readable instruction file for reuse. */
+export function reusablePersonaDefinitions(
+  personas: AgentDefinitionDto[],
+): AgentDefinitionDto[] {
+  return personas.filter(
+    (persona) => Boolean(persona.instructionsFile?.trim() && persona.instructions?.trim()),
+  );
 }
 
 export function canManageAgentWorkspace(sessionDataMode?: string): boolean {

@@ -4,20 +4,20 @@ import {
   invoke,
 } from "./host";
 
+export type ProjectRecord = {
+  id: string;
+  name: string;
+  path: string;
+  trusted: boolean;
+  pathOk: boolean;
+  pinned?: boolean;
+  system?: boolean;
+  sshAlias?: string | null;
+  color?: string | null;
+};
+
 export async function projectsList() {
-  return invoke<
-    Array<{
-      id: string;
-      name: string;
-      path: string;
-      trusted: boolean;
-      pathOk: boolean;
-      pinned?: boolean;
-      /** Legacy flag; retired system:general is no longer listed. */
-      system?: boolean;
-      sshAlias?: string | null;
-    }>
-  >("projects_list");
+  return invoke<ProjectRecord[]>("projects_list");
 }
 
 /** On-disk default cwd for orphan chats (`{app_data}/workspaces/general`). */
@@ -46,17 +46,5 @@ export async function projectAddSsh(alias: string, path: string, trust: boolean)
  * cannot sit above pinned ones. Returns the final ordered list.
  */
 export async function projectsReorder(orderedIds: string[]) {
-  return invoke<
-    Array<{
-      id: string;
-      name: string;
-      path: string;
-      trusted: boolean;
-      pathOk: boolean;
-      pinned?: boolean;
-      system?: boolean;
-      color?: string | null;
-    }>
-  >("projects_reorder", { orderedIds });
+  return invoke<ProjectRecord[]>("projects_reorder", { orderedIds });
 }
-

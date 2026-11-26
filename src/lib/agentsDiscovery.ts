@@ -4,8 +4,8 @@
  * and ~/.grok/personas (+ project .grok/personas). Bundled agents are
  * under ~/.grok/bundled/agents (read-only reference).
  *
- * Runtime selection uses CLI flags / config — the App only lists and opens
- * files (no fake "set active agent" without ACP session switch support).
+ * The App manages these definitions; runtime selection still uses CLI flags
+ * or config because ACP sessions do not support switching the active agent.
  */
 
 export type AgentScope = "project" | "user" | "bundled" | "config";

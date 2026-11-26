@@ -21,7 +21,7 @@ export async function agentsCatalog(projectPath?: string | null) {
   });
 }
 
-/** Agent definition row from host `agents_list` (filesystem or inline config). */
+/** Agent, Role, or Persona definition row from host `agents_list`. */
 export type AgentDefDto = {
   name: string;
   path: string;
@@ -69,7 +69,7 @@ export type AgentsListResult = {
   bundledAgentsDir?: string;
 };
 
-/** List agent + persona definition files (no CLI required). */
+/** List Agent, Role, and Persona definitions (no CLI required). */
 export async function agentsList(projectPath?: string | null) {
   return invoke<AgentsListResult>("agents_list", {
     projectPath: projectPath ?? null,
@@ -81,7 +81,7 @@ export async function agentsOpenUserDirectory(
   scope: "user" | "project" = "user",
   projectPath?: string | null,
 ) {
-  return invoke<boolean>("agents_open_user_directory", {
+  return invoke<void>("agents_open_user_directory", {
     kind,
     scope,
     projectPath: projectPath ?? null,
