@@ -16,6 +16,7 @@ export function ExtensionsSection() {
     navigateTo,
     onSkillsPrefsChanged,
     projectPath,
+    sessionDataMode,
     setSectionTab,
   } = s;
 
@@ -24,6 +25,7 @@ export function ExtensionsSection() {
 <ExtensionsPanel
             locale={resolveLocale(locale)}
             projectPath={projectPath}
+            sessionDataMode={sessionDataMode}
             cliFound={cliInfo.found}
             activeTab={
               (activeTab as

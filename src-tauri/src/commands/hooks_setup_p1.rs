@@ -135,16 +135,6 @@ fn is_agent_def_file(name: &str) -> bool {
         && (lower.ends_with(".md") || lower.ends_with(".markdown"))
 }
 
-// from PR #77
-
-fn is_persona_def_file(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    !name.starts_with('.')
-        && (lower.ends_with(".toml")
-            || lower.ends_with(".md")
-            || lower.ends_with(".markdown"))
-}
-
 // from PR #88
 
 /// Safe fix-id shape: short handle (`ssh-wrap`) or canonical (`terminal.ssh-wrap`).
@@ -425,11 +415,21 @@ pub async fn project_rules_list(
 
 // from PR #77
 
+const MAX_AGENT_DESCRIPTION_BYTES: u64 = 4096;
+
 fn read_agent_description(path: &std::path::Path) -> Option<String> {
-    let bytes = std::fs::read(path).ok()?;
-    // Frontmatter is near the top; cap read size.
-    let take = bytes.len().min(4096);
-    let content = String::from_utf8_lossy(&bytes[..take]);
+    use std::io::Read as _;
+
+    let metadata = std::fs::symlink_metadata(path).ok()?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return None;
+    }
+    let file = std::fs::File::open(path).ok()?;
+    let mut bytes = Vec::with_capacity(MAX_AGENT_DESCRIPTION_BYTES as usize);
+    file.take(MAX_AGENT_DESCRIPTION_BYTES)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    let content = String::from_utf8_lossy(&bytes);
     extract_agent_description_from_content(&content)
 }
 
@@ -712,15 +712,73 @@ include!("hooks_setup_worktree_path_tests.rs");
 
 // from PR #77
 
-fn scan_agent_dir(dir: &std::path::Path, scope: &str) -> Vec<AgentDefDto> {
-    let mut out = Vec::new();
-    let rd = match std::fs::read_dir(dir) {
-        Ok(rd) => rd,
-        Err(_) => return out,
+const MAX_AGENT_CATALOG_ENTRIES_PER_DIR: usize = 128;
+
+fn read_agent_catalog_dir_entries(
+    dir: &std::path::Path,
+    scope: &str,
+    warnings: &mut Vec<CatalogWarningDto>,
+) -> Vec<std::fs::DirEntry> {
+    let read_dir = match std::fs::read_dir(dir) {
+        Ok(read_dir) => read_dir,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+        Err(_) => {
+            warnings.push(CatalogWarningDto {
+                source: scope.to_string(),
+                path: dir.to_string_lossy().to_string(),
+                code: CatalogWarningCode::DirectoryRead,
+            });
+            return Vec::new();
+        }
     };
-    for entry in rd.flatten() {
+    // 先限制读取量；超限时样本取决于文件系统枚举顺序，展示顺序再按名称排序。
+    let mut entries = read_dir
+        .take(MAX_AGENT_CATALOG_ENTRIES_PER_DIR + 1)
+        .collect::<Vec<_>>();
+    let truncated = entries.len() > MAX_AGENT_CATALOG_ENTRIES_PER_DIR;
+    entries.sort_by_key(|entry| {
+        entry
+            .as_ref()
+            .map(|entry| entry.file_name())
+            .unwrap_or_default()
+    });
+    if truncated {
+        entries.truncate(MAX_AGENT_CATALOG_ENTRIES_PER_DIR);
+        warnings.push(CatalogWarningDto {
+            source: scope.to_string(),
+            path: dir.to_string_lossy().to_string(),
+            code: CatalogWarningCode::DirectoryTruncated,
+        });
+    }
+    entries
+        .into_iter()
+        .filter_map(|entry| match entry {
+            Ok(entry) => Some(entry),
+            Err(_) => {
+                warnings.push(CatalogWarningDto {
+                    source: scope.to_string(),
+                    path: dir.to_string_lossy().to_string(),
+                    code: CatalogWarningCode::DirectoryRead,
+                });
+                None
+            }
+        })
+        .collect()
+}
+
+fn scan_agent_dir(
+    dir: &std::path::Path,
+    scope: &str,
+    warnings: &mut Vec<CatalogWarningDto>,
+) -> Vec<AgentDefDto> {
+    let mut out = Vec::new();
+    for entry in read_agent_catalog_dir_entries(dir, scope, warnings) {
         let path = entry.path();
-        if !path.is_file() {
+        let metadata = match std::fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(_) => continue,
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
             continue;
         }
         let file_name = match path.file_name().and_then(|s| s.to_str()) {
@@ -741,39 +799,6 @@ fn scan_agent_dir(dir: &std::path::Path, scope: &str) -> Vec<AgentDefDto> {
             path: path_str,
             scope: scope.to_string(),
             description,
-        });
-    }
-    out
-}
-
-// from PR #77
-
-fn scan_persona_dir(dir: &std::path::Path, scope: &str) -> Vec<PersonaDefDto> {
-    let mut out = Vec::new();
-    let rd = match std::fs::read_dir(dir) {
-        Ok(rd) => rd,
-        Err(_) => return out,
-    };
-    for entry in rd.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        let file_name = match path.file_name().and_then(|s| s.to_str()) {
-            Some(n) => n.to_string(),
-            None => continue,
-        };
-        if !is_persona_def_file(&file_name) {
-            continue;
-        }
-        let name = stem_name(&file_name);
-        if name.is_empty() {
-            continue;
-        }
-        out.push(PersonaDefDto {
-            name,
-            path: path.to_string_lossy().to_string(),
-            scope: scope.to_string(),
         });
     }
     out

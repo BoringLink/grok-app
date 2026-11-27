@@ -47,21 +47,6 @@ fn sort_agent_defs(mut agents: Vec<AgentDefDto>) -> Vec<AgentDefDto> {
 
 // from PR #77
 
-fn sort_persona_defs(mut personas: Vec<PersonaDefDto>) -> Vec<PersonaDefDto> {
-    personas.sort_by(|a, b| {
-        scope_rank(&a.scope)
-            .cmp(&scope_rank(&b.scope))
-            .then_with(|| {
-                a.name
-                    .to_ascii_lowercase()
-                    .cmp(&b.name.to_ascii_lowercase())
-            })
-    });
-    personas
-}
-
-// from PR #77
-
 fn stem_name(file_name: &str) -> String {
     let path = std::path::Path::new(file_name);
     path.file_stem()

@@ -2,11 +2,12 @@
  * Settings → Extensions: Hooks list + Plugin marketplace browser + Agents list.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "@/lib/api";
 import { createT, type Locale, type MessageKey } from "@/i18n";
 import { GlassModal } from "@/components/GlassModal";
 import { Select } from "@/components/Select";
+import type { ProjectRecord } from "@/lib/api/project";
 import {
   IconExternalLink,
   IconFolder,
@@ -18,6 +19,16 @@ import {
   IconTrash,
 } from "@/components/icons";
 import { isCliMissingError, shortPathLabel } from "@/lib/extensionsUi";
+import {
+  canManageAgentWorkspace,
+  agentProjectIdForScope,
+  agentProjectPathForScope,
+  agentProjectScopeOptions,
+  isCurrentAgentCatalogRequest,
+  mapAgentDefinitions,
+  reusablePersonaDefinitions,
+  type AgentWorkspaceView,
+} from "@/lib/agentsWorkspace";
 import {
   agentMetaLine,
   agentScopeTone,
@@ -68,6 +79,100 @@ import {
   findOpenaiPluginsSource,
   pickDefaultInstallableFilter,
 } from "@/lib/pluginRecommended";
+
+const AGENT_JSON_FRONTMATTER_FIELDS = [
+  "bash",
+  "toolNameOverrides",
+  "paramNameOverrides",
+  "completionRequirement",
+  "toolConfig",
+  "mcpServers",
+] as const;
+
+function defaultAgentFrontmatter(): Record<string, unknown> {
+  return {
+    promptMode: "full",
+    permissionMode: "default",
+    agentsMd: true,
+    outputFormat: "default",
+    bash: {},
+    toolNameOverrides: {},
+    paramNameOverrides: {},
+    completionRequirement: {},
+    toolConfig: {},
+    mcpInheritance: "all",
+  };
+}
+
+function jsonFieldText(value: unknown): string {
+  return value === undefined ? "" : JSON.stringify(value, null, 2);
+}
+
+function stringArrayField(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+type McpInheritanceMode = "all" | "none" | "named" | "except";
+
+/** Read the selected MCP inheritance mode from its schema union value. */
+function mcpInheritanceMode(value: unknown): McpInheritanceMode {
+  if (value === "none" || value === "named" || value === "except") return value;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const mode = Object.keys(value)[0];
+    if (mode === "named" || mode === "except") return mode;
+  }
+  return "all";
+}
+
+/** Read selected MCP names from a named or except inheritance value. */
+function mcpInheritanceNames(value: unknown, mode: "named" | "except"): string[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  return stringArrayField((value as Record<string, unknown>)[mode]);
+}
+
+/** Decode the UI value used to select an existing scoped Persona. */
+function parsePersonaSource(value: string): { scope: "user" | "project"; name: string } | null {
+  const separator = value.indexOf("::");
+  if (separator <= 0 || separator === value.length - 2) return null;
+  const scope = value.slice(0, separator);
+  if (scope !== "user" && scope !== "project") return null;
+  return { scope, name: value.slice(separator + 2) };
+}
+
+type AgentFrontmatterTextareaProps = {
+  label: string;
+  value: string;
+  disabled: boolean;
+  invalid?: boolean;
+  onChange: (value: string) => void;
+};
+
+/** Render a localized multiline editor for a structured Agent frontmatter field. */
+function AgentFrontmatterTextarea({
+  label,
+  value,
+  disabled,
+  invalid = false,
+  onChange,
+}: AgentFrontmatterTextareaProps) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <textarea
+        className="app-dialog__input ext-agents__instructions"
+        value={value}
+        rows={4}
+        maxLength={65536}
+        disabled={disabled}
+        aria-invalid={invalid}
+        onChange={(event) => onChange(event.target.value)}
+        spellCheck={false}
+      />
+    </label>
+  );
+}
 import {
   ensureDefaultMarketplaces,
   filterCatalogToDefaultSources,
@@ -91,7 +196,6 @@ import {
 /** Actions the parent tab trail can host (Agents). */
 export type ExtAgentsTabActions = {
   refresh: () => void;
-  openNew: () => void;
   busy: boolean;
   loading: boolean;
 };
@@ -99,6 +203,7 @@ export type ExtAgentsTabActions = {
 export type ExtensionsBuildExtrasProps = {
   locale: Locale;
   projectPath?: string | null;
+  sessionDataMode?: string;
   cliFound?: boolean;
   /** Which block(s) to render — settings page tabs use market | agents. */
   mode?: "hooks" | "market" | "agents" | "all";
@@ -115,8 +220,6 @@ export type ExtensionsBuildExtrasProps = {
   onPluginsChanged?: () => void;
   /** Navigate to Settings → Runtime when CLI is missing / too old. */
   onOpenRuntime?: () => void;
-  /** Tab-level search query (Agents / market filter). */
-  query?: string;
   /**
    * When true, hide the in-page Agents toolbar (actions live in the tab trail).
    */
@@ -193,6 +296,7 @@ function asAvailable(raw: Record<string, unknown>): AvailablePluginLike | null {
 export function ExtensionsBuildExtras({
   locale,
   projectPath = null,
+  sessionDataMode = "shared",
   cliFound = true,
   mode = "all",
   embedded = false,
@@ -200,7 +304,6 @@ export function ExtensionsBuildExtras({
   onEnsureOpenaiError,
   onPluginsChanged,
   onOpenRuntime,
-  query = "",
   hidePageToolbar = false,
   onTabActionsChange,
   installedPlugins = [],
@@ -210,7 +313,6 @@ export function ExtensionsBuildExtras({
   const showHooks = mode === "all" || mode === "hooks";
   const showMarket = mode === "all" || mode === "market";
   const showAgents = mode === "all" || mode === "agents";
-  const q = query.trim().toLowerCase();
 
   const [hooks, setHooks] = useState<HookLike[]>([]);
   const [hooksError, setHooksError] = useState<string | null>(null);
@@ -218,22 +320,67 @@ export function ExtensionsBuildExtras({
   const [hooksBusy, setHooksBusy] = useState<string | null>(null);
 
   const [agents, setAgents] = useState<AgentDefLike[]>([]);
-  const [agentsUserDir, setAgentsUserDir] = useState("");
-  const [agentsProjectDir, setAgentsProjectDir] = useState<string | null>(null);
+  const [userAgentsDir, setUserAgentsDir] = useState("");
+  const [roles, setRoles] = useState<api.AgentDefinitionDto[]>([]);
+  const [personas, setPersonas] = useState<api.AgentDefinitionDto[]>([]);
+  const [savedProjects, setSavedProjects] = useState<ProjectRecord[]>([]);
+  const [agentsScopeSelection, setAgentsScopeSelection] = useState("global");
+  const [discoveryWarnings, setDiscoveryWarnings] = useState<
+    api.AgentDiscoveryWarningDto[]
+  >([]);
+  const [agentsView, setAgentsView] = useState<AgentWorkspaceView>("agents");
   const [agentsError, setAgentsError] = useState<string | null>(null);
   const [agentsLoading, setAgentsLoading] = useState(true);
   const [agentsBusy, setAgentsBusy] = useState<string | null>(null);
-  const [agentsHint, setAgentsHint] = useState<string | null>(null);
   const [newAgentOpen, setNewAgentOpen] = useState(false);
   const [newAgentName, setNewAgentName] = useState("");
-  const [newAgentScope, setNewAgentScope] = useState<"user" | "project">(
-    "user",
+  const [newAgentDescription, setNewAgentDescription] = useState("");
+  const [newAgentInstructions, setNewAgentInstructions] = useState("");
+  const [newAgentPersonaSource, setNewAgentPersonaSource] = useState("");
+  const [newAgentFrontmatter, setNewAgentFrontmatter] = useState<Record<string, unknown>>(
+    defaultAgentFrontmatter,
   );
+  const [agentJsonFieldText, setAgentJsonFieldText] = useState<Record<string, string>>(
+    () => Object.fromEntries(
+      AGENT_JSON_FRONTMATTER_FIELDS.map((field) => [
+        field,
+        jsonFieldText(defaultAgentFrontmatter()[field]),
+      ]),
+    ),
+  );
+  const [agentJsonFieldErrors, setAgentJsonFieldErrors] = useState<Record<string, boolean>>({});
+  const [mcpServerNames, setMcpServerNames] = useState<string[]>([]);
+  const [editingAgentPath, setEditingAgentPath] = useState<string | null>(null);
+  const [editingAgentScope, setEditingAgentScope] = useState<"user" | "project">("user");
+  const [editingAgentProjectPath, setEditingAgentProjectPath] = useState<string | null>(null);
+  const [deleteAgentTarget, setDeleteAgentTarget] = useState<AgentDefLike | null>(null);
+  const [deleteAgentError, setDeleteAgentError] = useState<string | null>(null);
   const [newAgentError, setNewAgentError] = useState<string | null>(null);
   const [overwriteTarget, setOverwriteTarget] = useState<{
     name: string;
     scope: "user" | "project";
   } | null>(null);
+  const [inlineDraft, setInlineDraft] = useState<
+    (api.AgentDefinitionFileInput & { kind: "role" | "persona"; isEditing: boolean; personaSource: string }) | null
+  >(null);
+  const [inlineError, setInlineError] = useState<string | null>(null);
+  const [rolePromptError, setRolePromptError] = useState(false);
+  const [personaInstructionsError, setPersonaInstructionsError] = useState(false);
+  const [inlineContractError, setInlineContractError] = useState(false);
+  const [personaContractText, setPersonaContractText] = useState({ inputs: "", outputs: "" });
+  const [inlineDeleteTarget, setInlineDeleteTarget] = useState<{
+    kind: "role" | "persona";
+    name: string;
+    scope: "user" | "project";
+    projectPath: string | null;
+  } | null>(null);
+  const agentsProjectPath = useRef(projectPath);
+  const agentsLoadSequence = useRef(0);
+  const projectsLoadSequence = useRef(0);
+  const selectedScopeProjectId = agentProjectIdForScope(agentsScopeSelection);
+  const selectedScopeProjectPath = agentProjectPathForScope(savedProjects, agentsScopeSelection);
+  const selectedScope = selectedScopeProjectPath ? "project" : "user";
+  agentsProjectPath.current = selectedScopeProjectPath;
 
   const [sources, setSources] = useState<MarketplaceSourceLike[]>([]);
   const [available, setAvailable] = useState<AvailablePluginLike[]>([]);
@@ -328,35 +475,108 @@ export function ExtensionsBuildExtras({
   }, [projectPath]);
 
   const loadAgents = useCallback(async () => {
+    const requestedProjectPath = agentsProjectPath.current;
+    const requestSequence = ++agentsLoadSequence.current;
+    const isCurrentRequest = () =>
+      isCurrentAgentCatalogRequest(
+        requestSequence,
+        agentsLoadSequence.current,
+        requestedProjectPath,
+        agentsProjectPath.current,
+      );
     if (!api.isTauri()) {
       setAgents([]);
+      setUserAgentsDir("");
+      setRoles([]);
+      setPersonas([]);
+      setDiscoveryWarnings([]);
       setAgentsLoading(false);
       return;
     }
     setAgentsLoading(true);
     setAgentsError(null);
     try {
-      const res = await api.agentsList(projectPath);
-      const list = sortAgentDefs(
-        (res.agents ?? []).map(
-          (a): AgentDefLike => ({
-            name: a.name,
-            path: a.path,
-            scope: (a.scope as AgentDefLike["scope"]) || "user",
-            description: a.description ?? null,
-          }),
-        ),
-      );
+      const res = await api.agentsList(requestedProjectPath);
+      if (!isCurrentRequest()) return;
+      const list = sortAgentDefs(mapAgentDefinitions(res.agents ?? []));
       setAgents(list);
-      setAgentsUserDir(res.userAgentsDir || "");
-      setAgentsProjectDir(res.projectAgentsDir ?? null);
+      setUserAgentsDir(res.userAgentsDir);
+      setRoles(sortAgentDefs(res.roles ?? []));
+      setPersonas(sortAgentDefs(res.personas ?? []));
+      setDiscoveryWarnings(res.warnings ?? []);
     } catch (e) {
+      if (!isCurrentRequest()) return;
       setAgents([]);
+      setUserAgentsDir("");
+      setRoles([]);
+      setPersonas([]);
+      setDiscoveryWarnings([]);
       setAgentsError(String(e));
     } finally {
-      setAgentsLoading(false);
+      if (isCurrentRequest()) setAgentsLoading(false);
     }
-  }, [projectPath]);
+  }, []);
+
+  const loadSavedProjects = useCallback(async () => {
+    if (!api.isTauri()) {
+      setSavedProjects([]);
+      return;
+    }
+    const request = ++projectsLoadSequence.current;
+    try {
+      const projects = await api.projectsList();
+      if (request === projectsLoadSequence.current) setSavedProjects(projects);
+    } catch {
+      if (request === projectsLoadSequence.current) {
+        setAgentsError(tr("ext.agents.error"));
+      }
+    }
+  }, [tr]);
+
+  useEffect(() => {
+    if (!showAgents) {
+      setSavedProjects([]);
+      return;
+    }
+    void loadSavedProjects();
+    return () => {
+      projectsLoadSequence.current += 1;
+    };
+  }, [loadSavedProjects, projectPath, showAgents]);
+
+  useEffect(() => {
+    if (
+      selectedScopeProjectId &&
+      (!savedProjects.some((project) => project.id === selectedScopeProjectId) ||
+        !agentProjectPathForScope(savedProjects, agentsScopeSelection))
+    ) {
+      setAgentsScopeSelection("global");
+    }
+  }, [agentsScopeSelection, savedProjects, selectedScopeProjectId]);
+
+  useEffect(() => {
+    if (!showAgents || !api.isTauri()) {
+      setMcpServerNames([]);
+      return;
+    }
+    let isCurrent = true;
+    void api.inspectMcp(selectedScopeProjectPath).then((result) => {
+      if (isCurrent) {
+        if (result.error) setAgentsError(tr("ext.agents.error"));
+        setMcpServerNames(
+          [...new Set((result.servers ?? []).map((server) => server.name))].sort((a, b) => a.localeCompare(b)),
+        );
+      }
+    }).catch(() => {
+      if (isCurrent) {
+        setMcpServerNames([]);
+        setAgentsError(tr("ext.agents.error"));
+      }
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [selectedScopeProjectPath, showAgents, tr]);
 
   const revealAgentPath = useCallback(
     async (path: string | null | undefined) => {
@@ -370,6 +590,24 @@ export function ExtensionsBuildExtras({
     },
     [],
   );
+
+  const openUserAgentsDirectory = useCallback(async () => {
+    if (!api.isTauri()) return;
+    setAgentsError(null);
+    try {
+      await api.agentsOpenUserDirectory(
+        agentsView,
+        selectedScope,
+        selectedScopeProjectPath,
+      );
+    } catch {
+      setAgentsError(tr("ext.agents.openUserError"));
+    }
+  }, [agentsView, selectedScope, selectedScopeProjectPath, tr]);
+
+  const refreshAgentWorkspace = useCallback(() => {
+    void Promise.all([loadAgents(), loadSavedProjects()]);
+  }, [loadAgents, loadSavedProjects]);
 
   const openAgentFile = useCallback(async (path: string | null | undefined) => {
     const p = (path ?? "").trim();
@@ -386,10 +624,106 @@ export function ExtensionsBuildExtras({
     }
   }, []);
 
+  const updateAgentFrontmatter = useCallback((field: string, value: unknown) => {
+    setNewAgentFrontmatter((current) => ({ ...current, [field]: value }));
+  }, []);
+
+  const updateAgentJsonField = useCallback((field: string, text: string) => {
+    setAgentJsonFieldText((current) => ({ ...current, [field]: text }));
+    if (!text.trim()) {
+      setNewAgentFrontmatter((current) => ({ ...current, [field]: undefined }));
+      setAgentJsonFieldErrors((current) => ({ ...current, [field]: false }));
+      return;
+    }
+    try {
+      const parsed: unknown = JSON.parse(text);
+      const isArrayField = field === "mcpServers";
+      const isExpected = isArrayField
+        ? Array.isArray(parsed)
+        : typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+      if (!isExpected) {
+        setAgentJsonFieldErrors((current) => ({ ...current, [field]: true }));
+        return;
+      }
+      setNewAgentFrontmatter((current) => ({ ...current, [field]: parsed }));
+      setAgentJsonFieldErrors((current) => ({ ...current, [field]: false }));
+    } catch {
+      setAgentJsonFieldErrors((current) => ({ ...current, [field]: true }));
+    }
+  }, []);
+
+  const updatePersonaContract = useCallback((field: "inputs" | "outputs", text: string) => {
+    setPersonaContractText((current) => ({ ...current, [field]: text }));
+    if (!text.trim()) {
+      setInlineDraft((draft) => draft ? { ...draft, [field]: undefined } : draft);
+      setInlineContractError(false);
+      return;
+    }
+    try {
+      const value: unknown = JSON.parse(text);
+      if (!Array.isArray(value)) {
+        setInlineContractError(true);
+        return;
+      }
+      setInlineDraft((draft) => draft ? { ...draft, [field]: value } : draft);
+      setInlineContractError(false);
+    } catch {
+      setInlineContractError(true);
+    }
+  }, []);
+
+  const openAgentDefinitionEditor = useCallback(async (agent: AgentDefLike) => {
+    if (!agent.path || !api.isTauri()) return;
+    const scope = agent.scope === "project" ? "project" : "user";
+    const projectRoot = scope === "project" ? selectedScopeProjectPath : null;
+    setAgentsBusy("agent-edit");
+    setAgentsError(null);
+    try {
+      const result = await api.agentsReadMarkdownDefinition(agent.path, scope, projectRoot);
+      const frontmatter = result.frontmatter;
+      setNewAgentName(String(frontmatter.name ?? agent.name));
+      setNewAgentDescription(String(frontmatter.description ?? agent.description ?? ""));
+      setNewAgentInstructions(result.instructions);
+      const currentPersona = personas.find(
+        (persona) => persona.name.toLocaleLowerCase() === agent.name.toLocaleLowerCase(),
+      );
+      setNewAgentPersonaSource(
+        currentPersona
+          ? `${currentPersona.scope === "project" ? "project" : "user"}::${currentPersona.name}`
+          : "",
+      );
+      setNewAgentFrontmatter(frontmatter);
+      setAgentJsonFieldText(Object.fromEntries(
+        AGENT_JSON_FRONTMATTER_FIELDS.map((field) => [
+          field,
+          jsonFieldText(frontmatter[field]),
+        ]),
+      ));
+      setAgentJsonFieldErrors({});
+      setEditingAgentPath(result.path);
+      setEditingAgentScope(scope);
+      setEditingAgentProjectPath(projectRoot);
+      setNewAgentError(null);
+      setNewAgentOpen(true);
+    } catch {
+      setAgentsError(tr("ext.agents.saveError"));
+    } finally {
+      setAgentsBusy(null);
+    }
+  }, [personas, selectedScopeProjectPath, tr]);
+
   const runScaffold = useCallback(
     async (opts: {
       name: string;
       scope: "user" | "project";
+      projectPath?: string | null;
+      path?: string | null;
+      frontmatter?: Record<string, unknown>;
+      personaSource?: string;
+      personaTargetScope?: "user" | "project";
+      personaProjectPath?: string | null;
+      description: string;
+      instructions: string;
       force?: boolean;
     }) => {
       if (!api.isTauri()) return;
@@ -400,56 +734,255 @@ export function ExtensionsBuildExtras({
         setNewAgentError(tr("ext.agents.nameInvalid"));
         return;
       }
-      if (opts.scope === "project" && !projectPath?.trim()) {
+      const scopeProjectPath = opts.scope === "project"
+        ? opts.projectPath ?? selectedScopeProjectPath
+        : null;
+      if (opts.scope === "project" && !scopeProjectPath?.trim()) {
         setNewAgentError(tr("ext.agents.needProject"));
         return;
       }
       setAgentsBusy("scaffold");
       setNewAgentError(null);
-      setAgentsHint(null);
+      let definitionSaved = false;
       try {
-        const res = await api.agentsScaffold({
+        const res = await api.agentsCreateDefinition({
           name: stem,
           scope: opts.scope,
-          projectPath,
+          description: opts.description,
+          instructions: opts.instructions,
+          projectPath: scopeProjectPath,
           force: opts.force ?? false,
+          frontmatter: opts.frontmatter ?? newAgentFrontmatter,
+          path: opts.path ?? null,
         });
+        definitionSaved = true;
+        if (!opts.path) {
+          setEditingAgentPath(res.path);
+          setEditingAgentScope(opts.scope);
+          setEditingAgentProjectPath(scopeProjectPath);
+        }
+        const personaSource = parsePersonaSource(opts.personaSource ?? "");
+        if (opts.path || personaSource) {
+          const personaTargetScope = opts.personaTargetScope ?? opts.scope;
+          const personaProjectPath = opts.personaProjectPath ?? scopeProjectPath;
+          await api.agentsApplyPersona({
+            targetAgentType: stem,
+            targetScope: personaTargetScope,
+            targetProjectPath: personaTargetScope === "project" ? personaProjectPath : null,
+            personaAgentType: personaSource?.name ?? null,
+            personaScope: personaSource?.scope ?? null,
+            personaProjectPath: personaSource?.scope === "project" ? personaProjectPath : null,
+          });
+        }
         setNewAgentOpen(false);
         setOverwriteTarget(null);
         setNewAgentName("");
+        setNewAgentDescription("");
+        setNewAgentInstructions("");
+        setNewAgentPersonaSource("");
+        setEditingAgentPath(null);
+        setEditingAgentProjectPath(null);
+        const defaults = defaultAgentFrontmatter();
+        setNewAgentFrontmatter(defaults);
+        setAgentJsonFieldText(Object.fromEntries(
+          AGENT_JSON_FRONTMATTER_FIELDS.map((field) => [
+            field,
+            jsonFieldText(defaults[field]),
+          ]),
+        ));
+        setAgentJsonFieldErrors({});
         await loadAgents();
-        setAgentsHint(
-          res.overwritten
-            ? tr("ext.agents.overwritten", { name: res.name })
-            : tr("ext.agents.created", { name: res.name }),
-        );
-        if (res.path) {
-          void openAgentFile(res.path);
-        }
       } catch (e) {
         const msg = String(e || "");
-        if (/already exists/i.test(msg) && !opts.force) {
+        if (definitionSaved) {
+          setNewAgentError(tr("ext.agents.personaLinkError"));
+        } else if (/already exists/i.test(msg) && !opts.force) {
           setOverwriteTarget({ name: stem, scope: opts.scope });
+          setNewAgentOpen(false);
           setNewAgentError(null);
-        } else if (/required|invalid|letters|reserved|long|path/i.test(msg)) {
+        } else if (msg === "agent settings are read-only in shared mode") {
+          setNewAgentError(tr("ext.agents.sharedReadOnly"));
+        } else if (/agent name|invalid agent name|reserved agent|path separators|agent name too long/i.test(msg)) {
           setNewAgentError(tr("ext.agents.nameInvalid"));
         } else {
-          setNewAgentError(msg || tr("ext.agents.createError"));
+          setNewAgentError(tr("ext.agents.createError"));
         }
       } finally {
         setAgentsBusy(null);
       }
     },
-    [loadAgents, openAgentFile, projectPath, tr],
+    [loadAgents, newAgentFrontmatter, selectedScopeProjectPath, tr],
   );
 
   const submitNewAgent = useCallback(() => {
     void runScaffold({
       name: newAgentName,
-      scope: newAgentScope,
+      scope: editingAgentPath ? editingAgentScope : selectedScope,
+      projectPath: editingAgentPath ? editingAgentProjectPath : selectedScopeProjectPath,
+      path: editingAgentPath,
+      frontmatter: {
+        ...newAgentFrontmatter,
+        name: newAgentName,
+        description: newAgentDescription,
+      },
+      personaSource: newAgentPersonaSource,
+      personaTargetScope: selectedScope,
+      personaProjectPath: selectedScopeProjectPath,
+      description: newAgentDescription,
+      instructions: newAgentInstructions,
       force: false,
     });
-  }, [newAgentName, newAgentScope, runScaffold]);
+  }, [editingAgentPath, editingAgentProjectPath, editingAgentScope, newAgentDescription, newAgentFrontmatter, newAgentInstructions, newAgentName, newAgentPersonaSource, runScaffold, selectedScope, selectedScopeProjectPath]);
+
+  const openInlineEditor = useCallback(
+    (kind: "role" | "persona", entry?: api.AgentDefinitionDto) => {
+      setAgentsError(null);
+      setInlineError(null);
+      setRolePromptError(false);
+      setPersonaInstructionsError(false);
+      setInlineContractError(false);
+      const scope = entry
+        ? entry.scope === "project" ? "project" : "user"
+        : selectedScope;
+      const existingPersona = kind === "role" && entry
+        ? personas.find((persona) => persona.name.toLocaleLowerCase() === entry.name.toLocaleLowerCase())
+        : undefined;
+      const inputs = entry?.inputs;
+      const outputs = entry?.outputs;
+      setPersonaContractText({
+        inputs: inputs === undefined ? "" : JSON.stringify(inputs, null, 2),
+        outputs: outputs === undefined ? "" : JSON.stringify(outputs, null, 2),
+      });
+      setInlineDraft({
+        kind,
+        isEditing: !!entry,
+        personaSource: existingPersona
+          ? `${existingPersona.scope === "project" ? "project" : "user"}::${existingPersona.name}`
+          : "",
+        name: entry?.name ?? "",
+        scope,
+        projectPath: scope === "project" ? selectedScopeProjectPath : null,
+        description: entry?.description ?? "",
+        instructions: entry?.instructions ?? "",
+        instructionsFile: entry?.instructionsFile ?? null,
+        inputs,
+        outputs,
+        defaultCapabilityMode: entry?.defaultCapabilityMode ?? "",
+        model: entry?.model ?? "",
+        promptFile: entry?.promptFile ?? "",
+        prompt: entry?.prompt ?? null,
+        reasoningEffort: entry?.reasoningEffort ?? "",
+        defaultIsolation: entry?.defaultIsolation ?? "",
+      });
+    },
+    [personas, selectedScope, selectedScopeProjectPath],
+  );
+
+  const saveInlineDefinition = useCallback(async () => {
+    if (!inlineDraft || !api.isTauri()) return;
+    if (
+      inlineDraft.kind === "role" &&
+      !inlineDraft.prompt?.trim()
+    ) {
+      setRolePromptError(true);
+      return;
+    }
+    if (
+      inlineDraft.kind === "persona" &&
+      !inlineDraft.instructions?.trim()
+    ) {
+      setPersonaInstructionsError(true);
+      return;
+    }
+    if (inlineContractError) return;
+    setRolePromptError(false);
+    setPersonaInstructionsError(false);
+    setAgentsBusy("inline");
+    setAgentsError(null);
+    setInlineError(null);
+    let definitionSaved = false;
+    try {
+      const { isEditing, personaSource, ...input } = inlineDraft;
+      await api.agentsUpsertFileDefinition(input);
+      definitionSaved = true;
+      if (inlineDraft.kind === "role" && (isEditing || parsePersonaSource(personaSource))) {
+        const source = parsePersonaSource(personaSource);
+        // 工具栏 scope 决定 Persona 关联写入目标；定义文件仍按草稿原 scope 保存。
+        await api.agentsApplyPersona({
+          targetAgentType: inlineDraft.name.trim(),
+          targetScope: selectedScope,
+          targetProjectPath: selectedScopeProjectPath,
+          personaAgentType: source?.name ?? null,
+          personaScope: source?.scope ?? null,
+          personaProjectPath: source?.scope === "project" ? selectedScopeProjectPath : null,
+        });
+      }
+      setInlineDraft(null);
+      setRolePromptError(false);
+      setPersonaInstructionsError(false);
+      setInlineContractError(false);
+      await loadAgents();
+    } catch (error) {
+      setInlineError(tr(definitionSaved ? "ext.agents.personaLinkError" : "ext.agents.saveError"));
+    } finally {
+      setAgentsBusy(null);
+    }
+  }, [inlineContractError, inlineDraft, loadAgents, selectedScope, selectedScopeProjectPath, tr]);
+
+  const deleteInlineDefinition = useCallback(async () => {
+    if (!inlineDeleteTarget || !api.isTauri()) return;
+    setAgentsBusy("inline");
+    setAgentsError(null);
+    setInlineError(null);
+    try {
+      await api.agentsDeleteFileDefinition(
+        inlineDeleteTarget.kind,
+        inlineDeleteTarget.name,
+        inlineDeleteTarget.scope,
+        inlineDeleteTarget.projectPath,
+      );
+      setInlineDeleteTarget(null);
+      await loadAgents();
+    } catch (error) {
+      setInlineError(tr("ext.agents.saveError"));
+    } finally {
+      setAgentsBusy(null);
+    }
+  }, [inlineDeleteTarget, loadAgents, tr]);
+
+  const deleteAgentDefinition = useCallback(async () => {
+    if (!deleteAgentTarget?.path || !api.isTauri()) return;
+    const scope = deleteAgentTarget.scope === "project" ? "project" : "user";
+    const projectRoot = scope === "project" ? selectedScopeProjectPath : null;
+    setAgentsBusy("agent-delete");
+    setDeleteAgentError(null);
+    try {
+      await api.agentsDeleteMarkdownDefinition(deleteAgentTarget.path, scope, projectRoot);
+      setDeleteAgentTarget(null);
+      await loadAgents();
+    } catch {
+      setDeleteAgentError(tr("ext.agents.saveError"));
+    } finally {
+      setAgentsBusy(null);
+    }
+  }, [deleteAgentTarget, loadAgents, selectedScopeProjectPath, tr]);
+
+  const setDefaultAgent = useCallback(
+    async (agent: AgentDefLike) => {
+      if (!agent.path || !api.isTauri()) return;
+      setAgentsBusy("default");
+      setAgentsError(null);
+      try {
+        await api.agentsSetDefaultDefinition(agent.path, selectedScopeProjectPath);
+        await loadAgents();
+      } catch (error) {
+        setAgentsError(tr("ext.agents.saveError"));
+      } finally {
+        setAgentsBusy(null);
+      }
+    },
+    [loadAgents, selectedScopeProjectPath, tr],
+  );
 
   const loadMarket = useCallback(async (force = false) => {
     // Soft-fail: no CLI / non-desktop — never hard-crash the marketplace tab.
@@ -558,7 +1091,7 @@ export function ExtensionsBuildExtras({
 
   useEffect(() => {
     if (showAgents) void loadAgents();
-  }, [loadAgents, showAgents]);
+  }, [loadAgents, selectedScopeProjectPath, showAgents]);
 
   const marketChips = useMemo(() => {
     const chips: { id: string; label: string }[] = [];
@@ -873,11 +1406,27 @@ export function ExtensionsBuildExtras({
   };
 
   const scopeLabel = (scope: string) => {
-    if (scope === "project") return tr("ext.hooks.scope.project");
+    if (scope === "config") return tr("ext.agents.source.config");
+    if (scope === "project") return tr("ext.agents.scope.project");
     if (scope === "bundled" || scope === "builtin") {
       return tr("ext.agents.scope.bundled");
     }
-    return tr("ext.hooks.scope.user");
+    return tr("ext.agents.scope.user");
+  };
+
+  const warningMessage = (code: api.AgentDiscoveryWarningDto["code"]) => {
+    switch (code) {
+      case "directoryRead":
+        return tr("ext.agents.warning.directoryRead");
+      case "directoryTruncated":
+        return tr("ext.agents.warning.directoryTruncated");
+      case "definitionRead":
+        return tr("ext.agents.warning.definitionRead");
+      case "configRead":
+        return tr("ext.agents.warning.configRead");
+      case "agentDefinitionInvalid":
+        return tr("ext.agents.warning.agentDefinitionInvalid");
+    }
   };
 
   const agentNamePreview = useMemo(() => {
@@ -889,25 +1438,75 @@ export function ExtensionsBuildExtras({
   }, [newAgentName]);
 
   const canSubmitNewAgent =
+    canManageAgentWorkspace(sessionDataMode) &&
     isValidAgentFileStemName(newAgentName) &&
-    (newAgentScope !== "project" || !!projectPath?.trim()) &&
+    !!newAgentDescription.trim() &&
+    !!newAgentInstructions.trim() &&
+    (selectedScope !== "project" || !!selectedScopeProjectPath?.trim()) &&
+    !Object.values(agentJsonFieldErrors).some(Boolean) &&
     agentsBusy !== "scaffold";
+  const canSaveInlineDefinition =
+    !!inlineDraft &&
+    /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(inlineDraft.name.trim()) &&
+    !inlineContractError &&
+    !agentsBusy;
+  const agentScopeOptions = useMemo(
+    () => agentProjectScopeOptions(savedProjects, tr("ext.agents.scope.user")),
+    [savedProjects, tr],
+  );
+  const agentTypeOptions = useMemo(() => {
+    const definitions = [...agents, ...roles].filter(
+      (entry) =>
+        (entry.scope === "user" || entry.scope === "project") && !!entry.path,
+    );
+    return [...new Set(definitions.map((entry) => entry.name))]
+      .sort((left, right) => left.localeCompare(right))
+      .map((name) => ({ value: name, label: name }));
+  }, [agents, roles]);
+  const personaOptions = useMemo(
+    () => [
+      { value: "", label: tr("ext.agents.unset") },
+      ...reusablePersonaDefinitions(personas).map((persona) => {
+        const scope = persona.scope === "project" ? "project" : "user";
+        const scopeLabel = scope === "project"
+          ? tr("ext.agents.scope.project")
+          : tr("ext.agents.scope.user");
+        return {
+          value: `${scope}::${persona.name}`,
+          label: `${persona.name} · ${scopeLabel}`,
+        };
+      }),
+    ],
+    [personas, tr],
+  );
 
   const openNewAgentDialog = useCallback(() => {
     setNewAgentError(null);
-    setAgentsHint(null);
     setNewAgentName("");
-    setNewAgentScope(projectPath?.trim() ? "project" : "user");
+    setNewAgentDescription("");
+    setNewAgentInstructions("");
+    setNewAgentPersonaSource("");
+    setEditingAgentPath(null);
+    setEditingAgentProjectPath(null);
+    setEditingAgentScope(selectedScope);
+    const defaults = defaultAgentFrontmatter();
+    setNewAgentFrontmatter(defaults);
+    setAgentJsonFieldText(Object.fromEntries(
+      AGENT_JSON_FRONTMATTER_FIELDS.map((field) => [
+        field,
+        jsonFieldText(defaults[field]),
+      ]),
+    ));
+    setAgentJsonFieldErrors({});
     setNewAgentOpen(true);
-  }, [projectPath]);
+  }, [selectedScope]);
 
   useEffect(() => {
     if (!showAgents || !onTabActionsChange) return;
     onTabActionsChange({
       refresh: () => {
-        void loadAgents();
+        refreshAgentWorkspace();
       },
-      openNew: openNewAgentDialog,
       busy: !!agentsBusy,
       loading: agentsLoading,
     });
@@ -915,36 +1514,30 @@ export function ExtensionsBuildExtras({
   }, [
     showAgents,
     onTabActionsChange,
-    loadAgents,
-    openNewAgentDialog,
+    refreshAgentWorkspace,
     agentsBusy,
     agentsLoading,
   ]);
 
-  const filteredAgents = useMemo(() => {
-    if (!q) return agents;
-    return agents.filter((a) => {
-      const hay = [a.name, a.description ?? "", a.scope, a.path ?? ""]
-        .join(" ")
-        .toLowerCase();
-      return hay.includes(q);
-    });
-  }, [agents, q]);
-
   const agentsByScope = useMemo(() => {
     const groups: {
-      key: "project" | "user" | "bundled";
+      key: "config" | "project" | "user" | "bundled";
       label: string;
       items: AgentDefLike[];
     }[] = [
       {
+        key: "config",
+        label: tr("ext.agents.source.config"),
+        items: [],
+      },
+      {
         key: "project",
-        label: tr("ext.agents.group.project"),
+        label: tr("ext.agents.scope.project"),
         items: [],
       },
       {
         key: "user",
-        label: tr("ext.agents.group.user"),
+        label: tr("ext.agents.scope.user"),
         items: [],
       },
       {
@@ -953,21 +1546,20 @@ export function ExtensionsBuildExtras({
         items: [],
       },
     ];
-    for (const a of filteredAgents) {
-      const g =
-        a.scope === "project"
-          ? groups[0]
-          : a.scope === "bundled"
-            ? groups[2]
-            : groups[1];
+    for (const a of agents) {
+      const g = groups.find((group) => group.key === a.scope) ?? groups[2];
       g.items.push(a);
     }
     return groups.filter((g) => g.items.length > 0);
-  }, [filteredAgents, tr]);
+  }, [agents, tr]);
+
+  const currentViewWarnings = discoveryWarnings;
 
   const renderAgentRow = (a: AgentDefLike) => {
     const tone = agentScopeTone(a.scope);
     const editable = a.path && a.scope !== "bundled";
+    const manageable = canManageAgentWorkspace(sessionDataMode) &&
+      (a.scope === "user" || a.scope === "project") && !!a.path;
     return (
       <li
         key={`${a.scope}:${a.name}:${a.path}`}
@@ -988,6 +1580,11 @@ export function ExtensionsBuildExtras({
               <span className={`ext-ref-badge ext-badge--${tone}`}>
                 {scopeLabel(a.scope)}
               </span>
+            {a.isDefault ? (
+                <span className="ext-ref-badge ext-badge--muted">
+                  {tr("ext.agents.defaultDefinition")}
+                </span>
+              ) : null}
               {a.path ? (
                 <span className="ext-ref-block__meta" title={a.path}>
                   {shortPathLabel(a.path, 36)}
@@ -996,6 +1593,43 @@ export function ExtensionsBuildExtras({
             </div>
           </div>
           <div className="ext-ref-row__end">
+            {canManageAgentWorkspace(sessionDataMode) &&
+            (a.scope === "user" || a.scope === "project") &&
+            a.path &&
+            !a.isDefault ? (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm"
+                disabled={!!agentsBusy}
+                onClick={() => void setDefaultAgent(a)}
+              >
+                {tr("ext.agents.setDefault")}
+              </button>
+            ) : null}
+            {manageable ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!!agentsBusy}
+                  onClick={() => void openAgentDefinitionEditor(a)}
+                >
+                  {tr("ext.agents.edit")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost btn--sm"
+                  disabled={!!agentsBusy}
+                  aria-label={tr("ext.agents.delete", { name: a.name })}
+                  onClick={() => {
+                    setDeleteAgentError(null);
+                    setDeleteAgentTarget(a);
+                  }}
+                >
+                  <IconTrash size={13} />
+                </button>
+              </>
+            ) : null}
             {editable ? (
               <button
                 type="button"
@@ -1007,7 +1641,7 @@ export function ExtensionsBuildExtras({
                 <span>{tr("ext.agents.open")}</span>
               </button>
             ) : null}
-            {a.path ? (
+            {a.path && a.scope !== "config" ? (
               <button
                 type="button"
                 className="btn btn--ghost btn--sm"
@@ -1036,13 +1670,13 @@ export function ExtensionsBuildExtras({
             data-testid="ext-agents-panel"
           >
             {!hidePageToolbar ? (
-              <div className="ext-ref-block__head ext-ref-toolbar">
-                <span className="ext-ref-block__actions">
+          <div className="ext-ref-block__head ext-ref-toolbar">
+            <span className="ext-ref-block__actions">
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
                     disabled={!!agentsBusy}
-                    onClick={() => void loadAgents()}
+                    onClick={refreshAgentWorkspace}
                   >
                     <IconRefresh size={14} />
                     <span>
@@ -1051,66 +1685,80 @@ export function ExtensionsBuildExtras({
                         : tr("ext.refresh")}
                     </span>
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn--solid btn--sm"
-                    disabled={!!agentsBusy}
-                    onClick={openNewAgentDialog}
-                  >
-                    <IconPlus size={14} />
-                    <span>{tr("ext.agents.new")}</span>
-                  </button>
                 </span>
               </div>
             ) : null}
 
-            <section className="ext-ref-block">
-              <div className="ext-ref-section-label">
-                {tr("ext.agents.locationsTitle")}
+            <div className="ext-agents__header">
+              <div
+                className="ext-ref-tabs"
+                role="tablist"
+                aria-label={tr("ext.agents.workspace")}
+              >
+                <div className="ext-ref-tabs__list">
+                  {(["agents", "roles", "personas"] as const).map((view) => (
+                    <button
+                      key={view}
+                      type="button"
+                      role="tab"
+                      aria-selected={agentsView === view}
+                      className={`ext-ref-tabs__tab${agentsView === view ? " is-on" : ""}`}
+                      onClick={() => setAgentsView(view)}
+                    >
+                      {tr(`ext.agents.view.${view}`)}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="ext-ref-dir-bar">
-                <div className="ext-ref-dir-group">
-                  <span className="ext-ref-dir-group__label">
-                    {tr("ext.agents.group.user")}
-                  </span>
-                  <div className="ext-ref-dir-group__actions">
+              <div className="ext-ref-tabs__trail ext-agents__tabs-trail">
+                <div className="ext-ref-tabs__actions">
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    disabled={!!agentsBusy}
+                    title={agentsView === "agents" ? userAgentsDir || undefined : undefined}
+                    onClick={() => void openUserAgentsDirectory()}
+                  >
+                    <IconFolder size={13} />
+                    <span>{tr(selectedScope === "project" ? "ext.agents.openProject" : "ext.agents.openUser")}</span>
+                  </button>
+                  <Select
+                    value={agentsScopeSelection}
+                    options={agentScopeOptions}
+                    onChange={setAgentsScopeSelection}
+                    aria-label={tr("ext.agents.scope")}
+                    disabled={!!agentsBusy || agentScopeOptions.length <= 1}
+                  />
+                  {canManageAgentWorkspace(sessionDataMode) && agentsView === "agents" ? (
                     <button
                       type="button"
-                      className="btn btn--ghost btn--sm"
-                      disabled={!!agentsBusy || !agentsUserDir}
-                      title={agentsUserDir || undefined}
-                      onClick={() => void revealAgentPath(agentsUserDir)}
+                      className="btn btn--solid btn--sm"
+                      disabled={!!agentsBusy}
+                      onClick={openNewAgentDialog}
                     >
-                      <IconFolder size={13} />
-                      <span>{tr("ext.agents.openUser")}</span>
+                      <IconPlus size={13} />
+                      <span>{tr("ext.agents.new")}</span>
                     </button>
-                  </div>
-                </div>
-                <div className="ext-ref-dir-group">
-                  <span className="ext-ref-dir-group__label">
-                    {tr("ext.agents.group.project")}
-                  </span>
-                  <div className="ext-ref-dir-group__actions">
-                    {projectPath?.trim() && agentsProjectDir ? (
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        disabled={!!agentsBusy}
-                        title={agentsProjectDir}
-                        onClick={() => void revealAgentPath(agentsProjectDir)}
-                      >
-                        <IconFolder size={13} />
-                        <span>{tr("ext.agents.openProject")}</span>
-                      </button>
-                    ) : (
-                      <span className="ext-ref-block__meta">
-                        {tr("ext.agents.needProjectHint")}
-                      </span>
-                    )}
-                  </div>
+                  ) : null}
+                  {canManageAgentWorkspace(sessionDataMode) && agentsView !== "agents" ? (
+                    <button
+                      type="button"
+                      className="btn btn--solid btn--sm"
+                      disabled={!!agentsBusy || (agentsView === "personas" && agentTypeOptions.length === 0)}
+                      onClick={() => openInlineEditor(agentsView === "roles" ? "role" : "persona")}
+                    >
+                      <IconPlus size={13} />
+                      <span>{tr("ext.agents.newDefinition", { kind: tr(`ext.agents.view.${agentsView}`) })}</span>
+                    </button>
+                  ) : null}
                 </div>
               </div>
-            </section>
+            </div>
+            {sessionDataMode === "shared" ? (
+              <p className="ext-ref-block__lead">
+                {tr("ext.agents.sharedReadOnly")}
+              </p>
+            ) : null}
 
             {agentsError ? (
               <div className="ext-alert ext-alert--error" role="alert">
@@ -1118,19 +1766,11 @@ export function ExtensionsBuildExtras({
                 <p className="ext-alert__body">{agentsError}</p>
               </div>
             ) : null}
-            {agentsHint ? (
-              <p className="ext-ref-block__lead" role="status">
-                {agentsHint}
-              </p>
-            ) : null}
-
             {agentsLoading ? (
               <p className="ext-ref-empty">{tr("ext.agents.loading")}</p>
-            ) : agents.length === 0 ? (
+            ) : agentsView === "agents" && agents.length === 0 ? (
               <p className="ext-ref-empty">{tr("ext.agents.empty")}</p>
-            ) : filteredAgents.length === 0 ? (
-              <p className="ext-ref-empty">{tr("ext.plugins.filterEmpty")}</p>
-            ) : (
+            ) : agentsView === "agents" ? (
               agentsByScope.map((group) => (
                 <section key={group.key} className="ext-ref-block">
                   <div className="ext-ref-section-label">
@@ -1144,15 +1784,151 @@ export function ExtensionsBuildExtras({
                   </ul>
                 </section>
               ))
-            )}
+            ) : (() => {
+              const entries = agentsView === "roles" ? roles : personas;
+              if (!entries.length) {
+                return (
+                  <p className="ext-ref-empty">
+                    {tr("ext.agents.emptyView", {
+                      view: tr(`ext.agents.view.${agentsView}`),
+                    })}
+                  </p>
+                );
+              }
+              return (
+                <ul className="ext-ref-list">
+                  {entries.map((entry) => (
+                    <li
+                      key={`${entry.scope}:${entry.name}:${entry.path}`}
+                      className="ext-ref-row ext-ref-row--dense"
+                    >
+                      <div className="ext-ref-row__main">
+                        <div className="ext-ref-row__icon" aria-hidden>
+                          <IconRobot size={14} />
+                        </div>
+                        <div className="ext-ref-row__body">
+                          <div className="ext-ref-row__title">{entry.name}</div>
+                          {entry.description ? (
+                            <div className="ext-ref-row__desc">
+                              {entry.description}
+                            </div>
+                          ) : null}
+                          <div className="ext-ref-row__meta">
+                            <span
+                              className={`ext-ref-badge ext-badge--${agentScopeTone(entry.scope)}`}
+                            >
+                              {scopeLabel(entry.scope)}
+                            </span>
+                            <span
+                              className="ext-ref-block__meta"
+                              title={entry.path}
+                            >
+                              {shortPathLabel(entry.path, 48)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="ext-ref-row__end">
+                          {canManageAgentWorkspace(sessionDataMode) && (entry.scope === "user" || entry.scope === "project") ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                disabled={!!agentsBusy}
+                                onClick={() => openInlineEditor(agentsView === "roles" ? "role" : "persona", entry)}
+                              >
+                                {tr("ext.agents.edit")}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn--ghost btn--sm"
+                                disabled={!!agentsBusy}
+                                aria-label={tr("ext.agents.delete", { name: entry.name })}
+                                onClick={() => setInlineDeleteTarget({
+                                  kind: agentsView === "roles" ? "role" : "persona",
+                                  name: entry.name,
+                                  scope: entry.scope === "project" ? "project" : "user",
+                                  projectPath: entry.scope === "project" ? selectedScopeProjectPath : null,
+                                })}
+                              >
+                                <IconTrash size={13} />
+                              </button>
+                            </>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={!!agentsBusy}
+                            onClick={() => void openAgentFile(entry.path)}
+                          >
+                            <IconExternalLink size={13} />
+                            <span>{tr("ext.agents.open")}</span>
+                          </button>
+                          {entry.scope !== "config" ? (
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              disabled={!!agentsBusy}
+                              title={entry.path}
+                              onClick={() => void revealAgentPath(entry.path)}
+                            >
+                              <IconFolder size={13} />
+                              <span>{tr("ext.agents.reveal")}</span>
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              );
+            })()}
+            {currentViewWarnings.length ? (
+              <section
+                className="ext-ref-block"
+                aria-label={tr("ext.agents.warnings")}
+              >
+                <div className="ext-ref-section-label">
+                  {tr("ext.agents.warnings")}
+                </div>
+                <ul className="ext-ref-list">
+                  {currentViewWarnings.map((warning, index) => (
+                    <li
+                      key={`${warning.source}:${warning.path}:${index}`}
+                      className="ext-ref-row ext-ref-row--dense"
+                    >
+                      <div className="ext-ref-row__main">
+                        <div className="ext-ref-row__body">
+                          <div className="ext-ref-row__title">
+                            {scopeLabel(warning.source)}
+                          </div>
+                          <div className="ext-ref-row__desc">
+                            {warningMessage(warning.code)}
+                          </div>
+                          <div className="ext-ref-row__meta">
+                            <span
+                              className="ext-ref-block__meta"
+                              title={warning.path}
+                            >
+                              {shortPathLabel(warning.path, 48)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
           </div>
 
           <GlassModal
             open={newAgentOpen}
             onClose={() => {
-              if (agentsBusy !== "scaffold") setNewAgentOpen(false);
+              if (!agentsBusy) setNewAgentOpen(false);
             }}
-            title={tr("ext.agents.newTitle")}
+            title={tr(editingAgentPath ? "ext.agents.editTitle" : "ext.agents.newTitle", {
+              kind: tr("ext.agents.view.agents"),
+            })}
             size="md"
             closeLabel={tr("common.close")}
             wrapBody
@@ -1161,8 +1937,11 @@ export function ExtensionsBuildExtras({
                 <button
                   type="button"
                   className="btn btn--ghost"
-                  disabled={agentsBusy === "scaffold"}
-                  onClick={() => setNewAgentOpen(false)}
+                  disabled={!!agentsBusy}
+                  onClick={() => {
+                    setNewAgentOpen(false);
+                    setEditingAgentPath(null);
+                  }}
                 >
                   {tr("common.cancel")}
                 </button>
@@ -1174,7 +1953,7 @@ export function ExtensionsBuildExtras({
                 >
                   {agentsBusy === "scaffold"
                     ? tr("ext.agents.creating")
-                    : tr("ext.agents.create")}
+                    : tr(editingAgentPath ? "common.save" : "ext.agents.create")}
                 </button>
               </>
             }
@@ -1194,48 +1973,197 @@ export function ExtensionsBuildExtras({
                   value={newAgentName}
                   onChange={(e) => {
                     setNewAgentName(e.target.value);
+                    setNewAgentFrontmatter((frontmatter) => ({ ...frontmatter, name: e.target.value }));
                     setNewAgentError(null);
                   }}
                   placeholder={tr("ext.agents.namePlaceholder")}
                   autoComplete="off"
+                  maxLength={64}
                   spellCheck={false}
-                  disabled={agentsBusy === "scaffold"}
+                  disabled={!!agentsBusy || !!editingAgentPath}
                   autoFocus
                 />
                 {agentNamePreview && agentNamePreview !== newAgentName.trim() ? (
                   <span className="ext-field-hint">
                     {tr("ext.agents.namePreview", { name: agentNamePreview })}
                   </span>
+                ) : newAgentName.length > 0 && !isValidAgentFileStemName(newAgentName) ? (
+                  <span className="ext-field-hint">{tr("ext.agents.nameInvalid")}</span>
                 ) : null}
               </label>
               <label className="field">
-                <span>{tr("ext.agents.scope")}</span>
-                <Select
-                  value={newAgentScope}
-                  aria-label={tr("ext.agents.scope")}
-                  disabled={agentsBusy === "scaffold"}
-                  onChange={(v) => {
-                    setNewAgentScope(v === "project" ? "project" : "user");
+                <span>{tr("ext.agents.description")}</span>
+                <input
+                  className="app-dialog__input"
+                  value={newAgentDescription}
+                  maxLength={4096}
+                  onChange={(event) => {
+                    setNewAgentDescription(event.target.value);
+                    setNewAgentFrontmatter((frontmatter) => ({ ...frontmatter, description: event.target.value }));
                     setNewAgentError(null);
                   }}
+                  autoComplete="off"
+                  disabled={!!agentsBusy}
+                />
+              </label>
+              <label className="field">
+                <span>{tr("ext.agents.view.personas")}</span>
+                <Select
+                  value={newAgentPersonaSource}
+                  options={personaOptions}
+                  aria-label={tr("ext.agents.view.personas")}
+                  disabled={!!agentsBusy}
+                  onChange={setNewAgentPersonaSource}
+                />
+              </label>
+              <label className="field">
+                <span>{tr("ext.agents.instructions")}</span>
+                <textarea
+                  className="app-dialog__input ext-agents__instructions"
+                  value={newAgentInstructions}
+                  maxLength={65536}
+                  onChange={(event) => {
+                    setNewAgentInstructions(event.target.value);
+                    setNewAgentError(null);
+                  }}
+                  rows={7}
+                  disabled={!!agentsBusy}
+                />
+              </label>
+              <label className="field">
+                <span>{tr("ext.agents.frontmatterField", { field: "promptMode" })}</span>
+                <Select
+                  value={typeof newAgentFrontmatter.promptMode === "string" ? newAgentFrontmatter.promptMode : "full"}
+                  aria-label={tr("ext.agents.frontmatterField", { field: "promptMode" })}
+                  disabled={!!agentsBusy}
+                  onChange={(value) => updateAgentFrontmatter("promptMode", value)}
+                  options={["extend", "full"].map((value) => ({ value, label: value }))}
+                />
+              </label>
+              <AgentFrontmatterTextarea
+                label={tr("settings.allowedTools")}
+                value={stringArrayField(newAgentFrontmatter.tools).join("\n")}
+                disabled={!!agentsBusy}
+                onChange={(value) => {
+                  const tools = value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+                  updateAgentFrontmatter("tools", tools.length ? tools : undefined);
+                }}
+              />
+              <label className="field">
+                <input
+                  type="checkbox"
+                  checked={Array.isArray(newAgentFrontmatter.tools) && newAgentFrontmatter.tools.length === 0}
+                  disabled={!!agentsBusy}
+                  onChange={(event) => updateAgentFrontmatter("tools", event.target.checked ? [] : undefined)}
+                />
+                <span>{tr("ext.agents.noTools")}</span>
+              </label>
+              <AgentFrontmatterTextarea
+                label={tr("settings.disallowedTools")}
+                value={stringArrayField(newAgentFrontmatter.disallowedTools).join("\n")}
+                disabled={!!agentsBusy}
+                onChange={(value) => {
+                  const tools = value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+                  updateAgentFrontmatter("disallowedTools", tools.length ? tools : undefined);
+                }}
+              />
+              <label className="field">
+                <span>{tr("ext.agents.frontmatterField", { field: "permissionMode" })}</span>
+                <Select
+                  value={typeof newAgentFrontmatter.permissionMode === "string" ? newAgentFrontmatter.permissionMode : "default"}
+                  aria-label={tr("ext.agents.frontmatterField", { field: "permissionMode" })}
+                  disabled={!!agentsBusy}
+                  onChange={(value) => updateAgentFrontmatter("permissionMode", value)}
+                  options={["default", "acceptEdits", "dontAsk", "plan"].map((value) => ({ value, label: value }))}
+                />
+              </label>
+              <AgentFrontmatterTextarea
+                label={tr("ext.agents.frontmatterField", { field: "skills" })}
+                value={stringArrayField(newAgentFrontmatter.skills).join("\n")}
+                disabled={!!agentsBusy}
+                onChange={(value) => {
+                  const skills = value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+                  updateAgentFrontmatter("skills", skills.length ? skills : undefined);
+                }}
+              />
+              <label className="field">
+                <span>{tr("ext.agents.frontmatterField", { field: "agentsMd" })}</span>
+                <input
+                  type="checkbox"
+                  checked={newAgentFrontmatter.agentsMd === true}
+                  disabled={!!agentsBusy}
+                  onChange={(event) => updateAgentFrontmatter("agentsMd", event.target.checked)}
+                />
+              </label>
+              <label className="field">
+                <span>{tr("ext.agents.frontmatterField", { field: "outputFormat" })}</span>
+                <Select
+                  value={typeof newAgentFrontmatter.outputFormat === "string" ? newAgentFrontmatter.outputFormat : "default"}
+                  aria-label={tr("ext.agents.frontmatterField", { field: "outputFormat" })}
+                  disabled={!!agentsBusy}
+                  onChange={(value) => updateAgentFrontmatter("outputFormat", value)}
+                  options={["default", "concise"].map((value) => ({ value, label: value }))}
+                />
+              </label>
+              {AGENT_JSON_FRONTMATTER_FIELDS.map((field) => (
+                <div key={field}>
+                  <AgentFrontmatterTextarea
+                    label={tr("ext.agents.frontmatterField", { field })}
+                    value={agentJsonFieldText[field] ?? ""}
+                    invalid={agentJsonFieldErrors[field] === true}
+                    disabled={!!agentsBusy}
+                    onChange={(value) => updateAgentJsonField(field, value)}
+                  />
+                  {agentJsonFieldErrors[field] ? (
+                    <span className="ext-field-hint ext-field-hint--error" role="alert">
+                      {tr("ext.agents.frontmatterJsonInvalid")}
+                    </span>
+                  ) : null}
+                </div>
+              ))}
+              <label className="field">
+                <span>{tr("ext.agents.frontmatterField", { field: "mcpInheritance" })}</span>
+                <Select
+                  value={mcpInheritanceMode(newAgentFrontmatter.mcpInheritance)}
+                  aria-label={tr("ext.agents.frontmatterField", { field: "mcpInheritance" })}
+                  disabled={!!agentsBusy}
+                  onChange={(mode) => updateAgentFrontmatter(
+                    "mcpInheritance",
+                    mode === "all" || mode === "none" ? mode : { [mode]: [] },
+                  )}
                   options={[
-                    {
-                      value: "user",
-                      label: tr("ext.agents.scope.user"),
-                    },
-                    {
-                      value: "project",
-                      label: tr("ext.agents.scope.project"),
-                      disabled: !projectPath?.trim(),
-                    },
+                    { value: "all", label: tr("ext.agents.mcpInheritance.all") },
+                    { value: "none", label: tr("ext.agents.mcpInheritance.none") },
+                    { value: "named", label: tr("ext.agents.mcpInheritance.named") },
+                    { value: "except", label: tr("ext.agents.mcpInheritance.except") },
                   ]}
                 />
-                {!projectPath?.trim() ? (
-                  <span className="ext-field-hint">
-                    {tr("ext.agents.needProjectHint")}
-                  </span>
-                ) : null}
               </label>
+              {(["named", "except"] as const).includes(mcpInheritanceMode(newAgentFrontmatter.mcpInheritance) as "named" | "except") ? (
+                <div className="field">
+                  <span>{tr("ext.agents.frontmatterField", { field: `mcpInheritance.${mcpInheritanceMode(newAgentFrontmatter.mcpInheritance)}` })}</span>
+                  {mcpServerNames.map((serverName) => {
+                    const mode = mcpInheritanceMode(newAgentFrontmatter.mcpInheritance) as "named" | "except";
+                    const selected = mcpInheritanceNames(newAgentFrontmatter.mcpInheritance, mode).includes(serverName);
+                    return (
+                      <label className="field" key={serverName}>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          disabled={!!agentsBusy}
+                          onChange={(event) => {
+                            const values = new Set(mcpInheritanceNames(newAgentFrontmatter.mcpInheritance, mode));
+                            if (event.target.checked) values.add(serverName);
+                            else values.delete(serverName);
+                            updateAgentFrontmatter("mcpInheritance", { [mode]: [...values] });
+                          }}
+                        />
+                        <span>{serverName}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : null}
               {newAgentError ? (
                 <div className="ext-alert ext-alert--error" role="alert">
                   <p className="ext-alert__body">{newAgentError}</p>
@@ -1245,9 +2173,241 @@ export function ExtensionsBuildExtras({
           </GlassModal>
 
           <GlassModal
+            open={!!deleteAgentTarget}
+            onClose={() => {
+              if (!agentsBusy) {
+                setDeleteAgentTarget(null);
+                setDeleteAgentError(null);
+              }
+            }}
+            title={tr("ext.agents.deleteTitle")}
+            size="sm"
+            closeLabel={tr("common.close")}
+            footer={
+              <>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  disabled={!!agentsBusy}
+                  onClick={() => {
+                    setDeleteAgentTarget(null);
+                    setDeleteAgentError(null);
+                  }}
+                >
+                  {tr("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--solid btn--danger"
+                  disabled={!!agentsBusy}
+                  onClick={() => void deleteAgentDefinition()}
+                >
+                  {agentsBusy === "agent-delete" ? tr("ext.agents.saving") : tr("ext.agents.deleteConfirm")}
+                </button>
+              </>
+            }
+          >
+            <p className="app-dialog__msg">
+              {tr("ext.agents.deleteBody", { name: deleteAgentTarget?.name ?? "" })}
+            </p>
+            {deleteAgentTarget?.isDefault ? (
+              <p className="ext-field-hint">{tr("ext.agents.deleteDefaultHint")}</p>
+            ) : null}
+            {deleteAgentError ? (
+              <div className="ext-alert ext-alert--error" role="alert">
+                <p className="ext-alert__body">{deleteAgentError}</p>
+              </div>
+            ) : null}
+          </GlassModal>
+
+          <GlassModal
+            open={!!inlineDraft}
+            onClose={() => {
+              if (!agentsBusy) {
+                setInlineDraft(null);
+                setInlineError(null);
+                setRolePromptError(false);
+                setPersonaInstructionsError(false);
+              }
+            }}
+            title={tr(inlineDraft?.name ? "ext.agents.editTitle" : "ext.agents.newDefinitionTitle", {
+              kind: tr(`ext.agents.view.${inlineDraft?.kind === "persona" ? "personas" : "roles"}`),
+            })}
+            size="md"
+            closeLabel={tr("common.close")}
+            wrapBody
+            footer={
+              <>
+                <button type="button" className="btn btn--ghost" disabled={!!agentsBusy} onClick={() => { setInlineDraft(null); setInlineError(null); setRolePromptError(false); setPersonaInstructionsError(false); }}>
+                  {tr("common.cancel")}
+                </button>
+                <button type="button" className="btn btn--solid" disabled={!canSaveInlineDefinition} onClick={() => void saveInlineDefinition()}>
+                  {agentsBusy === "inline" ? tr("ext.agents.saving") : tr("common.save")}
+                </button>
+              </>
+            }
+          >
+            {inlineDraft ? (
+              <form className="app-dialog__form" onSubmit={(event) => { event.preventDefault(); if (canSaveInlineDefinition) void saveInlineDefinition(); }}>
+                {inlineError ? <div className="ext-alert ext-alert--error" role="alert"><p className="ext-alert__body">{inlineError}</p></div> : null}
+                <label className="field">
+                  <span>{tr(inlineDraft.kind === "persona" ? "ext.agents.agentType" : "ext.agents.name")}</span>
+                  {inlineDraft.kind === "persona" ? (
+                    <Select
+                      value={inlineDraft.name}
+                      options={agentTypeOptions}
+                      onChange={(name) => setInlineDraft((draft) => draft ? { ...draft, name } : draft)}
+                      aria-label={tr("ext.agents.agentType")}
+                      disabled={!!agentsBusy || inlineDraft.isEditing}
+                    />
+                  ) : (
+                    <input className="app-dialog__input" value={inlineDraft.name} maxLength={64} disabled={!!agentsBusy || inlineDraft.isEditing} onChange={(event) => setInlineDraft((draft) => draft ? { ...draft, name: event.target.value } : draft)} autoComplete="off" />
+                  )}
+                  <span className="ext-field-hint">{tr("ext.agents.nameInvalid")}</span>
+                </label>
+                <label className="field">
+                  <span>{tr("ext.agents.description")}</span>
+                  <input className="app-dialog__input" value={inlineDraft.description ?? ""} maxLength={65536} disabled={!!agentsBusy} onChange={(event) => setInlineDraft((draft) => draft ? { ...draft, description: event.target.value } : draft)} />
+                </label>
+                {inlineDraft.kind === "role" ? (
+                  <>
+                    <label className="field">
+                      <span>{tr("ext.agents.capability")}</span>
+                      <Select value={inlineDraft.defaultCapabilityMode ?? ""} aria-label={tr("ext.agents.capability")} disabled={!!agentsBusy} onChange={(value) => setInlineDraft((draft) => draft ? { ...draft, defaultCapabilityMode: value } : draft)} options={[
+                        { value: "", label: tr("ext.agents.unset") },
+                        { value: "read-only", label: tr("ext.agents.capability.readOnly") },
+                        { value: "read-write", label: tr("ext.agents.capability.readWrite") },
+                        { value: "execute", label: tr("ext.agents.capability.execute") },
+                        { value: "all", label: tr("ext.agents.capability.all") },
+                      ]} />
+                    </label>
+                    <label className="field"><span>{tr("ext.agents.model")}</span><input className="app-dialog__input" value={inlineDraft.model ?? ""} maxLength={65536} disabled={!!agentsBusy} onChange={(event) => setInlineDraft((draft) => draft ? { ...draft, model: event.target.value } : draft)} /></label>
+                    <label className="field">
+                      <span>{tr("ext.agents.view.personas")}</span>
+                      <Select
+                        value={inlineDraft.personaSource}
+                        options={personaOptions}
+                        aria-label={tr("ext.agents.view.personas")}
+                        disabled={!!agentsBusy}
+                        onChange={(personaSource) => setInlineDraft((draft) => draft ? { ...draft, personaSource } : draft)}
+                      />
+                    </label>
+                    <label className="field">
+                      <span>{tr("ext.agents.prompt")}</span>
+                      <textarea
+                        className="app-dialog__input ext-agents__instructions"
+                        rows={6}
+                        value={inlineDraft.prompt ?? ""}
+                        maxLength={65536}
+                        disabled={!!agentsBusy}
+                        aria-invalid={rolePromptError}
+                        aria-describedby={rolePromptError ? "role-prompt-validation" : undefined}
+                        onChange={(event) => {
+                          const prompt = event.target.value;
+                          setInlineDraft((draft) => draft ? {
+                            ...draft,
+                            prompt,
+                            ...(prompt.length === 0 ? { promptFile: "" } : {}),
+                          } : draft);
+                          if (prompt.trim()) setRolePromptError(false);
+                        }}
+                      />
+                      {rolePromptError ? (
+                        <span id="role-prompt-validation" className="ext-field-hint ext-field-hint--error" role="alert">
+                          {tr("ext.agents.rolePromptValidation")}
+                        </span>
+                      ) : null}
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label className="field">
+                      <span>{tr("ext.agents.instructions")}</span>
+                      <textarea
+                        className="app-dialog__input ext-agents__instructions"
+                        value={inlineDraft.instructions ?? ""}
+                        maxLength={65536}
+                        rows={6}
+                        aria-invalid={personaInstructionsError}
+                        aria-describedby={personaInstructionsError ? "persona-instructions-validation" : undefined}
+                        disabled={!!agentsBusy}
+                        onChange={(event) => {
+                          const instructions = event.target.value;
+                          setInlineDraft((draft) => draft ? { ...draft, instructions } : draft);
+                          if (instructions.trim()) setPersonaInstructionsError(false);
+                        }}
+                      />
+                      {personaInstructionsError ? (
+                        <span id="persona-instructions-validation" className="ext-field-hint ext-field-hint--error" role="alert">
+                          {tr("ext.agents.personaInstructionsValidation")}
+                        </span>
+                      ) : null}
+                    </label>
+                    <AgentFrontmatterTextarea
+                      label={tr("ext.agents.frontmatterField", { field: "inputs" })}
+                      value={personaContractText.inputs}
+                      invalid={inlineContractError}
+                      disabled={!!agentsBusy}
+                      onChange={(value) => updatePersonaContract("inputs", value)}
+                    />
+                    <AgentFrontmatterTextarea
+                      label={tr("ext.agents.frontmatterField", { field: "outputs" })}
+                      value={personaContractText.outputs}
+                      invalid={inlineContractError}
+                      disabled={!!agentsBusy}
+                      onChange={(value) => updatePersonaContract("outputs", value)}
+                    />
+                    {inlineContractError ? (
+                      <span className="ext-field-hint ext-field-hint--error" role="alert">
+                        {tr("ext.agents.frontmatterJsonInvalid")}
+                      </span>
+                    ) : null}
+                    <label className="field"><span>{tr("ext.agents.model")}</span><input className="app-dialog__input" value={inlineDraft.model ?? ""} maxLength={65536} disabled={!!agentsBusy} onChange={(event) => setInlineDraft((draft) => draft ? { ...draft, model: event.target.value } : draft)} /></label>
+                    <label className="field">
+                      <span>{tr("ext.agents.reasoningEffort")}</span>
+                      <Select value={inlineDraft.reasoningEffort ?? ""} aria-label={tr("ext.agents.reasoningEffort")} disabled={!!agentsBusy} onChange={(value) => setInlineDraft((draft) => draft ? { ...draft, reasoningEffort: value } : draft)} options={[
+                        { value: "", label: tr("ext.agents.unset") },
+                        ...["none", "minimal", "low", "medium", "high", "xhigh", "max"].map((value) => ({ value, label: value })),
+                      ]} />
+                    </label>
+                    <label className="field">
+                      <span>{tr("ext.agents.defaultIsolation")}</span>
+                      <Select value={inlineDraft.defaultIsolation ?? ""} aria-label={tr("ext.agents.defaultIsolation")} disabled={!!agentsBusy} onChange={(value) => setInlineDraft((draft) => draft ? { ...draft, defaultIsolation: value } : draft)} options={[
+                        { value: "", label: tr("ext.agents.unset") },
+                        { value: "none", label: tr("ext.agents.isolation.none") },
+                        { value: "worktree", label: tr("ext.agents.isolation.worktree") },
+                      ]} />
+                    </label>
+                  </>
+                )}
+              </form>
+            ) : null}
+          </GlassModal>
+
+          <GlassModal
+            open={!!inlineDeleteTarget}
+            onClose={() => { if (!agentsBusy) { setInlineDeleteTarget(null); setInlineError(null); } }}
+            title={tr("ext.agents.deleteTitle")}
+            size="sm"
+            closeLabel={tr("common.close")}
+            footer={
+              <>
+                <button type="button" className="btn btn--ghost" disabled={!!agentsBusy} onClick={() => { setInlineDeleteTarget(null); setInlineError(null); }}>{tr("common.cancel")}</button>
+                <button type="button" className="btn btn--solid btn--danger" disabled={!!agentsBusy} onClick={() => void deleteInlineDefinition()}>{agentsBusy === "inline" ? tr("ext.agents.saving") : tr("ext.agents.deleteConfirm")}</button>
+              </>
+            }
+          >
+            <p className="app-dialog__msg">{tr("ext.agents.deleteBody", { name: inlineDeleteTarget?.name ?? "" })}</p>
+            {inlineError ? <div className="ext-alert ext-alert--error" role="alert"><p className="ext-alert__body">{inlineError}</p></div> : null}
+          </GlassModal>
+
+          <GlassModal
             open={!!overwriteTarget}
             onClose={() => {
-              if (agentsBusy !== "scaffold") setOverwriteTarget(null);
+              if (agentsBusy !== "scaffold") {
+                setOverwriteTarget(null);
+                setNewAgentOpen(true);
+              }
             }}
             title={tr("ext.agents.overwriteTitle")}
             size="sm"
@@ -1258,19 +2418,27 @@ export function ExtensionsBuildExtras({
                   type="button"
                   className="btn btn--ghost"
                   disabled={agentsBusy === "scaffold"}
-                  onClick={() => setOverwriteTarget(null)}
+                  onClick={() => {
+                    setOverwriteTarget(null);
+                    setNewAgentOpen(true);
+                  }}
                 >
                   {tr("common.cancel")}
                 </button>
                 <button
                   type="button"
-                  className="btn btn--solid"
+                  className="btn btn--solid btn--danger"
                   disabled={agentsBusy === "scaffold"}
                   onClick={() => {
                     if (!overwriteTarget) return;
                     void runScaffold({
                       name: overwriteTarget.name,
                       scope: overwriteTarget.scope,
+                      personaSource: newAgentPersonaSource,
+                      personaTargetScope: selectedScope,
+                      personaProjectPath: selectedScopeProjectPath,
+                      description: newAgentDescription,
+                      instructions: newAgentInstructions,
                       force: true,
                     });
                   }}

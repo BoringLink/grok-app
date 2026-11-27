@@ -132,23 +132,6 @@
   box-sizing: border-box;
 }
 
-/* Legacy alias — trail replaced search */
-.ext-ref-tabs__search {
-  flex: 0 1 220px;
-  min-width: 160px;
-  max-width: 280px;
-  margin-left: auto;
-  min-height: 32px;
-}
-
-.ext-ref-tabs__search .settings-input,
-.ext-ref-tabs__search input {
-  width: 100%;
-  font-size: 13px;
-  height: 32px;
-  border-radius: 999px;
-}
-
 /* ── Section block (flat — no nested settings-card) ── */
 .ext-ref-block {
   display: flex;

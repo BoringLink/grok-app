@@ -15,9 +15,11 @@ See `docs/llm-wiki/release.md`.
 
 ### Added
 - Subagent thoughts, replies, and tool activity now appear live in the side panel.
+- Agents, Roles, and Personas can be managed globally or per saved Project.
 
 **中文 · 新增**
 - 侧栏现可实时查看子代理思考、回复和工具活动。
+- 现可按全局或已保存的 Project 管理 Agents、Roles 和 Personas。
 
 ## [0.2.59] - 2026-11-22
 
